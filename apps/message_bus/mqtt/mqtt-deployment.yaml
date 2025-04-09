@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mqtt
+  namespace: msp
+  labels:
+    app: mqtt
+  # namespace: envds-base
+spec:
+  selector:
+    matchLabels:
+      app: mqtt
+  template:
+    metadata:
+      labels:
+        app: mqtt
+    spec:
+      containers:
+      - name: mqtt
+        # image: localhost:5000/envds/eclipse-mosquitto:2.0.14
+        # image: envds-registry:36301/eclipse-mosquitto:2.0.14
+        # image: envds-registry:5000/core/eclipse-mosquitto:2.0.14
+        # image: envds-registry:5000/core/eclipse-mosquitto:2.0.15
+        image: envds-registry-base:5000/envds/eclipse-mosquitto:2.0.15
+        resources:
+          requests:
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - name: http
+          containerPort: 1883
+          protocol: TCP
+        # - name: https
+        #   containerPort: 8883
+        #   protocol: TCP
+        volumeMounts:
+            - name: mqtt-config
+              mountPath: /mosquitto/config/mosquitto.conf
+              subPath: mosquitto.conf
+            - name: mosquitto-storage
+              mountPath: /mosquitto/data
+            # - name: mosquitto-certs
+            #   mountPath: /certs/ca.crt
+            #   subPath: ca.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.crt
+            #   subPath: server.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.key
+            #   subPath: server.key
+      volumes:
+        - name: mqtt-config
+          configMap:
+            name: mqtt-config
+        - name: mosquitto-storage
+          persistentVolumeClaim:
+            claimName: mqtt-pvc
+        # - name: mosquitto-certs
+        #   configMap:
+        #     name: mosquitto-certs
