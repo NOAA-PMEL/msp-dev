@@ -124,6 +124,8 @@ class Interface(envdsBase):
         #     Interface.CONNECTED, requested=envdsStatus.FALSE, actual=envdsStatus.FALSE
         # )
 
+
+        # TODO Remove this
         self.client_registry = {
             # client_id: {
             #     source_path1: {"last_update": timestamp},
