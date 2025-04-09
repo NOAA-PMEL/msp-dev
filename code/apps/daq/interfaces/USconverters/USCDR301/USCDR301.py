@@ -14,20 +14,19 @@ from pydantic import BaseModel
 
 task_list = []
 
-class SB70LC(Interface):
-    """docstring for SB70LC."""
+class USCDR301(Interface):
+    """docstring for USCDR301."""
 
     metadata = {
         "attributes": {
-            # "name": {"type"mock1",
-            "type": {"type": "char", "data": "NetBurner"},
-            "name": {"type": "char", "data": "SB70LC"},
+            "type": {"type": "char", "data": "USCDR301"},
+            "name": {"type": "char", "data": "USCDR301"},
             "host": {"type": "char", "data": "localhost"},
             "description": {
                 "type": "char",
-                "data": "Netburner SB70LC serial to ethernet server with i2c",
+                "data": "US converters serial to ethernet server",
             },
-            "tags": {"type": "char", "data": "testing, netburner, SB70LC, serial, tcp, ethernet, i2c, sensor"},
+            "tags": {"type": "char", "data": "testing, USconverters, USCDR301, serial, tcp, ethernet, sensor"},
         },
         "paths": {
             "port-1": {
@@ -35,38 +34,17 @@ class SB70LC(Interface):
                     "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
                     "client_class": {"type": "string", "data": "TCPClient"},
                     "host": {"type": "string", "data": "localhost"},
-                    "port": {"type": "int", "data": 23},
+                    "port": {"type": "int", "data": 4001},
                 },
                 "data": [],
-            },
-            "port-2": {
-                "attributes": {
-                    "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
-                    "client_class": {"type": "string", "data": "TCPClient"},
-                    "host": {"type": "string", "data": "localhost"},
-                    "port": {"type": "int", "data": 24},
-                },
-                "data": [],
-            },
-            "port-I2C": {
-                "attributes": {
-                    "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
-                    "client_class": {"type": "string", "data": "TCPClient"},
-                    "host": {"type": "string", "data": "localhost"},
-                    "port": {"type": "int", "data": 26},
-                },
-                "data": [],
-            },
+            }
         }
     }
 
     def __init__(self, config=None, **kwargs):
-        # print("mock:1")
-        super(SB70LC, self).__init__(config=config, **kwargs)
-        # print("mock:2")
+        super(USCDR301, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
-        # self.configure()
 
         self.default_client_module = "envds.daq.clients.tcp_client"
         self.default_client_class = "TCPClient"
@@ -76,7 +54,7 @@ class SB70LC(Interface):
     def configure(self):
 
         # print("configure:1")
-        super(SB70LC, self).configure()
+        super(USCDR301, self).configure()
 
         try:
             # get config from file
@@ -102,11 +80,11 @@ class SB70LC(Interface):
             # print("configure:5")
             self.logger.debug("conf", extra={"data": conf})
 
-            atts = SB70LC.metadata["attributes"]
+            atts = USCDR301.metadata["attributes"]
 
             # print("configure:7")
             path_map = dict()
-            for name, val in SB70LC.metadata["paths"].items():
+            for name, val in USCDR301.metadata["paths"].items():
                 # path_map[name] = InterfacePath(name=name, path=val["data"])
                 # print("configure:8")
 
@@ -155,76 +133,8 @@ class SB70LC(Interface):
                 extra={"conf": conf, "self.config": self.config},
             )
         except Exception as e:
-            self.logger.debug("sb70lc:configure", extra={"error": e})
+            self.logger.debug("USCDR301:configure", extra={"error": e})
  
-    def package_i2c_data(self, data: dict):
-
-        '''
-        example: 
-            {
-                "i2c-command": "read-buffer",
-                "address": "44",
-                "read-length": 6,
-                "delay-ms": 50 # 50ms in seconds
-            }
-        '''
-        # all hex values as hex strings
-        try:
-            print(f"package_i2c_data: {data}")
-            # for command in data["i2c-commands"]:
-            i2c_command = data["i2c-command"] 
-            address = data["address"]
-            # write_data = data["data"]
-
-            delay = data.get("delay-ms", 0) / 1000.0
-
-            if i2c_command == "write-byte":
-                write_data = data["data"]
-                output = f'#WB{address}{write_data}\n'
-
-            elif i2c_command == "write-buffer":
-                write_data = data["data"]
-                write_length = data.get(
-                    "write-length",
-                    len(bytes.fromhex(write_data))
-                )
-                length = f"{write_length:02}"
-                output = f'#WW{address}{length}{write_data}\n'
-
-            elif i2c_command == "read-byte":
-                output = f'#RB{address}\n'
-
-            elif i2c_command == "read-buffer":
-                if "read-length" not in data:
-                    # self.logger.error("No read-length specified for i2c read-buffer")
-                    return None, delay
-                read_length = data["read-length"]
-                length = f"{read_length:02}"                
-                output = f'#RR{address}{length}\n'
-
-            outdata = {"data": output, "delay": delay}
-            print(f"package_i2c_data: {output},{delay}")
-            return outdata
-        
-        except KeyError as e:
-            print(f"package_i2c_data error: {e}")
-            # return None, None
-            return None
-
-    def unpack_i2c_data(self, data):
-
-        self.logger.debug("unpack_i2c_data", extra={"data": data})
-        print(f"unpack_data_type: {type(data)}")
-        try:
-            if not data: # or data == "OK":
-                return None
-            elif isinstance(data["data"], str):
-                print(f"check_for_ok: {data['data'].strip()}, {data['data'].strip() == 'OK'}")
-                if data['data'].strip() == "OK":
-                    return None
-            return data
-        except KeyError:
-            return None
         
     async def recv_data_loop(self, client_id: str):
         
@@ -238,12 +148,6 @@ class SB70LC(Interface):
                     self.logger.debug("recv_data_loop", extra={"client": client})
                     data = await client.recv()
                     self.logger.debug("recv_data", extra={"client_id": client_id, "data": data})
-
-                    if client_id == "port-I2C":
-                        data = self.unpack_i2c_data(data)
-                        if data is None:
-                            continue
-                        self.logger.debug("port-I2C", extra={"data": data})
 
                     await self.update_recv_data(client_id=client_id, data=data)
                     # await asyncio.sleep(self.min_recv_delay)
@@ -267,25 +171,7 @@ class SB70LC(Interface):
                 client = self.client_map[client_id]["client"]
                 data = event.data["data"]
 
-                if client_id == "port-I2C":
-                    if "i2c-commands" in data["data"]:
-                        for command in data["data"]["i2c-commands"]:
-                            print(f"command: {command}")
-                            # i2c_data, delay = self.package_i2c_data(command)
-                            i2c_data = self.package_i2c_data(command)
-                            print(f"i2c: {i2c_data['data']}, {i2c_data['delay']}")
-                            if i2c_data:
-                                # await self.wait_for_ok(timeout=i2c_data["delay"])
-                                await asyncio.sleep(i2c_data['delay'])
-                                await client.send(i2c_data)
-                    else:
-                        await client.send(data)
-
-                    # wrap data in netburner protocol for i2c
-                    # might need special client class for this?
-                else:
-                    self.logger.debug("nb.send_data", extra={"client": client, "payload": data})
-                    await client.send(data)
+                await client.send(data)
             except KeyError:
                 pass
 
@@ -300,7 +186,7 @@ async def test_task():
         await asyncio.sleep(1)
         # print("daq test_task...")
         logger = logging.getLogger("envds.info")
-        logger.info("sb70lc_test_task", extra={"test": "sb70lc task"})
+        logger.info("USCDR301_test_task", extra={"test": "USCDR301 task"})
 
 
 async def shutdown(interface):
@@ -326,17 +212,17 @@ async def main(server_config: ServerConfig = None):
     # task_list.append(asyncio.create_task(test_task()))
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger("interface::sb70lc")
+    logger = logging.getLogger("interface::USCDR301")
 
     # test = envdsBase()
     # task_list.append(asyncio.create_task(test_task()))
 
-    iface = SB70LC()
+    iface = USCDR301()
     iface.run()
     # task_list.append(asyncio.create_task(iface.run()))
     # await asyncio.sleep(2)
     iface.enable()
-    logger.debug("Starting SB70LC Interface")
+    logger.debug("Starting US Converters Interface")
 
     # remove fastapi ----
     # # get config from file
@@ -380,7 +266,7 @@ async def main(server_config: ServerConfig = None):
     event_loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
 
     while do_run:
-        logger.debug("sb70lc.run", extra={"do_run": do_run})
+        logger.debug("USCDR301.run", extra={"do_run": do_run})
         await asyncio.sleep(1)
 
 
