@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aerosoldynamics-magic250-config
+  namespace: msp
+  labels:
+    app: aerosoldynamics-magic250
+    app-group: envds-sensor-clear
+data:
+  sensor.conf: |
+    serial_number: "154"
+    daq_id: msp
+    interfaces:
+      # default: serial
+      default:
+        interface_env_id: clear # if omitted, defaults to envds_id of sensor
+        interface_id: USconverters::USCDR301::usc206
+        path: port-1
+      #   connection-properties:
+      #     baudrate: 115200
+      #     bytesize: 8
+      #     parity: N
+      #     stopbit: 1
+      #   # read-properties:
+      #     read_method: "readline" # default
+      #     # terminator: "\r"
+      #     # binary: true
+      #     # num-bytes: 1
+      #     # decode-errors: strict
+      # # power: # example of second interface (e.g., CDP enable signal)
+      # #   interface_id: system::mock::localhost
+      # #   path: port-01
+      
+    # settings: # used to override defaults
+    #   pump_power: 1
+    #   q_target: 300
