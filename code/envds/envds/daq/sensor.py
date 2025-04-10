@@ -881,7 +881,7 @@ class Sensor(envdsBase):
 
     def build_data_record(self, meta: bool = False, mode: str = "default") -> dict:
         #TODO: change data_format -> format_version
-
+        # TODO: create record for any number of variable_types
         record = {
             # "time": get_datetime_string(),
             "timestamp": get_datetime_string(),
