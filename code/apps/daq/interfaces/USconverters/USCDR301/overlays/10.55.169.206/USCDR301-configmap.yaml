@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: usconverters-uscdr301-base-config
+  name: usconverters-uscdr301-config
   namespace: msp
   labels:
-    app: usconverters-uscdr301-base
+    app: usconverters-uscdr301
 data:
   interface.conf: |
-    uid: base
+    uid: usc206
     # serial_number: "1234"
     # daq_id: clearsky
     host: 10.55.169.206

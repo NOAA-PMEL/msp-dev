@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: usconverters-uscdr301-base
+  name: usconverters-uscdr301
   namespace: msp
   labels:
-    app: usconverters-uscdr301-base
+    app: usconverters-uscdr301
 spec:
   selector:
     matchLabels:
-      app: usconverters-uscdr301-base
+      app: usconverters-uscdr301
   template:
     metadata:
       labels:
-        app: usconverters-uscdr301-base
+        app: usconverters-uscdr301
     spec:
       containers:
-      - name: usconverters-uscdr301-base
+      - name: usconverters-uscdr301
         image: registry-msp:5000/msp/interface/usconverters-uscdr301:0.1.0
         imagePullPolicy: "Always"
         env:
@@ -39,7 +39,7 @@ spec:
         #   containerPort: 8883
         #   protocol: TCP
         volumeMounts:
-            - name: usconverters-uscdr301-base-config
+            - name: usconverters-uscdr301-config
               mountPath: /app/config/interface.conf
               subPath: interface.conf
             # - name: mosquitto-certs
@@ -52,9 +52,9 @@ spec:
             #   mountPath: /certs/server.key
             #   subPath: server.key
       volumes:
-        - name: usconverters-uscdr301-base-config
+        - name: usconverters-uscdr301-config
           configMap:
-            name: usconverters-uscdr301-base-config
+            name: usconverters-uscdr301-config
         # - name: mosquitto-certs
         #   configMap:
         #     name: mosquitto-certs
