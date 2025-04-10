@@ -879,7 +879,7 @@ class Sensor(envdsBase):
                 self.include_metadata = True
                 await asyncio.sleep(1)
 
-    def build_data_record(self, meta: bool = False, mode: str = "default") -> dict:
+    def build_data_record(self, meta: bool = False, variable_types: str = ["default"]) -> dict:
         #TODO: change data_format -> format_version
         # TODO: create record for any number of variable_types
         record = {
@@ -909,7 +909,7 @@ class Sensor(envdsBase):
                 "format_version": {"data": self.sensor_format_version},
             }
         record["attributes"]["serial_number"] = {"data": self.config.serial_number}
-        record["attributes"]["mode"] = {"data": mode}
+        record["attributes"]["mode"] = {"data": variable_types}
 
         # print(record)
         
@@ -917,25 +917,37 @@ class Sensor(envdsBase):
         # }
 
         record["dimensions"] = {"time": 1}
+        record["variables"] = dict()
+
         # record["variables"] = dict()
         if meta:
-            record["variables"] = self.config.metadata.dict()["variables"]
+            for name, variable in self.config.metadata.dict()["variables"].items():
+                variable_type = variable["attributes"].get("variable_type", {"type": "string", "data": "default"})
+                if variable_type["data"] in variable_types:
+                    record["variables"][name] = self.config.metadata.dict()["variables"][name]
+
+            # record["variables"] = self.config.metadata.dict()["variables"]
+
             # print(record)
             for name,_ in record["variables"].items():
                 record["variables"][name]["data"] = None
             # print(record)
         else:
-            record["variables"] = dict()
-            for name,_ in self.config.metadata.variables.items():
-                record["variables"][name] = {"data": None}
-        # # print(record)
-        # for name, var in self.config.variables.items():
-        #     # print(f"name: {name}, var: {var}")
-        #     record["variables"][name] = {"data": None}
-        #     if meta:
-        #         record["variables"][name]["type"] = var.type
-        #         record["variables"][name]["shape"] = var.shape
-        #         record["variables"][name]["attributes"] = var.attributes
+            for name, variable in self.config.metadata.dict()["variables"].items():
+                variable_type = variable["attributes"].get("variable_type", {"type": "string", "data": "default"})
+                if variable_type in variable_types:
+                    record["variables"][name] = {
+                        "attributes": {
+                            "variable_type": variable_type
+                        },
+                        "data": None
+                    }
+
+
+            # record["variables"] = dict()
+            # for name,_ in self.config.metadata.variables.items():
+            #     record["variables"][name] = {"data": None}
+
         return record
     
     def build_settings_record(self, meta: bool = False, mode: str = "default") -> dict:
