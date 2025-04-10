@@ -879,7 +879,7 @@ class Sensor(envdsBase):
                 self.include_metadata = True
                 await asyncio.sleep(1)
 
-    def build_data_record(self, meta: bool = False, variable_types: str = ["default"]) -> dict:
+    def build_data_record(self, meta: bool = False, variable_types: str = ["main"]) -> dict:
         #TODO: change data_format -> format_version
         # TODO: create record for any number of variable_types
         record = {
@@ -922,7 +922,7 @@ class Sensor(envdsBase):
         # record["variables"] = dict()
         if meta:
             for name, variable in self.config.metadata.dict()["variables"].items():
-                variable_type = variable["attributes"].get("variable_type", {"type": "string", "data": "default"})
+                variable_type = variable["attributes"].get("variable_type", {"type": "string", "data": "main"})
                 if variable_type["data"] in variable_types:
                     record["variables"][name] = self.config.metadata.dict()["variables"][name]
 
@@ -934,7 +934,7 @@ class Sensor(envdsBase):
             # print(record)
         else:
             for name, variable in self.config.metadata.dict()["variables"].items():
-                variable_type = variable["attributes"].get("variable_type", {"type": "string", "data": "default"})
+                variable_type = variable["attributes"].get("variable_type", {"type": "string", "data": "main"})
                 if variable_type in variable_types:
                     record["variables"][name] = {
                         "attributes": {
