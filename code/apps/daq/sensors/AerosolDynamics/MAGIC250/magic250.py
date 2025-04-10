@@ -434,6 +434,7 @@ class MAGIC250(Sensor):
                 "magcic250.configure", extra={"interfaces": conf["interfaces"]}
             )
 
+        # TODO change settings for new sensor definition
         for name, setting in MAGIC250.metadata["settings"].items():
             requested = setting["attributes"]["default_value"]["data"]
             if "settings" in config and name in config["settings"]:
