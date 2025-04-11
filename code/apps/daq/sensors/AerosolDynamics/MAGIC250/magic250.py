@@ -15,6 +15,7 @@ import logging.config
 import yaml
 import random
 from envds.core import envdsLogger
+
 # from envds.daq.db import get_sensor_registration, register_sensor  # , envdsBase, envdsStatus
 from envds.util.util import (
     # get_datetime_format,
@@ -60,31 +61,30 @@ class MAGIC250(Sensor):
                 "data": "aerosol, cpc, particles, concentration, sensor",
             },
             "format_version": {"type": "char", "data": "1.0.0"},
-            "variable_types": {
-                "type": "string",
-                "data": "main, settings, calibration"
-            }
+            "variable_types": {"type": "string", "data": "main, setting, calibration"},
         },
         "variables": {
             "time": {
                 "type": "str",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
-                "attributes": {"long_name": {"type": "string", "data": "Time"}},
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "string", "data": "Time"}
+                },
             },
             "magic_timestamp": {
                 "type": "str",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "string", "data": "Internal Timestamp"}
                 },
             },
             "concentration": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Concentration"},
                     "units": {"type": "char", "data": "cm-3"},
                 },
@@ -92,8 +92,8 @@ class MAGIC250(Sensor):
             "dew_point": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Dew Point"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -101,8 +101,8 @@ class MAGIC250(Sensor):
             "input_T": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Input T"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -110,8 +110,8 @@ class MAGIC250(Sensor):
             "input_rh": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Input RH"},
                     "units": {"type": "char", "data": "percent"},
                 },
@@ -119,8 +119,8 @@ class MAGIC250(Sensor):
             "cond_T": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Conditioner T"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -128,8 +128,8 @@ class MAGIC250(Sensor):
             "init_T": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Initiator T"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -137,8 +137,8 @@ class MAGIC250(Sensor):
             "mod_T": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Moderator T"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -146,8 +146,8 @@ class MAGIC250(Sensor):
             "opt_T": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Optics Head T"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -155,8 +155,8 @@ class MAGIC250(Sensor):
             "heatsink_T": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Heat Sink T"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -164,8 +164,8 @@ class MAGIC250(Sensor):
             "case_T": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Case T"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -173,8 +173,8 @@ class MAGIC250(Sensor):
             "wick_sensor": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Wick Sensor"},
                     "units": {"type": "char", "data": "percent"},
                 },
@@ -182,8 +182,8 @@ class MAGIC250(Sensor):
             "mod_T_sp": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Moderator Set Point T"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -191,8 +191,8 @@ class MAGIC250(Sensor):
             "humid_exit_dew_point": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Humidifier Exit Dew Point (estimated)",
@@ -203,8 +203,8 @@ class MAGIC250(Sensor):
             "abs_pressure": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Absolute Pressure"},
                     "units": {"type": "char", "data": "mbar"},
                 },
@@ -212,8 +212,8 @@ class MAGIC250(Sensor):
             "flow": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Volumetric Flow Rate"},
                     "units": {"type": "char", "data": "cm3 min-1"},
                     # "valid_min": {"type": "float", "data": 0.0},
@@ -223,8 +223,8 @@ class MAGIC250(Sensor):
             "log_interval": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Logging Interval"},
                     "units": {"type": "char", "data": "seconds"},
                 },
@@ -232,8 +232,8 @@ class MAGIC250(Sensor):
             "corr_live_time": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Corrected Live Time"},
                     "description": {
                         "type": "char",
@@ -247,8 +247,8 @@ class MAGIC250(Sensor):
             "meas_dead_time": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Measured Dead Time"},
                     "description": {
                         "type": "char",
@@ -262,8 +262,8 @@ class MAGIC250(Sensor):
             "raw_counts": {
                 "type": "int",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Raw Counts during logging interval",
@@ -276,8 +276,8 @@ class MAGIC250(Sensor):
             "dthr2_pctl": {
                 "type": "float",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Upper Threshold.Percentile"},
                     "description": {
                         "type": "char",
@@ -288,8 +288,8 @@ class MAGIC250(Sensor):
             "status_hex": {
                 "type": "string",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Compact display of status codes",
@@ -299,8 +299,8 @@ class MAGIC250(Sensor):
             "status_ascii": {
                 "type": "string",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Alphabetic list of all abnormal status codes",
@@ -310,19 +310,19 @@ class MAGIC250(Sensor):
             "magic_serial_number": {
                 "type": "string",
                 "shape": ["time"],
-                "variable_type": {"type": "string", "data": "main"},
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Serial Number",
                     },
                 },
             },
-            "pump_state":{
+            "pump_state": {
                 "type": "int",
-                "shape": ['time'],
-                "variable_type": {"type": "string", "data": "setting"},
+                "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "setting"},
                     "long_name": {"type": "char", "data": "Pump State"},
                     "units": {"type": "char", "data": "count"},
                     "valid_min": {"type": "int", "data": 0},
@@ -331,33 +331,36 @@ class MAGIC250(Sensor):
                     "default_value": {"type": "int", "data": 1},
                 },
             },
-            "q_target":{
+            "q_target": {
                 "type": "int",
-                "shape": ['time'],
-                "variable_type": {"type": "string", "data": "setting"},
+                "shape": ["time"],
                 "attributes": {
-                    "long_name": {"type": "char", "data": "Target Volumetric Flow Rate"},
+                    "variable_type": {"type": "string", "data": "setting"},
+                    "long_name": {
+                        "type": "char",
+                        "data": "Target Volumetric Flow Rate",
+                    },
                     "units": {"type": "char", "data": "cm3 min-1"},
                     "valid_min": {"type": "int", "data": 240},
                     "valid_max": {"type": "int", "data": 360},
                     "step_increment": {"type": "int", "data": 10},
                     "default_value": {"type": "int", "data": 300},
-                }
+                },
             },
-            "qfc":{
+            "qfc": {
                 "type": "int",
-                "shape": ['time'],
-                "variable_type": {"type": "string", "data": "calibration"},
+                "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "calibration"},
                     "long_name": {"type": "char", "data": "Flow Calibration Factor"},
                     "units": {"type": "char", "data": "count"},
                     "valid_min": {"type": "int", "data": 1},
                     "valid_max": {"type": "int", "data": 255},
                     "step_increment": {"type": "int", "data": 1},
                     "default_value": {"type": "int", "data": 1},
-                }  
-            }  
-        }
+                },
+            },
+        },
     }
 
     def __init__(self, config=None, **kwargs):
@@ -418,7 +421,7 @@ class MAGIC250(Sensor):
                         "read-method": "readline",  # readline, read-until, readbytes, readbinary
                         # "read-terminator": "\r",  # only used for read_until
                         "decode-errors": "strict",
-                        "send-method": "ascii"
+                        "send-method": "ascii",
                     },
                 }
             }
@@ -434,7 +437,15 @@ class MAGIC250(Sensor):
                 "magcic250.configure", extra={"interfaces": conf["interfaces"]}
             )
 
-        for name, setting in MAGIC250.metadata["settings"].items():
+        # TODO change settings for new sensor definition
+        '''
+        The new settings are part [variables] now so this is a bit of a hack to use the existing structure
+        with the new format.
+        '''
+        settings_def = self.get_definition_by_variable_type(MAGIC250.metadata, variable_type="setting")
+        # for name, setting in MAGIC250.metadata["settings"].items():
+        for name, setting in settings_def["variables"].items():
+        
             requested = setting["attributes"]["default_value"]["data"]
             if "settings" in config and name in config["settings"]:
                 requested = config["settings"][name]
@@ -444,7 +455,8 @@ class MAGIC250(Sensor):
         meta = SensorMetadata(
             attributes=MAGIC250.metadata["attributes"],
             variables=MAGIC250.metadata["variables"],
-            settings=MAGIC250.metadata["settings"],
+            # settings=MAGIC250.metadata["settings"],
+            settings=settings_def["variables"]
         )
 
         self.config = SensorConfig(
@@ -504,19 +516,25 @@ class MAGIC250(Sensor):
     async def settings_check(self):
         await super().settings_check()
 
-        if not self.settings.get_health(): # something has changed
+        if not self.settings.get_health():  # something has changed
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
-                    self.logger.debug("settings_check - set setting", extra={"setting-name": name, "setting": self.settings.get_setting(name)})
+                    self.logger.debug(
+                        "settings_check - set setting",
+                        extra={
+                            "setting-name": name,
+                            "setting": self.settings.get_setting(name),
+                        },
+                    )
 
     # async def register_sensor(self):
     #     try:
-                
+
     #         make = self.config.make
     #         model = self.config.model
     #         serial_number = self.config.serial_number
     #         if not await get_sensor_registration(make=make, model=model, serial_number=serial_number):
-                    
+
     #             await register_sensor(
     #                 make=make,
     #                 model=model,
@@ -568,7 +586,7 @@ class MAGIC250(Sensor):
                             continue
                         else:
                             await self.interface_send_data(data={"data": start_command})
-                        # await self.interface_send_data(data={"data": "\n"})
+                            # await self.interface_send_data(data={"data": "\n"})
                             need_start = False
                             start_requested = True
                             await asyncio.sleep(2)
@@ -586,8 +604,8 @@ class MAGIC250(Sensor):
                         await self.interface_send_data(data={"data": stop_command})
                         await asyncio.sleep(2)
                         self.collecting = False
-                            
-                await asyncio.sleep(.1)
+
+                await asyncio.sleep(0.1)
 
                 # if self.collecting:
                 #     # await self.stop_command()
@@ -598,9 +616,8 @@ class MAGIC250(Sensor):
                 #     # self.logger.debug("sampling_monitor:7", extra={"self.collecting": self.collecting})
             except Exception as e:
                 print(f"sampling monitor error: {e}")
-                
-            await asyncio.sleep(.1)
 
+            await asyncio.sleep(0.1)
 
     # async def start_command(self):
     #     pass # Log,{sampling interval}
@@ -634,7 +651,8 @@ class MAGIC250(Sensor):
                     )
                     dest_path = f"/{self.get_id_as_topic()}/data/update"
                     self.logger.debug(
-                        "default_data_loop", extra={"data": event, "dest_path": dest_path}
+                        "default_data_loop",
+                        extra={"data": event, "dest_path": dest_path},
                     )
                     message = Message(data=event, dest_path=dest_path)
                     # self.logger.debug("default_data_loop", extra={"m": message})
@@ -698,6 +716,7 @@ class MAGIC250(Sensor):
                 print(f"default_parse error: {e}")
         # else:
         return None
+
 
 class ServerConfig(BaseModel):
     host: str = "localhost"

@@ -896,20 +896,28 @@ class Sensor(envdsBase):
             # print(record)
             record["attributes"]["serial_number"] = {
                 "type": "char",
+                "data": self.config.serial_number
                 }
             record["attributes"]["mode"] = {
                 "type": "char",
+                "data": "default"
                 }
+            record["attributes"]["variable_types"] = {
+                "type": "string",
+                "data": ",".join(variable_type)
+            }
         else:
             record["attributes"] = {
                 "make": {"data": self.config.make},
                 "model": {"data": self.config.model},
-                # "serial_number": self.config.serial_number,
-                # "sampling_mode": mode,
+                "serial_number": self.config.serial_number,
+                "mode": {"data": "default"},
                 "format_version": {"data": self.sensor_format_version},
+                "variable_types": {"data": ",".join(variable_type)}
             }
-        record["attributes"]["serial_number"] = {"data": self.config.serial_number}
-        record["attributes"]["mode"] = {"data": variable_types}
+        # record["attributes"]["serial_number"] = {"data": self.config.serial_number}
+        # record["attributes"]["mode"] = {"data": "default"}
+        # record["attributes"]["variable_types"] = {"data": ",".join(variable_type)}
 
         # print(record)
         
@@ -938,7 +946,7 @@ class Sensor(envdsBase):
                 if variable_type in variable_types:
                     record["variables"][name] = {
                         "attributes": {
-                            "variable_type": variable_type
+                            "variable_type": {"data": variable_type}
                         },
                         "data": None
                     }
@@ -950,6 +958,23 @@ class Sensor(envdsBase):
 
         return record
     
+    def get_definition_by_variable_type(self, sensor_def: dict, variable_type: str = "main") -> dict:
+        
+        result = dict()
+        if sensor_def:
+            result["attributes"] = sensor_def["attributes"]
+            result["attributes"]["variable_types"] = {
+                "type": "string",
+                "data": variable_type
+            }
+            result["dimensions"] = sensor_def["dimensions"]
+            result["variables"] = dict()
+            for name, variable in sensor_def["variables"].items():
+                var_type = variable["attributes"].get("variable_type", {"type": "string", "data": "main"})
+                if var_type["data"] == variable_type:
+                    result["variables"][name] = variable
+        return result
+
     def build_settings_record(self, meta: bool = False, mode: str = "default") -> dict:
         #TODO: change data_format -> format_version
 
