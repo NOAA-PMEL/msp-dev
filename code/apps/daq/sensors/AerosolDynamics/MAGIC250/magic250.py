@@ -61,7 +61,7 @@ class MAGIC250(Sensor):
                 "data": "aerosol, cpc, particles, concentration, sensor",
             },
             "format_version": {"type": "char", "data": "1.0.0"},
-            "variable_types": {"type": "string", "data": "main, settings, calibration"},
+            "variable_types": {"type": "string", "data": "main, setting, calibration"},
         },
         "variables": {
             "time": {
@@ -438,7 +438,14 @@ class MAGIC250(Sensor):
             )
 
         # TODO change settings for new sensor definition
-        for name, setting in MAGIC250.metadata["settings"].items():
+        '''
+        The new settings are part [variables] now so this is a bit of a hack to use the existing structure
+        with the new format.
+        '''
+        settings_def = self.get_definition_by_variable_type(MAGIC250.metadata, variable_type="setting")
+        # for name, setting in MAGIC250.metadata["settings"].items():
+        for name, setting in settings_def["variables"].items():
+        
             requested = setting["attributes"]["default_value"]["data"]
             if "settings" in config and name in config["settings"]:
                 requested = config["settings"][name]
@@ -448,7 +455,8 @@ class MAGIC250(Sensor):
         meta = SensorMetadata(
             attributes=MAGIC250.metadata["attributes"],
             variables=MAGIC250.metadata["variables"],
-            settings=MAGIC250.metadata["settings"],
+            # settings=MAGIC250.metadata["settings"],
+            settings=settings_def["variables"]
         )
 
         self.config = SensorConfig(
