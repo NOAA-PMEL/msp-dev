@@ -222,7 +222,7 @@ async def main(server_config: ServerConfig = None):
     # task_list.append(asyncio.create_task(iface.run()))
     # await asyncio.sleep(2)
     iface.enable()
-    logger.debug("Starting US Converters Interface")
+    logger.debug("Starting Synaccess PDU Interface")
 
     # remove fastapi ----
     # # get config from file
