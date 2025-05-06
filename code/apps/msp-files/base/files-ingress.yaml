@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: envds-files-ingress
-  namespace: envds
+  namespace: msp
   # labels:
   #   app: envds
   annotations:

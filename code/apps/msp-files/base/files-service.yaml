@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: envds-files-base
-  namespace: envds
+  namespace: msp
   labels:
     app: envds-files-base
 spec:

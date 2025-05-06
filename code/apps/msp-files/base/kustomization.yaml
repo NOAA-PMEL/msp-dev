@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 metadata:
-  name: mqtt
+  name: msp-files
 
 # Example configuration for the webserver
 # at https://github.com/monopole/hello
@@ -9,7 +9,7 @@ metadata:
 #   app: nginx
 
 resources:
-- mqtt-configmap.yaml
-- mqtt-storage.yaml
-- mqtt-deployment.yaml
-- mqtt-service.yaml
+- files-storage.yaml
+- files-deployment.yaml
+- files-service.yaml
+- files-ingress.yaml

@@ -16,11 +16,11 @@ spec:
     spec:
       containers:
       - name: msp-files
-        image: msp-registry-base:5000/envds/envds-files:0.1.0
+        image: msp-registry-base:5000/msp/msp-files:0.1.0
         imagePullPolicy: "Always"
         env:
           - name: ENVDS_ENV_ID
-            value: base
+            value: mspbase01
           - name: REDIS_OM_URL
             value: redis://redis.default
           - name: LOG_LEVEL
@@ -36,9 +36,9 @@ spec:
           containerPort: 9080
           protocol: TCP
         volumeMounts:
-          - name: envds-files-base-pv-storage
+          - name: msp-files-pvc
             mountPath: /data
       volumes:
-        - name: envds-files-base-pv-storage
+        - name: msp-files-pvc
           persistentVolumeClaim:
-            claimName: envds-files-base-pv-claim
+            claimName: files-pvc
