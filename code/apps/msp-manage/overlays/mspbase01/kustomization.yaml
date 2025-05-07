@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 metadata:
-  name: msp-files
+  name: msp-manage
 
 # Example configuration for the webserver
 # at https://github.com/monopole/hello

@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: msp-files
-        image: msp-registry-base:5000/msp/msp-files:0.1.0
+        image: registry-msp:5000/msp/msp-files:0.1.0
         imagePullPolicy: "Always"
         env:
           - name: ENVDS_ENV_ID

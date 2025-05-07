@@ -1,37 +1,37 @@
 apiVersion: traefik.containo.us/v1alpha1
 kind: Middleware
 metadata:
-  name: msp-files-stripprefix
+  name: msp-registrar-stripprefix
   namespace: msp
-  # labels:
-  #   app: envds
+  labels:
+    app: msp-registrar
 spec:
   stripPrefix:
     prefixes:
-      - /msp/files
+      - /envds/manage
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: msp-files-ingress
+  name: msp-registrar-ingress
   namespace: msp
   # labels:
   #   app: envds
   annotations:
     ingress.kubernetes.io/ssl-redirect: "false"
     traefik.ingress.kubernetes.io/router.middlewares:
-      msp-msp-files-stripprefix@kubernetescrd
+      msp-msp-registrar-stripprefix@kubernetescrd
       # default-erddap-rewrite@kubernetescrd
 spec:
   rules:
   - http:
       paths:
       # - path: /erddap
-      - path: /msp/files
+      - path: /envds/registrar
         pathType: Prefix
         # pathType: Exact
         backend:
           service:
-            name: msp-files
+            name: msp-registrar
             port:
               number: 8080

@@ -62,7 +62,9 @@ class MAGIC250(Sensor):
             },
             "format_version": {"type": "char", "data": "1.0.0"},
             "variable_types": {"type": "string", "data": "main, setting, calibration"},
+            "serial_number": {"type": "string", "data": ""},
         },
+        "dimensions": {"time": 0},
         "variables": {
             "time": {
                 "type": "str",
@@ -454,6 +456,7 @@ class MAGIC250(Sensor):
 
         meta = SensorMetadata(
             attributes=MAGIC250.metadata["attributes"],
+            dimensions=MAGIC250.metadata["dimensions"],
             variables=MAGIC250.metadata["variables"],
             # settings=MAGIC250.metadata["settings"],
             settings=settings_def["variables"]
@@ -679,11 +682,11 @@ class MAGIC250(Sensor):
                 # print(f"variables: \n{variables}\n{variables2}")
                 variables.remove("time")
                 # variables2.remove("time")
-                # print(f"variables: \n{variables}\n{variables2}")
+                print(f"variables: \n{variables}")
 
-                # print(f"include metadata: {self.include_metadata}")
+                print(f"include metadata: {self.include_metadata}")
                 record = self.build_data_record(meta=self.include_metadata)
-                # print(f"default_parse: data: {data}, record: {record}")
+                print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
                 try:
                     record["timestamp"] = data.data["timestamp"]
