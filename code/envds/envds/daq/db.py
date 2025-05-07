@@ -163,7 +163,7 @@ async def register_sensor(
             make=make,
             model=model,
             serial_number=serial_number,
-            creation_date=datetime.utcnow(),
+            creation_date=datetime.now(datetime.timezone.utc),
             source_id=source_id,
         )
 

@@ -110,7 +110,7 @@ class SensorSetting(BaseModel):
 class SensorMetadata(BaseModel):
     """docstring for SensorMetadata."""
     attributes: dict[str, SensorAttribute]
-    dimensions: dict
+    dimensions: dict[str, int|None]
     variables: dict[str, SensorVariable]
     settings: dict[str, SensorSetting]
 
@@ -879,7 +879,7 @@ class Sensor(envdsBase):
                 self.include_metadata = True
                 await asyncio.sleep(1)
 
-    def build_data_record(self, meta: bool = False, variable_types: str = ["main"]) -> dict:
+    def build_data_record(self, meta: bool = False, variable_types: list[str] = ["main"]) -> dict:
         #TODO: change data_format -> format_version
         # TODO: create record for any number of variable_types
         record = {
@@ -904,7 +904,7 @@ class Sensor(envdsBase):
                 }
             record["attributes"]["variable_types"] = {
                 "type": "string",
-                "data": ",".join(variable_type)
+                "data": ",".join(variable_types)
             }
         else:
             record["attributes"] = {
@@ -913,7 +913,7 @@ class Sensor(envdsBase):
                 "serial_number": self.config.serial_number,
                 "mode": {"data": "default"},
                 "format_version": {"data": self.sensor_format_version},
-                "variable_types": {"data": ",".join(variable_type)}
+                "variable_types": {"data": ",".join(variable_types)}
             }
         # record["attributes"]["serial_number"] = {"data": self.config.serial_number}
         # record["attributes"]["mode"] = {"data": "default"}
@@ -936,21 +936,23 @@ class Sensor(envdsBase):
 
             # record["variables"] = self.config.metadata.dict()["variables"]
 
-            # print(record)
+            print(1, record)
             for name,_ in record["variables"].items():
                 record["variables"][name]["data"] = None
-            # print(record)
+            print(2, record)
         else:
             for name, variable in self.config.metadata.dict()["variables"].items():
                 variable_type = variable["attributes"].get("variable_type", {"type": "string", "data": "main"})
-                if variable_type in variable_types:
+                print(f"variable_type: {variable_type}, {variable_types}")
+                if variable_type["data"] in variable_types:
+                    print(f"name: {name}")
                     record["variables"][name] = {
                         "attributes": {
                             "variable_type": {"data": variable_type}
                         },
                         "data": None
                     }
-
+            print(3, record)
 
             # record["variables"] = dict()
             # for name,_ in self.config.metadata.variables.items():

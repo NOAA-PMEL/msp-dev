@@ -19,7 +19,7 @@ class USCDR301(Interface):
 
     metadata = {
         "attributes": {
-            "type": {"type": "char", "data": "USCDR301"},
+            "type": {"type": "char", "data": "USconverters"},
             "name": {"type": "char", "data": "USCDR301"},
             "host": {"type": "char", "data": "localhost"},
             "description": {

@@ -20,7 +20,7 @@ spec:
         imagePullPolicy: "Always"
         env:
           - name: ENVDS_ENV_ID
-            value: clear
+            value: mspbase01
           - name: REDIS_OM_URL
             value: redis://redis.default
           - name: LOG_LEVEL
