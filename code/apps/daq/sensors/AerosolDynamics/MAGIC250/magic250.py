@@ -63,6 +63,7 @@ class MAGIC250(Sensor):
             "format_version": {"type": "char", "data": "1.0.0"},
             "variable_types": {"type": "string", "data": "main, setting, calibration"},
         },
+        "dimensions": {"time": None},
         "variables": {
             "time": {
                 "type": "str",
@@ -455,6 +456,7 @@ class MAGIC250(Sensor):
         meta = SensorMetadata(
             attributes=MAGIC250.metadata["attributes"],
             variables=MAGIC250.metadata["variables"],
+            dimensions=MAGIC250.metadata["dimensions"],
             # settings=MAGIC250.metadata["settings"],
             settings=settings_def["variables"]
         )

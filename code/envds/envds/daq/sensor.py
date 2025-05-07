@@ -505,6 +505,8 @@ class Sensor(envdsBase):
                 print("here:2")
                 send_config = True
                 await asyncio.sleep(1)
+            # change to send config every 10 seconds
+            send_config = True
             if send_config:
 
                 for name, iface in self.iface_map.items():
@@ -545,7 +547,7 @@ class Sensor(envdsBase):
                         send_config = False
                     except Exception as e:
                         self.logger.error("client_config_monitor", extra={"error": e})
-            await asyncio.sleep(1)
+            await asyncio.sleep(10)
 
     def enable(self):
         # print("sensor.enable:1")
