@@ -155,7 +155,7 @@ class Device(envdsBase):
         # self.metadata = InstrumentMeta()
 
         # set device id
-        self.update_id("app_group", "device")
+        self.update_id("app_group", "sensor")
         self.update_id("app_ns", "envds")
         self.update_id("app_uid", f"make-model-{ULID()}")
         self.logger.debug("device id", extra={"self.id": self.id})
@@ -234,7 +234,7 @@ class Device(envdsBase):
         topic_base = self.get_id_as_topic()
         self.set_route(
             subscription=f"{topic_base}/settings/request",
-            route_key=det.device_settings_request(),
+            route_key=det.sensor_settings_request(),
             route=self.handle_settings,
             enable=enable
         )
@@ -300,7 +300,7 @@ class Device(envdsBase):
         # # self.router.register_route(key=et.control_update, route=self.handle_control)
 
     async def handle_settings(self, message: Message):
-        if message.data["type"] == det.device_settings_request():
+        if message.data["type"] == det.sensor_settings_request():
             try:
                 src = message.data["source"]
                 setting = message.data.data.get("settings", None)
@@ -402,7 +402,7 @@ class Device(envdsBase):
             
             if self.enabled() and send_settings:
                 # send settings every other second
-                event = DAQEvent.create_device_settings_update(
+                event = DAQEvent.create_sensor_settings_update(
                     # source="device.mockco-mock1-1234", data=record
                     source=self.get_id_as_source(),
                     data={"settings": self.settings.get_settings()},
@@ -462,6 +462,7 @@ class Device(envdsBase):
                 print("here:2")
                 send_config = True
                 await asyncio.sleep(1)
+
             if send_config:
 
                 for name, iface in self.iface_map.items():
@@ -479,7 +480,7 @@ class Device(envdsBase):
 
                         try:
                             print(f"iface: {iface}")
-                            config_data = {"path": iface["interface"]["path"], "device-interface-properties": iface["interface"]["device-interface-properties"]}
+                            config_data = {"path": iface["interface"]["path"], "sensor-interface-properties": iface["interface"]["sensor-interface-properties"]}
                         except KeyError:
                             break
 
@@ -803,8 +804,8 @@ class Device(envdsBase):
         # update device instance on db/redis
         # send registry_update message
 
-        dest_path = f"/envds/{self.id.app_env_id}/device/registry/update"
-        event = DAQEvent.create_device_registry_update(
+        dest_path = f"/envds/{self.id.app_env_id}/sensor/registry/update"
+        event = DAQEvent.create_sensor_registry_update(
             # source="envds.core", data={"test": "one", "test2": 2}
             source=self.get_id_as_source(),
             # data={"path_id": iface["path"], "state": envdsStatus.ENABLED, "requested": envdsStatus.FALSE},

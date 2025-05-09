@@ -23,7 +23,7 @@ from envds.event.event import envdsEvent as et
 class MessageClientConfig(BaseModel):
     type: str | None = "mqtt"
     # config: dict | None = {"hostname": "localhost", "port": 1883}
-    config: dict | None = {"hostname": "mosquitto.default", "port": 1883}
+    config: dict | None = {"hostname": "mqtt.default", "port": 1883}
 
 
 # class MessageData(BaseModel):
