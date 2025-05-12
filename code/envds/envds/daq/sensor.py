@@ -10,6 +10,7 @@ from envds.daq.types import DAQEventType as det
 class Sensor(Device):
 
     SAMPLING = "sampling"
+    DEVICE_TYPE = "sensor"
 
     def __init__(self, config=None, **kwargs):
         super(Sensor, self).__init__(config=config, **kwargs)

@@ -518,10 +518,12 @@ class Device(envdsBase):
                         message = Message(data=event, dest_path=dest_path)
                         self.logger.debug("client_config_monitor", extra={"dest_path": dest_path})
                         await self.send_message(message)
-                        send_config = False
+                        
+                        # always send
+                        # send_config = False
                     except Exception as e:
                         self.logger.error("client_config_monitor", extra={"error": e})
-            await asyncio.sleep(1)
+            await asyncio.sleep(10)
 
     def enable(self):
         # print("device.enable:1")
@@ -696,6 +698,7 @@ class Device(envdsBase):
 
     async def interface_check(self):
         # self.logger.debug("interface_check", extra={"iface_map": self.iface_map})
+        pass
         for name, iface in self.iface_map.items():
             try:
                 status = iface["status"]
@@ -922,9 +925,9 @@ class Device(envdsBase):
         else:
             for name, variable in self.config.metadata.dict()["variables"].items():
                 variable_type = variable["attributes"].get("variable_type", {"type": "string", "data": "main"})
-                print(f"variable_type: {variable_type}, {variable_types}")
+                # print(f"variable_type: {variable_type}, {variable_types}")
                 if variable_type["data"] in variable_types:
-                    print(f"name: {name}")
+                    # print(f"name: {name}")
                     record["variables"][name] = {
                         "attributes": {
                             "variable_type": {"data": variable_type}
