@@ -208,7 +208,7 @@ class UDPClient(DAQClient):
                 return data
             except Exception as e:
                 self.logger.error("recv_from_client error", extra={"e": e})
-            # props = self.config.properties["sensor-interface-properties"]["read-properties"]
+            # props = self.config.properties["device-interface-properties"]["read-properties"]
 
             # read_method = props.get("read-method", self.read_method)
             # decode_errors = props.get("decode-errors", self.decode_errors)

@@ -5,7 +5,7 @@ metadata:
   namespace: msp
   labels:
     app: aerosoldynamics-magic250
-    app-group: envds-sensor-clear
+    app-group: envds-sensor-mspbase
 data:
   sensor.conf: |
     serial_number: "154"
@@ -13,7 +13,7 @@ data:
     interfaces:
       # default: serial
       default:
-        interface_env_id: clear # if omitted, defaults to envds_id of sensor
+        interface_env_id: msp # if omitted, defaults to envds_id of sensor
         interface_id: USconverters::USCDR301::usc206
         path: port-1
       #   connection-properties:

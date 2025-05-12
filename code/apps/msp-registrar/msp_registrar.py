@@ -303,6 +303,8 @@ metadata = {
 class envdsRegistrar(envdsBase):
     """docstring for envdsRegistrar."""
 
+    DEVICE_DEFINITION_REGISTRY = "device-definition"
+    DEVICE_REGISTRY = "device"
     SENSOR_DEFINITION_REGISTRY = "sensor-definition"
     SENSOR_REGISTRY = "sensor"
     INTERFACE_REGISTRY = "interface"

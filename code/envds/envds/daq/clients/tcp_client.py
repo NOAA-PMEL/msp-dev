@@ -144,20 +144,20 @@ class TCPClient(DAQClient):
         if True:
             try:
                 print(f"recv_from_client:1 props {self.config.properties}")
-                props = self.config.properties["sensor-interface-properties"]["read-properties"]
+                props = self.config.properties["device-interface-properties"]["read-properties"]
                         
-                print(f"recv_from_client:1.1 - sip {self.config.properties['sensor-interface-properties']}")
-                print(f"recv_from_client:1.2 - rp {self.config.properties['sensor-interface-properties']['read-properties']}")
-                print(f"recv_from_client:1.3 - rm {self.config.properties['sensor-interface-properties']['read-properties']['read-method']}")
+                print(f"recv_from_client:1.1 - sip {self.config.properties['device-interface-properties']}")
+                print(f"recv_from_client:1.2 - rp {self.config.properties['device-interface-properties']['read-properties']}")
+                print(f"recv_from_client:1.3 - rm {self.config.properties['device-interface-properties']['read-properties']['read-method']}")
                 # read_method = props.get("read-method", self.read_method)
                 # decode_errors = props.get("decode-errors", self.decode_errors)
 
                 read_method = self.read_method
-                if "read-method" in self.config.properties['sensor-interface-properties']['read-properties']:
-                    read_method = self.config.properties['sensor-interface-properties']['read-properties']['read-method']
+                if "read-method" in self.config.properties['device-interface-properties']['read-properties']:
+                    read_method = self.config.properties['device-interface-properties']['read-properties']['read-method']
                 decode_errors = self.decode_errors
-                if "decode-errors" in self.config.properties['sensor-interface-properties']['read-properties']:
-                    decode_errors = self.config.properties['sensor-interface-properties']['read-properties']['decode-errors']
+                if "decode-errors" in self.config.properties['device-interface-properties']['read-properties']:
+                    decode_errors = self.config.properties['device-interface-properties']['read-properties']['decode-errors']
 
                 print(f"recv_from_client:2 -- readmethod={read_method}")
                 if read_method == "readline":
@@ -198,17 +198,17 @@ class TCPClient(DAQClient):
             # send_method = data.get("send-method", self.send_method)
 
             print(f"send_to_client:1 props {self.config.properties}")
-            props = self.config.properties["sensor-interface-properties"]["read-properties"]
+            props = self.config.properties["device-interface-properties"]["read-properties"]
 
-            print(f"send_to_client:1.1 - sip {self.config.properties['sensor-interface-properties']}")
-            print(f"send_to_client:1.2 - rp {self.config.properties['sensor-interface-properties']['read-properties']}")
-            print(f"send_to_client:1.3 - sm {self.config.properties['sensor-interface-properties']['read-properties']['send-method']}")
+            print(f"send_to_client:1.1 - sip {self.config.properties['device-interface-properties']}")
+            print(f"send_to_client:1.2 - rp {self.config.properties['device-interface-properties']['read-properties']}")
+            print(f"send_to_client:1.3 - sm {self.config.properties['device-interface-properties']['read-properties']['send-method']}")
             # read_method = props.get("read-method", self.read_method)
             # decode_errors = props.get("decode-errors", self.decode_errors)
 
             send_method = self.send_method
-            if "send-method" in self.config.properties['sensor-interface-properties']['read-properties']:
-                send_method = self.config.properties['sensor-interface-properties']['read-properties']['send-method']
+            if "send-method" in self.config.properties['device-interface-properties']['read-properties']:
+                send_method = self.config.properties['device-interface-properties']['read-properties']['send-method']
 
 
             self.logger.debug("send_to_client", extra={"send_method": send_method, "data": data})

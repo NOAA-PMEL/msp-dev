@@ -84,8 +84,8 @@ class DAQClient(abc.ABC):
         if config is None:
             config = DAQClientConfig(uid=ulid.ULID())
         self.config = config
-        if "sensor-interface-properties" not in self.config.properties:
-            self.config.properties["sensor-interface-properties"] = dict()
+        if "device-interface-properties" not in self.config.properties:
+            self.config.properties["device-interface-properties"] = dict()
         # print("daqclient: 3")
         
         self.multistep_send = []
@@ -154,7 +154,7 @@ class DAQClient(abc.ABC):
             "set_sensor_interface_properties", extra={"iface_props": iface_props}
         )
         if iface_props:
-            self.config.properties["sensor-interface-properties"] = iface_props
+            self.config.properties["device-interface-properties"] = iface_props
             self.logger.debug(
                 "set_sensor_interface_properties",
                 extra={"props": self.config.properties},

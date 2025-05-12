@@ -146,6 +146,7 @@ class Interface(envdsBase):
 
         self.run_task_list.append(self.client_monitor())
         self.run_task_list.append(self.client_registry_monitor())
+        # self.enable_task_list.append(self.enable_loop())
 
         self.multistep_data = []
         # add connect to enable_task_list
@@ -394,7 +395,7 @@ class Interface(envdsBase):
                 client_id = message.data["path_id"]
                 # source = message.data["source"]
                 sensor_interface_properties = message.data.data["config"][
-                    "sensor-interface-properties"
+                    "device-interface-properties"
                 ]
 
                 self.client_map[client_id]["client"].set_sensor_interface_properties(
@@ -407,6 +408,12 @@ class Interface(envdsBase):
         # self.logger.debug("handle_status:1", extra={"data": message.data})
         # await super(Interface, self).handle_status(message)
         pass
+
+    # async def enable_loop(self):
+    #     while True:
+    #         if not self.enabled():
+    #             self.enable()
+    #         await asyncio.sleep(5)
 
     async def handle_status(self, message: Message):
 
