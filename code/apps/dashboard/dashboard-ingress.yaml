@@ -1,0 +1,46 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: dashboard-stripprefix
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  stripPrefix:
+    prefixes:
+      - /uasdaq/dashboard
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: dashboard-upgrade
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+   headers:
+     contentSecurityPolicy: "upgrade-insecure-requests"     
+---
+apiVersion: networking.k8s.io/v1
+# apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: dashboard-ingress
+  namespace: default
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+    traefik.ingress.kubernetes.io/router.middlewares:
+      default-dashboard-stripprefix@kubernetescrd, default-dashboard-upgrade@kubernetescrd
+
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /uasdaq/dashboard
+            pathType: Prefix
+            backend:
+              service:
+                name: dashboard
+                port:
+                  number: 80
