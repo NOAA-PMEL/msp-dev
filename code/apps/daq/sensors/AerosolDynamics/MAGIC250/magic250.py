@@ -23,7 +23,9 @@ from envds.util.util import (
     get_datetime,
     get_datetime_string,
 )
-from envds.daq.sensor import Sensor, SensorConfig, SensorVariable, SensorMetadata
+# from envds.daq.sensor import Sensor, SensorConfig, SensorVariable, SensorMetadata
+from envds.daq.sensor import Sensor
+from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
@@ -412,7 +414,7 @@ class MAGIC250(Sensor):
 
         sensor_iface_properties = {
             "default": {
-                "sensor-interface-properties": {
+                "device-interface-properties": {
                     "connection-properties": {
                         "baudrate": 115200,
                         "bytesize": 8,
@@ -454,7 +456,7 @@ class MAGIC250(Sensor):
 
             self.settings.set_setting(name, requested=requested)
 
-        meta = SensorMetadata(
+        meta = DeviceMetadata(
             attributes=MAGIC250.metadata["attributes"],
             dimensions=MAGIC250.metadata["dimensions"],
             variables=MAGIC250.metadata["variables"],
@@ -462,7 +464,7 @@ class MAGIC250(Sensor):
             settings=settings_def["variables"]
         )
 
-        self.config = SensorConfig(
+        self.config = DeviceConfig(
             make=MAGIC250.metadata["attributes"]["make"]["data"],
             model=MAGIC250.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
