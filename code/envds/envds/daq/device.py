@@ -239,6 +239,24 @@ class Device(envdsBase):
             enable=enable
         )
 
+        for name, iface in self.iface_map.items():
+            try:
+                try:
+                    iface_envds_id = iface["interface"]["interface_envds_env_id"]
+                except KeyError:
+                    iface_envds_id = self.id.app_env_id
+
+                # set the route to recv data
+                self.set_route(
+                    subscription=f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
+                    route_key=det.interface_data_recv(),
+                    # route=iface["recv_task"]
+                    route=self.handle_interface_data
+                )
+
+            except Exception as e:
+                self.logger.error("can't set interface data/update route", extra={"reason": e})
+ 
     #     topic_base = self.get_id_as_topic()
     #     self.set_route(
     #         subscription=f"{topic_base}/connect/update",
@@ -707,13 +725,13 @@ class Device(envdsBase):
                                 # self.logger.debug("interface check", extra={"dest_path": dest_path})
                                 await self.send_message(message)
 
-                                # set the route to recv data
-                                self.set_route(
-                                    subscription=f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
-                                    route_key=det.interface_data_recv(),
-                                    # route=iface["recv_task"]
-                                    route=self.handle_interface_data
-                                )
+                            #     # set the route to recv data
+                            #     self.set_route(
+                            #         subscription=f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
+                            #         route_key=det.interface_data_recv(),
+                            #         # route=iface["recv_task"]
+                            #         route=self.handle_interface_data
+                            #     )
                             except Exception as e:
                                 self.logger.error("interface_check", extra={"error": e})
                         else:
@@ -738,14 +756,14 @@ class Device(envdsBase):
                             message = Message(data=event, dest_path=dest_path)
                             await self.send_message(message)
 
-                            # remove route
-                            self.set_route(
-                                subscription=f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
-                                route_key=det.interface_data_recv(),
-                                # route=iface["recv_task"],
-                                route=self.handle_interface_data,
-                                enable=False
-                            )
+                            # # remove route
+                            # self.set_route(
+                            #     subscription=f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
+                            #     route_key=det.interface_data_recv(),
+                            #     # route=iface["recv_task"],
+                            #     route=self.handle_interface_data,
+                            #     enable=False
+                            # )
 
 
                 else:
@@ -897,10 +915,10 @@ class Device(envdsBase):
 
             # record["variables"] = self.config.metadata.dict()["variables"]
 
-            print(1, record)
+            # print(1, record)
             for name,_ in record["variables"].items():
                 record["variables"][name]["data"] = None
-            print(2, record)
+            # print(2, record)
         else:
             for name, variable in self.config.metadata.dict()["variables"].items():
                 variable_type = variable["attributes"].get("variable_type", {"type": "string", "data": "main"})
@@ -913,7 +931,7 @@ class Device(envdsBase):
                         },
                         "data": None
                     }
-            print(3, record)
+            # print(3, record)
 
             # record["variables"] = dict()
             # for name,_ in self.config.metadata.variables.items():
