@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 # FROM python:3.10
 
 # Allow statements and log messages to immediately appear in the Knative logs
