@@ -480,7 +480,7 @@ class Device(envdsBase):
 
                         try:
                             print(f"iface: {iface}")
-                            config_data = {"path": iface["interface"]["path"], "sensor-interface-properties": iface["interface"]["sensor-interface-properties"]}
+                            config_data = {"path": iface["interface"]["path"], "device-interface-properties": iface["interface"]["device-interface-properties"]}
                         except KeyError:
                             break
 

@@ -394,7 +394,7 @@ class Interface(envdsBase):
                 client_id = message.data["path_id"]
                 # source = message.data["source"]
                 sensor_interface_properties = message.data.data["config"][
-                    "sensor-interface-properties"
+                    "device-interface-properties"
                 ]
 
                 self.client_map[client_id]["client"].set_sensor_interface_properties(

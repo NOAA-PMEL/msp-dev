@@ -46,6 +46,30 @@ class Sensor(Device):
                 self.logger.error("handle_status", extra={"error": e})
         pass
 
+    async def status_check(self):
+
+        # while True:
+
+            # try:
+        await super(Device,self).status_check()
+        # pass
+
+        if not self.status.get_health(): # something has changed
+            if not self.status.get_health_state(Sensor.SAMPLING):
+                if self.status.get_requested(Sensor.SAMPLING) == envdsStatus.TRUE:
+                    try:
+                        await self.do_start()
+                    except (envdsRunTransitionException, envdsRunErrorException, envdsRunWaitException):
+                        pass
+                    # self.status.set_actual(Device.SAMPLING, envdsStatus.TRUE)
+                else:
+                    # self.disable()
+                    # self.status.set_actual(Device.SAMPLING, envdsStatus.TRANSITION)
+                    try:
+                        await self.do_stop()
+                    except envdsRunTransitionException:
+                        pass
+
     def sampling(self) -> bool:
             # self.logger.debug("sensor.sampling")
             if self.status.get_requested(Sensor.SAMPLING) == envdsStatus.TRUE:

@@ -130,7 +130,7 @@ class MockClient(DAQClient):
         if self.enabled():
             # print(f"recv_from_client:2 -- readmethod={self.read_method}")
             try:
-                props = self.config.properties["sensor-interface-properties"]["read-properties"]
+                props = self.config.properties["device-interface-properties"]["read-properties"]
                 # try:
                 #     read_method = props["read-method"]
                 # except KeyError:
