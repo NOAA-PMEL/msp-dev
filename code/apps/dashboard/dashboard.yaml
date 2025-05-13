@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: dashboard
-  namespace: default
+  namespace: msp
   labels:
     app: dashboard
 spec:

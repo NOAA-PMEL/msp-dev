@@ -21,7 +21,7 @@ def get_layout():
         dcc.Input(id="input", autoComplete="off", debounce=True),
         html.Div(id="message"),
         # WebSocket(id="ws", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/wwss/sensor/main")
-        WebSocket(id="ws", url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor/main")
+        WebSocket(id="ws", url=f"ws://localhost/msp/dashboard/ws/sensor/main")
     # ], style=CONTENT_STYLE)
     ])
     # try:

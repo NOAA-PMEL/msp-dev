@@ -187,8 +187,10 @@ class DBClient:
         return None
 
 
-db_data_client = DBClient(connection=config.mongodb_data_connection)
-db_registry_client = DBClient(connection=config.mongodb_registry_connection)
+# db_data_client = DBClient(connection=config.mongodb_data_connection)
+db_data_client = None
+# db_registry_client = DBClient(connection=config.mongodb_registry_connection)
+db_registry_client = None
 
 app = FastAPI()
 
@@ -276,113 +278,114 @@ host_ip = socket.gethostbyname(host_name)
 print(f"name: {host_name}, ip: {host_ip}")
 
 
-async def watch_registry_collection(db_client, collection, ws_manager, ws_client_type, ws_client_id, op_types=["insert", "update", "replace", "delete"]):
-    # db = db_client.get_db(database)
-    database = "registry"
-    db_collection = db_client.get_collection(database, collection)
-    # L.info(f"db_collection: {db_collection}")
-    if db_collection is None:
-        L.error("watch_db: can't get collection", extra={"db": database, "collection": collection})
-        return
+# async def watch_registry_collection(db_client, collection, ws_manager, ws_client_type, ws_client_id, op_types=["insert", "update", "replace", "delete"]):
+#     # db = db_client.get_db(database)
 
-    # get current data
-    try:
-        async for document in db_collection.find():
-            # L.info("+++watch_registry_collection:document", extra={"doc": document})
-            if not isinstance(document["_id"], str):
-                document["_id"] = str(document["_id"])
-            result = {
-                "database": database,
-                "collection": collection,
-                "operation-type": "insert",
-                "data": document
-                # "data": "test"
-            }
-            # L.info(f"data:keys: {result["data"].keys()}")
-            # if result:
-            if result["data"] and "last_update" in result["data"]:
-                result["data"].pop("last_update")
+#     database = "registry"
+#     db_collection = db_client.get_collection(database, collection)
+#     # L.info(f"db_collection: {db_collection}")
+#     if db_collection is None:
+#         L.error("watch_db: can't get collection", extra={"db": database, "collection": collection})
+#         return
+
+#     # get current data
+#     try:
+#         async for document in db_collection.find():
+#             # L.info("+++watch_registry_collection:document", extra={"doc": document})
+#             if not isinstance(document["_id"], str):
+#                 document["_id"] = str(document["_id"])
+#             result = {
+#                 "database": database,
+#                 "collection": collection,
+#                 "operation-type": "insert",
+#                 "data": document
+#                 # "data": "test"
+#             }
+#             # L.info(f"data:keys: {result["data"].keys()}")
+#             # if result:
+#             if result["data"] and "last_update" in result["data"]:
+#                 result["data"].pop("last_update")
             
-            # L.info(f"result: {json.dumps(result)}")
-            # L.info(f"{manager}, {ws_client_type}, {ws_client_id}")
-            await ws_manager.broadcast(json.dumps(result),client_type=ws_client_type, client_id=ws_client_id)
-            await asyncio.sleep(.1)
-    except Exception as e:
-        L.error("watch_registry_collection error", extra={"error": e})
+#             # L.info(f"result: {json.dumps(result)}")
+#             # L.info(f"{manager}, {ws_client_type}, {ws_client_id}")
+#             await ws_manager.broadcast(json.dumps(result),client_type=ws_client_type, client_id=ws_client_id)
+#             await asyncio.sleep(.1)
+#     except Exception as e:
+#         L.error("watch_registry_collection error", extra={"error": e})
 
-    pipeline = []
-    for op_type in op_types:
-        pipeline.append({'$match': {'operationType': op_type}})
-        # break
+#     pipeline = []
+#     for op_type in op_types:
+#         pipeline.append({'$match': {'operationType': op_type}})
+#         # break
     
-    L.info(f"pipeline: {pipeline}")
-    resume_token = None
-    message = {"test": 0}
-    while True:
-        # try:
-        #     L.info(f"message: {message}")
-        #     await ws_manager.broadcast(json.dumps(message),client_type=ws_client_type, client_id=ws_client_id)
-        #     message["test"] += 1
-        # except Exception as e:
-        #     L.error(f"error: {e}")
-        # # ctr +=1
-        # await asyncio.sleep(1)
-        try:
-            # pipeline = [{'$match': {'operationType': 'insert'}}]
-            L.info(f"collection: {db_collection}")
-            # async with db_collection.watch(resume_after=resume_token, full_document="updateLookup") as stream:
-            async with db_collection.watch(full_document="updateLookup", full_document_before_change='whenAvailable') as stream:
-                    # pipeline, resume_after=resume_token, full_document="updateLookup") as stream:
-                L.info(f"stream: {stream}")
-                async for change in stream:
-                    # L.info(f"change: {change}")
-                    try:
-                        if change["operationType"] == "delete":
-                            document = change.get("fullDocumentBeforeChange", None)
-                        else:
-                            document = change.get("fullDocument", None)
+#     L.info(f"pipeline: {pipeline}")
+#     resume_token = None
+#     message = {"test": 0}
+#     while True:
+#         # try:
+#         #     L.info(f"message: {message}")
+#         #     await ws_manager.broadcast(json.dumps(message),client_type=ws_client_type, client_id=ws_client_id)
+#         #     message["test"] += 1
+#         # except Exception as e:
+#         #     L.error(f"error: {e}")
+#         # # ctr +=1
+#         # await asyncio.sleep(1)
+#         try:
+#             # pipeline = [{'$match': {'operationType': 'insert'}}]
+#             L.info(f"collection: {db_collection}")
+#             # async with db_collection.watch(resume_after=resume_token, full_document="updateLookup") as stream:
+#             async with db_collection.watch(full_document="updateLookup", full_document_before_change='whenAvailable') as stream:
+#                     # pipeline, resume_after=resume_token, full_document="updateLookup") as stream:
+#                 L.info(f"stream: {stream}")
+#                 async for change in stream:
+#                     # L.info(f"change: {change}")
+#                     try:
+#                         if change["operationType"] == "delete":
+#                             document = change.get("fullDocumentBeforeChange", None)
+#                         else:
+#                             document = change.get("fullDocument", None)
 
-                        if not isinstance(document["_id"], str):
-                            document["_id"] = str(document["_id"])
+#                         if not isinstance(document["_id"], str):
+#                             document["_id"] = str(document["_id"])
 
-                        result = {
-                            "database": database,
-                            "collection": collection,
-                            "operation-type": change["operationType"],
-                            # "data": change.get("fullDocument", None)
-                            "data": document
-                            # "data": "test"
-                        }
-                        # L.info(f"data:keys: {result["data"].keys()}")
-                        # if result:
-                        if result["data"] and "last_update" in result["data"]:
-                            result["data"].pop("last_update")
-                        # L.info(f"result: {json.dumps(result)}")
-                        # L.info(f"{manager}, {ws_client_type}, {ws_client_id}")
-                        await ws_manager.broadcast(json.dumps(result),client_type=ws_client_type, client_id=ws_client_id)
-                        await asyncio.sleep(.1)
-                    except Exception as e:
-                        L.error(f"broacast error: {e}")
-                L.info("out of for loop")
-            L.info("out of with loop")
-        except (pymongo.errors.PyMongoError, Exception):
-            # The ChangeStream encountered an unrecoverable error or the
-            # resume attempt failed to recreate the cursor.
-            if resume_token is None:
-                # There is no usable resume token because there was a
-                # failure during ChangeStream initialization.
-                L.error('Failure watching collection', extra={"db": database, "collection": collection})
-                return
-            # else:
-            #     # Use the interrupted ChangeStream's resume token to create
-            #     # a new ChangeStream. The new stream will continue from the
-            #     # last seen insert change without missing any events.
-            #     with db.collection.watch(
-            #             pipeline, resume_after=resume_token) as stream:
-            #         for insert_change in stream:
-            #             print(insert_change)
-            #             manager
-        L.info("out of try/except")
+#                         result = {
+#                             "database": database,
+#                             "collection": collection,
+#                             "operation-type": change["operationType"],
+#                             # "data": change.get("fullDocument", None)
+#                             "data": document
+#                             # "data": "test"
+#                         }
+#                         # L.info(f"data:keys: {result["data"].keys()}")
+#                         # if result:
+#                         if result["data"] and "last_update" in result["data"]:
+#                             result["data"].pop("last_update")
+#                         # L.info(f"result: {json.dumps(result)}")
+#                         # L.info(f"{manager}, {ws_client_type}, {ws_client_id}")
+#                         await ws_manager.broadcast(json.dumps(result),client_type=ws_client_type, client_id=ws_client_id)
+#                         await asyncio.sleep(.1)
+#                     except Exception as e:
+#                         L.error(f"broacast error: {e}")
+#                 L.info("out of for loop")
+#             L.info("out of with loop")
+#         except (pymongo.errors.PyMongoError, Exception):
+#             # The ChangeStream encountered an unrecoverable error or the
+#             # resume attempt failed to recreate the cursor.
+#             if resume_token is None:
+#                 # There is no usable resume token because there was a
+#                 # failure during ChangeStream initialization.
+#                 L.error('Failure watching collection', extra={"db": database, "collection": collection})
+#                 return
+#             # else:
+#             #     # Use the interrupted ChangeStream's resume token to create
+#             #     # a new ChangeStream. The new stream will continue from the
+#             #     # last seen insert change without missing any events.
+#             #     with db.collection.watch(
+#             #             pipeline, resume_after=resume_token) as stream:
+#             #         for insert_change in stream:
+#             #             print(insert_change)
+#             #             manager
+#         L.info("out of try/except")
 
 async def test_task():
     cnt = 0

@@ -485,7 +485,7 @@ async def main(config):
         host=config.host,
         port=config.port,
         # log_level=server_config.log_level,
-        root_path="/uasdaq/dashboard",
+        root_path="/msp/dashboard",
         # log_config=dict_config,
     )
 
