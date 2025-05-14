@@ -12,7 +12,12 @@ data:
     # daq_id: clearsky
     host: 10.55.169.207
     paths:
-      port-1:
+      I2C-1:
+        method: I2C
+        CS:
+        CLK:
+        slave_add: 28
+
           # host: 10.55.169.52
           # host: 192.168.86.46 # can override interface host if needed?
           # port: 4001 # if omitted, default is used

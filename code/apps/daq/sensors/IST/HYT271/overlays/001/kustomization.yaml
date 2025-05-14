@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 metadata:
-  name: labjack
+  name: ist-hyt271
 
 # Example configuration for the webserver
 # at https://github.com/monopole/hello
@@ -18,8 +18,8 @@ metadata:
 
 resources:
 - ../../base
-- labjack-configmap.yaml
+- hyt271-configmap.yaml
 
-nameSuffix: "-T7_207"
+nameSuffix: "-001"
 # patchesStrategicMerge:
 #   - deployment.yaml
