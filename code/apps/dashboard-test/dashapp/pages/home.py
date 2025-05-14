@@ -26,7 +26,7 @@ def get_layout():
                 id='pb1',
                 on=False
             )
-        ])
+        ]),
         # WebSocket(id="ws", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/wwss/sensor/main")
         WebSocket(id="ws", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/testhome")
     # ], style=CONTENT_STYLE)
