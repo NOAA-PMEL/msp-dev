@@ -19,5 +19,5 @@ metadata:
 resources:
 - ../../base
 - dashboard-configmap.yaml
-- dashboard-secrets.yaml
+- dashboard-sealedsecrets.yaml
 
