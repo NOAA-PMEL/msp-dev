@@ -21,6 +21,12 @@ def get_layout():
         # html.Div('This is our Home page content.'),
         dcc.Input(id="input", autoComplete="off", debounce=True),
         html.Div(id="message"),
+        html.Div([
+            daq.PowerButton(
+                id='pb1',
+                on=False
+            )
+        ])
         # WebSocket(id="ws", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/wwss/sensor/main")
         WebSocket(id="ws", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/testhome")
     # ], style=CONTENT_STYLE)
