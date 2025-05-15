@@ -304,16 +304,28 @@ async def test_ws_endpoint(
     try:
         while True:
             data = await websocket.receive_text()
-            if data == "False":
+            data = json.loads(data)
+            print("DATA HERE", data)
+            if data['data'] == "False":
                 client = mqtt.Client()
                 client.connect('mqtt.default', 1883)
-                client.publish("shellypro3/command/switch:1", "off")
-            elif data == "True":
+                if '1' in data['id']:
+                    client.publish("shellypro3/command/switch:0", "off")
+                elif '2' in data['id']:
+                    client.publish("shellypro3/command/switch:1", "off")
+                elif '3' in data['id']:
+                    client.publish("shellypro3/command/switch:2", "off")
+            elif data['data'] == "True":
                 client = mqtt.Client()
                 client.connect('mqtt.default', 1883)
-                client.publish("shellypro3/command/switch:1", "on")
-            print(f"sensor data: {data}")
-            L.info(f"sensor data: {data}")
+                if '1' in data['id']:
+                    client.publish("shellypro3/command/switch:0", "on")
+                elif '2' in data['id']:
+                    client.publish("shellypro3/command/switch:1", "on")
+                elif '3' in data['id']:
+                    client.publish("shellypro3/command/switch:2", "on")
+            # print(f"sensor data: {data}")
+            # L.info(f"sensor data: {data}")
             await manager.broadcast(f"received: {data}", "sensor", client_id)
             # message = json.loads(data)
     except WebSocketDisconnect:

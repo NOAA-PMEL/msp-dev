@@ -6,6 +6,7 @@ from ulid import ULID
 import dash_daq as daq
 # from aiomqtt import Client
 import paho.mqtt.client as mqtt
+import json
 
 # dash.register_page(__name__, path='/')
 dash.register_page(__name__, path='/powercontrol', name='Power Control')
@@ -87,34 +88,46 @@ layout = get_layout()
 #         return "No response"
     
 
+def send(id, value):
+    print(f"sending: {value}")
+    ser_dict = json.dumps({"id": str(id), "data": str(value)})
+    return ser_dict
+
+
 @callback(
     Output('ws_pb', "send"),
-    Input("power-button-1", "on")
-)
-def send(value):
-    print(f"sending: {value}")
-    return str(value)
+    Input("power-button-1", "on"),
+    Input("power-button-2", "on"),
+    Input("power-button-3", "on")
+)  
+def send_pb_state(pb1, pb2, pb3):
+    ctx = dash.callback_context
+    id = ctx.triggered_id
+    value = ctx.triggered[0]['value']
+    # id = ctx.triggered[0]['prop_id'].split('.')[0]
+    print(send(id, value))
+    return send(id, value)
 
 @callback(Output("power_button_message", "children"),
           Output("indicator-1", "color"),
           Input("ws_pb", "message"))
 def message(i):
     if i:
+        print('returned i', i)
         state = i['data']
         if "True" in state:
             color = '#14c208'
         elif "False" in state:
             color = '#e60707'
-            # client = mqtt.Client()
-            # client.connect('10.55.169.210', 1883)
-            # client.publish("shellypro3/command/switch:1", "off")
 
         else:
             color = '#491a8b'
-        return f"Response from websocket: {i['data']}", color
+        # return f"Response from websocket: {i['data']}", color
+        return None, color
     else:
         color = '#491a8b'
-        return "No response", color
+        # return "No response", color
+        return None, color
 
 
 # # startup code
