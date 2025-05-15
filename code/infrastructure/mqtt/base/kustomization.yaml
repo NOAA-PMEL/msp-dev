@@ -9,6 +9,7 @@ metadata:
 #   app: nginx
 
 resources:
+- mqtt-ns.yaml
 - mqtt-configmap.yaml
 - mqtt-storage.yaml
 - mqtt-deployment.yaml
