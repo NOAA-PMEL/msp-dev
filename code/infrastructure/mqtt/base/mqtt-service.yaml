@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mqtt
+  namespace: default
+  labels:
+    app: mqtt
+  # namespace: envds-base
+spec:
+  selector:
+    app: mqtt
+  ports:
+  - name: http
+    protocol: TCP
+    port: 1883
+    targetPort: 1883
+  # - name: https
+  #   port: 8883
+  #   targetPort: 8883
+  type: LoadBalancer
