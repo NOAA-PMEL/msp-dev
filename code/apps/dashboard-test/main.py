@@ -27,6 +27,8 @@ from pydantic import BaseModel, BaseSettings
 from ulid import ULID
 
 from dashapp import app as dash_app
+import paho.mqtt.client as mqtt
+
 
 # from apis.router import api_router
 handler = logging.StreamHandler()
@@ -302,6 +304,14 @@ async def test_ws_endpoint(
     try:
         while True:
             data = await websocket.receive_text()
+            if data == "False":
+                client = mqtt.Client()
+                client.connect('mqtt.default', 1883)
+                client.publish("shellypro3/command/switch:1", "off")
+            elif data == "True":
+                client = mqtt.Client()
+                client.connect('mqtt.default', 1883)
+                client.publish("shellypro3/command/switch:1", "on")
             print(f"sensor data: {data}")
             L.info(f"sensor data: {data}")
             await manager.broadcast(f"received: {data}", "sensor", client_id)

@@ -10,9 +10,12 @@ aiomqtt
 python-ulid
 # pymongo
 dash
+dash_daq
 dash_extensions
 dash-bootstrap-components
 dash_ag_grid
 pandas
 websockets
+datetime
+paho-mqtt
 # motor
