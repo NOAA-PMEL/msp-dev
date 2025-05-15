@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-test
+  namespace: msp
+  labels:
+    app: dashboard-test
+spec:
+  selector:
+    matchLabels:
+      app: dashboard-test
+  template:
+    metadata:
+      labels:
+        app: dashboard-test
+    spec:
+      containers:
+      - name: dashboard-test
+        # image: uasbase2.pmel.noaa.gov:448/test/dashboard@sha256:1efee0c698b3037b822d00237114e25aacad59942c9dd9199168cc2631143d8d
+        image: registry-msp:5000/msp/dashboard-test:v1.0.3
+        imagePullPolicy: "Always"
+        env:
+        - name: DASHBOARD_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: dashboard-test
+              key: port
+        - name: DASHBOARD_KNATIVE_BROKER
+          valueFrom:
+            configMapKeyRef:
+              name: dashboard-test
+              key: knative_broker
+        - name: DASHBOARD_MONGODB_DATA_USER_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: dashboard-test
+              key: mongodb_data_user_name
+        - name: DASHBOARD_MONGODB_REGISTRY_USER_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: dashboard-test
+              key: mongodb_registry_user_name
+        - name: DASHBOARD_MONGODB_DATA_USER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dashboardtest-data-db-user-password
+              key: password
+        - name: DASHBOARD_MONGODB_REGISTRY_USER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dashboardtest-registry-db-user-password
+              key: password
+        - name: DASHBOARD_MONGODB_DATA_CONNECTION
+          valueFrom:
+            configMapKeyRef:
+              name: dashboard-test
+              key: mongodb_data_connection
+        - name: DASHBOARD_MONGODB_REGISTRY_CONNECTION
+          valueFrom:
+            configMapKeyRef:
+              name: dashboard-test
+              key: mongodb_registry_connection
+        # - name: DASHBOARD_ERDDAP_HTTP_CONNECTION
+        #   valueFrom:
+        #     configMapKeyRef:
+        #       name: dashboard
+        #       key: erddap_http_connection
+        # - name: DASHBOARD_ERDDAP_HTTPS_CONNECTION
+        #   valueFrom:
+        #     configMapKeyRef:
+        #       name: dashboard
+        #       key: erddap_https_connection
+        # - name: DASHBOARD_ERDDAP_AUTHOR
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: uasdaq-registry-erddap-author
+        #       key: author
+        # - name: DASHBOARD_BACKLOG_MAX_TRIES
+        #   valueFrom:
+        #     configMapKeyRef:
+        #       name: dashboard
+        #       key: backlog_max_tries
+        resources:
+          requests:
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "1000m"
+        ports:
+        - name: http
+          # containerPort: 8000
+          containerPort: 8080
+          protocol: TCP
+      #   volumeMounts:
+      #     - name: erddap-datasetd-storage
+      #       mountPath: /datasets.d
+      #       # subPath: datasets.d
+      #     - name: erddap-content-storage
+      #       mountPath: /usr/local/tomcat/content/erddap
+      #       # subPath: erddap
+      #     - name: erddap-data-pv-storage
+      #       mountPath: /erddapData
+      #       # subPath: erddapData
+      # volumes:
+      #   - name: erddap-datasetd-storage
+      #     persistentVolumeClaim:
+      #       claimName: dataserver-erddap-datasetsd-pvc
+      #   - name: erddap-content-storage
+      #     persistentVolumeClaim:
+      #       claimName: dataserver-erddap-content-pvc
+      #   - name: erddap-data-pv-storage
+      #     persistentVolumeClaim:
+      #       claimName: dataserver-erddap-data-pvc
