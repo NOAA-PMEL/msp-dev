@@ -8,7 +8,7 @@ from cloudevents.pydantic import CloudEvent
 # from typing import Union
 from pydantic import BaseModel
 
-from apis.router import api_router
+# from apis.router import api_router
 
 app = FastAPI()
 
@@ -42,15 +42,17 @@ app.add_middleware(
 # @app.on_event("shutdown")
 # async def start_system():
 #     print("stopping system")
-class DeviceDataSearch(BaseModel):
-    start_time: str | None = None
-    end_time: str | None = None
-    custom: dict | None = None
+
+# class DeviceDataSearch(BaseModel):
+
+#     start_time: str | None = None
+#     end_time: str | None = None
+#     custom: dict | None = None
 
 
 @app.get("/")
 async def root():
-    return {"message": "Hello World from Registrar"}
+    return {"message": "Hello World from Datastore"}
 
 
 # @app.post("/ce")
@@ -64,13 +66,32 @@ async def root():
 #     # print(event)
 
 
-@app.get("/device/data/request/{device_id}")
-async def get_device_data(device_id: str, search_opts: DeviceDataSearch):
+# @app.get("/device/data/request/{device_id}")
+# async def get_device_data(device_id: str, search_opts: DeviceDataSearch):
 
-    return None
+#     return None
 
 
-@app.post("/device/data/update/{device_id}")
-async def update_device_data(device_id: str, ce: CloudEvent):
+@app.post("/data/update")
+async def data_update(ce: CloudEvent):
 
+    # examine and route cloudevent to the proper handler
+    return 200
+
+@app.post("/settings/update")
+async def settings_update(ce: CloudEvent):
+
+    # examine and route cloudevent to the proper handler
+    return 200
+
+@app.post("/status/update")
+async def status_update(ce: CloudEvent):
+
+    # examine and route cloudevent to the proper handler
+    return 200
+
+@app.post("/event/update")
+async def status_update(ce: CloudEvent):
+
+    # examine and route cloudevent to the proper handler
     return 200
