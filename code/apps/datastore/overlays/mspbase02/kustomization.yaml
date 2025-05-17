@@ -20,4 +20,5 @@ resources:
 - ../../base
 - datastore-configmap.yaml
 # - datastore-sealedsecrets.yaml
+- datastore-triggers.yaml
 
