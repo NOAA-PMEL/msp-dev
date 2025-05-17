@@ -5,11 +5,11 @@ import os
 import logging
 import logging.config
 import yaml
+import traceback
 from envds.core import envdsLogger
 from envds.daq.controller import Controller, ControllerConfig #, InterfacePath
 from envds.daq.event import DAQEvent
-import aiomqtt
-
+from aiomqtt import Client
 from pydantic import BaseModel
 
 
@@ -29,24 +29,13 @@ class ShellyPro3(Controller):
             },
             "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, sensor"},
         },
-        # "paths": {
-        #     "port-1": {
-        #         "attributes": {
-        #             "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
-        #             "client_class": {"type": "string", "data": "TCPClient"},
-        #             "host": {"type": "string", "data": "localhost"},
-        #             "port": {"type": "int", "data": 4001},
-        #         },
-        #         "data": [],
-        #     }
-        # }
         "paths": {
             "port-1": {
                 "attributes": {
-                    "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
-                    "client_class": {"type": "string", "data": "TCPClient"},
-                    "host": {"type": "string", "data": "localhost"},
-                    "port": {"type": "int", "data": 4001},
+                    "client_module": {"type": "string", "data": "envds.daq.clients.mqtt_client"},
+                    "client_class": {"type": "string", "data": "MQTT_Client"},
+                    "host": {"type": "string", "data": 'mqtt.default'},
+                    "port": {"type": "int", "data": 1883},
                 },
                 "data": [],
             }
@@ -58,22 +47,20 @@ class ShellyPro3(Controller):
         self.data_task = None
         self.data_rate = 1
 
-        # self.default_client_module = "envds.daq.clients.tcp_client"
-        # self.default_client_class = "TCPClient"
+        self.default_client_module = "envds.daq.clients.mqtt_client"
+        self.default_client_class = "MQTT_Client"
 
         self.data_loop_task = None
 
     def configure(self):
 
-        # print("configure:1")
         super(ShellyPro3, self).configure()
 
         try:
             try:
                 # Change to controller.conf and change to controller in config map yaml?
-                with open("/app/config/interface.conf", "r") as f:
+                with open("/app/config/controller.conf", "r") as f:
                     conf = yaml.safe_load(f)
-                # print("configure:4")
             except FileNotFoundError:
                 conf = {"uid": "UNKNOWN", "paths": {}}
 
@@ -83,6 +70,7 @@ class ShellyPro3(Controller):
             except KeyError as e:
                 self.logger.debug("no host - default to localhost")
                 host = "localhost"
+            print('paths', conf["paths"].items())
             for name, path in conf["paths"].items():
                 if "host" not in path:
                     path["host"] = host
@@ -123,7 +111,6 @@ class ShellyPro3(Controller):
                     "recv_handler": self.recv_data_loop(name),
                     "recv_task": None,
                 }
-            # print("configure:11")
 
             self.config = ControllerConfig(
                 type=atts["type"]["data"],
@@ -131,7 +118,6 @@ class ShellyPro3(Controller):
                 uid=conf["uid"],
                 paths=path_map
             )
-            # print(f"self.config: {self.config}")
 
             self.logger.debug(
                 "configure",
@@ -139,62 +125,41 @@ class ShellyPro3(Controller):
             )
         except Exception as e:
             self.logger.debug("ShellyPro3:configure", extra={"error": e})
+            print(traceback.format_exc())
+
 
     async def recv_data_loop(self, client_id: str):
         while True:
             try:
                 # client = self.config.paths[client_id]["client"]
+                # line below is original
                 client = self.client_map[client_id]["client"]
-                # while client is not None:
+                print("Client ID in recv_data_loop:", client_id)
                 if client:
                     self.logger.debug("recv_data_loop", extra={"client": client})
-                    # data = 
-                    # data = await client.recv()
+                    data = await client.recv()
+                    print("IN SHELLY 3 DRIVER", data)
                     self.logger.debug("recv_data", extra={"client_id": client_id, "data": data}) 
+                    await self.update_recv_data(client_id=client_id, data=data)
 
             except (KeyError, Exception) as e:
                 self.logger.error("recv_data_loop", extra={"error": e})
                 await asyncio.sleep(1)           
-        
-        # # self.logger.debug("recv_data_loop", extra={"client_id": client_id})
-        # while True:
-        #     try:
-        #         # client = self.config.paths[client_id]["client"]
-        #         client = self.client_map[client_id]["client"]
-        #         # while client is not None:
-        #         if client:
-        #             self.logger.debug("recv_data_loop", extra={"client": client})
-        #             data = await client.recv()
-        #             self.logger.debug("recv_data", extra={"client_id": client_id, "data": data})
-
-        #             await self.update_recv_data(client_id=client_id, data=data)
-        #             # await asyncio.sleep(self.min_recv_delay)
-        #         else:
-        #             await asyncio.sleep(1)
-        #     except (KeyError, Exception) as e:
-        #         self.logger.error("recv_data_loop", extra={"error": e})
-        #         await asyncio.sleep(1)
-
-        #     # await asyncio.sleep(self.min_recv_delay)
-        #     await asyncio.sleep(0.1)
 
     async def wait_for_ok(self, timeout=0):
         pass
 
-    # async def send_data(self, event: DAQEvent):
-    #         print(f"here:1 {event}")
-    #         try:
-    #             print(f"send_data:1 - {event}")
-    #             client_id = event["path_id"]
-    #             client = self.client_map[client_id]["client"]
-    #             data = event.data["data"]
+    async def send_data(self, event: DAQEvent):
+            print(f"here:1 {event}")
+            try:
+                print(f"send_data:1 - {event}")
+                client_id = event["path_id"]
+                client = self.client_map[client_id]["client"]
+                data = event.data["data"]
 
-    #             await client.send(data)
-    #         except KeyError:
-    #             pass
-
-
-
+                await client.send(data)
+            except KeyError:
+                pass
 
 
 class ServerConfig(BaseModel):

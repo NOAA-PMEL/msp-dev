@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: usconverters-uscdr301
+  name: shelly-shellypro3
   namespace: msp
   labels:
-    app: usconverters-uscdr301
+    app: shelly-shellypro3
 spec:
   selector:
-    app: usconverters-uscdr301
+    app: shelly-shellypro3
   ports:
   - name: http
     protocol: TCP

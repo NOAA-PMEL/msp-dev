@@ -6,13 +6,14 @@ metadata:
   labels:
     app: shelly-shellypro3
 data:
-  interface.conf: |
+  controller.conf: |
     uid: shel209
     # serial_number: "1234"
     # daq_id: clearsky
-    host: 10.55.169.209
+    # host: 10.55.169.209
+    host: 'mqtt.default'
     paths:
       port-1:
           # host: 10.55.169.52
           # host: 192.168.86.46 # can override interface host if needed?
-          # port: 4001 # if omitted, default is used
+          port: 1883 # if omitted, default is used

@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: usconverters-uscdr301
+  name: shelly-shellypro3
   namespace: msp
   labels:
-    app: usconverters-uscdr301
+    app: shelly-shellypro3
 spec:
   selector:
     matchLabels:
-      app: usconverters-uscdr301
+      app: shelly-shellypro3
   template:
     metadata:
       labels:
-        app: usconverters-uscdr301
+        app: shelly-shellypro3
     spec:
       containers:
-      - name: usconverters-uscdr301
-        image: registry-msp:5000/msp/interface/usconverters-uscdr301:0.1.0
+      - name: shelly-shellypro3
+        image: registry-msp:5000/msp/controller/shelly-shellypro3:0.1.0
         imagePullPolicy: "Always"
         env:
           - name: ENVDS_ENV_ID
@@ -39,9 +39,9 @@ spec:
         #   containerPort: 8883
         #   protocol: TCP
         volumeMounts:
-            - name: usconverters-uscdr301-config
-              mountPath: /app/config/interface.conf
-              subPath: interface.conf
+            - name: shelly-shellypro3-config
+              mountPath: /app/config/controller.conf
+              subPath: controller.conf
             # - name: mosquitto-certs
             #   mountPath: /certs/ca.crt
             #   subPath: ca.crt
@@ -52,9 +52,9 @@ spec:
             #   mountPath: /certs/server.key
             #   subPath: server.key
       volumes:
-        - name: usconverters-uscdr301-config
+        - name: shelly-shellypro3-config
           configMap:
-            name: usconverters-uscdr301-config
+            name: shelly-shellypro3-config
         # - name: mosquitto-certs
         #   configMap:
         #     name: mosquitto-certs

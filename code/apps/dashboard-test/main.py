@@ -27,7 +27,8 @@ from pydantic import BaseModel, BaseSettings
 from ulid import ULID
 
 from dashapp import app as dash_app
-import paho.mqtt.client as mqtt
+from aiomqtt import Client
+
 
 
 # from apis.router import api_router
@@ -305,25 +306,29 @@ async def test_ws_endpoint(
         while True:
             data = await websocket.receive_text()
             data = json.loads(data)
-            print("DATA HERE", data)
+
+            # Change this to publish to mqtt topic that shelly driver is subscribed to 
+            # The message should include info on true / false and id, and then the shelly driver will publish to appropriate
+            # shelly specific topic based on that
             if data['data'] == "False":
-                client = mqtt.Client()
-                client.connect('mqtt.default', 1883)
-                if '1' in data['id']:
-                    client.publish("shellypro3/command/switch:0", "off")
-                elif '2' in data['id']:
-                    client.publish("shellypro3/command/switch:1", "off")
-                elif '3' in data['id']:
-                    client.publish("shellypro3/command/switch:2", "off")
+                async with Client('mqtt.default', 1883) as client:
+                    if '1' in data['id']:
+                        await client.publish("shellypro3/command/switch:0", payload = "off")
+                    elif '2' in data['id']:
+                        await client.publish("shellypro3/command/switch:1", payload = "off")
+                    elif '3' in data['id']:
+                        # await client.publish("shellypro3/command/switch:2", payload = "off")
+                        await client.publish("websocket_topic", payload = "off")
             elif data['data'] == "True":
-                client = mqtt.Client()
-                client.connect('mqtt.default', 1883)
-                if '1' in data['id']:
-                    client.publish("shellypro3/command/switch:0", "on")
-                elif '2' in data['id']:
-                    client.publish("shellypro3/command/switch:1", "on")
-                elif '3' in data['id']:
-                    client.publish("shellypro3/command/switch:2", "on")
+                async with Client('mqtt.default', 1883) as client:
+                    if '1' in data['id']:
+                        await client.publish("shellypro3/command/switch:0", payload = "on")
+                    elif '2' in data['id']:
+                        await client.publish("shellypro3/command/switch:1", payload = "on")
+                    elif '3' in data['id']:
+                        # await client.publish("shellypro3/command/switch:2", payload = "on")
+                        await client.publish("websocket_topic", payload = "on")
+
             # print(f"sensor data: {data}")
             # L.info(f"sensor data: {data}")
             await manager.broadcast(f"received: {data}", "sensor", client_id)
