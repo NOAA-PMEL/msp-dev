@@ -21,7 +21,7 @@ spec:
   routes:
     - kind: Rule
       # match: Host(`mspbase02.pmel.noaa.gov`) && PathPrefix(`/argocd`)
-      match: Host(`mspbase02.pmel.noaa.gov`)
+      match: Host(`localhost`)
       priority: 10
       services:
         - name: argocd-server
@@ -31,7 +31,7 @@ spec:
       #   namespace: argocd
     - kind: Rule
       # match: Host(`mspbase02.pmel.noaa.gov`) && PathPrefix(`/argocd`) && Header(`Content-Type`, `application/grpc`)
-      match: Host(`mspbase02.pmel.noaa.gov`) && Header(`Content-Type`, `application/grpc`)
+      match: Host(`localhost`) && Header(`Content-Type`, `application/grpc`)
       priority: 11
       services:
         - name: argocd-server
