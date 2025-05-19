@@ -6,9 +6,9 @@ on:
 
     branches: [ main ]
       
-    # paths:
+    paths:
 
-    #     - 'apps/envds-relay/**'
+      - 'code/apps/datastore/**'
   
 env:
   REGISTRY: ghcr.io
