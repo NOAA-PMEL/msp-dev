@@ -1,4 +1,4 @@
-name: Build and Push envds-relay
+name: Build and Push datastore
 
 on:
 
