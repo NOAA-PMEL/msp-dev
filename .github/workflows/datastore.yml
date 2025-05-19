@@ -4,7 +4,8 @@ on:
 
   push:
 
-    branches: [ update-mspbase02 ]
+    branches: #[ update-mspbase02 ]
+      - update-mspbase02
     # paths:
 
     #     - 'apps/envds-relay/**'
