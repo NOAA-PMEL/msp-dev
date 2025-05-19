@@ -41,8 +41,8 @@ jobs:
             VER=$(cat VERSION)
             echo "IMAGE_TAG=$VER" >> $GITHUB_ENV
         # - name: Build the Docker image
-        # #   run: docker build . --file Dockerfile --tag ghcr.io/derekcoffman/verifier:$(date +%s)
-        #   run: docker build . --file Dockerfile --tag ghcr.io/derekcoffman/verifier:latest
+        # #   run: docker build . --file Dockerfile --tag ghcr.io/NOAA-PMEL/verifier:$(date +%s)
+        #   run: docker build . --file Dockerfile --tag ghcr.io/NOAA-PMEL/verifier:latest
     
         - name: 'Login to GitHub Container Registry'
           uses: docker/login-action@v1
@@ -75,8 +75,8 @@ jobs:
         #     push-to-registry: true
 
         - name: Build the Docker image
-        #   run: docker build . --file Dockerfile --tag ghcr.io/derekcoffman/verifier:$(date +%s)
-          run: docker build . --file Dockerfile --tag ghcr.io/derekcoffman/msp/datastore:$IMAGE_TAG
+        #   run: docker build . --file Dockerfile --tag ghcr.io/NOAA-PMEL/verifier:$(date +%s)
+          run: docker build . --file Dockerfile --tag ghcr.io/NOAA-PMEL/msp/datastore:$IMAGE_TAG
  
         - name: Push the Docker image
-          run: docker push ghcr.io/derekcoffman/msp/datastore:$IMAGE_TAG
+          run: docker push ghcr.io/NOAA-PMEL/msp/datastore:$IMAGE_TAG
