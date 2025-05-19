@@ -17,7 +17,7 @@ spec:
       containers:
       - name: datastore
         # image: uasbase2.pmel.noaa.gov:448/test/datastore@sha256:1efee0c698b3037b822d00237114e25aacad59942c9dd9199168cc2631143d8d
-        image: registry-msp:5000/msp/datastore:v1.0.2
+        image: registry-msp:5000/msp/datastore:v1.0.3
         imagePullPolicy: "Always"
         env:
         - name: DATASTORE_PORT
