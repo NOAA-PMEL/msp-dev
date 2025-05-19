@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: msp-registrar
-        image: registry-msp:5000/msp/msp-registrar:0.1.1
+        image: registry-msp:5000/msp/msp-registrar:0.1.2
         imagePullPolicy: "Always"
         env:
           - name: ENVDS_ENV_ID
