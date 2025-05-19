@@ -36,6 +36,7 @@ class ShellyPro3(Controller):
                     "client_class": {"type": "string", "data": "MQTT_Client"},
                     "host": {"type": "string", "data": 'mqtt.default'},
                     "port": {"type": "int", "data": 1883},
+                    "subscriptions": {"type": "string", "data": None}
                 },
                 "data": [],
             }
@@ -51,6 +52,7 @@ class ShellyPro3(Controller):
         self.default_client_class = "MQTT_Client"
 
         self.data_loop_task = None
+        # self.enable_task_list.append(self.deal_with_data())
 
     def configure(self):
 
@@ -58,7 +60,6 @@ class ShellyPro3(Controller):
 
         try:
             try:
-                # Change to controller.conf and change to controller in config map yaml?
                 with open("/app/config/controller.conf", "r") as f:
                     conf = yaml.safe_load(f)
             except FileNotFoundError:
@@ -88,7 +89,7 @@ class ShellyPro3(Controller):
                 if "client_class" not in val["attributes"]:
                     val["attributes"]["client_class"]["data"] = self.default_client_class
 
-                # set path host from interface attributes
+                # set path host from controller attributes
                 if "host" in atts:
                     val["attributes"]["host"]["data"] = atts["host"]
 
@@ -127,11 +128,20 @@ class ShellyPro3(Controller):
             self.logger.debug("ShellyPro3:configure", extra={"error": e})
             print(traceback.format_exc())
 
+    async def deal_with_data(self, client, data):
+        toggle_topic = 'shellypro3/command/switch:'
+        channel = data['data']['channel']
+        toggle_topic = toggle_topic + str(channel)
+        complete_message = {'topic': toggle_topic, 'message': data['data']['message']}
+        try:
+            await self.send_data(client, complete_message)
+        except Exception as e:
+            self.logger.error("deal with data error", extra={"error": e})
+            await asyncio.sleep(1)
 
     async def recv_data_loop(self, client_id: str):
         while True:
             try:
-                # client = self.config.paths[client_id]["client"]
                 # line below is original
                 client = self.client_map[client_id]["client"]
                 print("Client ID in recv_data_loop:", client_id)
@@ -141,6 +151,7 @@ class ShellyPro3(Controller):
                     print("IN SHELLY 3 DRIVER", data)
                     self.logger.debug("recv_data", extra={"client_id": client_id, "data": data}) 
                     await self.update_recv_data(client_id=client_id, data=data)
+                    await self.deal_with_data(client, data)
 
             except (KeyError, Exception) as e:
                 self.logger.error("recv_data_loop", extra={"error": e})
@@ -149,14 +160,19 @@ class ShellyPro3(Controller):
     async def wait_for_ok(self, timeout=0):
         pass
 
-    async def send_data(self, event: DAQEvent):
-            print(f"here:1 {event}")
-            try:
-                print(f"send_data:1 - {event}")
-                client_id = event["path_id"]
-                client = self.client_map[client_id]["client"]
-                data = event.data["data"]
+    # async def send_data(self, event: DAQEvent):
+    #         print(f"here:1 {event}")
+    #         try:
+    #             print(f"send_data:1 - {event}")
+    #             client_id = event["path_id"]
+    #             client = self.client_map[client_id]["client"]
+    #             data = event.data["data"]
 
+    #             await client.send(data)
+    #         except KeyError:
+    #             pass
+    async def send_data(self, client, data):
+            try:
                 await client.send(data)
             except KeyError:
                 pass

@@ -313,21 +313,27 @@ async def test_ws_endpoint(
             if data['data'] == "False":
                 async with Client('mqtt.default', 1883) as client:
                     if '1' in data['id']:
-                        await client.publish("shellypro3/command/switch:0", payload = "off")
+                        await client.publish("websocket_topic", payload = json.dumps({'channel': 0, 'message': 'off'}))
+                        # await client.publish("shellypro3/command/switch:0", payload = "off")
                     elif '2' in data['id']:
-                        await client.publish("shellypro3/command/switch:1", payload = "off")
+                        await client.publish("websocket_topic", payload = json.dumps({'channel': 1, 'message': 'off'}))
+                        # await client.publish("shellypro3/command/switch:1", payload = "off")
                     elif '3' in data['id']:
                         # await client.publish("shellypro3/command/switch:2", payload = "off")
-                        await client.publish("websocket_topic", payload = "off")
+                        # await client.publish("websocket_topic", payload = "off")
+                        await client.publish("websocket_topic", payload = json.dumps({'channel': 2, 'message': 'off'}))
             elif data['data'] == "True":
                 async with Client('mqtt.default', 1883) as client:
                     if '1' in data['id']:
-                        await client.publish("shellypro3/command/switch:0", payload = "on")
+                        await client.publish("websocket_topic", payload = json.dumps({'channel': 0, 'message': 'on'}))
+                        # await client.publish("shellypro3/command/switch:0", payload = "on")
                     elif '2' in data['id']:
-                        await client.publish("shellypro3/command/switch:1", payload = "on")
+                        await client.publish("websocket_topic", payload = json.dumps({'channel': 1, 'message': 'on'}))
+                        # await client.publish("shellypro3/command/switch:1", payload = "on")
                     elif '3' in data['id']:
+                        await client.publish("websocket_topic", payload = json.dumps({'channel': 2, 'message': 'on'}))
                         # await client.publish("shellypro3/command/switch:2", payload = "on")
-                        await client.publish("websocket_topic", payload = "on")
+                        # await client.publish("websocket_topic", payload = "on")
 
             # print(f"sensor data: {data}")
             # L.info(f"sensor data: {data}")
