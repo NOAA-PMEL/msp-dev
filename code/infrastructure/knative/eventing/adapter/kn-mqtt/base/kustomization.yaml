@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 metadata:
-  name: mqtt
+  name: kn-mqtt-adapter
 
 # Example configuration for the webserver
 # at https://github.com/monopole/hello
@@ -9,8 +9,6 @@ metadata:
 #   app: nginx
 
 resources:
-- mqtt-ns.yaml
-- mqtt-configmap.yaml
-- mqtt-storage.yaml
-- mqtt-deployment.yaml
-- mqtt-service.yaml
+- kn-mqtt-deployment.yaml
+- kn-mqtt-service.yaml
+# - kn-mqtt-ingress.yaml

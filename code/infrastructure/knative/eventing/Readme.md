@@ -3,7 +3,7 @@ To install Knative [eventing](https://knative.dev/docs/install/yaml-install/even
 kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.18.1/eventing-crds.yaml
 ```
 
-```
+```bash
 kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.18.1/eventing-core.yaml
 ```
 

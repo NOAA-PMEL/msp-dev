@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: msp-system
+  labels:
+    app: redis
+  # namespace: envds-cloudy
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        # image: localhost:5000/envds/eclipse-mosquitto:2.0.14
+        # image: envds-registry:36301/eclipse-mosquitto:2.0.14
+        # image: envds-registry:5000/core/eclipse-mosquitto:2.0.14
+        # image: envds-registry:5000/core/redis-stack-server:latest
+        image: registry-msp:5000/msp/redis-stack-server:latest
+        # image: redis/redis-stack-server:latest
+
+        # command:
+        #   - redis-server
+        #   - "/etc/redis-stack.conf"
+        env:
+        - name: REDIS_ARGS
+          value: "--appendonly yes"
+        resources:
+          requests:
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        ports:
+        - name: http
+          containerPort: 6379
+          protocol: TCP
+        volumeMounts:
+          - name: redis-pvc-storage
+            mountPath: /data
+          # - name: redis-config
+          #   mountPath: /redis-stack.conf
+            # subPath: redis-stack.conf
+      volumes:
+        - name: redis-pvc-storage
+          persistentVolumeClaim:
+            claimName: redis-pvc

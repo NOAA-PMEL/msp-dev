@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: msp-system
+  labels:
+    app: redis
+  # namespace: envds-cloudy
+spec:
+  selector:
+    app: redis
+  ports:
+  - name: http
+    protocol: TCP
+    port: 6379
+    targetPort: 6379

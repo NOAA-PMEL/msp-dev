@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: msp-system
+  labels:
+    app: redis
+  # namespace: envds-cloudy
+data:
+  redis-stack.conf: |
+
+    port 6379
+    save 3600 1 300 100 60 10000
+    appendonly yes
+    appendfsync everysec
+    appendfilename "appendonly.aof"
+    daemonize no
+    loadmodule /opt/redis-stack/lib/redisearch.so
+    loadmodule /opt/redis-stack/lib/redisgraph.so
+    loadmodule /opt/redis-stack/lib/redistimeseries.so
+    loadmodule /opt/redis-stack/lib/rejson.so
+    loadmodule /opt/redis-stack/lib/redisbloom.soroot
