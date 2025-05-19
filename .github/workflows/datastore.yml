@@ -5,6 +5,7 @@ on:
   push:
 
     branches: #[ update-mspbase02 ]
+      - main
       - update-mspbase02
     # paths:
 
