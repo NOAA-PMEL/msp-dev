@@ -1,15 +1,10 @@
 import abc
 import importlib
-
-# import sys
-# import uuid
 from ulid import ULID
 import asyncio
 
-# import logging
 from logfmter import Logfmter
 
-# from typing import Union
 from pydantic import BaseModel
 
 from envds.core import envdsBase, envdsStatus
@@ -22,9 +17,7 @@ from envds.util.util import get_datetime, seconds_elapsed
 
 
 class ControllerClientConfig(BaseModel):
-    # controller: dict
-    interface: dict
-
+    controller: dict
 
 class ControllerPathConfig(BaseModel):
     name: str
@@ -48,19 +41,15 @@ class ControllerPath(object):
 
         self.client = None
 
-    # used by interface to send data to physical sensor
     async def send(self, data: str):
         await self.send_buffer.put(data)
 
-    # processes buffered send data
     async def send_loop(self):
-
         while True:
             data = await self.send_buffer.get()
             await self.send_data(data)
             await asyncio.sleep(0.1)
 
-    # can be overloaded by InterfacePath to handle client specific data
     async def send_data(self, data: str):
         if self.client:
             await self.client.send(data)
@@ -70,7 +59,6 @@ class ControllerPath(object):
         return await self.recv_buffer.get()
 
     async def recv_loop(self) -> str:
-
         while True:
             data = await self.recv_data()
             await self.recv_buffer.put(data)
@@ -90,11 +78,6 @@ class ControllerConfig(BaseModel):
     name: str
     uid: str
     paths: dict | None = {}
-    # properties: dict | None = {}
-    # # variables: list | None = []
-    # variables: dict | None = {}
-    # interfaces: dict | None = {}
-    # daq: str | None = "default"
 
 
 class Controller(envdsBase):
@@ -109,10 +92,10 @@ class Controller(envdsBase):
 
         self.min_recv_delay = 0.1
 
-        self.update_id("app_group", "interface")
+        self.update_id("app_group", "controller")
         self.update_id("app_ns", "envds")
-        self.update_id("app_uid", f"interface-id-{ULID()}")
-        self.logger.debug("interface id", extra={"self.id": self.id})
+        self.update_id("app_uid", f"controller-id-{ULID()}")
+        self.logger.debug("controller id", extra={"self.id": self.id})
 
         self.status.set_id_AppID(self.id)
 
@@ -143,7 +126,6 @@ class Controller(envdsBase):
         # self.update_id("app_uid", self.build_app_uid())
 
     def disable(self):
-
         # remove all subscribers to each client to force disable
         for id, client in self.client_registry.items():
             if self.client_map[id]["client"]:
@@ -172,7 +154,7 @@ class Controller(envdsBase):
 
         self.set_route(
             subscription=f"/{topic_base}/+/status/request",
-            route_key=det.interface_status_request(),
+            route_key=det.controller_status_request(),
             route=self.handle_status,
             enable=enable,
         )
@@ -182,21 +164,21 @@ class Controller(envdsBase):
         )
         self.set_route(
             subscription=f"/{topic_base}/+/config/request",
-            route_key=det.interface_config_request(),
+            route_key=det.controller_config_request(),
             route=self.handle_config,
             enable=enable,
         )
 
         self.set_route(
             subscription=f"/{topic_base}/+/keepalive/request",
-            route_key=det.interface_keepalive_request(),
+            route_key=det.controller_keepalive_request(),
             route=self.handle_keepalive,
             enable=enable,
         )
 
         self.set_route(
             subscription=f"/{topic_base}/+/data/send",
-            route_key=det.interface_data_send(),
+            route_key=det.controller_data_send(),
             route=self.handle_data,
             enable=enable,
         )
@@ -395,7 +377,7 @@ class Controller(envdsBase):
         # extra_header = {"source_path": id}
         extra_header = {"path_id": client_id}
         # event = DAQEvent.create_data_update(
-        event = DAQEvent.create_interface_data_recv(
+        event = DAQEvent.create_controller_data_recv(
             # source="envds.core", data={"test": "one", "test2": 2}
             source=self.get_id_as_source(),
             data=data,
@@ -414,7 +396,7 @@ class Controller(envdsBase):
 
         # TODO: handle send data
         print(f"handle_data: {message.data}")
-        if message.data["type"] == det.interface_data_send():
+        if message.data["type"] == det.controller_data_send():
             self.logger.debug(
                 "controller_data_send",
                 extra={"data": message.data.data},
@@ -506,13 +488,13 @@ class Controller(envdsBase):
                         topic_base = self.get_id_as_topic()
                         dest_path = f"{topic_base}/{id}/status/update"
                         extra_header = {"path_id": id}
-                        event = DAQEvent.create_interface_status_update(
+                        event = DAQEvent.create_controller_status_update(
                             # source="envds.core", data={"test": "one", "test2": 2}
                             source=self.get_id_as_source(),
                             data=self.status.get_status(),
                             extra_header=extra_header
                         )
-                        self.logger.debug("send_interface_status_update", extra={"event": event})
+                        self.logger.debug("send_controller_status_update", extra={"event": event})
                         # message = Message(data=event, dest_path="/envds/status/update")
                         message = Message(data=event, dest_path=dest_path)
                         await self.send_message(message)

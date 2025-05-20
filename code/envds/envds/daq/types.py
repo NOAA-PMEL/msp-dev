@@ -9,6 +9,7 @@ class DAQEventType(BaseEventType):
     TYPE_SENSOR = "sensor"
     TYPE_SETTINGS = "settings"
     TYPE_INTERFACE = "interface"
+    TYPE_CONTROLLER = "controller"
     TYPE_CONNECT = "connect"
     TYPE_CONFIG = "config"
     
@@ -84,3 +85,35 @@ class DAQEventType(BaseEventType):
     @staticmethod
     def sensor_settings_update():
         return ".".join([BaseEventType.get_type(DAQEventType.TYPE_SENSOR), DAQEventType.TYPE_SETTINGS, DAQEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def controller_data_recv():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), BaseEventType.TYPE_DATA, DAQEventType.ACTION_RECV])
+
+    @staticmethod
+    def controller_data_send():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), BaseEventType.TYPE_DATA, DAQEventType.ACTION_SEND])
+
+    @staticmethod
+    def controller_keepalive_request():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), DAQEventType.TYPE_KEEPALIVE, DAQEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def controller_config_request():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), DAQEventType.TYPE_CONFIG, DAQEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def controller_status_request():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), DAQEventType.TYPE_STATUS, DAQEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def controller_status_update():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), DAQEventType.TYPE_STATUS, DAQEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def controller_registry_update():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def controller_registry_request():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_REQUEST])
