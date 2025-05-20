@@ -1,21 +1,17 @@
 name: Build and Push kn-mqtt-adapter
 
 on:
-
   push:
-
-    branches: [ dev-* ]
-      
+    branches:
+      - dev-*
     paths:
-
       - 'code/infrastructure/knative/eventing/adapter/kn-mqtt/**'
   
   pull_request:
-
-    branches: [ main ]
-      
+    branches:
+      - main
+      - dev-*
     paths:
-
       - 'code/infrastructure/knative/eventing/adapter/kn-mqtt/**'
    
 env:
