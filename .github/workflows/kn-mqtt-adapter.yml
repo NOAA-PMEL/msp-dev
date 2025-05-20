@@ -4,12 +4,20 @@ on:
 
   push:
 
-    branches: [ main, dev-system ]
+    branches: [ dev-system ]
       
     paths:
 
       - 'code/infrastructure/knative/eventing/adapter/kn-mqtt/**'
   
+  pull_request:
+
+    branches: [ main ]
+      
+    paths:
+
+      - 'code/infrastructure/knative/eventing/adapter/kn-mqtt/**'
+   
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: kn-mqtt-adapter
