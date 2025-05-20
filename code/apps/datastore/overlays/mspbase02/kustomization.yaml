@@ -19,6 +19,6 @@ metadata:
 resources:
 - ../../base
 - datastore-configmap.yaml
-# - datastore-sealedsecrets.yaml
+- ghcr-secret-msp-system-sealed.yaml
 - datastore-triggers.yaml
 
