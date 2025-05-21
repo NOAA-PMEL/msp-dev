@@ -9,17 +9,17 @@ metadata:
 #   app: nginx
 
 # resources:
-# Example configuration for the webserver
-# at https://github.com/monopole/hello
-# namePrefix: dev-
-# commonLabels:
-#   app: nginx
-#   variant: lopez
+# # Example configuration for the webserver
+# # at https://github.com/monopole/hello
+#   nameSuffix: -usc206
+#   commonLabels:
+#     app: usconverters-uscdr301
+#     variant: test
 
 resources:
 - ../../base
 - USCDR301-configmap.yaml
 
-nameSuffix: -usc207
+nameSuffix: -usc10
 # patchesStrategicMerge:
 #   - deployment.yaml
