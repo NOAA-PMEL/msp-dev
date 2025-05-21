@@ -3,13 +3,15 @@ name: Build and Push datastore
 on:
 
   push:
-
-    branches: [ main ]
-      
+    branches: [ dev-* ]
     paths:
-
       - 'code/apps/datastore/**'
   
+  pull_request:
+    branches: [main, dev-*]
+    paths:
+      - 'code/apps/datastore/**'
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: datastore
