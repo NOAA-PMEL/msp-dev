@@ -1,0 +1,84 @@
+name: Build and Push dashboard-test
+
+on:
+
+  push:
+    branches: [ dev-* ]
+    paths:
+      - 'code/apps/dashboard-test/**'
+  
+  pull_request:
+    branches: [main, dev-*]
+    paths:
+      - 'code/apps/dashboard-test/**'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: dashboard-test
+  # IMAGE_TAG: ${{ github.sha }}
+  # IMAGE_TAG: $(cat VERSION)
+
+jobs:
+
+  build-and-push-dashboard-test:
+
+    runs-on: ubuntu-latest
+    defaults:
+        run:
+            working-directory: './code/apps/dashboard-test'
+      
+    permissions:
+        contents: read
+        packages: write
+        attestations: write
+        id-token: write
+
+    steps:
+
+        - name: 'Checkout Main'
+          uses: actions/checkout@v4
+
+        - name: 'set env variables'
+          run: |
+            VER=$(cat VERSION)
+            echo "IMAGE_TAG=$VER" >> $GITHUB_ENV
+        # - name: Build the Docker image
+        # #   run: docker build . --file Dockerfile --tag ghcr.io/acg/verifier:$(date +%s)
+        #   run: docker build . --file Dockerfile --tag ghcr.io/acg/verifier:latest
+    
+        - name: 'Login to GitHub Container Registry'
+          uses: docker/login-action@v1
+          with:
+            registry: ${{ env.REGISTRY }}
+            username: ${{github.actor}}
+            password: ${{secrets.GITHUB_TOKEN}}
+
+        # - name: Extract metadata (tags, labels) for Docker
+        #   id: meta
+        #   uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        #   with:
+        #     images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+        # - name: Build and push Docker image
+        #   id: push
+        #   uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        #   with:
+        #     context: ./apps/verifier
+        #     push: true
+        #     tags: ${{ steps.meta.outputs.tags }}
+        #     labels: ${{ steps.meta.outputs.labels }}
+    
+                
+        # - name: Generate artifact attestation
+        #   uses: actions/attest-build-provenance@v2
+        #   with:
+        #     subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
+        #     subject-digest: ${{ steps.push.outputs.digest }}
+        #     push-to-registry: true
+
+        - name: Build the Docker image
+        #   run: docker build . --file Dockerfile --tag ghcr.io/acg/verifier:$(date +%s)
+          run: docker build . --file Dockerfile --tag ghcr.io/noaa-pmel/msp/dashboard-test:$IMAGE_TAG
+ 
+        - name: Push the Docker image
+          run: docker push ghcr.io/noaa-pmel/msp/dashboard-test:$IMAGE_TAG
