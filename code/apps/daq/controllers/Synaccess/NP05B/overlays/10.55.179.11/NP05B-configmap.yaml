@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synaccess-np05b-config
+  namespace: msp
+  labels:
+    app: synaccess-np05b
+data:
+  interface.conf: |
+    uid: syn11
+    # serial_number: "1234"
+    # daq_id: clearsky
+    host: 10.55.179.11
+    paths:
+      port-1:
+          # host: 10.55.179.11
+          port: 23 # if omitted, default is used

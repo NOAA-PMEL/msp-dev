@@ -20,7 +20,7 @@ spec:
      - websecure
   routes:
     - kind: Rule
-      # match: Host(`mspbase02.pmel.noaa.gov`) && PathPrefix(`/argocd`)
+      # match: Host(`10.55.169.215`) && PathPrefix(`/argocd`)
       match: Host(`localhost`)
       priority: 10
       services:
