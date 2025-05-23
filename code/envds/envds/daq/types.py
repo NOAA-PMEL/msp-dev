@@ -117,3 +117,12 @@ class DAQEventType(BaseEventType):
     @staticmethod
     def controller_registry_request():
         return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def controller_control_request():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), DAQEventType.TYPE_CONTROL, DAQEventType.ACTION_REQUEST])
+    
+    @staticmethod
+    def controller_control_update():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), DAQEventType.TYPE_CONTROL, DAQEventType.ACTION_UPDATE])
+

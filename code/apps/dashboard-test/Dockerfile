@@ -13,6 +13,9 @@ WORKDIR $APP_HOME
 COPY requirements.txt requirements.txt
 RUN pip3 install -r requirements.txt
 
+COPY lib/. /lib
+RUN pip3 install --no-index --find-links=/lib/envds envds
+
 COPY VERSION .
 
 # COPY datasets.d.sh .

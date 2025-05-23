@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.wsgi import WSGIMiddleware
 
 from cloudevents.http import CloudEvent, from_http
-from cloudevents.conversion import to_structured  # , from_http
+from cloudevents.conversion import to_structured, to_json  # , from_http
 from cloudevents.exceptions import InvalidStructuredJSON
 
 # from typing import Union
@@ -28,6 +28,11 @@ from ulid import ULID
 
 from dashapp import app as dash_app
 from aiomqtt import Client
+
+from envds.daq.types import DAQEventType as det
+from envds.daq.event import DAQEvent
+from envds.message.message import Message
+from envds.core import envdsBase, envdsAppID, envdsStatus
 
 
 
@@ -275,7 +280,32 @@ class ConnectionManager:
         except KeyError:
             pass
 
+class WebInterfaceManager():
+    def __init__(self, **kwargs):
+        pass
+        # self.active_connections: list[WebSocket] = []
+
+    def send_data(self, data):
+        # syn11
+        try:
+            dest_path = "/webinterface/control/request"
+            event = DAQEvent.create_controller_control_request(
+                source=data['device'],
+                data=data
+            )
+            message = Message(data=event, dest_path=dest_path)
+            print('message', message.data)
+            # await self.send_message(message)
+            # self.logger.debug("message sent")
+            return message
+        except Exception as e:
+                print(f"webinterface_data_loop error: {e}")
+
+
+
 manager = ConnectionManager()
+web_interface_manager = WebInterfaceManager()
+# WebInterfaceManager.run()
 host_name = socket.gethostname()
 host_ip = socket.gethostbyname(host_name)
 print(f"name: {host_name}, ip: {host_ip}")
@@ -306,34 +336,44 @@ async def test_ws_endpoint(
         while True:
             data = await websocket.receive_text()
             data = json.loads(data)
+            print('data here', data)
 
             # Change this to publish to mqtt topic that shelly driver is subscribed to 
             # The message should include info on true / false and id, and then the shelly driver will publish to appropriate
             # shelly specific topic based on that
-            if data['data'] == "False":
-                async with Client('mqtt.default', 1883) as client:
-                    if '1' in data['id']:
-                        await client.publish("websocket_topic", payload = json.dumps({'channel': 0, 'message': 'off'}))
-                        # await client.publish("shellypro3/command/switch:0", payload = "off")
-                    elif '2' in data['id']:
-                        await client.publish("websocket_topic", payload = json.dumps({'channel': 1, 'message': 'off'}))
-                        # await client.publish("shellypro3/command/switch:1", payload = "off")
-                    elif '3' in data['id']:
-                        # await client.publish("shellypro3/command/switch:2", payload = "off")
-                        # await client.publish("websocket_topic", payload = "off")
-                        await client.publish("websocket_topic", payload = json.dumps({'channel': 2, 'message': 'off'}))
-            elif data['data'] == "True":
-                async with Client('mqtt.default', 1883) as client:
-                    if '1' in data['id']:
-                        await client.publish("websocket_topic", payload = json.dumps({'channel': 0, 'message': 'on'}))
-                        # await client.publish("shellypro3/command/switch:0", payload = "on")
-                    elif '2' in data['id']:
-                        await client.publish("websocket_topic", payload = json.dumps({'channel': 1, 'message': 'on'}))
-                        # await client.publish("shellypro3/command/switch:1", payload = "on")
-                    elif '3' in data['id']:
-                        await client.publish("websocket_topic", payload = json.dumps({'channel': 2, 'message': 'on'}))
-                        # await client.publish("shellypro3/command/switch:2", payload = "on")
-                        # await client.publish("websocket_topic", payload = "on")
+            if 'shelly' in data['id']:
+                if data['data'] == "False":
+                    async with Client('mqtt.default', 1883) as client:
+                        channel = data['id'][-1]
+                        message_to_send = {'device': 'shelly', 'channel': channel, 'message': 'off'}
+                        await web_interface_manager.send_data(message_to_send)
+                        # await client.publish("websocket_topic", payload = json.dumps({'device': 'shelly', 'channel': channel, 'message': 'off'}))
+
+                elif data['data'] == "True":
+                    async with Client('mqtt.default', 1883) as client:
+                        channel = data['id'][-1]
+                        await client.publish("websocket_topic", payload = json.dumps({'device': 'shelly', 'channel': channel, 'message': 'on'}))
+
+            if 'pdu' in data['id']:
+                if data['data'] == "False":
+                    async with Client('mqtt.default', 1883) as client:
+                        outlet = data['id'][-1]
+                        message_to_send = {'device': 'pdu', 'outlet': outlet, 'message': 'off'}
+                        print('message to send', message_to_send)
+                        message = web_interface_manager.send_data(message_to_send)
+                        dest_path = message.dest_path
+                        # await client.publish("websocket_topic", payload = json.dumps({'device': 'pdu', 'outlet': outlet, 'message': 'off'}))
+                        await client.publish(dest_path, payload = to_json(message.data))
+
+                elif data['data'] == "True":
+                    async with Client('mqtt.default', 1883) as client:
+                        outlet = data['id'][-1]
+                        message_to_send = {'device': 'pdu', 'outlet': outlet, 'message': 'on'}
+                        # await web_interface_manager.send_data(message_to_send)
+                        message = web_interface_manager.send_data(message_to_send)
+                        dest_path = message.dest_path
+                        await client.publish(dest_path, payload = to_json(message.data))
+                        # await client.publish("websocket_topic", payload = json.dumps({'device': 'pdu', 'outlet': outlet, 'message': 'on'}))
 
             # print(f"sensor data: {data}")
             # L.info(f"sensor data: {data}")

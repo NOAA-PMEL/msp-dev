@@ -318,6 +318,8 @@ class DAQClient(abc.ABC):
         self.logger.debug("status_check", extra={"status": self.status.get_status()})
 
     def run(self):
+        if not self.enabled():
+            self.enable()
         self.status.set_requested(envdsStatus.RUNNING, envdsStatus.TRUE)
         self.logger.debug("run requested", extra={"status": self.status.get_status()})
 

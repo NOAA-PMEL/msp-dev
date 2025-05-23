@@ -183,6 +183,15 @@ class Controller(envdsBase):
             enable=enable,
         )
 
+        self.set_route(
+            # subscription=f"/{topic_base}/+/control/request",
+            subscription="/webinterface/control/request",
+            route_key=det.controller_control_request(),
+            route=self.handle_controls,
+            enable=enable,
+        )
+
+
     def update_client_registry(
         self,
         client_id: str,
@@ -296,49 +305,56 @@ class Controller(envdsBase):
         # # await super(Interface, self).handle_status(message)
         pass
 
+    # def enable(self):
+    #     super().enable()
+    #     self.status.set_requested(envdsStatus.ENABLED, envdsStatus.TRUE)
+    #     # self.status.set_state_param(requested=envdsStatus.TRUE,
+    #     #             actual=envdsStatus.TRUE)
+
+
 
     async def handle_status(self, message: Message):
-        pass
+        # pass
 
-        # # self.logger.debug("handle_status:1", extra={"data": message.data})
-        # await super(Controller, self).handle_status(message)
+        # self.logger.debug("handle_status:1", extra={"data": message.data})
+        await super(Controller, self).handle_status(message)
 
-        # # if message.data["type"] == det.interface_status_request():
-        # #     self.logger.debug("interface connection keepalive", extra={"source": message.data["source"]})
-        # #     # update connection registry
-        # # self.logger.debug("interface handle_status", extra={"data": message.data})
         # if message.data["type"] == det.interface_status_request():
-        #     try:
-        #         client_id = message.data["path_id"]
-        #         source = message.data["source"]
-        #         # source_path = message["source_path"]
-        #         state = message.data.data["state"]
-        #         requested = message.data.data["requested"]
+        #     self.logger.debug("interface connection keepalive", extra={"source": message.data["source"]})
+        #     # update connection registry
+        # self.logger.debug("interface handle_status", extra={"data": message.data})
+        if message.data["type"] == det.controller_status_request():
+            try:
+                client_id = message.data["path_id"]
+                source = message.data["source"]
+                # source_path = message["source_path"]
+                state = message.data.data["state"]
+                requested = message.data.data["requested"]
 
-        #         # if state := message.data["state"] == envdsStatus.ENABLED:
-        #         if state == envdsStatus.ENABLED:
-        #             self.logger.debug(
-        #                 "interface status request", extra={"data": message.data}
-        #             )
-        #             # self.update_client_registry(Message)
-        #             deregister = False
-        #             if requested != envdsStatus.TRUE:
-        #                 deregister = True
-        #             self.update_client_registry(
-        #                 client_id=client_id, source=source, deregister=deregister
-        #             )
+                # if state := message.data["state"] == envdsStatus.ENABLED:
+                if state == envdsStatus.ENABLED:
+                    self.logger.debug(
+                        "interface status request", extra={"data": message.data}
+                    )
+                    # self.update_client_registry(Message)
+                    deregister = False
+                    if requested != envdsStatus.TRUE:
+                        deregister = True
+                    self.update_client_registry(
+                        client_id=client_id, source=source, deregister=deregister
+                    )
                 
-        #             #    self.register_client(data=message.data, source_path=message["source_path"])
-        #         if requested == envdsStatus.TRUE:
-        #             print(f"id_as_topic: {self.get_id_as_topic()}")
-        #             self.enable()
-        #         elif requested == envdsStatus.FALSE:
-        #             self.disable()
+                    #    self.register_client(data=message.data, source_path=message["source_path"])
+                if requested == envdsStatus.TRUE:
+                    print(f"id_as_topic: {self.get_id_as_topic()}")
+                    self.enable()
+                elif requested == envdsStatus.FALSE:
+                    self.disable()
 
-        #     except KeyError:
-        #         self.logger.error(
-        #             "unknown interface status request", extra={"data": message.data}
-        #         )
+            except KeyError:
+                self.logger.error(
+                    "unknown interface status request", extra={"data": message.data}
+                )
 
     async def handle_keepalive(self, message: Message):
         pass
@@ -404,6 +420,17 @@ class Controller(envdsBase):
             self.logger.debug("handle_data", extra={"md": message.data})
             await self.send_data(message.data)
             self.logger.debug("handle_data sent", extra={"md": message.data})
+
+    async def handle_controls(self, message: Message):
+        if message.data["type"] == det.controller_control_request():
+            self.logger.debug(
+                "controller_webinterface_command",
+                extra={"data": message.data.data},
+            )
+            self.logger.debug("webinterface_command", extra={"md": message.data})
+            await self.send_data(message.data)
+            self.logger.debug("webinterface_command sent", extra={"md": message.data})
+
 
     async def client_monitor(self):
 
