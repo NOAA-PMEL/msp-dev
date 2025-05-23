@@ -36,6 +36,14 @@ class NP05B(Controller):
                     "client_class": {"type": "string", "data": "TCPClient"},
                     "host": {"type": "string", "data": 'localhost'},
                     "port": {"type": "int", "data": 23},
+                    "device-interface-properties": {
+                        "read-properties": {
+                            "read-method": "readline",  # readline, read-until, readbytes, readbinary
+                            # "read-terminator": "\r",  # only used for read_until
+                            "decode-errors": "strict",
+                            "send-method": "ascii",
+                        }
+                    }
                 },
                 "data": [],
             },
@@ -61,7 +69,8 @@ class NP05B(Controller):
         self.default_client_class = "TCPClient"
 
         self.data_loop_task = None
-        # self.enable_task_list.append(self.deal_with_data())
+        # asyncio.create_task(self.monitor_outlet_status())
+        self.enable_task_list.append(self.monitor_outlet_status())
 
     def configure(self):
 
@@ -137,27 +146,54 @@ class NP05B(Controller):
             self.logger.debug("NP05B:configure", extra={"error": e})
             print(traceback.format_exc())
 
+    async def monitor_outlet_status(self):
+        while True:
+            try:
+                tcp_client = self.client_map["port-1"]["client"]
+                get_status_command = {'data': "$A5\r"}
+                await self.send_data(tcp_client, get_status_command)
+                status_data = await tcp_client.recv()
+                print("STATUS DATA                                 ", status_data)
+                if '$A0,' in status_data["data"]:
+                    final_status = {}
+                    status_data = status_data["data"].replace('$A0,', '').replace('$A5\r\n', '')
+                    print("STATUS DATA                                 ", status_data)
+                    # for outlet_status in status_data:
+                    #     final_status[outlet] = outlet_status
+                    # await asyncio.sleep(0.1)
+            except Exception as e:
+                self.logger.error("get status error", extra={"error": e})
+                await asyncio.sleep(1)
+
     async def deal_with_data(self, client, data):
-        toggle_topic = 'shellypro3/command/switch:'
-        channel = data['data']['channel']
-        toggle_topic = toggle_topic + str(channel)
-        complete_message = {'topic': toggle_topic, 'message': data['data']['message']}
         try:
-            await self.send_data(client, complete_message)
+            if data['data']['device'] == 'pdu':
+                outlet = data['data']['outlet']
+                if data['data']['message'] == 'on':
+                    print('Driver thinks outlet is commanded on', data)
+                    command = {'data': f"pset {outlet} 1\r"}
+                    print('COMMAND', command)
+                if data['data']['message'] == 'off':
+                    command = {'data': f"pset {outlet} 0\r"}
+                try:
+                    tcp_client = self.client_map["port-1"]["client"]
+                    await self.send_data(tcp_client, command)
+                except Exception as e:
+                    self.logger.error("deal with data error", extra={"error": e})
+                    await asyncio.sleep(1)
         except Exception as e:
-            self.logger.error("deal with data error", extra={"error": e})
-            await asyncio.sleep(1)
+                    self.logger.error("deal with data error", extra={"error": e})
+                    await asyncio.sleep(1)
+    
 
     async def recv_data_loop(self, client_id: str):
         while True:
             try:
-                # line below is original
                 client = self.client_map[client_id]["client"]
                 print("Client ID in recv_data_loop:", client_id)
                 if client:
                     self.logger.debug("recv_data_loop", extra={"client": client})
                     data = await client.recv()
-                    print("IN SHELLY 3 DRIVER", data)
                     self.logger.debug("recv_data", extra={"client_id": client_id, "data": data}) 
                     await self.update_recv_data(client_id=client_id, data=data)
                     await self.deal_with_data(client, data)

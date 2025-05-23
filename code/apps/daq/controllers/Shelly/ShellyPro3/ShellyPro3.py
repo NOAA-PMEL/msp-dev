@@ -129,26 +129,27 @@ class ShellyPro3(Controller):
             print(traceback.format_exc())
 
     async def deal_with_data(self, client, data):
-        toggle_topic = 'shellypro3/command/switch:'
-        channel = data['data']['channel']
-        toggle_topic = toggle_topic + str(channel)
-        complete_message = {'topic': toggle_topic, 'message': data['data']['message']}
-        try:
-            await self.send_data(client, complete_message)
-        except Exception as e:
-            self.logger.error("deal with data error", extra={"error": e})
-            await asyncio.sleep(1)
+        if data['data']['device'] == 'shelly':
+            toggle_topic = 'shellypro3/command/switch:'
+            channel = data['data']['channel']
+            toggle_topic = toggle_topic + str(channel)
+            complete_message = {'topic': toggle_topic, 'message': data['data']['message']}
+            try:
+                await self.send_data(client, complete_message)
+            except Exception as e:
+                self.logger.error("deal with data error", extra={"error": e})
+                await asyncio.sleep(1)
+        else:
+            pass
 
     async def recv_data_loop(self, client_id: str):
         while True:
             try:
-                # line below is original
                 client = self.client_map[client_id]["client"]
                 print("Client ID in recv_data_loop:", client_id)
                 if client:
                     self.logger.debug("recv_data_loop", extra={"client": client})
                     data = await client.recv()
-                    print("IN SHELLY 3 DRIVER", data)
                     self.logger.debug("recv_data", extra={"client_id": client_id, "data": data}) 
                     await self.update_recv_data(client_id=client_id, data=data)
                     await self.deal_with_data(client, data)

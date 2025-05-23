@@ -20,12 +20,18 @@ CONTENT_STYLE = {
 
 
 shelly_channels = dbc.Row([
-                dbc.Col(html.Div([daq.PowerButton(id='power-button-1', label="Channel 1", color='#14c208', persistence=True)])),
-                dbc.Col(html.Div([daq.PowerButton(id='power-button-2', label="Channel 2", color='#14c208', persistence=True)])),
-                dbc.Col(html.Div([daq.PowerButton(id='power-button-3', label="Channel 3", color='#14c208', persistence=True)])),
+                dbc.Col(html.Div([daq.PowerButton(id='shelly_power-button-0', label="Channel 1", color='#14c208', persistence=True)])),
+                dbc.Col(html.Div([daq.PowerButton(id='shelly_power-button-1', label="Channel 2", color='#14c208', persistence=True)])),
+                dbc.Col(html.Div([daq.PowerButton(id='shelly_power-button-2', label="Channel 3", color='#14c208', persistence=True)])),
                  ])
 
-
+pdu_outlets = dbc.Row([
+                dbc.Col(html.Div([daq.PowerButton(id='pdu_power-button-1', label="Outlet 1", color='#14c208', persistence=True)])),
+                dbc.Col(html.Div([daq.PowerButton(id='pdu_power-button-2', label="Outlet 2", color='#14c208', persistence=True)])),
+                dbc.Col(html.Div([daq.PowerButton(id='pdu_power-button-3', label="Outlet 3", color='#14c208', persistence=True)])),
+                dbc.Col(html.Div([daq.PowerButton(id='pdu_power-button-4', label="Outlet 4", color='#14c208', persistence=True)])),
+                dbc.Col(html.Div([daq.PowerButton(id='pdu_power-button-5', label="Outlet 5", color='#14c208', persistence=True)])),
+                 ])
 
 
 # print("here:1")
@@ -37,6 +43,12 @@ def get_layout():
             dbc.Stack([
                 dbc.Row(dbc.Col(html.Div("Main Control Shelly"))),
                 shelly_channels
+            ], gap=3)
+        ]),
+        html.Div([
+            dbc.Stack([
+                dbc.Row(dbc.Col(html.Div("Physics Instruments PDU"))),
+                pdu_outlets
             ], gap=3)
         ]),
         # dbc.Card('This is our Home page content.', body=True),
@@ -96,11 +108,16 @@ def send(id, value):
 
 @callback(
     Output('ws_pb', "send"),
-    Input("power-button-1", "on"),
-    Input("power-button-2", "on"),
-    Input("power-button-3", "on")
+    Input("shelly_power-button-0", "on"),
+    Input("shelly_power-button-1", "on"),
+    Input("shelly_power-button-2", "on"),
+    Input("pdu_power-button-1", "on"),
+    Input("pdu_power-button-2", "on"),
+    Input("pdu_power-button-3", "on"),
+    Input("pdu_power-button-4", "on"),
+    Input("pdu_power-button-5", "on")
 )  
-def send_pb_state(pb1, pb2, pb3):
+def send_pb_state(s_pb1, s_pb2, s_pb3, pdu_pb1, pdu_pb2, pdu_pb3, pdu_pb4, pdu_pb5):
     ctx = dash.callback_context
     id = ctx.triggered_id
     value = ctx.triggered[0]['value']
@@ -122,11 +139,9 @@ def message(i):
 
         else:
             color = '#491a8b'
-        # return f"Response from websocket: {i['data']}", color
         return None, color
     else:
         color = '#491a8b'
-        # return "No response", color
         return None, color
 
 

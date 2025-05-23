@@ -13,7 +13,7 @@ data:
     # host: 10.55.179.11
     paths:
       port-1:
-          host: 10.55.179.11
+          host: 10.55.169.217
           port: 23 # if omitted, default is used
       port-2:
           host: 'mqtt.default'

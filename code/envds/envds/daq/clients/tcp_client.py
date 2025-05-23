@@ -19,6 +19,7 @@ class _TCPClient(_StreamClient):
         # print("_MockClient.init")
         self.connected = False
         self.keep_connected = False
+        # self.keep_connected = True
         # self.run_task_list.append(self.connection_monitor())
         # self.enable_task_list.append(asyncio.create_task(asyncio.sleep(1)))
         asyncio.create_task(self.connection_monitor())
@@ -56,12 +57,15 @@ class _TCPClient(_StreamClient):
     async def connection_monitor(self):
 
         while True:
+            print("SELF.CONNECTION STATE", self.connection_state)
+            print("SELF.KEEP CONNECTED", self.keep_connected)
             try:
                 while self.keep_connected:
 
                     if self.connection_state == self.DISCONNECTED:
                         # connect
                         self.connection_state = self.CONNECTING
+                        print("SELF.CONNECTION STATE", self.connection_state)
                         try:
                             self.logger.debug("open_connection", extra={"host": self.host, "port": self.port})
                             self.reader, self.writer = await asyncio.open_connection(
