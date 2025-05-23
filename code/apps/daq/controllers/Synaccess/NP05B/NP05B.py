@@ -185,7 +185,6 @@ class NP05B(Controller):
                     self.logger.error("deal with data error", extra={"error": e})
                     await asyncio.sleep(1)
     
-
     async def recv_data_loop(self, client_id: str):
         while True:
             try:
@@ -205,22 +204,22 @@ class NP05B(Controller):
     async def wait_for_ok(self, timeout=0):
         pass
 
-    # async def send_data(self, event: DAQEvent):
-    #         print(f"here:1 {event}")
-    #         try:
-    #             print(f"send_data:1 - {event}")
-    #             client_id = event["path_id"]
-    #             client = self.client_map[client_id]["client"]
-    #             data = event.data["data"]
-
-    #             await client.send(data)
-    #         except KeyError:
-    #             pass
-    async def send_data(self, client, data):
+    async def send_data(self, event: DAQEvent):
+            print(f"here:1 {event}")
             try:
+                print(f"send_data:1 - {event}")
+                client_id = event["path_id"]
+                client = self.client_map[client_id]["client"]
+                data = event.data["data"]
+
                 await client.send(data)
             except KeyError:
                 pass
+    # async def send_data(self, client, data):
+    #         try:
+    #             await client.send(data)
+    #         except KeyError:
+    #             pass
 
 
 class ServerConfig(BaseModel):
