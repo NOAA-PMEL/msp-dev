@@ -131,3 +131,12 @@ class DAQEvent(envdsEvent):
             data=data,
             extra_header=extra_header,
         )
+
+    @staticmethod
+    def create_controller_control_request(source: str, data: dict = {}, extra_header: dict = None):
+        return DAQEvent.create(type=et.controller_control_request(), source=source, data=data, extra_header=extra_header)
+    
+    @staticmethod
+    def create_controller_control_update(source: str, data: dict = {}, extra_header: dict = None):
+        return DAQEvent.create(type=et.controller_control_update(), source=source, data=data, extra_header=extra_header)
+    

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synaccess-np05b-config
+  namespace: msp
+  labels:
+    app: synaccess-np05b
+data:
+  controller.conf: |
+    uid: syn11
+    # serial_number: "1234"
+    # daq_id: clearsky
+    # host: 10.55.179.11
+    paths:
+      port-1:
+          host: 10.55.179.11
+          port: 23 # if omitted, default is used
+      port-2:
+          host: 'mqtt.default'
+          port: 1883 # if omitted, default is used
+          subscriptions: ['websocket_topic'] # mqtt topic to listen on for web interface commands
