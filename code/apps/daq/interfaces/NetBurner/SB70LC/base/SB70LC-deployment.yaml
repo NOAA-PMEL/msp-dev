@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netburner-sb70lc
+  namespace: msp
+  labels:
+    app: netburner-sb70lc
+spec:
+  selector:
+    matchLabels:
+      app: netburner-sb70lc
+  template:
+    metadata:
+      labels:
+        app: netburner-sb70lc
+    spec:
+      containers:
+      - name: netburner-sb70lc
+        image: registry-msp:5000/msp/interface/netburner-sb70lc:0.1.0
+        imagePullPolicy: "Always"
+        env:
+          - name: ENVDS_ENV_ID
+            value: mspbase01
+          - name: REDIS_OM_URL
+            value: redis://redis.default
+          - name: LOG_LEVEL
+            value: DEBUG
+        resources:
+          requests:
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - name: http
+          containerPort: 9080
+          protocol: TCP
+        # - name: https
+        #   containerPort: 8883
+        #   protocol: TCP
+        volumeMounts:
+            - name: netburner-sb70lc-config
+              mountPath: /app/config/interface.conf
+              subPath: interface.conf
+            # - name: mosquitto-certs
+            #   mountPath: /certs/ca.crt
+            #   subPath: ca.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.crt
+            #   subPath: server.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.key
+            #   subPath: server.key
+      volumes:
+        - name: netburner-sb70lc-config
+          configMap:
+            name: netburner-sb70lc-config
+        # - name: mosquitto-certs
+        #   configMap:
+        #     name: mosquitto-certs
