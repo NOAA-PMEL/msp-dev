@@ -84,7 +84,8 @@ class MessageClient(ABC):
         # self.run_task_list.append(asyncio.create_task(self.publisher()))
         # self.run_task_list.append(asyncio.create_task(self.run()))
 
-    async def send(self, data: Message):
+    # async def send(self, data: Message):
+    async def send(self, data: CloudEvent):
         await self.pub_data.put(data)
         if self.pub_data.qsize() > self.queue_size_limit:
             self.logger.warn(
@@ -97,7 +98,8 @@ class MessageClient(ABC):
     async def publisher(self):
         pass
 
-    async def get(self) -> Message:
+    # async def get(self) -> Message:
+    async def get(self) -> CloudEvent:
         return await self.sub_data.get()
 
     async def run(self):
@@ -204,10 +206,12 @@ class MQTTMessageClient(MessageClient):
                         if self.do_run:
                             # print(f"listen: {self.do_run}, {self.connected}")
                             self.logger.debug("mqtt client:", extra={"payload": from_json(message.payload)})
-                            msg = Message(
-                                data=from_json(message.payload),
-                                source_path=message.topic,
-                            )
+                            # msg = Message(
+                            #     data=from_json(message.payload),
+                            #     source_path=message.topic,
+                            # )
+                            msg = from_json(message.payload)
+                            msg["source_path"] = message.topic
                             # self.logger.debug(
                             #     "mqtt receive message:", extra={"data": msg.data}
                             # )
@@ -252,7 +256,8 @@ class MQTTMessageClient(MessageClient):
                 msg = await self.pub_data.get()
                 # print(f"msg = {msg}")
                 # print(f"publisher:msg: {msg}")
-                print(f"msg: {msg.dest_path}")#, {to_json(msg.data)}")
+                # print(f"msg: {msg.dest_path}")#, {to_json(msg.data)}")
+                print(f"msg: {msg['dest_path']}")#, {to_json(msg.data)}")
                 # print(f"msg: {msg.dest_path}, {to_json(msg.data)}")
                 # print(msg.keys())
                 # print(f"msg type: {type(msg.data)}")
@@ -261,11 +266,14 @@ class MQTTMessageClient(MessageClient):
                 # payload = bpayload.decode()
                 # print(f"payload = {payload}")
                 try:
-                    dest_path = msg.dest_path
+                    # dest_path = msg.dest_path
+                    dest_path = msg["dest_path"]
                     if dest_path[0] != "/":
                         dest_path = f"/{dest_path}"
-                    await self.client.publish(dest_path, payload=to_json(msg.data))
-                    self.logger.debug("MQTT.publisher", extra={"dest_path": dest_path, "payload": to_json(msg.data), "client": self.client})
+                    # await self.client.publish(dest_path, payload=to_json(msg.data))
+                    await self.client.publish(dest_path, payload=to_json(msg))
+                    # self.logger.debug("MQTT.publisher", extra={"dest_path": dest_path, "payload": to_json(msg.data), "client": self.client})
+                    self.logger.debug("MQTT.publisher", extra={"dest_path": dest_path, "payload": to_json(msg), "client": self.client})
                     # await self.client.publish(msg.dest_path, payload=payload)
                 except MqttError as error:
                     self.logger.error("MQTT Client - MQTTError", extra={"error": error})
@@ -303,7 +311,9 @@ class MQTTMessageClient(MessageClient):
 
         # send a message to trigger the shutdown
         event = et.create_ping(source=f"{self.client_id}")
-        await self.send(Message(data=event, dest_path=f"mqtt/manage/{self.client_id}"))
+        # await self.send(Message(data=event, dest_path=f"mqtt/manage/{self.client_id}"))
+        event["dest_path"] = f"mqtt/manage/{self.client_id}"
+        await self.send(event)
         # self.client.disconnect()
         # await self.messages.aclose()
         # self.connected = False

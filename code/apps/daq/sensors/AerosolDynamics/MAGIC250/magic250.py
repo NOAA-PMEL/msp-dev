@@ -30,12 +30,12 @@ from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
-from envds.message.message import Message
+# from envds.message.message import Message
 
 # from envds.exceptions import envdsRunTransitionException
 
 # from typing import Union
-# from cloudevents.http import CloudEvent, from_dict, from_json
+from cloudevents.http import CloudEvent
 # from cloudevents.conversion import to_json, to_structured
 
 from pydantic import BaseModel
@@ -498,23 +498,29 @@ class MAGIC250(Sensor):
 
         self.logger.debug("iface_map", extra={"map": self.iface_map})
 
-    async def handle_interface_message(self, message: Message):
+    # async def handle_interface_message(self, message: Message):
+    async def handle_interface_message(self, message: CloudEvent):
         pass
 
-    async def handle_interface_data(self, message: Message):
+    # async def handle_interface_data(self, message: Message):
+    async def handle_interface_data(self, message: CloudEvent):
         await super(MAGIC250, self).handle_interface_data(message)
 
-        # self.logger.debug("interface_recv_data", extra={"data": message.data})
-        if message.data["type"] == det.interface_data_recv():
+        # self.logger.debug("interface_recv_data", extra={"data": message})
+        # if message.data["type"] == det.interface_data_recv():
+        if message["type"] == det.interface_data_recv():
             try:
-                path_id = message.data["path_id"]
+                # path_id = message.data["path_id"]
+                path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
                 # if path_id == "default":
                 if path_id == iface_path:
                     self.logger.debug(
-                        "interface_recv_data", extra={"data": message.data.data}
+                        # "interface_recv_data", extra={"data": message.data.data}
+                        "interface_recv_data", extra={"data": message.data}
                     )
-                    await self.default_data_buffer.put(message.data)
+                    # await self.default_data_buffer.put(message.data)
+                    await self.default_data_buffer.put(message)
             except KeyError:
                 pass
 
@@ -655,11 +661,13 @@ class MAGIC250(Sensor):
                         data=record,
                     )
                     dest_path = f"/{self.get_id_as_topic()}/data/update"
+                    event["dest_path"] = dest_path
                     self.logger.debug(
                         "default_data_loop",
                         extra={"data": event, "dest_path": dest_path},
                     )
-                    message = Message(data=event, dest_path=dest_path)
+                    # message = Message(data=event, dest_path=dest_path)
+                    message = event
                     # self.logger.debug("default_data_loop", extra={"m": message})
                     await self.send_message(message)
 

@@ -14,6 +14,7 @@ from envds.daq.event import DAQEvent
 from envds.daq.client import DAQClientConfig
 
 from envds.util.util import get_datetime, seconds_elapsed
+from cloudevents.http import CloudEvent
 
 
 class ControllerClientConfig(BaseModel):
@@ -276,14 +277,17 @@ class Controller(envdsBase):
                             data=self.status.get_status(),
                             extra_header=extra_header,
                         )
+                        event["dest_path"] = dest_path
                         self.logger.debug("status update", extra={"event": event})
-                        message = Message(data=event, dest_path=dest_path)
+                        # message = Message(data=event, dest_path=dest_path)
+                        message = event
                         await self.send_message(message)
             except Exception as e:
                 self.logger.error("client_registry_monitor", extra={"reg_error": e})
             await asyncio.sleep(2)
 
-    async def handle_config(self, message: Message):
+    # async def handle_config(self, message: Message):
+    async def handle_config(self, message: CloudEvent):
         # self.logger.debug("interface.handle_config", extra={"config": message.data})
 
         # if message.data["type"] == det.interface_config_request():
@@ -313,7 +317,8 @@ class Controller(envdsBase):
 
 
 
-    async def handle_status(self, message: Message):
+    # async def handle_status(self, message: Message):
+    async def handle_status(self, message: CloudEvent):
         # pass
 
         # self.logger.debug("handle_status:1", extra={"data": message.data})
@@ -323,18 +328,27 @@ class Controller(envdsBase):
         #     self.logger.debug("interface connection keepalive", extra={"source": message.data["source"]})
         #     # update connection registry
         # self.logger.debug("interface handle_status", extra={"data": message.data})
-        if message.data["type"] == det.controller_status_request():
+        
+        # if message.data["type"] == det.controller_status_request():
+        if message["type"] == det.controller_status_request():
             try:
-                client_id = message.data["path_id"]
-                source = message.data["source"]
+                # client_id = message.data["path_id"]
+                # source = message.data["source"]
+                # # source_path = message["source_path"]
+                # state = message.data.data["state"]
+                # requested = message.data.data["requested"]
+                client_id = message["path_id"]
+                source = message["source"]
                 # source_path = message["source_path"]
-                state = message.data.data["state"]
-                requested = message.data.data["requested"]
+                state = message.data["state"]
+                requested = message.data["requested"]
+
 
                 # if state := message.data["state"] == envdsStatus.ENABLED:
                 if state == envdsStatus.ENABLED:
                     self.logger.debug(
-                        "interface status request", extra={"data": message.data}
+                        # "interface status request", extra={"data": message.data}
+                        "interface status request", extra={"data": message}
                     )
                     # self.update_client_registry(Message)
                     deregister = False
@@ -353,10 +367,12 @@ class Controller(envdsBase):
 
             except KeyError:
                 self.logger.error(
-                    "unknown interface status request", extra={"data": message.data}
+                    # "unknown interface status request", extra={"data": message.data}
+                    "unknown interface status request", extra={"data": message}
                 )
 
-    async def handle_keepalive(self, message: Message):
+    # async def handle_keepalive(self, message: Message):
+    async def handle_keepalive(self, message: CloudEvent):
         pass
 
         # if message.data["type"] == det.interface_keepalive_request():
@@ -391,7 +407,8 @@ class Controller(envdsBase):
         # self.logger.debug("update_recv_data", extra={"client_id": client_id, "data": data})
         dest_path = f"/{self.get_id_as_topic()}/{client_id}/data/update"
         # extra_header = {"source_path": id}
-        extra_header = {"path_id": client_id}
+        # extra_header = {"path_id": client_id}
+        extra_header = {"path_id": client_id, "dest_path": dest_path}
         # event = DAQEvent.create_data_update(
         event = DAQEvent.create_controller_data_recv(
             # source="envds.core", data={"test": "one", "test2": 2}
@@ -400,36 +417,58 @@ class Controller(envdsBase):
             extra_header=extra_header,
         )
         self.logger.debug("data update", extra={"event": event})
-        message = Message(data=event, dest_path=dest_path)
+        # message = Message(data=event, dest_path=dest_path)
+        message = event
         await self.send_message(message)
     
     async def send_data(self, event: DAQEvent):
         pass
 
-    async def handle_data(self, message: Message):
+    # async def handle_data(self, message: Message):
+    async def handle_data(self, message: CloudEvent):
 
         # await super(Interface, self).handle_data(message)
 
         # TODO: handle send data
-        print(f"handle_data: {message.data}")
-        if message.data["type"] == det.controller_data_send():
+        # print(f"handle_data: {message.data}")
+        print(f"handle_data: {message}")
+        # if message.data["type"] == det.controller_data_send():
+        #     self.logger.debug(
+        #         "controller_data_send",
+        #         extra={"data": message.data.data},
+        #     )
+        #     self.logger.debug("handle_data", extra={"md": message.data})
+        #     await self.send_data(message.data)
+        #     self.logger.debug("handle_data sent", extra={"md": message.data})
+        if message["type"] == det.controller_data_send():
             self.logger.debug(
                 "controller_data_send",
-                extra={"data": message.data.data},
+                extra={"data": message.data},
             )
-            self.logger.debug("handle_data", extra={"md": message.data})
-            await self.send_data(message.data)
-            self.logger.debug("handle_data sent", extra={"md": message.data})
+            self.logger.debug("handle_data", extra={"md": message})
+            await self.send_data(message)
+            self.logger.debug("handle_data sent", extra={"md": message})
 
-    async def handle_controls(self, message: Message):
-        if message.data["type"] == det.controller_control_request():
+
+
+    # async def handle_controls(self, message: Message):
+    async def handle_controls(self, message: CloudEvent):
+        # if message.data["type"] == det.controller_control_request():
+        #     self.logger.debug(
+        #         "controller_webinterface_command",
+        #         extra={"data": message.data.data},
+        #     )
+        #     self.logger.debug("webinterface_command", extra={"md": message.data})
+        #     await self.send_data(message.data)
+        #     self.logger.debug("webinterface_command sent", extra={"md": message.data})
+        if message["type"] == det.controller_control_request():
             self.logger.debug(
                 "controller_webinterface_command",
-                extra={"data": message.data.data},
+                extra={"data": message.data},
             )
-            self.logger.debug("webinterface_command", extra={"md": message.data})
-            await self.send_data(message.data)
-            self.logger.debug("webinterface_command sent", extra={"md": message.data})
+            self.logger.debug("webinterface_command", extra={"md": message})
+            await self.send_data(message)
+            self.logger.debug("webinterface_command sent", extra={"md": message})
 
 
     async def client_monitor(self):
@@ -514,7 +553,7 @@ class Controller(envdsBase):
 
                         topic_base = self.get_id_as_topic()
                         dest_path = f"{topic_base}/{id}/status/update"
-                        extra_header = {"path_id": id}
+                        extra_header = {"path_id": id, "dest_path": dest_path}
                         event = DAQEvent.create_controller_status_update(
                             # source="envds.core", data={"test": "one", "test2": 2}
                             source=self.get_id_as_source(),
@@ -523,7 +562,8 @@ class Controller(envdsBase):
                         )
                         self.logger.debug("send_controller_status_update", extra={"event": event})
                         # message = Message(data=event, dest_path="/envds/status/update")
-                        message = Message(data=event, dest_path=dest_path)
+                        # message = Message(data=event, dest_path=dest_path)
+                        message = event
                         await self.send_message(message)
                         # self.logger.debug("heartbeat", extra={"msg": message})
 
