@@ -644,7 +644,8 @@ class envdsBase(abc.ABC):
     # async def handle_status(self, message: Message):
     async def handle_status(self, message: CloudEvent):
 
-        if message.data["type"] == et.status_request():
+        # if message.data["type"] == et.status_request():
+        if message["type"] == et.status_request():
             self.logger.debug("handle_status", extra={"type": et.status_request()})
             # return status request
         pass
@@ -715,7 +716,7 @@ class envdsBase(abc.ABC):
             #     continue
             # self.logger.debug("message_handler", extra={"q": self.rec_buffer.qsize()})
             msg = await self.rec_buffer.get()
-            self.logger.debug("message_handler", extra={"msg type": type(msg)})
+            # self.logger.debug("message_handler", extra={"msg type": type(msg)})
             try:
                 # print(f"message_handler: {msg}")
                 # route = self.router.get_event_route(msg.data)

@@ -30,7 +30,7 @@ from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
-from envds.message.message import Message
+# from envds.message.message import Message
 
 # from envds.exceptions import envdsRunTransitionException
 
@@ -506,8 +506,9 @@ class MAGIC250(Sensor):
     async def handle_interface_data(self, message: CloudEvent):
         await super(MAGIC250, self).handle_interface_data(message)
 
-        # self.logger.debug("interface_recv_data", extra={"data": message.data})
-        if message.data["type"] == det.interface_data_recv():
+        # self.logger.debug("interface_recv_data", extra={"data": message})
+        # if message.data["type"] == det.interface_data_recv():
+        if message["type"] == det.interface_data_recv():
             try:
                 # path_id = message.data["path_id"]
                 path_id = message["path_id"]

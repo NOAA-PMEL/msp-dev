@@ -2,7 +2,7 @@ from envds.daq.device import Device
 from envds.core import envdsStatus
 import asyncio
 from envds.exceptions import envdsRunTransitionException, envdsRunWaitException, envdsRunErrorException
-from envds.message.message import Message
+# from envds.message.message import Message
 from envds.daq.types import DAQEventType as det
 from cloudevents.http import CloudEvent
 

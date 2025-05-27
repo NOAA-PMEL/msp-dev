@@ -11,7 +11,7 @@ from pydantic import BaseModel, ValidationError, validator
 from typing import Any
 from cloudevents.http import CloudEvent
 from envds.core import envdsBase, envdsAppID, envdsStatus
-from envds.message.message import Message
+# from envds.message.message import Message
 from envds.daq.event import DAQEvent
 from envds.daq.types import DAQEventType as det
 from envds.exceptions import envdsRunTransitionException, envdsRunWaitException, envdsRunErrorException

@@ -432,7 +432,7 @@ class Interface(envdsBase):
         # if message.data["type"] == det.interface_status_request():
         #     self.logger.debug("interface connection keepalive", extra={"source": message.data["source"]})
         #     # update connection registry
-        # self.logger.debug("interface handle_status", extra={"data": message.data})
+        self.logger.debug("interface handle_status", extra={"data": message})
         # if message.data["type"] == det.interface_status_request():
         if message["type"] == det.interface_status_request():
             try:
@@ -446,6 +446,7 @@ class Interface(envdsBase):
                 # source_path = message["source_path"]
                 state = message.data["state"]
                 requested = message.data["requested"]
+                self.logger.debug("interface handle_status2", extra={"data": message})
 
                 # if state := message.data["state"] == envdsStatus.ENABLED:
                 if state == envdsStatus.ENABLED:
@@ -539,7 +540,7 @@ class Interface(envdsBase):
 
         # TODO: handle send data
         # print(f"handle_data: {message.data}")
-        print(f"handle_data: {message}")
+        # print(f"handle_data: {message}")
         # if message.data["type"] == det.interface_data_send():
         #     self.logger.debug(
         #         "interface_data_send",
