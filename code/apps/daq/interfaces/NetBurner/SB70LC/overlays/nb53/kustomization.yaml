@@ -20,6 +20,6 @@ resources:
 - ../../base
 - SB70LC-configmap.yaml
 
-nameSuffix: -nb53
+nameSuffix: -nb52
 # patchesStrategicMerge:
 #   - deployment.yaml
