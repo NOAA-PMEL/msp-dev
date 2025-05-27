@@ -21,6 +21,7 @@ from envds.event.types import BaseEventType as et
 
 from envds.message.client import MessageClientManager
 from envds.exceptions import envdsRunTransitionException, envdsRunErrorException, envdsRunWaitException
+from cloudevents.http import CloudEvent, from_dict, from_json
 
 
 class envdsLogger(object):
@@ -447,13 +448,15 @@ class envdsBase(abc.ABC):
         self.buffer_tasks.append(self.loop.create_task(self.rec_message_loop()))
         self.buffer_tasks.append(self.loop.create_task(self.message_handler()))
 
-    async def handle_message(self, message: Message):
+    # async def handle_message(self, message: Message):
+    async def handle_message(self, message: CloudEvent):
         """
         Fallback/default message handler for when there is no route
         """
         self.logger.debug(
             "handle_message",
-            extra={"source_path": message.source_path, "data": message.data},
+            # extra={"source_path": message.source_path, "data": message.data},
+            extra={"source_path": message["source_path"], "data": message},
         )
         pass
 
@@ -638,18 +641,21 @@ class envdsBase(abc.ABC):
         self.status.set_actual(envdsStatus.ENABLED, envdsStatus.FALSE)
         self.logger.debug("do_disable complete", extra={"status": self.status.get_status()})
 
-    async def handle_status(self, message: Message):
+    # async def handle_status(self, message: Message):
+    async def handle_status(self, message: CloudEvent):
 
         if message.data["type"] == et.status_request():
             self.logger.debug("handle_status", extra={"type": et.status_request()})
             # return status request
         pass
 
-    async def handle_control(self, message: Message):
+    # async def handle_control(self, message: Message):
+    async def handle_control(self, message: CloudEvent):
         pass
 
     # def handle_data(self, message: Message):
-    #     pass
+    def handle_data(self, message: CloudEvent):
+        pass
 
     async def send_message(self, message, **extra):
         if message:
@@ -657,7 +663,8 @@ class envdsBase(abc.ABC):
             # data = {"message": message}
             # for key, val in extra.items():
             #     data[key] = val
-            self.logger.debug(f"send_message: {message.data}")
+            # self.logger.debug(f"send_message: {message.data}")
+            self.logger.debug(f"send_message: {message}")
             # # self.logger.debug(f"{self.message_client}")
 
             # # await self.message_client.send(message)
@@ -687,7 +694,8 @@ class envdsBase(abc.ABC):
             # self.logger.debug("rec_message_loop")
             if self.message_client:
                 data = await self.message_client.get()
-                self.logger.debug("rec_message_loop", extra={"recv_data": data.data})
+                # self.logger.debug("rec_message_loop", extra={"recv_data": data.data})
+                self.logger.debug("rec_message_loop", extra={"recv_data": data})
                 await self.rec_buffer.put(data)
                 self.logger.debug("rec_message_loop", extra={"q": self.rec_buffer.qsize()})
 
@@ -713,7 +721,10 @@ class envdsBase(abc.ABC):
                 # route = self.router.get_event_route(msg.data)
                 # print(f"message_handler: {type(msg)}, {msg.data['type']}")
                 # self.logger.debug("message_handler:1", extra={"data": msg.data})
-                route = self.router.route_event(msg.data)
+                
+                # route = self.router.route_event(msg.data)
+                route = self.router.route_event(msg)
+                
                 # self.logger.debug("message_handler:2", extra={"route": route})
                 if route:
                     # self.logger.debug("message_handler:3")
@@ -729,7 +740,8 @@ class envdsBase(abc.ABC):
             except (TypeError, KeyError, Exception) as e:
                 self.logger.warn(
                     "messages not in standard format, override 'message_handler'",
-                    extra={"data": msg.data, "message_error": e}
+                    # extra={"data": msg.data, "message_error": e}
+                    extra={"data": msg, "message_error": e}
                 )
             await asyncio.sleep(0.01)
 
@@ -744,10 +756,12 @@ class envdsBase(abc.ABC):
             # source="envds.core", data={"test": "one", "test2": 2}
             source=self.get_id_as_source(),
             data=self.status.get_status(),
+            extra_header={"dest_path": f"{topic_base}/status/update"}
         )
         self.logger.debug("send_status_update", extra={"event": event})
         # message = Message(data=event, dest_path="/envds/status/update")
-        message = Message(data=event, dest_path=f"{topic_base}/status/update")
+        # message = Message(data=event, dest_path=f"{topic_base}/status/update")
+        message = event
         await self.send_message(message)
         # self.logger.debug("heartbeat", extra={"msg": message})
 

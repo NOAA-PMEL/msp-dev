@@ -4,6 +4,7 @@ import asyncio
 from envds.exceptions import envdsRunTransitionException, envdsRunWaitException, envdsRunErrorException
 from envds.message.message import Message
 from envds.daq.types import DAQEventType as det
+from cloudevents.http import CloudEvent
 
 
 
@@ -26,15 +27,19 @@ class Sensor(Device):
         super(Sensor, self).configure()
         pass
 
-    async def handle_status(self, message: Message):
+    # async def handle_status(self, message: Message):
+    async def handle_status(self, message: CloudEvent):
         await super().handle_status(message)
-        if message.data["type"] == det.status_request():
+        # if message.data["type"] == det.status_request():
+        if message["type"] == det.status_request():
             try:
                 # self.logger.debug("handle_status", extra={"data.data": message.data.data})
-                state = message.data.data.get("state", None)
+                # state = message.data.data.get("state", None)
+                state = message.data.get("state", None)
                 # self.logger.debug("handle_status", extra={"type": det.status_request(), "state": state})
                 if state and state == self.SAMPLING:
-                    requested = message.data.data.get("requested", None)
+                    # requested = message.data.data.get("requested", None)
+                    requested = message.data.get("requested", None)
                     # self.logger.debug("handle_status", extra={"type": det.status_request(), "state": state, "requested": requested})
                     if requested:
                         # self.logger.debug("handle_status", extra={"type": det.status_request(), "state": state, "requested": requested})
