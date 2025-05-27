@@ -5,12 +5,12 @@ on:
   push:
     branches: [ dev-* ]
     paths:
-      - 'code/apps/daq/interface/USconverters/USCDR301/**'
+      - 'code/apps/daq/interfaces/USconverters/USCDR301/**'
   
   pull_request:
     branches: [main, dev-*]
     paths:
-      - 'code/apps/daq/interface/USconverters/USCDR301/**'
+      - 'code/apps/daq/interfaces/USconverters/USCDR301/**'
 
 env:
   REGISTRY: ghcr.io
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
         run:
-            working-directory: './code/apps/daq/interface/USconverters/USCDR301'
+            working-directory: './code/apps/daq/interfaces/USconverters/USCDR301'
       
     permissions:
         contents: read
