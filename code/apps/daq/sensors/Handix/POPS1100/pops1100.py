@@ -46,7 +46,7 @@ task_list = []
 
 
 class POPS1100(Sensor):
-    """docstring for MAGIC250."""
+    """docstring for POPS1100."""
 
     metadata = {
         "attributes": {
@@ -62,22 +62,30 @@ class POPS1100(Sensor):
                 "data": "aerosol, particles, concentration, sensor, sizing, size distribution",
             },
             "format_version": {"type": "char", "data": "1.0.0"},
+            "variable_types": {"type": "string", "data": "main, setting, calibration"}
         },
         "variables": {
             "time": {
                 "type": "str",
                 "shape": ["time"],
-                "attributes": {"long_name": {"type": "string", "data": "Time"}},
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "string", "data": "Time"}
+                },
             },
             "POPS_ID": {
                 "type": "str",
                 "shape": ["time"],
-                "attributes": {"long_name": {"type": "string", "data": "POPS ID"}},
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "string", "data": "POPS ID"}
+                },
             },
             "POPS_DateTime": {
                 "type": "str",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "string", "data": "POPS DateTime string"}
                 },
             },
@@ -85,6 +93,7 @@ class POPS1100(Sensor):
                 "type": "str",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "string", "data": "Internal Timestamp"}
                 },
             },
@@ -92,6 +101,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Seconds since midngight"},
                     "units": {"type": "char", "data": "sec"},
                 },
@@ -100,6 +110,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Status"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -108,6 +119,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Data status"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -116,6 +128,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Particle counts"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -124,6 +137,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Sum of particle count histogram"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -132,6 +146,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Particle concentration"},
                     "units": {"type": "char", "data": "cm-3"},
                 },
@@ -140,6 +155,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Current baseline of detector"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -148,6 +164,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Current threshold for particle counting"},
                     "description": {
                         "type": "char",
@@ -160,6 +177,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Current standard deviation of baseline"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -168,6 +186,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Maximum standard deviation of baseline"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -176,6 +195,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Ambient pressure measured on POPS Cape"},
                     "units": {"type": "char", "data": "hPa"},
                 },
@@ -184,6 +204,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "On-board temperature measured on POPS Cape"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -192,6 +213,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Pump Life"},
                     "units": {"type": "char", "data": "hour"},
                 },
@@ -200,6 +222,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Width of standard deviation of baseline"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -208,6 +231,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Average of width"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -216,6 +240,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Current sample flow rate"},
                     "units": {"type": "char", "data": "cm3 s-1"},
                 },
@@ -224,6 +249,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Pump feedback"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -232,6 +258,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Laser diode board temperature"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -240,6 +267,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Laser diode feedback"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -248,6 +276,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Laser diode output power monitor"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -256,6 +285,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "External thermistor value"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
@@ -264,6 +294,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Battery or input DC power voltage"},
                     "units": {"type": "char", "data": "volt"},
                 },
@@ -272,6 +303,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Laser diode current"},
                     "units": {"type": "char", "data": "count"},
                     # "valid_min": {"type": "float", "data": 0.0},
@@ -282,6 +314,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Pump voltage set point"},
                     "units": {"type": "char", "data": "volt"},
                 },
@@ -290,6 +323,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Starting point for baseline value determination",
@@ -301,6 +335,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Threshold multiplier for determining valid particle counts",
@@ -312,6 +347,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Number of bins for particle raw peak signal distributions",
@@ -323,6 +359,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Power of 10 for lowest particle signal bin"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -331,6 +368,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Power of 10 for largest particle signal bin"},
                     "units": {"type": "char", "data": "count"},
                 },
@@ -339,6 +377,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Value of the “skip_save” parameter set in configuration file",
@@ -350,6 +389,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Minimum number of peak points above threshold to be considered valid particle count",
@@ -361,6 +401,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Maximum number of peak points above threshold to be considered valid particle count",
@@ -372,6 +413,7 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
                         "data": "Number of points saved for any raw data recorded",
@@ -383,6 +425,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time", "diameter"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Diameter"},
                     "units": {"type": "char", "data": "nm"},
                 },
@@ -391,6 +434,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time", "diameter"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Lower bound of bin diameter"},
                     "units": {"type": "char", "data": "nm"},
                 },
@@ -399,6 +443,7 @@ class POPS1100(Sensor):
                 "type": "float",
                 "shape": ["time", "diameter"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Upper bound of bin diameter"},
                     "units": {"type": "char", "data": "nm"},
                 },
@@ -407,25 +452,25 @@ class POPS1100(Sensor):
                 "type": "int",
                 "shape": ["time", "diameter"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Raw bin counts for each diameter"},
                     "units": {"type": "char", "data": "nm"},
                 },
             },
-        },
-        "settings": {
-            # "pump_power": {
-            #     "type": "int",
-            #     "shape": ["time"],
-            #     "attributes": {
-            #         "long_name": {"type": "char", "data": "Pump Power"},
-            #         "units": {"type": "char", "data": "count"},
-            #         "valid_min": {"type": "int", "data": 0},
-            #         "valid_max": {"type": "int", "data": 1},
-            #         "step_increment": {"type": "int", "data": 1},
-            #         "default_value": {"type": "int", "data": 1},
-            #     },
-            # },
-        },
+            "pump_power": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "setting"},
+                    "long_name": {"type": "char", "data": "Pump Power"},
+                    "units": {"type": "char", "data": "count"},
+                    "valid_min": {"type": "int", "data": 0},
+                    "valid_max": {"type": "int", "data": 1},
+                    "step_increment": {"type": "int", "data": 1},
+                    "default_value": {"type": "int", "data": 1},
+                },
+            }
+        }
     }
 
     def __init__(self, config=None, **kwargs):
