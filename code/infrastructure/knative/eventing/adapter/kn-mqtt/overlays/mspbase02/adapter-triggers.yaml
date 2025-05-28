@@ -1,0 +1,35 @@
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: kn-mqtt-adapter-data-request
+  namespace: msp-events
+spec:
+  broker: msp-events-broker
+  filter:
+    attributes:
+      type: sensor.data.request
+  subscriber:
+    ref:
+      apiVersion: v1
+      kind: Service
+      name: kn-mqtt-adapter
+      namespace: msp-events
+    uri: /mqtt/send
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: kn-mqtt-adapter-control-request
+  namespace: msp-events
+spec:
+  broker: msp-events-broker
+  filter:
+    attributes:
+      type: sensor.control.request
+  subscriber:
+    ref:
+      apiVersion: v1
+      kind: Service
+      name: kn-mqtt-adapter
+      namespace: msp-events
+    uri: /mqtt/send
