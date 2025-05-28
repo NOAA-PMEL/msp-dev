@@ -20,11 +20,12 @@ from cloudevents.pydantic import CloudEvent
 # from typing import Union
 import httpx
 from logfmter import Logfmter
-from pydantic import BaseModel, BaseSettings, Field
+from pydantic import BaseModel, BaseSettings, Field, List
 
 from ulid import ULID
 from aiomqtt import Client, MqttError
 
+import envds.message.client as emc
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -34,12 +35,10 @@ L.setLevel(logging.INFO)
 
 
 class Settings(BaseSettings):
-    # mqtt_broker: str = 'localhost'
     mqtt_broker: str = 'mosquitto.default'
-    # mqtt_port: int = 1883
     mqtt_port: int = 1883
     mqtt_topic_filter: str = 'aws-id/acg-daq/+'
-    mqtt_topic_subscription: str = 'aws-id/#'
+    mqtt_topic_subscriptions: List[str] = ['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
     # mqtt_client_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     mqtt_client_id: str = Field(str(ULID()))
     knative_broker: str = 'http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default'
@@ -76,34 +75,65 @@ class KNMQTTClient():
 
         self.run = False
         self.client = None
-        self.recv_buffer = asyncio.Queue()
-        self.send_buffer = asyncio.Queue()
+        self.connected = False
+        self.to_kn_buffer = asyncio.Queue()
+        self.to_mqtt_buffer = asyncio.Queue()
 
-        asyncio.create_task(self.listen())
+        asyncio.create_task(self.send_to_knbroker_loop())
+        asyncio.create_task(self.send_to_mqtt_loop())
 
 
-    async def listen(self):
-        reconnect = 3
+    def configure(self):
+        pass
+
+    def run(self):
+        self.client = emc.MessageClientManager.create(
+            config=emc.MQTTClientConfig(
+                type="mqtt",
+                config={"hostname": self.config.mqtt_broker, "port": self.config.mqtt_port}
+            )
+        )
+        for topic in self.config.mqtt_topic_subscriptions:
+            self.client.subscribe(topic)
+
+        self.run = True
+
+    # listen for mqtt messages
+    async def send_to_knbroker_loop(self):
+
         while True:
+            ce = await self.client.get()
+            L.debug("listen", extra={"mqtt": ce})
             try:
-                L.debug("listen", extra={"config": self.config})
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as self.client:
-                    await self.client.subscribe(self.config.mqtt_topic_subscription, qos=2)
-                    async for message in self.client.messages:
-                        ce = message.payload.decode()
-                        topic = message.topic
-                        try:
-                            L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
-                            await self.send_to_knbroker(ce, topic)
-                        except Exception as e:
-                            L.error("Error sending to knbroker")
-            except MqttError as error:
-                L.error(
-                    f'{error}. Trying again in {reconnect} seconds',
-                    extra={ k: v for k, v in config.dict().items() if k.lower().startswith('mqtt_') }
-                )
-            finally:
-                await asyncio.sleep(reconnect)
+                await self.send_to_knbroker(ce)
+            except Exception as e:
+                L.error("Error sending to knbroker", extra={"reason": e})
+
+        # reconnect = 3
+        # while True:
+        #     try:
+        #         L.debug("listen", extra={"config": self.config})
+        #         async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as self.client:
+        #             for topic in config.mqtt_topic_subscriptions:
+        #                 await self.client.subscribe(topic, qos=2)
+        #             self.connected = True
+        #             async for message in self.client.messages:
+        #                 ce = message.payload.decode()
+        #                 topic = message.topic
+        #                 ce["source_path"] = topic
+        #                 try:
+        #                     L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
+        #                     await self.send_to_knbroker(ce)
+        #                 except Exception as e:
+        #                     L.error("Error sending to knbroker")
+        #     except MqttError as error:
+        #         self.connected = False
+        #         L.error(
+        #             f'{error}. Trying again in {reconnect} seconds',
+        #             extra={ k: v for k, v in config.dict().items() if k.lower().startswith('mqtt_') }
+        #         )
+        #     finally:
+        #         await asyncio.sleep(reconnect)
 
                 
             # async with self.client.messages() as messages:
@@ -127,7 +157,7 @@ class KNMQTTClient():
     #         message = await self.recv_buffer.get()
     #         await self.send_to_knbroker(message)
 
-    async def send_to_knbroker(self, ce: CloudEvent, topic: str): #, template):
+    async def send_to_knbroker(self, ce: CloudEvent): #, template):
             
             if self.config.validation_required:
                 # wrap in verification cloud event
@@ -159,10 +189,19 @@ class KNMQTTClient():
                     L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
 
     async def send_to_mqtt(self, ce: CloudEvent):
+        await self.to_mqtt_buffer.put(ce)
+
+    async def send_to_mqtt_loop(self):
         # put the data back on MQTT broker
         # TODO this function will have to infer? the topic
+        while True:
+            ce = await self.to_mqtt_buffer.get()
+            try:
+                dest_path = ce["dest_path"]
+                await self.client.send(ce)
+            except Exception as e:
+                L.error("send_to_mqtt", extra={"reason": e})    
 
-        pass
 
     # def run(self):
     #     self.run = True
@@ -214,6 +253,7 @@ class KNMQTTClient():
 #     custom: dict | None = None
 
 adapter = KNMQTTClient(config)
+adapter.run()
 
 @app.get("/")
 async def root():
@@ -240,8 +280,7 @@ async def root():
 #Accept data from Knative system and publish to MQTT broker
 @app.post("/mqtt/send")
 async def mqtt_send(ce: CloudEvent):
-
-    pass
+    await adapter.send_to_mqtt(ce)
 
 
 # @app.post("/data/update")

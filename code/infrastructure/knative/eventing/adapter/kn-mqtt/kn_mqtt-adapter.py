@@ -14,8 +14,6 @@ from cloudevents.exceptions import InvalidStructuredJSON
 
 import uvicorn
 
-import envds.message.client as emc
-
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
