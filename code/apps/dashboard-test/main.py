@@ -293,8 +293,11 @@ class WebInterfaceManager():
                 source=data['device'],
                 data=data
             )
-            message = Message(data=event, dest_path=dest_path)
-            print('message', message.data)
+            event["dest_path"] = dest_path
+            # message = Message(data=event, dest_path=dest_path)
+            message = event
+            # print('message', message.data)
+            print('message', message)
             # await self.send_message(message)
             # self.logger.debug("message sent")
             return message

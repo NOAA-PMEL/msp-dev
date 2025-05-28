@@ -172,3 +172,7 @@ cython_debug/
 
 # master secrets repo for deployment as sealedsecrets
 secrets/**
+
+# allow envds lib code to gh for now
+code/envds/envds/lib
+!code/**/lib 

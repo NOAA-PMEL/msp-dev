@@ -5,12 +5,12 @@ on:
   push:
     branches: [ dev-* ]
     paths:
-      - 'code/apps/daq/sensor/AerosolDynamics/MAGIC250/**'
+      - 'code/apps/daq/sensors/AerosolDynamics/MAGIC250/**'
   
   pull_request:
     branches: [main, dev-*]
     paths:
-      - 'code/apps/daq/sensor/AerosolDynamics/MAGIC250/**'
+      - 'code/apps/daq/sensors/AerosolDynamics/MAGIC250/**'
 
 env:
   REGISTRY: ghcr.io
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
         run:
-            working-directory: './code/apps/daq/sensor/AerosolDynamics/MAGIC250'
+            working-directory: './code/apps/daq/sensors/AerosolDynamics/MAGIC250'
       
     permissions:
         contents: read

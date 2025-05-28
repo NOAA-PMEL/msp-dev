@@ -20,6 +20,7 @@ from envds.daq.client import DAQClientConfig
 
 
 from envds.util.util import get_datetime, seconds_elapsed
+from cloudevents.http import CloudEvent, from_dict, from_json
 
 
 class InterfaceClientConfig(BaseModel):
@@ -354,7 +355,7 @@ class Interface(envdsBase):
 
                         # send client status update
                         dest_path = f"{self.get_id_as_topic()}/{id}/status/update"
-                        extra_header = {"path_id": id}
+                        extra_header = {"path_id": id, "dest_path": dest_path}
                         event = DAQEvent.create_status_update(
                             # source="envds.core", data={"test": "one", "test2": 2}
                             source=self.get_id_as_source(),
@@ -362,7 +363,8 @@ class Interface(envdsBase):
                             extra_header=extra_header,
                         )
                         self.logger.debug("status update", extra={"event": event})
-                        message = Message(data=event, dest_path=dest_path)
+                        # message = Message(data=event, dest_path=dest_path)
+                        message = event
                         await self.send_message(message)
             except Exception as e:
                 self.logger.error("client_registry_monitor", extra={"reg_error": e})
@@ -387,14 +389,19 @@ class Interface(envdsBase):
 
     #         # parse message.data to get path and connect appropriate client
 
-    async def handle_config(self, message: Message):
-        self.logger.debug("interface.handle_config", extra={"config": message.data})
+    # async def handle_config(self, message: Message):
+    async def handle_config(self, message: CloudEvent):
+        # self.logger.debug("interface.handle_config", extra={"config": message.data})
+        self.logger.debug("interface.handle_config", extra={"config": message})
 
-        if message.data["type"] == det.interface_config_request():
+        # if message.data["type"] == det.interface_config_request():
+        if message["type"] == det.interface_config_request():
             try:
-                client_id = message.data["path_id"]
+                # client_id = message.data["path_id"]
+                client_id = message["path_id"]
                 # source = message.data["source"]
-                sensor_interface_properties = message.data.data["config"][
+                # sensor_interface_properties = message.data.data["config"][
+                sensor_interface_properties = message.data["config"][
                     "device-interface-properties"
                 ]
 
@@ -403,7 +410,8 @@ class Interface(envdsBase):
                 )
                 self.logger.debug("handle_config", extra={"client_map": self.client_map})
             except KeyError:
-                self.logger.error("handle_config error", extra={"data": message.data})
+                # self.logger.error("handle_config error", extra={"data": message.data})
+                self.logger.error("handle_config error", extra={"data": message})
 
         # self.logger.debug("handle_status:1", extra={"data": message.data})
         # await super(Interface, self).handle_status(message)
@@ -415,7 +423,8 @@ class Interface(envdsBase):
     #             self.enable()
     #         await asyncio.sleep(5)
 
-    async def handle_status(self, message: Message):
+    # async def handle_status(self, message: Message):
+    async def handle_status(self, message: CloudEvent):
 
         # self.logger.debug("handle_status:1", extra={"data": message.data})
         await super(Interface, self).handle_status(message)
@@ -423,19 +432,27 @@ class Interface(envdsBase):
         # if message.data["type"] == det.interface_status_request():
         #     self.logger.debug("interface connection keepalive", extra={"source": message.data["source"]})
         #     # update connection registry
-        # self.logger.debug("interface handle_status", extra={"data": message.data})
-        if message.data["type"] == det.interface_status_request():
+        self.logger.debug("interface handle_status", extra={"data": message})
+        # if message.data["type"] == det.interface_status_request():
+        if message["type"] == det.interface_status_request():
             try:
-                client_id = message.data["path_id"]
-                source = message.data["source"]
+                # client_id = message.data["path_id"]
+                # source = message.data["source"]
+                # # source_path = message["source_path"]
+                # state = message.data.data["state"]
+                # requested = message.data.data["requested"]
+                client_id = message["path_id"]
+                source = message["source"]
                 # source_path = message["source_path"]
-                state = message.data.data["state"]
-                requested = message.data.data["requested"]
+                state = message.data["state"]
+                requested = message.data["requested"]
+                self.logger.debug("interface handle_status2", extra={"data": message})
 
                 # if state := message.data["state"] == envdsStatus.ENABLED:
                 if state == envdsStatus.ENABLED:
                     self.logger.debug(
-                        "interface status request", extra={"data": message.data}
+                        # "interface status request", extra={"data": message.data}
+                        "interface status request", extra={"data": message}
                     )
                     # self.update_client_registry(Message)
                     deregister = False
@@ -454,16 +471,20 @@ class Interface(envdsBase):
 
             except KeyError:
                 self.logger.error(
-                    "unknown interface status request", extra={"data": message.data}
+                    # "unknown interface status request", extra={"data": message.data}
+                    "unknown interface status request", extra={"data": message}
                 )
 
-    async def handle_keepalive(self, message: Message):
+    # async def handle_keepalive(self, message: Message):
+    async def handle_keepalive(self, message: CloudEvent):
 
         if message.data["type"] == det.interface_keepalive_request():
 
             try:
-                client_id = message.data["path_id"]
-                source = message.data["source"]
+                # client_id = message.data["path_id"]
+                # source = message.data["source"]
+                client_id = message["path_id"]
+                source = message["source"]
                 # source_path = message["source_path"]
                 # state = message.data["state"]
                 # requested = message.data["requested"]
@@ -472,11 +493,13 @@ class Interface(envdsBase):
                 )
             except KeyError:
                 self.logger.error(
-                    "unknown keepalive request", extra={"data": message.data}
+                    # "unknown keepalive request", extra={"data": message.data}
+                    "unknown keepalive request", extra={"data": message}
                 )
 
             self.logger.debug(
-                "interface keepalive request", extra={"source": message.data["source"]}
+                # "interface keepalive request", extra={"source": message.data["source"]}
+                "interface keepalive request", extra={"source": message["source"]}
             )
             # self.update_client_registry(Message)
             # update connection registry
@@ -491,7 +514,8 @@ class Interface(envdsBase):
         # self.logger.debug("update_recv_data", extra={"client_id": client_id, "data": data})
         dest_path = f"/{self.get_id_as_topic()}/{client_id}/data/update"
         # extra_header = {"source_path": id}
-        extra_header = {"path_id": client_id}
+        # extra_header = {"path_id": client_id}
+        extra_header = {"path_id": client_id, "dest_path": dest_path}
         # event = DAQEvent.create_data_update(
         event = DAQEvent.create_interface_data_recv(
             # source="envds.core", data={"test": "one", "test2": 2}
@@ -500,7 +524,8 @@ class Interface(envdsBase):
             extra_header=extra_header,
         )
         self.logger.debug("data update", extra={"event": event})
-        message = Message(data=event, dest_path=dest_path)
+        # message = Message(data=event, dest_path=dest_path)
+        message = event
         await self.send_message(message)
 
     # @abc.abstractmethod
@@ -508,20 +533,30 @@ class Interface(envdsBase):
     async def send_data(self, event: DAQEvent):
         pass
 
-    async def handle_data(self, message: Message):
+    # async def handle_data(self, message: Message):
+    async def handle_data(self, message: CloudEvent):
 
         # await super(Interface, self).handle_data(message)
 
         # TODO: handle send data
-        print(f"handle_data: {message.data}")
-        if message.data["type"] == det.interface_data_send():
+        # print(f"handle_data: {message.data}")
+        # print(f"handle_data: {message}")
+        # if message.data["type"] == det.interface_data_send():
+        #     self.logger.debug(
+        #         "interface_data_send",
+        #         extra={"data": message.data.data},
+        #     )
+        #     self.logger.debug("handle_data", extra={"md": message.data})
+        #     await self.send_data(message.data)
+        #     self.logger.debug("handle_data sent", extra={"md": message.data})
+        if message["type"] == det.interface_data_send():
             self.logger.debug(
                 "interface_data_send",
-                extra={"data": message.data.data},
+                extra={"data": message.data},
             )
-            self.logger.debug("handle_data", extra={"md": message.data})
-            await self.send_data(message.data)
-            self.logger.debug("handle_data sent", extra={"md": message.data})
+            self.logger.debug("handle_data", extra={"md": message})
+            await self.send_data(message)
+            self.logger.debug("handle_data sent", extra={"md": message})
             # send data to appropriate client
 
     # async def registry_monitor(self):
@@ -635,7 +670,8 @@ class Interface(envdsBase):
 
                         topic_base = self.get_id_as_topic()
                         dest_path = f"{topic_base}/{id}/status/update"
-                        extra_header = {"path_id": id}
+                        # extra_header = {"path_id": id}
+                        extra_header = {"path_id": id, "dest_path": dest_path}
                         event = DAQEvent.create_interface_status_update(
                             # source="envds.core", data={"test": "one", "test2": 2}
                             source=self.get_id_as_source(),
@@ -644,7 +680,8 @@ class Interface(envdsBase):
                         )
                         self.logger.debug("send_interface_status_update", extra={"event": event})
                         # message = Message(data=event, dest_path="/envds/status/update")
-                        message = Message(data=event, dest_path=dest_path)
+                        # message = Message(data=event, dest_path=dest_path)
+                        message = event
                         await self.send_message(message)
                         # self.logger.debug("heartbeat", extra={"msg": message})
 

@@ -375,11 +375,14 @@ class envdsRegistrar(envdsBase):
         ]
         return (envdsRegistrar.ID_DELIM).join(parts)
 
-    async def handle_status(self, message: Message):
+    # async def handle_status(self, message: Message):
+    async def handle_status(self, message: CloudEvent):
         await super().handle_status(message)
 
-        if message.data["type"] == det.status_update():
-            self.logger.debug("handle_status", extra={"data": message.data})
+        # if message.data["type"] == det.status_update():
+        if message["type"] == det.status_update():
+            # self.logger.debug("handle_status", extra={"data": message.data})
+            self.logger.debug("handle_status", extra={"data": message})
 
     def load_sensor_definitions(self):
 
@@ -410,34 +413,43 @@ class envdsRegistrar(envdsBase):
         with open(fname, "w") as f:
             json.dump(self.sensor_definition_registry, f)
 
-    async def handle_data(self, message: Message):
+    # async def handle_data(self, message: Message):
+    async def handle_data(self, message: CloudEvent):
         # print(f"handle_data: {message.data}")
         # self.logger.debug("handle_data", extra={"data": message.data})
-        if message.data["type"] == det.data_update():
+        # if message.data["type"] == det.data_update():
+        if message["type"] == det.data_update():
             self.logger.debug(
                 "handle_data",
                 extra={
                     "type": det.data_update(),
-                    "data": message.data,
-                    "source_path": message.source_path,
+                    # "data": message.data,
+                    # "source_path": message.source_path,
+                    "data": message,
+                    "source_path": message["source_path"],
                 },
             )
 
             try:
                 # src = message.data["source"]
-                make = message.data.data["attributes"]["make"]["data"]
-                model = message.data.data["attributes"]["model"]["data"]
-                serial_number = message.data.data["attributes"]["serial_number"]["data"]
+                # make = message.data.data["attributes"]["make"]["data"]
+                # model = message.data.data["attributes"]["model"]["data"]
+                # serial_number = message.data.data["attributes"]["serial_number"]["data"]
+                make = message.data["attributes"]["make"]["data"]
+                model = message.data["attributes"]["model"]["data"]
+                serial_number = message.data["attributes"]["serial_number"]["data"]
                 if not await get_sensor_registration(make=make, model=model, serial_number=serial_number):
                         
                     await register_sensor(
                         make=make,
                         model=model,
                         serial_number=serial_number,
-                        source_id=message.data["source"],
+                        # source_id=message.data["source"],
+                        source_id=message["source"],
                     )
             except Exception as e:
-                self.logger.error("handle_data", extra={"error": e, "data": message.data.data})
+                # self.logger.error("handle_data", extra={"error": e, "data": message.data.data})
+                self.logger.error("handle_data", extra={"error": e, "data": message.data})
 
             # if src not in self.file_map:
             #     parts = src.split(".")
@@ -452,23 +464,31 @@ class envdsRegistrar(envdsBase):
             # # print(self.file_map[src].base_path)
             # await self.file_map[src].write_message(message)
 
-    async def handle_registry(self, message: Message):
+    # async def handle_registry(self, message: Message):
+    async def handle_registry(self, message: CloudEvent):
 
-        if message.data["type"] == det.sensor_registry_update():
+        # if message.data["type"] == det.sensor_registry_update():
+        if message["type"] == det.sensor_registry_update():
             self.logger.debug(
                 "handle_sensor_registry",
                 extra={
                     "type": det.sensor_registry_update(),
-                    "data": message.data,
-                    "source_path": message.source_path,
+                    # "data": message.data,
+                    # "source_path": message.source_path,
+                    "data": message,
+                    "source_path": message["source_path"],
                 },
             )
 
             await register_sensor(
-                make=message.data.data["make"],
-                model=message.data.data["model"],
-                serial_number=message.data.data["serial_number"],
-                source_id=message.data["source"],
+                # make=message.data.data["make"],
+                # model=message.data.data["model"],
+                # serial_number=message.data.data["serial_number"],
+                # source_id=message.data["source"],
+                make=message.data["make"],
+                model=message.data["model"],
+                serial_number=message.data["serial_number"],
+                source_id=message["source"],
             )
 
             # registry update will be for instance
@@ -494,23 +514,30 @@ class envdsRegistrar(envdsBase):
             # # print(self.file_map[src].base_path)
             # await self.file_map[src].write_message(message)
 
-        elif message.data["type"] == det.registry_bcast():
-            if message.data["source"] != self.get_id_as_source():
+        # elif message.data["type"] == det.registry_bcast():
+        #     if message.data["source"] != self.get_id_as_source():
+        elif message["type"] == det.registry_bcast():
+            if message["source"] != self.get_id_as_source():
 
                 self.logger.debug(
                     "handle_registry",
                     extra={
                         "type": det.registry_bcast(),
-                        "data": message.data,
-                        "source_path": message.source_path,
-                        "source": message.data["source"],
-                    },
+                        # "data": message.data,
+                        # "source_path": message.source_path,
+                        # "source": message.data["source"],
+                        "data": message,
+                        "source_path": message["source_path"],
+                        "source": message["source"],
+                     },
                 )
 
                 try:
-                    if message.data.data["registry"] == self.SENSOR_DEFINITION_REGISTRY:
+                    # if message.data.data["registry"] == self.SENSOR_DEFINITION_REGISTRY:
+                    if message.data["registry"] == self.SENSOR_DEFINITION_REGISTRY:
                         pass
-                        registries = message.data.data["data"]
+                        # registries = message.data.data["data"]
+                        registries = message.data["data"]
                         for registry in registries:
                             pass
                             reg = await get_sensor_type_registration(
@@ -538,11 +565,13 @@ class envdsRegistrar(envdsBase):
                             )
                             # dest_path = f"/{self.get_id_as_topic()}/registry/update"
                             dest_path = f"/{self.get_id_as_topic()}/registry/request"
+                            event["dest_path"] = dest_path
                             self.logger.debug(
                                 "sensor_definition_monitor",
                                 extra={"data": event, "dest_path": dest_path},
                             )
-                            message = Message(data=event, dest_path=dest_path)
+                            # message = Message(data=event, dest_path=dest_path)
+                            message = event
                             # self.logger.debug("default_data_loop", extra={"m": message})
                             await self.send_message(message)
 
@@ -559,35 +588,50 @@ class envdsRegistrar(envdsBase):
                 #     source_id=message.data["source"],
                 # )
 
-        elif message.data["type"] == det.registry_update():
-            if message.data["source"] != self.get_id_as_source():
+        # elif message.data["type"] == det.registry_update():
+        #     if message.data["source"] != self.get_id_as_source():
+        elif message["type"] == det.registry_update():
+            if message["source"] != self.get_id_as_source():
 
                 self.logger.debug(
                     "handle_registry",
                     extra={
                         "type": det.registry_update(),
-                        "data": message.data,
-                        "source_path": message.source_path,
-                        "source": message.data["source"],
+                        # "data": message.data,
+                        # "source_path": message.source_path,
+                        # "source": message.data["source"],
+                        "data": message,
+                        "source_path": message["source_path"],
+                        "source": message["source"],
                     },
                 )
 
                 try:
-                    if message.data.data["registry"] == self.SENSOR_DEFINITION_REGISTRY:
+                    # if message.data.data["registry"] == self.SENSOR_DEFINITION_REGISTRY:
+                    if message.data["registry"] == self.SENSOR_DEFINITION_REGISTRY:
                         pass
                         reg = await get_sensor_type_registration(
-                            make=message.data.data["data"]["make"],
-                            model=message.data.data["data"]["model"],
-                            version=message.data.data["data"]["version"],
+                            # make=message.data.data["data"]["make"],
+                            # model=message.data.data["data"]["model"],
+                            # version=message.data.data["data"]["version"],
+                            make=message.data["data"]["make"],
+                            model=message.data["data"]["model"],
+                            version=message.data["data"]["version"],
                         )
-                        if reg is None or message.data.data["data"]["checksum"] != reg.checksum:
+                        # if reg is None or message.data.data["data"]["checksum"] != reg.checksum:
+                        if reg is None or message.data["data"]["checksum"] != reg.checksum:
                             await register_sensor_type(
                                 # **message.data.data["data"]
-                                make=message.data.data["data"]["make"],
-                                model=message.data.data["data"]["model"],
-                                version=message.data.data["data"]["version"],
-                                creation_date=message.data.data["data"]["creation_date"],
-                                metadata=message.data.data["data"]["metadata"],
+                                # make=message.data.data["data"]["make"],
+                                # model=message.data.data["data"]["model"],
+                                # version=message.data.data["data"]["version"],
+                                # creation_date=message.data.data["data"]["creation_date"],
+                                # metadata=message.data.data["data"]["metadata"],
+                                make=message.data["data"]["make"],
+                                model=message.data["data"]["model"],
+                                version=message.data["data"]["version"],
+                                creation_date=message.data["data"]["creation_date"],
+                                metadata=message.data["data"]["metadata"],
                             )
 
                 except KeyError:
@@ -596,26 +640,35 @@ class envdsRegistrar(envdsBase):
                     #   verify checksum:
                     #       if not, request metadata
 
-        elif message.data["type"] == det.registry_request():
-            if message.data["source"] != self.get_id_as_source():
+        # elif message.data["type"] == det.registry_request():
+        #     if message.data["source"] != self.get_id_as_source():
+        elif message["type"] == det.registry_request():
+            if message["source"] != self.get_id_as_source():
 
                 self.logger.debug(
                     "handle_registry",
                     extra={
                         "type": det.registry_request(),
-                        "data": message.data,
-                        "source_path": message.source_path,
-                        "source": message.data["source"],
+                        # "data": message.data,
+                        # "source_path": message.source_path,
+                        # "source": message.data["source"],
+                        "data": message,
+                        "source_path": message["source_path"],
+                        "source": message["source"],
                     },
                 )
 
                 try:
-                    if message.data.data["registry"] == self.SENSOR_DEFINITION_REGISTRY:
+                    # if message.data.data["registry"] == self.SENSOR_DEFINITION_REGISTRY:
+                    if message.data["registry"] == self.SENSOR_DEFINITION_REGISTRY:
                         pass
                         reg = await get_sensor_type_registration(
-                            make=message.data.data["data"]["make"],
-                            model=message.data.data["data"]["model"],
-                            version=message.data.data["data"]["version"],
+                            # make=message.data.data["data"]["make"],
+                            # model=message.data.data["data"]["model"],
+                            # version=message.data.data["data"]["version"],
+                            make=message.data["data"]["make"],
+                            model=message.data["data"]["model"],
+                            version=message.data["data"]["version"],
                         )
                         if reg:
 
@@ -632,11 +685,13 @@ class envdsRegistrar(envdsBase):
                             )
                             # dest_path = f"/{self.get_id_as_topic()}/registry/update"
                             dest_path = f"/{self.get_id_as_topic()}/registry/update"
+                            event["dest_path"] = dest_path
                             self.logger.debug(
                                 "sensor_definition_monitor",
                                 extra={"data": event, "dest_path": dest_path},
                             )
-                            message = Message(data=event, dest_path=dest_path)
+                            # message = Message(data=event, dest_path=dest_path)
+                            message = event
                             # self.logger.debug("default_data_loop", extra={"m": message})
                             await self.send_message(message)
 
@@ -842,11 +897,13 @@ class envdsRegistrar(envdsBase):
                 )
                 # dest_path = f"/{self.get_id_as_topic()}/registry/update"
                 dest_path = f"/{self.get_id_as_topic()}/registry/bcast"
+                event["dest_path"] = dest_path
                 self.logger.debug(
                     "sensor_definition_monitor",
                     extra={"data": event, "dest_path": dest_path},
                 )
-                message = Message(data=event, dest_path=dest_path)
+                # message = Message(data=event, dest_path=dest_path)
+                message = event
                 # self.logger.debug("default_data_loop", extra={"m": message})
                 await self.send_message(message)
 

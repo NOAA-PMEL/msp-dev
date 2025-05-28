@@ -82,7 +82,8 @@ class DBClient(ABC):
 
 
 
-    async def put(self, data: Message):
+    # async def put(self, data: Message):
+    async def put(self, data: CloudEvent):
         await self.put_data.put(data)
         if self.put_data.qsize() > self.queue_size_limit:
             self.logger.warn(
@@ -95,7 +96,8 @@ class DBClient(ABC):
     # async def publisher(self):
     #     pass
 
-    async def get(self) -> Message:
+    # async def get(self) -> Message:
+    async def get(self) -> CloudEvent:
         return await self.sub_data.get()
 
     # async def run(self):
@@ -236,7 +238,10 @@ class RedisDBClient(DBClient):
 
         # send a message to trigger the shutdown
         event = et.create_ping(source=f"{self.client_id}")
-        await self.put(Message(data=event, dest_path=f"mqtt/manage/{self.client_id}"))
+        # await self.put(Message(data=event, dest_path=f"mqtt/manage/{self.client_id}"))
+        event["dest_path"] = f"mqtt/manage/{self.client_id}"
+        # await self.put(data=event, extra_header={"dest_path": f"mqtt/manage/{self.client_id}"})
+        await self.put(event)
         # self.client.disconnect()
         # await self.messages.aclose()
         # self.connected = False

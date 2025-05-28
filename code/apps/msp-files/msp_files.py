@@ -73,11 +73,13 @@ class DataFile:
 
         self.open()
 
-    async def write_message(self, message: Message):
+    # async def write_message(self, message: Message):
+    async def write_message(self, message: CloudEvent):
         # print(f"write_message: {message}")
         # print(f"write_message: {message.data}")
         # print(f'{msg.to_json()}')
-        await self.write(message.data)
+        # await self.write(message.data)
+        await self.write(message)
         # if 'body' in msg and 'DATA' in msg['body']:
         #     await self.write(msg['body']['DATA'])
 
@@ -238,20 +240,25 @@ class envdsFiles(envdsBase):
         ]
         return (envdsFiles.ID_DELIM).join(parts)
 
-    async def handle_data(self, message: Message):
+    # async def handle_data(self, message: Message):
+    async def handle_data(self, message: CloudEvent):
         # print(f"handle_data: {message.data}")
         # self.logger.debug("handle_data", extra={"data": message.data})
-        if message.data["type"] == bet.data_update():
+        # if message.data["type"] == bet.data_update():
+        if message["type"] == bet.data_update():
             self.logger.debug(
                 "handle_data",
                 extra={
                     "type": bet.data_update(),
-                    "data": message.data,
-                    "source_path": message.source_path,
+                    # "data": message.data,
+                    "data": message,
+                    # "source_path": message.source_path,
+                    "source_path": message["source_path"],
                 },
             )
 
-            src = message.data["source"]
+            # src = message.data["source"]
+            src = message["source"]
             if src not in self.file_map:
                 parts = src.split(".")
                 sensor_name = parts[-1].split(self.ID_DELIM)
