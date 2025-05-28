@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ist-hyt271-config
+  namespace: msp
+  labels:
+    app: ist-hyt271
+data:
+  sensor.conf: |
+    serial_number: "001"
+    daq_id: cloudysky
+    interfaces:
+      # default: serial
+      default:
+        interface_env_id: msp # if omitted, defaults to envds_id of sensor
+        interface_id: Labjack::T7_207
+        # interface_id: Labjack::SB70LC::nb53
+        # path: port, channel, etc
+        path: I2C-1

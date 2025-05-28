@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: labjack-T7-config
+  namespace: msp
+  labels:
+    app: labjack-T7
+data:
+  interface.conf: |
+    uid: T7_207
+    # serial_number: "1234"
+    # daq_id: clearsky
+    host: 10.55.169.207
+    paths:
+      I2C-1:
+        method: I2C
+        CS: 2
+        CLK: 3
+        frequency: 65516
+        options: 0
+        num_write_bytes: 1
+        num_read_bytes: 4
+        slave_add: 28
+        command: 00
+
+          # host: 10.55.169.52
+          # host: 192.168.86.46 # can override interface host if needed?
+          # port: 4001 # if omitted, default is used

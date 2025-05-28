@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: labjack
+  namespace: msp
+  labels:
+    app: labjack
+spec:
+  selector:
+    matchLabels:
+      app: labjack
+  template:
+    metadata:
+      labels:
+        app: labjack
+    spec:
+      containers:
+      - name: labjack
+        image: registry-msp:5000/msp/interface/labjack:0.1.0
+        imagePullPolicy: "Always"
+        env:
+          - name: ENVDS_ENV_ID
+            value: mspbase01
+          - name: REDIS_OM_URL
+            value: redis://redis.default
+          - name: LOG_LEVEL
+            value: DEBUG
+        resources:
+          requests:
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - name: http
+          containerPort: 9080
+          protocol: TCP
+        # - name: https
+        #   containerPort: 8883
+        #   protocol: TCP
+        volumeMounts:
+            - name: labjack-config
+              mountPath: /app/config/interface.conf
+              subPath: interface.conf
+            # - name: mosquitto-certs
+            #   mountPath: /certs/ca.crt
+            #   subPath: ca.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.crt
+            #   subPath: server.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.key
+            #   subPath: server.key
+      volumes:
+        - name: labjack-config
+          configMap:
+            name: labjack-config
+        # - name: mosquitto-certs
+        #   configMap:
+        #     name: mosquitto-certs
