@@ -349,8 +349,8 @@ async def test_ws_endpoint(
                     async with Client('mqtt.default', 1883) as client:
                         channel = data['id'][-1]
                         message_to_send = {'device': 'shelly', 'channel': channel, 'message': 'off'}
-                        await web_interface_manager.send_data(message_to_send)
-                        # await client.publish("websocket_topic", payload = json.dumps({'device': 'shelly', 'channel': channel, 'message': 'off'}))
+                        # await web_interface_manager.send_data(message_to_send)
+                        await client.publish("websocket_topic", payload = json.dumps({'device': 'shelly', 'channel': channel, 'message': 'off'}))
 
                 elif data['data'] == "True":
                     async with Client('mqtt.default', 1883) as client:
