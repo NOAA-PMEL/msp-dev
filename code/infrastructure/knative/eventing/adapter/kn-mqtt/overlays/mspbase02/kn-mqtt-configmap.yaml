@@ -11,12 +11,12 @@ data:
   mqtt_broker: "mqtt.msp-system"
   mqtt_port: "1883"
   # mqtt_topic_filter: "instrument/#"
-  mqtt_topic_subscriptions: [
-    "envds/+/+/+/data/update",
-    "envds/+/+/+/status/update",
-    "envds/+/+/+/setting/update",
-    "envds/+/+/+/control/update"
-  ]
+  mqtt_topic_subscriptions: |
+    /envds/+/+/+/data/update
+    /envds/+/+/+/status/update
+    /envds/+/+/+/setting/update
+    /envds/+/+/+/control/update
+
   
   
   # mqtt_broker: "mosquitto.default"
