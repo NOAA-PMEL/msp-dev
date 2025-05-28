@@ -60,17 +60,22 @@ class HYT271(Sensor):
                 "data": "met, temperature, rh, sensor",
             },
             "format_version": {"type": "char", "data": "1.0.0"},
+            "variable_types": {"type": "string", "data": "main, setting, calibration"}
         },
         "variables": {
             "time": {
                 "type": "str",
                 "shape": ["time"],
-                "attributes": {"long_name": {"type": "string", "data": "Time"}},
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "string", "data": "Time"}
+                },
             },
             "temperature": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Temperature"},
                     "units": {"type": "char", "data": "degree_C"},
                 },
@@ -79,13 +84,12 @@ class HYT271(Sensor):
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Relative Humidity"},
                     "units": {"type": "char", "data": "%"},
                 },
             },
-        },
-        "settings": {
-        },
+        }
     }
 
     def __init__(self, config=None, **kwargs):
