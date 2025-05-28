@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: brechtel-tap2901
+  namespace: msp
+  labels:
+    app: brechtel-tap2901
+spec:
+  selector:
+    matchLabels:
+      app: brechtel-tap2901
+  template:
+    metadata:
+      labels:
+        app: brechtel-tap2901
+    spec:
+      containers:
+      - name: brechtel-tap2901
+        image: registry-msp:5000/msp/sensor/brechtel-tap2901:0.1.0
+        imagePullPolicy: "Always"
+        env:
+          - name: ENVDS_ENV_ID
+            value: mspbase01
+          - name: REDIS_OM_URL
+            value: redis://redis.default
+          - name: LOG_LEVEL
+            value: DEBUG
+        resources:
+          requests:
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - name: http
+          containerPort: 9080
+          protocol: TCP
+        # - name: https
+        #   containerPort: 8883
+        #   protocol: TCP
+        volumeMounts:
+            - name: brechtel-tap2901-config
+              mountPath: /app/config/sensor.conf
+              subPath: sensor.conf
+            # - name: mosquitto-certs
+            #   mountPath: /certs/ca.crt
+            #   subPath: ca.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.crt
+            #   subPath: server.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.key
+            #   subPath: server.key
+      volumes:
+        - name: brechtel-tap2901-config
+          configMap:
+            name: brechtel-tap2901-config
+        # - name: mosquitto-certs
+        #   configMap:
+        #     name: mosquitto-certs

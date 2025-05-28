@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 metadata:
-  name: handix-pops1100
+  name: tsi-aps3321
 
 # Example configuration for the webserver
 # at https://github.com/monopole/hello
@@ -18,8 +18,8 @@ metadata:
 
 resources:
 - ../../base
-- pops1100-configmap.yaml
+- aps3321-configmap.yaml
 
-nameSuffix: "-347"
+nameSuffix: "-273"
 # patchesStrategicMerge:
 #   - deployment.yaml

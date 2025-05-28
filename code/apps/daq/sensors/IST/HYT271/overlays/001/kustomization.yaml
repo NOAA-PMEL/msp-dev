@@ -18,7 +18,7 @@ metadata:
 
 resources:
 - ../../base
-- ist-hyt271-configmap.yaml
+- hyt271-configmap.yaml
 
 nameSuffix: "-001"
 # patchesStrategicMerge:
