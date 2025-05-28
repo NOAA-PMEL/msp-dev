@@ -749,6 +749,7 @@ class POPS1100(Sensor):
                         data=record,
                     )
                     dest_path = f"/{self.get_id_as_topic()}/data/update"
+                    event["dest_path"] = dest_path
                     self.logger.debug(
                         "default_data_loop",
                         extra={"data": event, "dest_path": dest_path},
