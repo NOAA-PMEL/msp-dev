@@ -92,58 +92,70 @@ class Aurora3000(Sensor):
                     "long_name": {"type": "string", "data": "Internal Timestamp"}
                 },
             },
-            "scattering_coef_ch1": {
+            "scat_coef_ch1_red": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 1 Scattering Coefficient"},
+                    "long_name": {"type": "char", "data": "Channel 1 Scattering Coefficient (Red)"},
                     "units": {"type": "char", "data": "Mm-1"},
+                    "wavelength": {"type": "int", "data": 635},
+                    "wavelength_units": {"type": "char", "data": "nm"}
                 },
             },
-            "scattering_coef_ch2": {
+            "scat_coef_ch2_green": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 2 Scattering Coefficient"},
+                    "long_name": {"type": "char", "data": "Channel 2 Scattering Coefficient (Green)"},
                     "units": {"type": "char", "data": "Mm-1"},
+                    "wavelength": {"type": "int", "data": 525},
+                    "wavelength_units": {"type": "char", "data": "nm"}
                 },
             },
-            "scattering_coef_ch3": {
+            "scat_coef_ch3_blue": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 3 Scattering Coefficient"},
+                    "long_name": {"type": "char", "data": "Channel 3 Scattering Coefficient (Blue)"},
                     "units": {"type": "char", "data": "Mm-1"},
+                    "wavelength": {"type": "int", "data": 450},
+                    "wavelength_units": {"type": "char", "data": "nm"}
                 },
             },
-            "backscatter_ch1": {
+            "backscatter_ch1_red": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 1 Backscatter"},
+                    "long_name": {"type": "char", "data": "Channel 1 Backscatter (Red)"},
                     "units": {"type": "char", "data": "Mm-1"},
+                    "wavelength": {"type": "int", "data": 635},
+                    "wavelength_units": {"type": "char", "data": "nm"}
                 },
             },
-            "backscatter_ch2": {
+            "backscatter_ch2_green": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 2 Backscatter"},
+                    "long_name": {"type": "char", "data": "Channel 2 Backscatter (Green)"},
                     "units": {"type": "char", "data": "Mm-1"},
+                    "wavelength": {"type": "int", "data": 525},
+                    "wavelength_units": {"type": "char", "data": "nm"}
                 },
             },
-            "backscatter_ch3": {
+            "backscatter_ch3_blue": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 3 Backscatter"},
+                    "long_name": {"type": "char", "data": "Channel 3 Backscatter (Blue)"},
                     "units": {"type": "char", "data": "Mm-1"},
+                    "wavelength": {"type": "int", "data": 450},
+                    "wavelength_units": {"type": "char", "data": "nm"}
                 },
             },
             "sample_T": {

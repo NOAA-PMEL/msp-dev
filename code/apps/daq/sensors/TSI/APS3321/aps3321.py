@@ -257,8 +257,8 @@ class APS3321(Sensor):
                         "stopbit": 1,
                     },
                     "read-properties": {
-                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
-                        # "read-terminator": "\r",  # only used for read_until
+                        "read-method": "readuntil",  # readline, read-until, readbytes, readbinary
+                        "read-terminator": "\r",  # only used for read_until
                         "decode-errors": "strict",
                         "send-method": "ascii",
                     },
@@ -447,7 +447,7 @@ class APS3321(Sensor):
 
     async def polling_loop(self):
 
-        poll_cmd = 'VI099\r'
+        poll_cmd = 'D\r'
         # command_list = ['VI099\r', 'VI004\r', 'VI005\r', 'VI006\r','VI007\r', 'VI008\r', 'VI009\r', 'VI010\r', 'VI011\r', 'VI012\r', 'VI013\r']
         while True:
             try:
