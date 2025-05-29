@@ -14,6 +14,7 @@ import logging.config
 # import json
 import yaml
 import random
+import struct
 from envds.core import envdsLogger
 
 # from envds.daq.db import get_sensor_registration, register_sensor  # , envdsBase, envdsStatus
@@ -76,93 +77,62 @@ class TAP2901(Sensor):
                     "long_name": {"type": "string", "data": "Time"}
                 },
             },
-            "magic_timestamp": {
+            "record_type": {
                 "type": "str",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Timestamp"}
+                    "long_name": {"type": "string", "data": "Record Type (03)"}
                 },
             },
-            "concentration": {
+            "status_flags": {
+                "type": "str",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "string", "data": "Status Flags"}
+                },
+            },
+            "elapsed_time": {
+                "type": "str",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "string", "data": "Elapsed Time"}
+                },
+            },
+            "filter_id": {
+                "type": "str",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "string", "data": "Filter ID"}
+                },
+            },
+            "active_spot": {
+                "type": "str",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "string", "data": "Active Sample Channel"}
+                },
+            },
+            "flow_rate": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Concentration"},
-                    "units": {"type": "char", "data": "cm-3"},
+                    "long_name": {"type": "char", "data": "Flow Rate"},
+                    "units": {"type": "char", "data": "SLPM"},
                 },
             },
-            "dew_point": {
+            "sample_vol_active_spot": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Dew Point"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "input_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Input T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "input_rh": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Input RH"},
-                    "units": {"type": "char", "data": "percent"},
-                },
-            },
-            "cond_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Conditioner T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "init_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Initiator T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "mod_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Moderator T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "opt_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Optics Head T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "heatsink_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Heat Sink T"},
-                    "units": {"type": "char", "data": "degrees_C"},
+                    "long_name": {"type": "char", "data": "Sample Volume for Active Spot"},
+                    "units": {"type": "char", "data": "m3"},
                 },
             },
             "case_T": {
@@ -170,198 +140,570 @@ class TAP2901(Sensor):
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Case T"},
+                    "long_name": {"type": "char", "data": "Case Temperature"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
             },
-            "wick_sensor": {
+            "sample_T": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Wick Sensor"},
-                    "units": {"type": "char", "data": "percent"},
-                },
-            },
-            "mod_T_sp": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Moderator Set Point T"},
+                    "long_name": {"type": "char", "data": "Sample Air Temperature"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
             },
-            "humid_exit_dew_point": {
+            "ch0_dark_intensity": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 0 Dark Intensity"},
+                    "units": {"type": "char", "data": "EDIT"}
+                },
+            },
+            "ch0_red_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 0 Red Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 652},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch0_green_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 0 Green Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 528},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch0_blue_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 0 Blue Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 467},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch1_dark_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 1 Dark Intensity"},
+                    "units": {"type": "char", "data": "EDIT"}
+                },
+            },
+            "ch1_red_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 1 Red Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 652},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch1_green_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 1 Green Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 528},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch1_blue_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 1 Blue Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 467},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch2_dark_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 2 Dark Intensity"},
+                    "units": {"type": "char", "data": "EDIT"}
+                },
+            },
+            "ch2_red_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 2 Red Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 652},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch2_green_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 2 Green Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 528},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch2_blue_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 2 Blue Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 467},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch3_dark_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 3 Dark Intensity"},
+                    "units": {"type": "char", "data": "EDIT"}
+                },
+            },
+            "ch3_red_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 3 Red Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 652},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch3_green_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 3 Green Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 528},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch3_blue_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 3 Blue Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 467},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch4_dark_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 4 Dark Intensity"},
+                    "units": {"type": "char", "data": "EDIT"}
+                },
+            },
+            "ch4_red_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 4 Red Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 652},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch4_green_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 4 Green Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 528},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch4_blue_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 4 Blue Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 467},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch5_dark_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 5 Dark Intensity"},
+                    "units": {"type": "char", "data": "EDIT"}
+                },
+            },
+            "ch5_red_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 5 Red Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 652},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch5_green_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 5 Green Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 528},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch5_blue_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 5 Blue Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 467},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch6_dark_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 6 Dark Intensity"},
+                    "units": {"type": "char", "data": "EDIT"}
+                },
+            },
+            "ch6_red_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 6 Red Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 652},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch6_green_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 6 Green Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 528},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch6_blue_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 6 Blue Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 467},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch7_dark_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 7 Dark Intensity"},
+                    "units": {"type": "char", "data": "EDIT"}
+                },
+            },
+            "ch7_red_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 7 Red Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 652},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch7_green_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 7 Green Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 528},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch7_blue_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 7 Blue Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 467},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch8_dark_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 8 Dark Intensity"},
+                    "units": {"type": "char", "data": "EDIT"}
+                },
+            },
+            "ch8_red_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 8 Red Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 652},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch8_green_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 8 Green Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 528},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch8_blue_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 8 Blue Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 467},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch9_dark_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 9 Dark Intensity"},
+                    "units": {"type": "char", "data": "EDIT"}
+                },
+            },
+            "ch9_red_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 9 Red Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 652},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch9_green_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 9 Green Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 528},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "ch9_blue_intensity": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Channel 9 Blue Intensity"},
+                    "units": {"type": "char", "data": "EDIT"},
+                    "wavelength": {"type": "int", "data": 467},
+                    "wavelength_units": {"type": "char", "data": "nm"}
+                },
+            },
+            "oint": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "setting"},
+                    "tags": {"type": "string", "data": "configuration"},
                     "long_name": {
                         "type": "char",
-                        "data": "Humidifier Exit Dew Point (estimated)",
+                        "data": "Output Interval",
                     },
-                    "units": {"type": "char", "data": "degrees_C"},
+                    "units": {"type": "char", "data": "seconds"},
+                    # "valid_min": {"type": "int", "data": 240},
+                    # "valid_max": {"type": "int", "data": 360},
+                    # "step_increment": {"type": "int", "data": 10},
+                    # "default_value": {"type": "int", "data": 300},
                 },
             },
-            "abs_pressure": {
+            "lpf": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Absolute Pressure"},
-                    "units": {"type": "char", "data": "mbar"},
+                    "variable_type": {"type": "string", "data": "setting"},
+                    "tags": {"type": "string", "data": "configuration"},
+                    "long_name": {"type": "char", "data": "Digital Filter Settings"},
+                    # "units": {"type": "char", "data": "count"},
+                    # "valid_min": {"type": "int", "data": 1},
+                    # "valid_max": {"type": "int", "data": 255},
+                    # "step_increment": {"type": "int", "data": 1},
+                    "default_value": {"type": "char", "data": "2.17872e-1, 1.26719, -6.02159e-1, 1.27174e-1, -1.00721e-2"},
+                    # "default_value": {"type": "char", "data": "4.9223749853, 1.26719, -17.3683786754, 2.45694773252, -4.73788064044"},
+                },
+            },
+            "hsp": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "setting"},
+                    "tags": {"type": "string", "data": "configuration"},
+                    "long_name": {"type": "char", "data": "Case Heater Setpoint"},
+                    "units": {"type": "char", "data": "degrees_C"},
+                    "valid_min": {"type": "int", "data": 0},
+                    "valid_max": {"type": "int", "data": 50},
+                    "step_increment": {"type": "int", "data": 0.1},
+                    # "default_value": {"type": "float", "data": },
+                },
+            },
+            "stbl": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "setting"},
+                    "tags": {"type": "string", "data": "configuration"},
+                    "long_name": {"type": "char", "data": "Case Temperature Window"},
+                    "units": {"type": "char", "data": "degrees_C"},
+                    # "valid_min": {"type": "int", "data": 0},
+                    # "valid_max": {"type": "int", "data": 50},
+                    "step_increment": {"type": "int", "data": 0.1},
+                    # "default_value": {"type": "float", "data": },
+                },
+            },
+            "Tc": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "setting"},
+                    "tags": {"type": "string", "data": "calibration"},
+                    "long_name": {"type": "char", "data": "Case Temperature Calibration"},
+                    # "units": {"type": "char", "data": "degrees_C"},
+                    # "valid_min": {"type": "int", "data": 0},
+                    # "valid_max": {"type": "int", "data": 50},
+                    # "step_increment": {"type": "int", "data": 0.1},
+                    "default_value": {"type": "char", "data": "1.039004e-3, 2.376432e-4, 0, 1.6161e-7"},
+                    # "default_value": {"type": "char", "data": "-0.175694307104, 2.45981192217, 0, -2.60698473703"},
+                },
+            },
+            "Ta": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "setting"},
+                    "tags": {"type": "string", "data": "calibration"},
+                    "long_name": {"type": "char", "data": "Inlet Flow Temperature Calibration"},
+                    # "units": {"type": "char", "data": "degrees_C"},
+                    # "valid_min": {"type": "int", "data": 0},
+                    # "valid_max": {"type": "int", "data": 50},
+                    # "step_increment": {"type": "int", "data": 0.1},
+                    "default_value": {"type": "char", "data": "1.039004e-3, 2.376432e-4, 0, 1.6161e-7"},
+                    # "default_value": {"type": "char", "data": "-0.175694307104, 2.45981192217, 0, -2.60698473703"},
                 },
             },
             "flow": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Volumetric Flow Rate"},
-                    "units": {"type": "char", "data": "cm3 min-1"},
-                    # "valid_min": {"type": "float", "data": 0.0},
-                    # "valid_max": {"type": "float", "data": 5.0},
+                    "variable_type": {"type": "string", "data": "setting"},
+                    "tags": {"type": "string", "data": "calibration"},
+                    "long_name": {"type": "char", "data": "Flow Calibration"},
+                    # "units": {"type": "char", "data": "degrees_C"},
+                    # "valid_min": {"type": "int", "data": 0},
+                    # "valid_max": {"type": "int", "data": 50},
+                    # "step_increment": {"type": "int", "data": 0.1},
+                    "default_value": {"type": "char", "data": "-8.03700e-01,1.20400e+00,-4.99400e-01,9.74000e-02"},
+                    # "default_value": {"type": "char", "data": "-22.8468310553, 3.27281132146, -14.5750994513, 24.4760650092"},
                 },
             },
-            "log_interval": {
+            "pid": {
                 "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Logging Interval"},
-                    "units": {"type": "char", "data": "seconds"},
-                },
-            },
-            "corr_live_time": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Corrected Live Time"},
-                    "description": {
-                        "type": "char",
-                        "data": "Live Time as a fraction of interval, x10000, corrected for coincidence",
-                    },
-                    "units": {"type": "char", "data": "count"},
-                    # "valid_min": {"type": "float", "data": 0.0},
-                    # "valid_max": {"type": "float", "data": 360.0},
-                },
-            },
-            "meas_dead_time": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Measured Dead Time"},
-                    "description": {
-                        "type": "char",
-                        "data": "Dead Time as a fraction of interval, x10000, raw measurement",
-                    },
-                    "units": {"type": "char", "data": "count"},
-                    # "valid_min": {"type": "float", "data": 0.0},
-                    # "valid_max": {"type": "float", "data": 360.0},
-                },
-            },
-            "raw_counts": {
-                "type": "int",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Raw Counts during logging interval",
-                    },
-                    "units": {"type": "char", "data": "count"},
-                    # "valid_min": {"type": "float", "data": 0.0},
-                    # "valid_max": {"type": "float", "data": 360.0},
-                },
-            },
-            "dthr2_pctl": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Upper Threshold.Percentile"},
-                    "description": {
-                        "type": "char",
-                        "data": "Two pieces of information. The number before the decimal is the upper threshold in mV. The number after the decimal represents the percentage of light-scattering pulses that were large enough to exceed the upper threshold. Under default settings dhtr2 represents the median puls height.",
-                    },
-                },
-            },
-            "status_hex": {
-                "type": "string",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Compact display of status codes",
-                    },
-                },
-            },
-            "status_ascii": {
-                "type": "string",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Alphabetic list of all abnormal status codes",
-                    },
-                },
-            },
-            "magic_serial_number": {
-                "type": "string",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Serial Number",
-                    },
-                },
-            },
-            "pump_state": {
-                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "setting"},
-                    "long_name": {"type": "char", "data": "Pump State"},
-                    "units": {"type": "char", "data": "count"},
-                    "valid_min": {"type": "int", "data": 0},
-                    "valid_max": {"type": "int", "data": 1},
-                    "step_increment": {"type": "int", "data": 1},
-                    "default_value": {"type": "int", "data": 1},
+                    "tags": {"type": "string", "data": "calibration"},
+                    "long_name": {"type": "char", "data": "PID Gain"},
+                    # "units": {"type": "char", "data": "degrees_C"},
+                    # "valid_min": {"type": "int", "data": 0},
+                    # "valid_max": {"type": "int", "data": 50},
+                    # "step_increment": {"type": "int", "data": 0.1},
+                    # "default_value": {"type": "char", "data": "250, 5, 1"},
                 },
             },
-            "q_target": {
-                "type": "int",
+            "led": {
+                "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "setting"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Target Volumetric Flow Rate",
-                    },
-                    "units": {"type": "char", "data": "cm3 min-1"},
-                    "valid_min": {"type": "int", "data": 240},
-                    "valid_max": {"type": "int", "data": 360},
-                    "step_increment": {"type": "int", "data": 10},
-                    "default_value": {"type": "int", "data": 300},
-                },
-            },
-            "qfc": {
-                "type": "int",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "calibration"},
-                    "long_name": {"type": "char", "data": "Flow Calibration Factor"},
-                    "units": {"type": "char", "data": "count"},
-                    "valid_min": {"type": "int", "data": 1},
-                    "valid_max": {"type": "int", "data": 255},
-                    "step_increment": {"type": "int", "data": 1},
-                    "default_value": {"type": "int", "data": 1},
+                    "tags": {"type": "string", "data": "calibration"},
+                    "long_name": {"type": "char", "data": "LED mode and intensity for each color"},
+                    # "units": {"type": "char", "data": "degrees_C"},
+                    # "valid_min": {"type": "int", "data": 0},
+                    # "valid_max": {"type": "int", "data": 50},
+                    # "step_increment": {"type": "int", "data": 0.1},
+                    "default_value": {"type": "char", "data": "1, 100, 100, 100"},
                 },
             },
         },
@@ -559,8 +901,8 @@ class TAP2901(Sensor):
     async def sampling_monitor(self):
 
         # start_command = f"Log,{self.sampling_interval}\n"
-        start_command = "Log,1\n"
-        stop_command = "Log,0\n"
+        start_command = "show\n"
+        stop_command = "hide\n"
 
         need_start = True
         start_requested = False
@@ -712,11 +1054,13 @@ class TAP2901(Sensor):
                             vartype = instvar.type
                             if instvar.type == "string":
                                 vartype = "str"
+                            if 'intensity' in name:
+                                intensity = struct.unpack('!f', bytes.fromhex(parts[index].strip()))[0]
+                            else:
+                                intensity = parts[index].strip()
                             try:
-                                # print(f"default_parse: {record['variables'][name]} - {parts[index].strip()}")
-                                record["variables"][name]["data"] = eval(vartype)(
-                                    parts[index].strip()
-                                )
+                                # record["variables"][name]["data"] = eval(vartype)(parts[index].strip())
+                                record["variables"][name]["data"] = eval(vartype)(intensity)
                             except ValueError:
                                 if vartype == "str" or vartype == "char":
                                     record["variables"][name]["data"] = ""
@@ -772,10 +1116,10 @@ async def main(server_config: ServerConfig = None):
         pass
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger(f"AerosolDynamics::MAGIC250::{sn}")
+    logger = logging.getLogger(f"Brechtel::TAP2901::{sn}")
 
-    logger.debug("Starting MAGIC250")
-    inst = MAGIC250()
+    logger.debug("Starting TAP2901")
+    inst = TAP2901()
     # print(inst)
     # await asyncio.sleep(2)
     inst.run()
