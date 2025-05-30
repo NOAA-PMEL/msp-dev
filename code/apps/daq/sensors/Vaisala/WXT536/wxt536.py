@@ -46,21 +46,21 @@ from pydantic import BaseModel
 task_list = []
 
 
-class APS3321(Sensor):
-    """docstring for APS3321."""
+class WXT536(Sensor):
+    """docstring for WXT536."""
 
     metadata = {
         "attributes": {
             # "name": {"type"mock1",
-            "make": {"type": "string", "data": "TSI"},
-            "model": {"type": "string", "data": "APS3321"},
+            "make": {"type": "string", "data": "Vaisala"},
+            "model": {"type": "string", "data": "WXT536"},
             "description": {
                 "type": "string",
-                "data": "Aerodynamic particle sizer spectrometer manufactured and distributed by TSI",
+                "data": "Weather Transmitter manufactured and distributed by Vaisala",
             },
             "tags": {
                 "type": "char",
-                "data": "aerosol, spectrometer, particles, sizing, aerodynamic, diameter, sensor",
+                "data": "weather, met, wind, rain, temperature, pressure, sensor",
             },
             "format_version": {"type": "char", "data": "1.0.0"},
             "variable_types": {"type": "string", "data": "main, setting, calibration"},
@@ -76,95 +76,70 @@ class APS3321(Sensor):
                     "long_name": {"type": "string", "data": "Time"}
                 },
             },
-            "aurora_date": {
-                "type": "str",
+            "Dn": {
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Date"}
+                    "long_name": {"type": "string", "data": "Wind Direction Minimum"},
+                    "units": {"type": "char", "data": "degrees"}
                 },
             },
-            "aurora_timestamp": {
-                "type": "str",
+            "Dm": {
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Timestamp"}
+                    "long_name": {"type": "string", "data": "Wind Direction Average"},
+                    "units": {"type": "char", "data": "degrees"}
                 },
             },
-            "scattering_coef_ch1": {
+            "Dx": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Wind Direction Maximum"},
+                    "units": {"type": "char", "data": "degrees"},
+                },
+            },
+            "Sn": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 1 Scattering Coefficient"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "Wind Speed Minimum"},
+                    "units": {"type": "char", "data": "m/s"},
                 },
             },
-            "scattering_coef_ch2": {
+            "Sm": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 2 Scattering Coefficient"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "Wind Speed Average"},
+                    "units": {"type": "char", "data": "m/s"},
                 },
             },
-            "scattering_coef_ch3": {
+            "Sx": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 3 Scattering Coefficient"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "Wind Speed Maximum"},
+                    "units": {"type": "char", "data": "m/s"},
                 },
             },
-            "backscatter_ch1": {
+            "Ta": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 1 Backscatter"},
-                    "units": {"type": "char", "data": "Mm-1"},
-                },
-            },
-            "backscatter_ch2": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 2 Backscatter"},
-                    "units": {"type": "char", "data": "Mm-1"},
-                },
-            },
-            "backscatter_ch3": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 3 Backscatter"},
-                    "units": {"type": "char", "data": "Mm-1"},
-                },
-            },
-            "sample_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Sample Temperature"},
+                    "long_name": {"type": "char", "data": "Air Temperature"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
             },
-            "enclosure_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Enclosure Temperature"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "rh": {
+            "Ua": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
@@ -173,32 +148,124 @@ class APS3321(Sensor):
                     "units": {"type": "char", "data": "%"},
                 },
             },
-            "pressure": {
+            "Pa": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Barometric Pressure"},
-                    "units": {"type": "char", "data": "%"},
+                    "long_name": {"type": "char", "data": "Air Pressure"},
+                    "units": {"type": "char", "data": "hPa"},
                 },
             },
-            "major_state": {
-                "type": "string",
+            "Rc": {
+                "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Major State"},
+                    "long_name": {"type": "char", "data": "Rain Accumulation"},
+                    "units": {"type": "char", "data": "mm"},
                 },
             },
-            "DIO_state": {
-                "type": "string",
+            "Rd": {
+                "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "DIO State"},
+                    "long_name": {"type": "char", "data": "Rain Duration"},
+                    "units": {"type": "char", "data": "seconds"},
                 },
             },
-        },
+            "Ri": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Rain Intensity"},
+                    "units": {"type": "char", "data": "mm/h"},
+                },
+            },
+            "Hc": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Hail Accumulation"},
+                    "units": {"type": "char", "data": "hits/cm2"},
+                },
+            },
+            "Hd": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Hail Duration"},
+                    "units": {"type": "char", "data": "seconds"},
+                },
+            },
+            "Hi": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Hail Intensity"},
+                    "units": {"type": "char", "data": "hits/cm2h"},
+                },
+            },
+            "Rp": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Rain Peak Intensity"},
+                    "units": {"type": "char", "data": "mm/h"},
+                },
+            },
+            "Hp": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Hail Peak Intensity"},
+                    "units": {"type": "char", "data": "hits/cm2h"},
+                },
+            }
+            "Th": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Heating Temperature"},
+                    "units": {"type": "char", "data": "degrees_C"},
+                },
+            },
+            "Vh": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Heating Voltage"},
+                    "units": {"type": "char", "data": "V"},
+                },
+            },
+            "Vs": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Supply Voltage"},
+                    "units": {"type": "char", "data": "V"},
+                },
+            },
+            "Vr": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "3.5V Reference Voltage"},
+                    "units": {"type": "char", "data": "V"},
+                },
+            },
+        }
     }
 
 
@@ -235,7 +302,7 @@ class APS3321(Sensor):
         self.collecting = False
 
     def configure(self):
-        super(APS3321, self).configure()
+        super(WXT536, self).configure()
 
         # get config from file
         try:
@@ -251,14 +318,14 @@ class APS3321(Sensor):
             "default": {
                 "device-interface-properties": {
                     "connection-properties": {
-                        "baudrate": 38400,
+                        "baudrate": 19200,
                         "bytesize": 8,
-                        "parity": "E",
+                        "parity": "N",
                         "stopbit": 1,
                     },
                     "read-properties": {
-                        "read-method": "readuntil",  # readline, read-until, readbytes, readbinary
-                        "read-terminator": "\r",  # only used for read_until
+                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
+                        # "read-terminator": "\r",  # only used for read_until
                         "decode-errors": "strict",
                         "send-method": "ascii",
                     },
@@ -273,7 +340,7 @@ class APS3321(Sensor):
                         iface[propname] = prop
 
             self.logger.debug(
-                "APS3321.configure", extra={"interfaces": conf["interfaces"]}
+                "WXT536.configure", extra={"interfaces": conf["interfaces"]}
             )
 
         # TODO change settings for new sensor definition
@@ -281,7 +348,7 @@ class APS3321(Sensor):
         The new settings are part [variables] now so this is a bit of a hack to use the existing structure
         with the new format.
         '''
-        settings_def = self.get_definition_by_variable_type(APS3321.metadata, variable_type="setting")
+        settings_def = self.get_definition_by_variable_type(WXT536.metadata, variable_type="setting")
         # for name, setting in MAGIC250.metadata["settings"].items():
         for name, setting in settings_def["variables"].items():
         
@@ -292,16 +359,16 @@ class APS3321(Sensor):
             self.settings.set_setting(name, requested=requested)
 
         meta = DeviceMetadata(
-            attributes=APS3321.metadata["attributes"],
-            dimensions=APS3321.metadata["dimensions"],
-            variables=APS3321.metadata["variables"],
-            # settings=MAGIC250.metadata["settings"],
+            attributes=WXT536.metadata["attributes"],
+            dimensions=WXT536.metadata["dimensions"],
+            variables=WXT536.metadata["variables"],
+            # settings=WXT536.metadata["settings"],
             settings=settings_def["variables"]
         )
 
         self.config = DeviceConfig(
-            make=APS3321.metadata["attributes"]["make"]["data"],
-            model=APS3321.metadata["attributes"]["model"]["data"],
+            make=WXT536.metadata["attributes"]["make"]["data"],
+            model=WXT536.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
             metadata=meta,
             interfaces=conf["interfaces"],
@@ -337,7 +404,7 @@ class APS3321(Sensor):
         pass
 
     async def handle_interface_data(self, message: CloudEvent):
-        await super(APS3321, self).handle_interface_data(message)
+        await super(WXT536, self).handle_interface_data(message)
 
         # self.logger.debug("interface_recv_data", extra={"data": message})
         # if message.data["type"] == det.interface_data_recv():
@@ -447,7 +514,7 @@ class APS3321(Sensor):
 
     async def polling_loop(self):
 
-        poll_cmd = 'D\r'
+        poll_cmd = '0R\r'
         # command_list = ['VI099\r', 'VI004\r', 'VI005\r', 'VI006\r','VI007\r', 'VI008\r', 'VI009\r', 'VI010\r', 'VI011\r', 'VI012\r', 'VI013\r']
         while True:
             try:

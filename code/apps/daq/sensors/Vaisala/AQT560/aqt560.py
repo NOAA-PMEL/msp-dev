@@ -46,21 +46,21 @@ from pydantic import BaseModel
 task_list = []
 
 
-class APS3321(Sensor):
-    """docstring for APS3321."""
+class AQT560(Sensor):
+    """docstring for AQT560."""
 
     metadata = {
         "attributes": {
             # "name": {"type"mock1",
-            "make": {"type": "string", "data": "TSI"},
-            "model": {"type": "string", "data": "APS3321"},
+            "make": {"type": "string", "data": "Vaisala"},
+            "model": {"type": "string", "data": "AQT560"},
             "description": {
                 "type": "string",
-                "data": "Aerodynamic particle sizer spectrometer manufactured and distributed by TSI",
+                "data": "Air Quality Transmitter manufactured and distributed by Vaisala",
             },
             "tags": {
                 "type": "char",
-                "data": "aerosol, spectrometer, particles, sizing, aerodynamic, diameter, sensor",
+                "data": "aerosol, air quality, particles, gas, sensor",
             },
             "format_version": {"type": "char", "data": "1.0.0"},
             "variable_types": {"type": "string", "data": "main, setting, calibration"},
@@ -76,95 +76,79 @@ class APS3321(Sensor):
                     "long_name": {"type": "string", "data": "Time"}
                 },
             },
-            "aurora_date": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Date"}
-                },
-            },
-            "aurora_timestamp": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Timestamp"}
-                },
-            },
-            "scattering_coef_ch1": {
+            "NO2": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 1 Scattering Coefficient"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "Nitrogen Dioxide"},
+                    "units": {"type": "char", "data": "ppm"},
                 },
             },
-            "scattering_coef_ch2": {
+            "CO": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 2 Scattering Coefficient"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "Carbon Monoxide"},
+                    "units": {"type": "char", "data": "ppm"},
                 },
             },
-            "scattering_coef_ch3": {
+            "O3": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 3 Scattering Coefficient"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "Ozone"},
+                    "units": {"type": "char", "data": "ppm"},
                 },
             },
-            "backscatter_ch1": {
+            "NO": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 1 Backscatter"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "Nitric Oxide"},
+                    "units": {"type": "char", "data": "ppm"},
                 },
             },
-            "backscatter_ch2": {
+            "PM1": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 2 Backscatter"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "PM1"},
+                    "units": {"type": "char", "data": "ug/m3"},
                 },
             },
-            "backscatter_ch3": {
+            "PM2.5": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 3 Backscatter"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "PM2.5"},
+                    "units": {"type": "char", "data": "ug/m3"},
                 },
             },
-            "sample_T": {
+            "PM10": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Sample Temperature"},
+                    "long_name": {"type": "char", "data": "PM10"},
+                    "units": {"type": "char", "data": "ug/m3"},
+                },
+            },
+            "TEMP": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Temperature"},
                     "units": {"type": "char", "data": "degrees_C"},
                 },
             },
-            "enclosure_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Enclosure Temperature"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "rh": {
+            "HUM": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
@@ -173,37 +157,30 @@ class APS3321(Sensor):
                     "units": {"type": "char", "data": "%"},
                 },
             },
-            "pressure": {
+            "PRES": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Barometric Pressure"},
-                    "units": {"type": "char", "data": "%"},
+                    "long_name": {"type": "char", "data": "Pressure"},
+                    "units": {"type": "char", "data": "hPa"},
                 },
             },
-            "major_state": {
-                "type": "string",
+            "Uptime": {
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Major State"},
+                    "long_name": {"type": "char", "data": "Time Running"},
+                    "units": {"type": "char", "data": "seconds"}
                 },
             },
-            "DIO_state": {
-                "type": "string",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "DIO State"},
-                },
-            },
-        },
+        }
     }
 
 
     def __init__(self, config=None, **kwargs):
-        super(APS3321, self).__init__(config=config, **kwargs)
+        super(AQT560, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
         # self.configure()
@@ -235,7 +212,7 @@ class APS3321(Sensor):
         self.collecting = False
 
     def configure(self):
-        super(APS3321, self).configure()
+        super(AQT560, self).configure()
 
         # get config from file
         try:
@@ -251,14 +228,14 @@ class APS3321(Sensor):
             "default": {
                 "device-interface-properties": {
                     "connection-properties": {
-                        "baudrate": 38400,
+                        "baudrate": 115200,
                         "bytesize": 8,
                         "parity": "E",
                         "stopbit": 1,
                     },
                     "read-properties": {
-                        "read-method": "readuntil",  # readline, read-until, readbytes, readbinary
-                        "read-terminator": "\r",  # only used for read_until
+                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
+                        # "read-terminator": "\r",  # only used for read_until
                         "decode-errors": "strict",
                         "send-method": "ascii",
                     },
@@ -273,7 +250,7 @@ class APS3321(Sensor):
                         iface[propname] = prop
 
             self.logger.debug(
-                "APS3321.configure", extra={"interfaces": conf["interfaces"]}
+                "AQT560.configure", extra={"interfaces": conf["interfaces"]}
             )
 
         # TODO change settings for new sensor definition
@@ -281,8 +258,8 @@ class APS3321(Sensor):
         The new settings are part [variables] now so this is a bit of a hack to use the existing structure
         with the new format.
         '''
-        settings_def = self.get_definition_by_variable_type(APS3321.metadata, variable_type="setting")
-        # for name, setting in MAGIC250.metadata["settings"].items():
+        settings_def = self.get_definition_by_variable_type(AQT560.metadata, variable_type="setting")
+        # for name, setting in AQT560.metadata["settings"].items():
         for name, setting in settings_def["variables"].items():
         
             requested = setting["attributes"]["default_value"]["data"]
@@ -292,16 +269,16 @@ class APS3321(Sensor):
             self.settings.set_setting(name, requested=requested)
 
         meta = DeviceMetadata(
-            attributes=APS3321.metadata["attributes"],
-            dimensions=APS3321.metadata["dimensions"],
-            variables=APS3321.metadata["variables"],
+            attributes=AQT560.metadata["attributes"],
+            dimensions=AQT560.metadata["dimensions"],
+            variables=AQT560.metadata["variables"],
             # settings=MAGIC250.metadata["settings"],
             settings=settings_def["variables"]
         )
 
         self.config = DeviceConfig(
-            make=APS3321.metadata["attributes"]["make"]["data"],
-            model=APS3321.metadata["attributes"]["model"]["data"],
+            make=AQT560.metadata["attributes"]["make"]["data"],
+            model=AQT560.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
             metadata=meta,
             interfaces=conf["interfaces"],
@@ -337,7 +314,7 @@ class APS3321(Sensor):
         pass
 
     async def handle_interface_data(self, message: CloudEvent):
-        await super(APS3321, self).handle_interface_data(message)
+        await super(AQT560, self).handle_interface_data(message)
 
         # self.logger.debug("interface_recv_data", extra={"data": message})
         # if message.data["type"] == det.interface_data_recv():
@@ -447,14 +424,11 @@ class APS3321(Sensor):
 
     async def polling_loop(self):
 
-        poll_cmd = 'D\r'
-        # command_list = ['VI099\r', 'VI004\r', 'VI005\r', 'VI006\r','VI007\r', 'VI008\r', 'VI009\r', 'VI010\r', 'VI011\r', 'VI012\r', 'VI013\r']
+        poll_cmd = 'meas\r'
         while True:
             try:
                 self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
                 await self.interface_send_data(data={"data": poll_cmd})
-                # for poll_cmd in command_list:
-                #     await self.interface_send_data(data={"data": poll_cmd})
                 await asyncio.sleep(time_to_next(self.data_rate/2.))
             except Exception as e:
                 self.logger.error("polling_loop", extra={"e": e})
@@ -580,10 +554,10 @@ async def main(server_config: ServerConfig = None):
         pass
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger(f"TSI::APS3321::{sn}")
+    logger = logging.getLogger(f"Vaisala::AQT560::{sn}")
 
-    logger.debug("Starting APS3321")
-    inst = APS3321()
+    logger.debug("Starting AQT560")
+    inst = AQT560()
     # print(inst)
     # await asyncio.sleep(2)
     inst.run()
