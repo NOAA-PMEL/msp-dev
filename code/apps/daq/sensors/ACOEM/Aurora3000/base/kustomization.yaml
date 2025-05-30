@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+metadata:
+  name: acoem-aurora3000
+
+# Example configuration for the webserver
+# at https://github.com/monopole/hello
+# commonLabels:
+#   app: nginx
+
+resources:
+- aurora3000-deployment.yaml
+- aurora3000-service.yaml
