@@ -483,22 +483,22 @@ class AQT560(Sensor):
                 try:
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
-                    parts = data.data["data"].split(",")
-                    # print(f"parts: {parts}, {variables}")
+                    # parts = data.data["data"].split(",")
+                    parts = data.data["data"].splitlines()
                     if len(parts) < 2:
                         return None
                     for index, name in enumerate(variables):
                         if name in record["variables"]:
-                            # instvar = self.config.variables[name]
                             instvar = self.config.metadata.variables[name]
                             vartype = instvar.type
                             if instvar.type == "string":
                                 vartype = "str"
                             try:
-                                # print(f"default_parse: {record['variables'][name]} - {parts[index].strip()}")
-                                record["variables"][name]["data"] = eval(vartype)(
-                                    parts[index].strip()
-                                )
+                                measurement = [item for item in parts if name in item]
+                                measurement = measurement[0].split(": ")
+                                # measurement = parts[index].split(": ")
+                                measurement = measurement.strip()
+                                record["variables"][name]["data"] = eval(vartype)(measurement)
                             except ValueError:
                                 if vartype == "str" or vartype == "char":
                                     record["variables"][name]["data"] = ""

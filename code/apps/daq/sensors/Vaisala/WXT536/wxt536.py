@@ -228,7 +228,7 @@ class WXT536(Sensor):
                     "long_name": {"type": "char", "data": "Hail Peak Intensity"},
                     "units": {"type": "char", "data": "hits/cm2h"},
                 },
-            }
+            },
             "Th": {
                 "type": "float",
                 "shape": ["time"],
@@ -270,7 +270,7 @@ class WXT536(Sensor):
 
 
     def __init__(self, config=None, **kwargs):
-        super(APS3321, self).__init__(config=config, **kwargs)
+        super(WXT536, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
         # self.configure()
@@ -589,9 +589,10 @@ class WXT536(Sensor):
                                 vartype = "str"
                             try:
                                 # print(f"default_parse: {record['variables'][name]} - {parts[index].strip()}")
-                                record["variables"][name]["data"] = eval(vartype)(
-                                    parts[index].strip()
-                                )
+                                measurement = [item for item in parts if name in item]
+                                measurement = measurement[0].split("=")[1]
+                                measurement = measurement[:-1]
+                                record["variables"][name]["data"] = eval(vartype)(measurement)
                             except ValueError:
                                 if vartype == "str" or vartype == "char":
                                     record["variables"][name]["data"] = ""
@@ -647,10 +648,10 @@ async def main(server_config: ServerConfig = None):
         pass
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger(f"TSI::APS3321::{sn}")
+    logger = logging.getLogger(f"Vaisala::WXT536::{sn}")
 
-    logger.debug("Starting APS3321")
-    inst = APS3321()
+    logger.debug("Starting WXT536")
+    inst = WXT536()
     # print(inst)
     # await asyncio.sleep(2)
     inst.run()
