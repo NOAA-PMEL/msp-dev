@@ -573,139 +573,139 @@ class TAP2901(Sensor):
                     "wavelength_units": {"type": "char", "data": "nm"}
                 },
             },
-            "oint": {
-                "type": "int",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "tags": {"type": "string", "data": "configuration"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Output Interval",
-                    },
-                    "units": {"type": "char", "data": "seconds"},
-                    # "valid_min": {"type": "int", "data": 240},
-                    # "valid_max": {"type": "int", "data": 360},
-                    # "step_increment": {"type": "int", "data": 10},
-                    # "default_value": {"type": "int", "data": 300},
-                },
-            },
-            "lpf": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "tags": {"type": "string", "data": "configuration"},
-                    "long_name": {"type": "char", "data": "Digital Filter Settings"},
-                    # "units": {"type": "char", "data": "count"},
-                    # "valid_min": {"type": "int", "data": 1},
-                    # "valid_max": {"type": "int", "data": 255},
-                    # "step_increment": {"type": "int", "data": 1},
-                    "default_value": {"type": "char", "data": "2.17872e-1, 1.26719, -6.02159e-1, 1.27174e-1, -1.00721e-2"},
-                    # "default_value": {"type": "char", "data": "4.9223749853, 1.26719, -17.3683786754, 2.45694773252, -4.73788064044"},
-                },
-            },
-            "hsp": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "tags": {"type": "string", "data": "configuration"},
-                    "long_name": {"type": "char", "data": "Case Heater Setpoint"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                    "valid_min": {"type": "int", "data": 0},
-                    "valid_max": {"type": "int", "data": 50},
-                    "step_increment": {"type": "int", "data": 0.1},
-                    # "default_value": {"type": "float", "data": },
-                },
-            },
-            "stbl": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "tags": {"type": "string", "data": "configuration"},
-                    "long_name": {"type": "char", "data": "Case Temperature Window"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                    # "valid_min": {"type": "int", "data": 0},
-                    # "valid_max": {"type": "int", "data": 50},
-                    "step_increment": {"type": "int", "data": 0.1},
-                    # "default_value": {"type": "float", "data": },
-                },
-            },
-            "Tc": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "tags": {"type": "string", "data": "calibration"},
-                    "long_name": {"type": "char", "data": "Case Temperature Calibration"},
-                    # "units": {"type": "char", "data": "degrees_C"},
-                    # "valid_min": {"type": "int", "data": 0},
-                    # "valid_max": {"type": "int", "data": 50},
-                    # "step_increment": {"type": "int", "data": 0.1},
-                    "default_value": {"type": "char", "data": "1.039004e-3, 2.376432e-4, 0, 1.6161e-7"},
-                    # "default_value": {"type": "char", "data": "-0.175694307104, 2.45981192217, 0, -2.60698473703"},
-                },
-            },
-            "Ta": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "tags": {"type": "string", "data": "calibration"},
-                    "long_name": {"type": "char", "data": "Inlet Flow Temperature Calibration"},
-                    # "units": {"type": "char", "data": "degrees_C"},
-                    # "valid_min": {"type": "int", "data": 0},
-                    # "valid_max": {"type": "int", "data": 50},
-                    # "step_increment": {"type": "int", "data": 0.1},
-                    "default_value": {"type": "char", "data": "1.039004e-3, 2.376432e-4, 0, 1.6161e-7"},
-                    # "default_value": {"type": "char", "data": "-0.175694307104, 2.45981192217, 0, -2.60698473703"},
-                },
-            },
-            "flow": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "tags": {"type": "string", "data": "calibration"},
-                    "long_name": {"type": "char", "data": "Flow Calibration"},
-                    # "units": {"type": "char", "data": "degrees_C"},
-                    # "valid_min": {"type": "int", "data": 0},
-                    # "valid_max": {"type": "int", "data": 50},
-                    # "step_increment": {"type": "int", "data": 0.1},
-                    "default_value": {"type": "char", "data": "-8.03700e-01,1.20400e+00,-4.99400e-01,9.74000e-02"},
-                    # "default_value": {"type": "char", "data": "-22.8468310553, 3.27281132146, -14.5750994513, 24.4760650092"},
-                },
-            },
-            "pid": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "tags": {"type": "string", "data": "calibration"},
-                    "long_name": {"type": "char", "data": "PID Gain"},
-                    # "units": {"type": "char", "data": "degrees_C"},
-                    # "valid_min": {"type": "int", "data": 0},
-                    # "valid_max": {"type": "int", "data": 50},
-                    # "step_increment": {"type": "int", "data": 0.1},
-                    # "default_value": {"type": "char", "data": "250, 5, 1"},
-                },
-            },
-            "led": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "tags": {"type": "string", "data": "calibration"},
-                    "long_name": {"type": "char", "data": "LED mode and intensity for each color"},
-                    # "units": {"type": "char", "data": "degrees_C"},
-                    # "valid_min": {"type": "int", "data": 0},
-                    # "valid_max": {"type": "int", "data": 50},
-                    # "step_increment": {"type": "int", "data": 0.1},
-                    "default_value": {"type": "char", "data": "1, 100, 100, 100"},
-                },
-            },
+            # "oint": {
+            #     "type": "int",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "setting"},
+            #         "tags": {"type": "string", "data": "configuration"},
+            #         "long_name": {
+            #             "type": "char",
+            #             "data": "Output Interval",
+            #         },
+            #         "units": {"type": "char", "data": "seconds"},
+            #         # "valid_min": {"type": "int", "data": 240},
+            #         # "valid_max": {"type": "int", "data": 360},
+            #         # "step_increment": {"type": "int", "data": 10},
+            #         "default_value": {"type": "int", "data": 300},
+            #     },
+            # },
+            # "lpf": {
+            #     "type": "float",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "setting"},
+            #         "tags": {"type": "string", "data": "configuration"},
+            #         "long_name": {"type": "char", "data": "Digital Filter Settings"},
+            #         # "units": {"type": "char", "data": "count"},
+            #         # "valid_min": {"type": "int", "data": 1},
+            #         # "valid_max": {"type": "int", "data": 255},
+            #         # "step_increment": {"type": "int", "data": 1},
+            #         "default_value": {"type": "char", "data": "2.17872e-1, 1.26719, -6.02159e-1, 1.27174e-1, -1.00721e-2"},
+            #         # "default_value": {"type": "char", "data": "4.9223749853, 1.26719, -17.3683786754, 2.45694773252, -4.73788064044"},
+            #     },
+            # },
+            # "hsp": {
+            #     "type": "float",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "setting"},
+            #         "tags": {"type": "string", "data": "configuration"},
+            #         "long_name": {"type": "char", "data": "Case Heater Setpoint"},
+            #         "units": {"type": "char", "data": "degrees_C"},
+            #         "valid_min": {"type": "int", "data": 0},
+            #         "valid_max": {"type": "int", "data": 50},
+            #         "step_increment": {"type": "int", "data": 0.1},
+            #         # "default_value": {"type": "float", "data": },
+            #     },
+            # },
+            # "stbl": {
+            #     "type": "float",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "setting"},
+            #         "tags": {"type": "string", "data": "configuration"},
+            #         "long_name": {"type": "char", "data": "Case Temperature Window"},
+            #         "units": {"type": "char", "data": "degrees_C"},
+            #         # "valid_min": {"type": "int", "data": 0},
+            #         # "valid_max": {"type": "int", "data": 50},
+            #         "step_increment": {"type": "int", "data": 0.1},
+            #         # "default_value": {"type": "float", "data": },
+            #     },
+            # },
+            # "Tc": {
+            #     "type": "float",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "setting"},
+            #         "tags": {"type": "string", "data": "calibration"},
+            #         "long_name": {"type": "char", "data": "Case Temperature Calibration"},
+            #         # "units": {"type": "char", "data": "degrees_C"},
+            #         # "valid_min": {"type": "int", "data": 0},
+            #         # "valid_max": {"type": "int", "data": 50},
+            #         # "step_increment": {"type": "int", "data": 0.1},
+            #         "default_value": {"type": "char", "data": "1.039004e-3, 2.376432e-4, 0, 1.6161e-7"},
+            #         # "default_value": {"type": "char", "data": "-0.175694307104, 2.45981192217, 0, -2.60698473703"},
+            #     },
+            # },
+            # "Ta": {
+            #     "type": "float",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "setting"},
+            #         "tags": {"type": "string", "data": "calibration"},
+            #         "long_name": {"type": "char", "data": "Inlet Flow Temperature Calibration"},
+            #         # "units": {"type": "char", "data": "degrees_C"},
+            #         # "valid_min": {"type": "int", "data": 0},
+            #         # "valid_max": {"type": "int", "data": 50},
+            #         # "step_increment": {"type": "int", "data": 0.1},
+            #         "default_value": {"type": "char", "data": "1.039004e-3, 2.376432e-4, 0, 1.6161e-7"},
+            #         # "default_value": {"type": "char", "data": "-0.175694307104, 2.45981192217, 0, -2.60698473703"},
+            #     },
+            # },
+            # "flow": {
+            #     "type": "float",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "setting"},
+            #         "tags": {"type": "string", "data": "calibration"},
+            #         "long_name": {"type": "char", "data": "Flow Calibration"},
+            #         # "units": {"type": "char", "data": "degrees_C"},
+            #         # "valid_min": {"type": "int", "data": 0},
+            #         # "valid_max": {"type": "int", "data": 50},
+            #         # "step_increment": {"type": "int", "data": 0.1},
+            #         "default_value": {"type": "char", "data": "-8.03700e-01,1.20400e+00,-4.99400e-01,9.74000e-02"},
+            #         # "default_value": {"type": "char", "data": "-22.8468310553, 3.27281132146, -14.5750994513, 24.4760650092"},
+            #     },
+            # },
+            # "pid": {
+            #     "type": "float",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "setting"},
+            #         "tags": {"type": "string", "data": "calibration"},
+            #         "long_name": {"type": "char", "data": "PID Gain"},
+            #         # "units": {"type": "char", "data": "degrees_C"},
+            #         # "valid_min": {"type": "int", "data": 0},
+            #         # "valid_max": {"type": "int", "data": 50},
+            #         # "step_increment": {"type": "int", "data": 0.1},
+            #         # "default_value": {"type": "char", "data": "250, 5, 1"},
+            #     },
+            # },
+            # "led": {
+            #     "type": "float",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "setting"},
+            #         "tags": {"type": "string", "data": "calibration"},
+            #         "long_name": {"type": "char", "data": "LED mode and intensity for each color"},
+            #         # "units": {"type": "char", "data": "degrees_C"},
+            #         # "valid_min": {"type": "int", "data": 0},
+            #         # "valid_max": {"type": "int", "data": 50},
+            #         # "step_increment": {"type": "int", "data": 0.1},
+            #         "default_value": {"type": "char", "data": "1, 100, 100, 100"},
+            #     },
+            # },
         },
     }
 
@@ -901,33 +901,24 @@ class TAP2901(Sensor):
     async def sampling_monitor(self):
 
         # start_command = f"Log,{self.sampling_interval}\n"
-        start_command = "show\n"
-        stop_command = "hide\n"
+        start_command = "show\r"
+        # stop_command = "show\r"
+        stop_command = "hide\r"
 
         need_start = True
+        # need_start = False
         start_requested = False
         # wait to see if data is already streaming
         await asyncio.sleep(2)
         # # if self.collecting:
         # await self.interface_send_data(data={"data": stop_command})
         # await asyncio.sleep(2)
-        # self.collecting = False
+        # self.collecting = True
         # init to stopped
         # await self.stop_command()
 
         while True:
             try:
-                # self.logger.debug("sampling_monitor", extra={"self.collecting": self.collecting})
-                # while self.sampling():
-                #     # self.logger.debug("sampling_monitor:1", extra={"self.collecting": self.collecting})
-                #     if not self.collecting:
-                #         # await self.start_command()
-                #         self.logger.debug("sampling_monitor:2", extra={"self.collecting": self.collecting})
-                #         await self.interface_send_data(data={"data": start_command})
-                #         await asyncio.sleep(1)
-                #         # self.logger.debug("sampling_monitor:3", extra={"self.collecting": self.collecting})
-                #         self.collecting = True
-                #         # self.logger.debug("sampling_monitor:4", extra={"self.collecting": self.collecting})
 
                 if self.sampling():
 
@@ -960,13 +951,6 @@ class TAP2901(Sensor):
 
                 await asyncio.sleep(0.1)
 
-                # if self.collecting:
-                #     # await self.stop_command()
-                #     self.logger.debug("sampling_monitor:5", extra={"self.collecting": self.collecting})
-                #     await self.interface_send_data(data={"data": stop_command})
-                #     # self.logger.debug("sampling_monitor:6", extra={"self.collecting": self.collecting})
-                #     self.collecting = False
-                #     # self.logger.debug("sampling_monitor:7", extra={"self.collecting": self.collecting})
             except Exception as e:
                 print(f"sampling monitor error: {e}")
 
@@ -994,8 +978,6 @@ class TAP2901(Sensor):
                 if record:
                     self.collecting = True
 
-                # print(record)
-                # print(self.sampling())
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
@@ -1044,8 +1026,8 @@ class TAP2901(Sensor):
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
-                    # print(f"parts: {parts}, {variables}")
-                    if len(parts) < 10:
+
+                    if len(parts) < 49:
                         return None
                     for index, name in enumerate(variables):
                         if name in record["variables"]:

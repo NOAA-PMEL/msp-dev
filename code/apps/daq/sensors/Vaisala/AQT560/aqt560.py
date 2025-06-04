@@ -230,12 +230,13 @@ class AQT560(Sensor):
                     "connection-properties": {
                         "baudrate": 115200,
                         "bytesize": 8,
-                        "parity": "E",
+                        "parity": "N",
                         "stopbit": 1,
                     },
                     "read-properties": {
-                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
-                        # "read-terminator": "\r",  # only used for read_until
+                        # "read-method": "readline",  # readline, read-until, readbytes, readbinary
+                        "read-method": "readuntil",
+                        "read-terminator": "$",  # only used for read_until
                         "decode-errors": "strict",
                         "send-method": "ascii",
                     },
@@ -429,7 +430,8 @@ class AQT560(Sensor):
             try:
                 self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
                 await self.interface_send_data(data={"data": poll_cmd})
-                await asyncio.sleep(time_to_next(self.data_rate/2.))
+                # await asyncio.sleep(time_to_next(self.data_rate/2.))
+                await asyncio.sleep(time_to_next(self.data_rate))
             except Exception as e:
                 self.logger.error("polling_loop", extra={"e": e})
     
@@ -480,12 +482,12 @@ class AQT560(Sensor):
                 record = self.build_data_record(meta=self.include_metadata)
                 print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
+
                 try:
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
-                    # parts = data.data["data"].split(",")
-                    parts = data.data["data"].splitlines()
-                    if len(parts) < 2:
+                    parts = data.data["data"].splitlines()[1:12]                    
+                    if len(parts) < 11:
                         return None
                     for index, name in enumerate(variables):
                         if name in record["variables"]:
@@ -494,10 +496,11 @@ class AQT560(Sensor):
                             if instvar.type == "string":
                                 vartype = "str"
                             try:
+                                # find the corresponding variable
                                 measurement = [item for item in parts if name in item]
-                                measurement = measurement[0].split(": ")
-                                # measurement = parts[index].split(": ")
-                                measurement = measurement.strip()
+                                # get rid of the variable label (i.e. just get the value)
+                                measurement = measurement[0].split(":")                     
+                                measurement = measurement[1].strip()
                                 record["variables"][name]["data"] = eval(vartype)(measurement)
                             except ValueError:
                                 if vartype == "str" or vartype == "char":

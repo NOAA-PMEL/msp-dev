@@ -678,6 +678,7 @@ class MAGIC250(Sensor):
 
     def default_parse(self, data):
         if data:
+            print("DATA HERE", data)
             try:
                 # variables = [
                 #     "time",

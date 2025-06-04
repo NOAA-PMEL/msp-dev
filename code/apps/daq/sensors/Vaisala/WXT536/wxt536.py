@@ -194,7 +194,7 @@ class WXT536(Sensor):
                 },
             },
             "Hd": {
-                "type": "float",
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
@@ -324,8 +324,8 @@ class WXT536(Sensor):
                         "stopbit": 1,
                     },
                     "read-properties": {
-                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
-                        # "read-terminator": "\r",  # only used for read_until
+                        "read-method": "readuntil",  # readline, read-until, readbytes, readbinary
+                        "read-terminator": "V\r",  # only used for read_until
                         "decode-errors": "strict",
                         "send-method": "ascii",
                     },
@@ -440,10 +440,6 @@ class WXT536(Sensor):
 
     async def sampling_monitor(self):
 
-        # start_command = f"Log,{self.sampling_interval}\n"
-        # start_command = "Log,1\n"
-        # stop_command = "Log,0\n"
-
         need_start = True
         start_requested = False
         # wait to see if data is already streaming
@@ -502,27 +498,15 @@ class WXT536(Sensor):
 
             await asyncio.sleep(0.1)
 
-    # async def start_command(self):
-    #     pass # Log,{sampling interval}
-
-    # async def stop_command(self):
-    #     pass # Log,0
-
-    # def stop(self):
-    #     asyncio.create_task(self.stop_sampling())
-    #     super().start()
 
     async def polling_loop(self):
 
-        poll_cmd = '0R\r'
-        # command_list = ['VI099\r', 'VI004\r', 'VI005\r', 'VI006\r','VI007\r', 'VI008\r', 'VI009\r', 'VI010\r', 'VI011\r', 'VI012\r', 'VI013\r']
+        poll_cmd = '0R\r\n'
         while True:
             try:
                 self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
                 await self.interface_send_data(data={"data": poll_cmd})
-                # for poll_cmd in command_list:
-                #     await self.interface_send_data(data={"data": poll_cmd})
-                await asyncio.sleep(time_to_next(self.data_rate/2.))
+                await asyncio.sleep(time_to_next(self.data_rate))
             except Exception as e:
                 self.logger.error("polling_loop", extra={"e": e})
     
@@ -578,7 +562,7 @@ class WXT536(Sensor):
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
                     # print(f"parts: {parts}, {variables}")
-                    if len(parts) < 2:
+                    if len(parts) < 19:
                         return None
                     for index, name in enumerate(variables):
                         if name in record["variables"]:
@@ -588,12 +572,17 @@ class WXT536(Sensor):
                             if instvar.type == "string":
                                 vartype = "str"
                             try:
-                                # print(f"default_parse: {record['variables'][name]} - {parts[index].strip()}")
+                                # find corresponding variable
                                 measurement = [item for item in parts if name in item]
-                                measurement = measurement[0].split("=")[1]
+                                # split the string to remove the variable name 
+                                measurement = measurement[0].split("=")
+                                # remove anything after carriage return chars - must be done because data is spit out on 4 separate lines
+                                measurement = measurement[1].split('\r', 1)[0]
+                                # remove the last character (the units)
                                 measurement = measurement[:-1]
                                 record["variables"][name]["data"] = eval(vartype)(measurement)
-                            except ValueError:
+                            # except ValueError:
+                            except Exception as e:
                                 if vartype == "str" or vartype == "char":
                                     record["variables"][name]["data"] = ""
                                 else:
