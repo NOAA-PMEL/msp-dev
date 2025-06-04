@@ -76,20 +76,12 @@ class Aurora3000(Sensor):
                     "long_name": {"type": "string", "data": "Time"}
                 },
             },
-            "aurora_date": {
+            "aurora_date_time": {
                 "type": "str",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Date"}
-                },
-            },
-            "aurora_timestamp": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Timestamp"}
+                    "long_name": {"type": "string", "data": "Internal Date and Timestamp"}
                 },
             },
             "scat_coef_ch1_red": {
@@ -210,6 +202,22 @@ class Aurora3000(Sensor):
                     "long_name": {"type": "char", "data": "DIO State"},
                 },
             },
+            "Dark_count_avg": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Dark Count (moving average)"},
+                },
+            },
+            "Dark_count_read": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Last Dark Count Reading"},
+                },
+            },
         },
     }
 
@@ -221,6 +229,8 @@ class Aurora3000(Sensor):
         # self.configure()
 
         self.default_data_buffer = asyncio.Queue()
+        self.command_list = ['VI099\r', 'VI004\r', 'VI005\r']
+        self.command_counter = 0
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
@@ -263,7 +273,7 @@ class Aurora3000(Sensor):
             "default": {
                 "device-interface-properties": {
                     "connection-properties": {
-                        "baudrate": 9600,
+                        "baudrate": 38400,
                         "bytesize": 8,
                         "parity": "N",
                         "stopbit": 1,
@@ -459,14 +469,15 @@ class Aurora3000(Sensor):
 
     async def polling_loop(self):
 
-        poll_cmd = 'VI099\r'
-        # command_list = ['VI099\r', 'VI004\r', 'VI005\r', 'VI006\r','VI007\r', 'VI008\r', 'VI009\r', 'VI010\r', 'VI011\r', 'VI012\r', 'VI013\r']
+        # poll_cmd = 'VI099\r'
+        # command_list = ['VI004\r', 'VI099\r']
         while True:
             try:
-                self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
-                await self.interface_send_data(data={"data": poll_cmd})
-                # for poll_cmd in command_list:
-                #     await self.interface_send_data(data={"data": poll_cmd})
+                # self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
+                # await self.interface_send_data(data={"data": poll_cmd})
+                for poll_cmd in self.command_list:
+                    self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
+                    await self.interface_send_data(data={"data": poll_cmd})
                 # await asyncio.sleep(time_to_next(self.data_rate/2.))
                 await asyncio.sleep(time_to_next(self.data_rate))
             except Exception as e:
@@ -479,13 +490,34 @@ class Aurora3000(Sensor):
                 data = await self.default_data_buffer.get()
                 # self.collecting = True
                 self.logger.debug("default_data_loop", extra={"data": data})
-                # continue
                 record = self.default_parse(data)
+
+                if self.command_counter == 0:
+                    record1 = record
+                    self.command_counter += 1
+                    continue
+
+                elif self.command_counter == 1:
+                    record2 = record
+                    var_index = 13 + self.command_counter
+                    print(list(self.config.metadata.variables.keys())[var_index])
+                    record1["variables"][list(self.config.metadata.variables.keys())[var_index]]["data"] = record2["variables"]['aurora_date_time']["data"]
+                    self.command_counter += 1
+                    continue
+
+                elif self.command_counter == 2:
+                    record3 = record
+                    var_index = 13 + self.command_counter
+                    print(list(self.config.metadata.variables.keys())[var_index])
+                    record1["variables"][list(self.config.metadata.variables.keys())[var_index]]["data"] = record3["variables"]['aurora_date_time']["data"]
+                    self.command_counter += 0
+
+                record = record1
+                print("COMPLETE RECORD", record)
+
                 if record:
                     self.collecting = True
 
-                # print(record)
-                # print(self.sampling())
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
@@ -523,9 +555,11 @@ class Aurora3000(Sensor):
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
-                    # print(f"parts: {parts}, {variables}")
-                    if len(parts) < 2:
-                        return None
+                    print(f"parts: {parts}, {variables}")
+                    # if len(parts) < 13:
+                    #     return None
+                    # if len(parts) > 12:
+
                     for index, name in enumerate(variables):
                         if name in record["variables"]:
                             # instvar = self.config.variables[name]
@@ -538,11 +572,14 @@ class Aurora3000(Sensor):
                                 record["variables"][name]["data"] = eval(vartype)(
                                     parts[index].strip()
                                 )
-                            except ValueError:
+                            # except ValueError:
+                            except Exception as e:
                                 if vartype == "str" or vartype == "char":
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
+                        
+                    print("RECORD", record)
                     return record
                 except KeyError:
                     pass
