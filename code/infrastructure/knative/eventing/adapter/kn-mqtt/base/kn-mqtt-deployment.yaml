@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kn-mqtt-adapter
-  namespace: msp-events
+  namespace: msp-system
   labels:
     app: kn-mqtt-adapter
 spec:
@@ -17,7 +17,7 @@ spec:
       containers:
       - name: kn-mqtt-adapter
         # image: uasbase2.pmel.noaa.gov:448/test/kn-mqtt-adapter@sha256:1efee0c698b3037b822d00237114e25aacad59942c9dd9199168cc2631143d8d
-        image: registry-msp:5000/msp/kn-mqtt-adapter:v0.1.2
+        image: registry-msp:5000/msp/kn-mqtt-adapter:0.1.0
         imagePullPolicy: "Always"
         env:
           - name: KN_MQTT_MQTT_BROKER
@@ -30,11 +30,11 @@ spec:
               configMapKeyRef:
                 name: kn-mqtt-adapter
                 key: mqtt_port
-          - name: KN_MQTT_MQTT_TOPIC_SUBSCRIPTION
+          - name: KN_MQTT_MQTT_TOPIC_SUBSCRIPTIONS
             valueFrom:
               configMapKeyRef:
                 name: kn-mqtt-adapter
-                key: mqtt_topic_subscription
+                key: mqtt_topic_subscriptions
           - name: KN_MQTT_KNATIVE_BROKER
             valueFrom:
               configMapKeyRef:
