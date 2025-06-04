@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kn-mqtt-adapter
-  namespace: msp-events
+  namespace: msp-system
   labels:
     app: kn-mqtt-adapter
 spec:

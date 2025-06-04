@@ -1,35 +1,72 @@
+# apiVersion: eventing.knative.dev/v1
+# kind: Trigger
+# metadata:
+#   name: kn-mqtt-adapter-data-request
+#   namespace: msp-system
+# spec:
+#   broker: msp-system-broker
+#   filter:
+#     attributes:
+#       type: sensor.data.request
+#   subscriber:
+#     ref:
+#       apiVersion: v1
+#       kind: Service
+#       name: kn-mqtt-adapter
+#       namespace: msp-system
+#     uri: /mqtt/send
+# ---
 apiVersion: eventing.knative.dev/v1
 kind: Trigger
 metadata:
-  name: kn-mqtt-adapter-data-request
-  namespace: msp-events
+  name: default
+  namespace: msp-system
 spec:
-  broker: msp-events-broker
+  broker: default
   filter:
     attributes:
-      type: sensor.data.request
+      type: envds.controller.control.request
   subscriber:
     ref:
       apiVersion: v1
       kind: Service
       name: kn-mqtt-adapter
-      namespace: msp-events
+      namespace: msp-system
     uri: /mqtt/send
 ---
 apiVersion: eventing.knative.dev/v1
 kind: Trigger
 metadata:
-  name: kn-mqtt-adapter-control-request
-  namespace: msp-events
+  name: default
+  namespace: msp
 spec:
-  broker: msp-events-broker
+  broker: default
   filter:
     attributes:
-      type: sensor.control.request
+      type: envds.controller.control.request
   subscriber:
     ref:
       apiVersion: v1
       kind: Service
       name: kn-mqtt-adapter
-      namespace: msp-events
+      namespace: msp-system
     uri: /mqtt/send
+
+# ---
+# apiVersion: eventing.knative.dev/v1
+# kind: Trigger
+# metadata:
+#   name: kn-mqtt-adapter-control-request
+#   namespace: msp-system
+# spec:
+#   broker: msp-system-broker
+#   filter:
+#     attributes:
+#       type: sensor.control.request
+#   subscriber:
+#     ref:
+#       apiVersion: v1
+#       kind: Service
+#       name: kn-mqtt-adapter
+#       namespace: msp-system
+#     uri: /mqtt/send

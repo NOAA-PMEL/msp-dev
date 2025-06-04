@@ -95,21 +95,17 @@ async def send_to_knbroker_loop():
 
 async def send_to_knbroker(ce: CloudEvent): #, template):
         
+        # TODO discuss validation requirements
         if config.validation_required:
             # wrap in verification cloud event
             pass
 
-        # try:
-        #     # payload = message.payload.decode()
-        #     data = from_json(ce)
-        # except InvalidStructuredJSON:
-        #     L.error(f"INVALID MSG: {ce}")#, extra=template)
 
         # Always log the message
         L.debug(ce)#, extra=template)
-        # Send the messages on to Broker if we aren't in a dry_run
         try:
             headers, body = to_structured(ce)
+            
             # send to knative kafkabroker
             async with httpx.AsyncClient() as client:
                 r = await client.post(

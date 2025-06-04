@@ -2,11 +2,11 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: kn-mqtt-adapter
-  namespace: msp-events
+  namespace: msp-system
 data:
   # mqtt_bridge_host: "0.0.0.0"
   # mqtt_bridge_port: 80
-  knative_broker: "http://broker-ingress.knative-eventing.svc.cluster.local/msp-events/msp-events-broker"
+  knative_broker: "http://broker-ingress.knative-eventing.svc.cluster.local/msp-system/default"
 
   mqtt_broker: "mqtt.msp-system"
   mqtt_port: "1883"

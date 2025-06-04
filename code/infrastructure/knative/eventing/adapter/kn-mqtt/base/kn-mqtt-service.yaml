@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: kn-mqtt-adapter
-  namespace: msp-events
+  namespace: msp-system
   labels:
     app: kn-mqtt-adapter
 spec:
@@ -14,5 +14,5 @@ spec:
     # port: 8000
     port: 80
     # targetPort: 8000
-    targetPort: 80
+    targetPort: 8080
   type: ClusterIP  
