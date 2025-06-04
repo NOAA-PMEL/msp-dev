@@ -14,7 +14,7 @@ data:
   # mqtt_topic_subscription: "test-account/uas-test/#"
   # port: "8000"
   port: "8080"
-  knative_broker: "http://broker-ingress.knative-eventing.svc.cluster.local/msp-events/msp-events-broker"
+  knative_broker: "http://broker-ingress.knative-eventing.svc.cluster.local/msp/default"
   # mongodb_data_user_name: "uasdaq-data"
   # mongodb_registry_user_name: "uasdaq-registry"
   # mongodb_data_connection: mongodb://<username>:<password>@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/data?replicaSet=uasdaq-mongodb&ssl=false"

@@ -1,0 +1,20 @@
+curl -vvv "http://broker-ingress.knative-eventing.svc.cluster.local/msp/default" \
+  -X POST \
+  -H "Ce-Id: say-hello" \
+  -H "Ce-Specversion: 1.0" \
+  -H "Ce-Type: envds.controller.control.request" \
+  -H "Ce-Source: not-sendoff" \
+  -H "Content-Type: application/json" \
+  -d '{"msg":"Hello Knative!"}'
+
+  curl -vvv "http://kn-test.default/test" \
+  -X POST \
+  -H "Ce-Id: say-hello" \
+  -H "Ce-Specversion: 1.0" \
+  -H "Ce-Type: test.message.type" \
+  -H "Ce-Source: not-sendoff" \
+  -H "Content-Type: application/json" \
+  -d '{"msg":"Hello Knative!"}'
+
+
+  {"attributes": {"id": "say-hello","specversion": 1.0,"type": "envds.controller.control.request","source": "me","content-type": "application/cloudevents+json","dest-path": "a/b/c"},"data": {"RH": 44.3}}

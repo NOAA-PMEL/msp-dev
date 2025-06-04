@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kn-test
+  namespace: msp
+  labels:
+    app: kn-test
+spec:
+  selector:
+    matchLabels:
+      app: kn-test
+  template:
+    metadata:
+      labels:
+        app: kn-test
+    spec:
+      containers:
+      - name: kn-test
+        # image: uasbase2.pmel.noaa.gov:448/test/datastore@sha256:1efee0c698b3037b822d00237114e25aacad59942c9dd9199168cc2631143d8d
+        # image: registry-msp:5000/msp/datastore:v1.0.3
+        image: registry-msp:5000/msp/kn-test:0.1.0
+        imagePullPolicy: "Always"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kn-test
+  namespace: msp
+  labels:
+    app: kn-test
+spec:
+  selector:
+    app: kn-test
+  ports:
+  - name: http
+    protocol: TCP
+    # port: 8000
+    port: 80
+    # targetPort: 8000
+    targetPort: 8080
+  type: ClusterIP  
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: kn-test
+  namespace: msp
+spec:
+  broker: default
+  filter:
+    attributes:
+      # type: envds.controller.control.request
+      type: test.message.type
+  subscriber:
+    ref:
+      apiVersion: v1
+      kind: Service
+      name: kn-test
+      # namespace: default
+    uri: /test
+# ---
+# apiVersion: eventing.knative.dev/v1
+# kind: Trigger
+# metadata:
+#   name: register-sensor-update
+# spec:
+#   broker: default
+#   filter:
+#     attributes:
+#       type: sensor.registry.update
+#   subscriber:
+#     ref:
+#       apiVersion: serving.knative.dev/v1
+#       kind: Service
+#       name: registrar
+#     uri: /register/sensor/update

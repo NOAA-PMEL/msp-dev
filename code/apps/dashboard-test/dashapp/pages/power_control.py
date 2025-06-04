@@ -85,8 +85,8 @@ def get_layout():
         #     ], gap=3)
         # ]),
         # WebSocket(id="ws", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/wwss/sensor/main")
-        WebSocket(id="ws", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/testhome"),
-        WebSocket(id="ws_pb", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/pb")
+        WebSocket(id="ws", url=f"ws://mspbase02:8080/msp/dashboardtest/ws/test/testhome"),
+        WebSocket(id="ws_pb", url=f"ws://mspbase02:8080/msp/dashboardtest/ws/test/pb")
     # ], style=CONTENT_STYLE)
     ])
     # try:

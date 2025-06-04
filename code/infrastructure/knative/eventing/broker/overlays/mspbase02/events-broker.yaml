@@ -5,3 +5,20 @@ metadata:
     eventing.knative.dev/broker.class: MTChannelBasedBroker
   name: msp-events-broker
   namespace: msp-events
+spec:
+  # Configuration specific to this broker class.
+  config:
+    apiVersion: v1
+    kind: ConfigMap
+    name: msp-events-broker-configuration
+    namespace: msp-events
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: msp-events-broker-configuration
+  namespace: msp-events
+data:
+  channel-template-spec: |
+    apiVersion: messaging.knative.dev/v1
+    kind: InMemoryChannel

@@ -17,5 +17,7 @@ metadata:
 
 resources:
 - ../../base
-- events-broker.yaml
-
+# - events-broker.yaml
+# - msp-system-broker.yaml
+# - msp-broker.yaml
+- default-broker.yaml
