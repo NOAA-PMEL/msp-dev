@@ -64,7 +64,8 @@ class Settings(BaseSettings):
 class TestClass():
     """docstring for TestClass."""
     def __init__(self):
-        L.debug("TestClass instantiated")
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.debug("TestClass instantiated")
     
 async def shutdown():
     print("shutting down")
