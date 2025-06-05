@@ -16,6 +16,8 @@ import httpx
 from logfmter import Logfmter
 from pydantic import BaseModel, BaseSettings, Field
 
+from datastore import TestClass
+
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
@@ -90,6 +92,7 @@ app.add_middleware(
 #     end_time: str | None = None
 #     custom: dict | None = None
 
+testclass = TestClass()
 
 @app.get("/")
 async def root():

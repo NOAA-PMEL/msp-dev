@@ -61,6 +61,11 @@ class Settings(BaseSettings):
         env_prefix = "DATASTORE_"
         case_sensitive = False
 
+class TestClass():
+    """docstring for TestClass."""
+    def __init__(self):
+        L.debug("TestClass instantiated")
+    
 async def shutdown():
     print("shutting down")
     # for task in task_list:
