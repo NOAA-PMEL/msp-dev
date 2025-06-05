@@ -39,6 +39,7 @@ from cloudevents.http import CloudEvent
 # from cloudevents.conversion import to_json, to_structured
 
 from pydantic import BaseModel
+from datetime import datetime
 
 
 # from envds.daq.db import init_sensor_type_registration, register_sensor_type
@@ -395,10 +396,6 @@ class Aurora3000(Sensor):
 
     async def sampling_monitor(self):
 
-        # start_command = f"Log,{self.sampling_interval}\n"
-        # start_command = "Log,1\n"
-        # stop_command = "Log,0\n"
-
         need_start = True
         start_requested = False
         # wait to see if data is already streaming
@@ -457,24 +454,11 @@ class Aurora3000(Sensor):
 
             await asyncio.sleep(0.1)
 
-    # async def start_command(self):
-    #     pass # Log,{sampling interval}
-
-    # async def stop_command(self):
-    #     pass # Log,0
-
-    # def stop(self):
-    #     asyncio.create_task(self.stop_sampling())
-    #     super().start()
 
     async def polling_loop(self):
 
-        # poll_cmd = 'VI099\r'
-        # command_list = ['VI004\r', 'VI099\r']
         while True:
             try:
-                # self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
-                # await self.interface_send_data(data={"data": poll_cmd})
                 for poll_cmd in self.command_list:
                     self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
                     await self.interface_send_data(data={"data": poll_cmd})
@@ -483,6 +467,7 @@ class Aurora3000(Sensor):
             except Exception as e:
                 self.logger.error("polling_loop", extra={"e": e})
     
+
     async def default_data_loop(self):
 
         while True:
@@ -491,26 +476,32 @@ class Aurora3000(Sensor):
                 # self.collecting = True
                 self.logger.debug("default_data_loop", extra={"data": data})
                 record = self.default_parse(data)
+                cmd_list_len = len(self.command_list)
 
+                # check to see if the current data stream is supposed to be output from the first command
                 if self.command_counter == 0:
-                    record1 = record
-                    self.command_counter += 1
-                    continue
+                    # if the first variable is the internal timestamp, this is the first record
+                    try:
+                        if bool(datetime.strptime(record["variables"]['aurora_date_time']["data"], "%d/%m/%Y %H:%M:%S")):
+                            record1 = record
+                            self.command_counter += 1
+                            continue
+                    except Exception as e:
+                        print(f"default_data_loop error: {e}")
 
-                elif self.command_counter == 1:
+                # consecutive records after the first one are moved into the first one
+                else:
                     record2 = record
                     var_index = 13 + self.command_counter
-                    print(list(self.config.metadata.variables.keys())[var_index])
                     record1["variables"][list(self.config.metadata.variables.keys())[var_index]]["data"] = record2["variables"]['aurora_date_time']["data"]
                     self.command_counter += 1
-                    continue
 
-                elif self.command_counter == 2:
-                    record3 = record
-                    var_index = 13 + self.command_counter
-                    print(list(self.config.metadata.variables.keys())[var_index])
-                    record1["variables"][list(self.config.metadata.variables.keys())[var_index]]["data"] = record3["variables"]['aurora_date_time']["data"]
-                    self.command_counter += 0
+                    # once the number of commands sent has surpassed the expected number, this function will finish and return the completed record
+                    if self.command_counter < cmd_list_len:
+                        continue
+                    else:
+                        self.command_counter = 0
+                        pass
 
                 record = record1
                 print("COMPLETE RECORD", record)
@@ -579,7 +570,6 @@ class Aurora3000(Sensor):
                                 else:
                                     record["variables"][name]["data"] = None
                         
-                    print("RECORD", record)
                     return record
                 except KeyError:
                     pass
