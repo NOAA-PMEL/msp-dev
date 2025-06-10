@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import json
 import logging
 
-from fastapi import FastAPI  # , APIRouter
+from fastapi import FastAPI, Request  # , APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -115,9 +115,12 @@ async def root():
 
 #     return None
 
+# @app.get("/data/request")
+# async def data_request()
+#     pass
 
 @app.post("/data/update")
-async def data_update(ce: CloudEvent):
+async def data_update(request: Request):
 
     # examine and route cloudevent to the proper handler
     return 200
