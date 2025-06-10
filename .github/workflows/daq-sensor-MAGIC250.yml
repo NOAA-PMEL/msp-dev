@@ -88,8 +88,6 @@ jobs:
             dockerfile: Dockerfile
             push: true
             tags: |
-              # ${{ github.repository_owner }}/${{ github.repository_name }}:${{ github.sha }}
-              # ${{ github.repository_owner }}/${{ github.repository_name }}:latest
               noaa-pmel/msp/aerosoldynamics-magic250:$IMAGE_TAG
             platforms: linux/amd64,linux/arm64
             # build_args: |
