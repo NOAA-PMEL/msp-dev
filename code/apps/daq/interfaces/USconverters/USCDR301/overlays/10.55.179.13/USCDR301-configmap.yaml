@@ -7,12 +7,12 @@ metadata:
     app: usconverters-uscdr301
 data:
   interface.conf: |
-    uid: usc10
+    uid: usc13
     # serial_number: "1234"
     # daq_id: clearsky
-    host: 10.55.179.10
+    host: 10.55.179.13
     paths:
       port-1:
           # host: 10.55.169.52
           # host: 192.168.86.46 # can override interface host if needed?
-          port: 80 # if omitted, default is used
+          port: 4001 # if omitted, default is used
