@@ -1,4 +1,5 @@
 import asyncio
+import math
 import signal
 
 # import uvicorn
@@ -23,19 +24,17 @@ from envds.util.util import (
     get_datetime,
     get_datetime_string,
 )
-# from envds.daq.sensor import Sensor, SensorConfig, SensorVariable, SensorMetadata
-from envds.daq.sensor import Sensor
-from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
+from envds.daq.sensor import Sensor, SensorConfig, SensorVariable, SensorMetadata
 
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
-# from envds.message.message import Message
+from envds.message.message import Message
 
 # from envds.exceptions import envdsRunTransitionException
 
 # from typing import Union
-from cloudevents.http import CloudEvent
+# from cloudevents.http import CloudEvent, from_dict, from_json
 # from cloudevents.conversion import to_json, to_structured
 
 from pydantic import BaseModel
@@ -46,27 +45,25 @@ from pydantic import BaseModel
 task_list = []
 
 
-class MAGIC250(Sensor):
-    """docstring for MAGIC250."""
+class POPS1100(Sensor):
+    """docstring for POPS1100."""
 
     metadata = {
         "attributes": {
             # "name": {"type"mock1",
-            "make": {"type": "string", "data": "AerosolDynamics"},
-            "model": {"type": "string", "data": "MAGIC250"},
+            "make": {"type": "string", "data": "Handix"},
+            "model": {"type": "string", "data": "POPS1100"},
             "description": {
                 "type": "string",
-                "data": "Water based Condensation Particle Counter (CPC) manufactured by Aerosol Dyanamics and distributed by Aerosol Devices/Handix",
+                "data": "Portable Optical Particle Spectrometer",
             },
             "tags": {
                 "type": "char",
-                "data": "aerosol, cpc, particles, concentration, sensor",
+                "data": "aerosol, particles, concentration, sensor, sizing, size distribution",
             },
             "format_version": {"type": "char", "data": "1.0.0"},
-            "variable_types": {"type": "string", "data": "main, setting, calibration"},
-            "serial_number": {"type": "string", "data": ""},
+            "variable_types": {"type": "string", "data": "main, setting, calibration"}
         },
-        "dimensions": {"time": 0},
         "variables": {
             "time": {
                 "type": "str",
@@ -76,7 +73,23 @@ class MAGIC250(Sensor):
                     "long_name": {"type": "string", "data": "Time"}
                 },
             },
-            "magic_timestamp": {
+            "POPS_ID": {
+                "type": "str",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "string", "data": "POPS ID"}
+                },
+            },
+            "POPS_DateTime": {
+                "type": "str",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "string", "data": "POPS DateTime string"}
+                },
+            },
+            "POPS_DateTime": {
                 "type": "str",
                 "shape": ["time"],
                 "attributes": {
@@ -84,297 +97,427 @@ class MAGIC250(Sensor):
                     "long_name": {"type": "string", "data": "Internal Timestamp"}
                 },
             },
-            "concentration": {
+            "TimeSSM": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Concentration"},
+                    "long_name": {"type": "char", "data": "Seconds since midngight"},
+                    "units": {"type": "char", "data": "sec"},
+                },
+            },
+            "Status": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Status"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "DataStatus": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Data status"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "PartCt": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Particle counts"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "HistSum": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Sum of particle count histogram"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "PartCon": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Particle concentration"},
                     "units": {"type": "char", "data": "cm-3"},
                 },
             },
-            "dew_point": {
-                "type": "float",
+            "BL": {
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Dew Point"},
-                    "units": {"type": "char", "data": "degrees_C"},
+                    "long_name": {"type": "char", "data": "Current baseline of detector"},
+                    "units": {"type": "char", "data": "count"},
                 },
             },
-            "input_T": {
-                "type": "float",
+            "BLTH": {
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Input T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "input_rh": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Input RH"},
-                    "units": {"type": "char", "data": "percent"},
-                },
-            },
-            "cond_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Conditioner T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "init_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Initiator T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "mod_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Moderator T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "opt_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Optics Head T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "heatsink_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Heat Sink T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "case_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Case T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "wick_sensor": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Wick Sensor"},
-                    "units": {"type": "char", "data": "percent"},
-                },
-            },
-            "mod_T_sp": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Moderator Set Point T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "humid_exit_dew_point": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Humidifier Exit Dew Point (estimated)",
-                    },
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "abs_pressure": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Absolute Pressure"},
-                    "units": {"type": "char", "data": "mbar"},
-                },
-            },
-            "flow": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Volumetric Flow Rate"},
-                    "units": {"type": "char", "data": "cm3 min-1"},
-                    # "valid_min": {"type": "float", "data": 0.0},
-                    # "valid_max": {"type": "float", "data": 5.0},
-                },
-            },
-            "log_interval": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Logging Interval"},
-                    "units": {"type": "char", "data": "seconds"},
-                },
-            },
-            "corr_live_time": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Corrected Live Time"},
+                    "long_name": {"type": "char", "data": "Current threshold for particle counting"},
                     "description": {
                         "type": "char",
-                        "data": "Live Time as a fraction of interval, x10000, corrected for coincidence",
+                        "data": "Calculated using BL + STD x TH_Mult",
                     },
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "STD": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Current standard deviation of baseline"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "MaxSTD": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Maximum standard deviation of baseline"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "P": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Ambient pressure measured on POPS Cape"},
+                    "units": {"type": "char", "data": "hPa"},
+                },
+            },
+            "TofP": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "On-board temperature measured on POPS Cape"},
+                    "units": {"type": "char", "data": "degrees_C"},
+                },
+            },
+            "PumpLife_hrs": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Pump Life"},
+                    "units": {"type": "char", "data": "hour"},
+                },
+            },
+            "WidthSTD": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Width of standard deviation of baseline"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "AveWidth": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Average of width"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "POPS_Flow": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Current sample flow rate"},
+                    "units": {"type": "char", "data": "cm3 s-1"},
+                },
+            },
+            "PumpFB": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Pump feedback"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "LDTemp": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Laser diode board temperature"},
+                    "units": {"type": "char", "data": "degrees_C"},
+                },
+            },
+            "LaserFB": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Laser diode feedback"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "LD_Mon": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Laser diode output power monitor"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "Temp": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "External thermistor value"},
+                    "units": {"type": "char", "data": "degrees_C"},
+                },
+            },
+            "BatV": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Battery or input DC power voltage"},
+                    "units": {"type": "char", "data": "volt"},
+                },
+            },
+            "Laser_Current": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Laser diode current"},
                     "units": {"type": "char", "data": "count"},
                     # "valid_min": {"type": "float", "data": 0.0},
                     # "valid_max": {"type": "float", "data": 360.0},
                 },
             },
-            "meas_dead_time": {
+            "Flow_Set": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Measured Dead Time"},
-                    "description": {
-                        "type": "char",
-                        "data": "Dead Time as a fraction of interval, x10000, raw measurement",
-                    },
-                    "units": {"type": "char", "data": "count"},
-                    # "valid_min": {"type": "float", "data": 0.0},
-                    # "valid_max": {"type": "float", "data": 360.0},
+                    "long_name": {"type": "char", "data": "Pump voltage set point"},
+                    "units": {"type": "char", "data": "volt"},
                 },
             },
-            "raw_counts": {
+            "BL_Start": {
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
-                        "data": "Raw Counts during logging interval",
+                        "data": "Starting point for baseline value determination",
                     },
                     "units": {"type": "char", "data": "count"},
-                    # "valid_min": {"type": "float", "data": 0.0},
-                    # "valid_max": {"type": "float", "data": 360.0},
                 },
             },
-            "dthr2_pctl": {
+            "TH_Mult": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {
+                        "type": "char",
+                        "data": "Threshold multiplier for determining valid particle counts",
+                    },
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "Nbins": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {
+                        "type": "char",
+                        "data": "Number of bins for particle raw peak signal distributions",
+                    },
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "Logmin": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Upper Threshold.Percentile"},
-                    "description": {
-                        "type": "char",
-                        "data": "Two pieces of information. The number before the decimal is the upper threshold in mV. The number after the decimal represents the percentage of light-scattering pulses that were large enough to exceed the upper threshold. Under default settings dhtr2 represents the median puls height.",
-                    },
+                    "long_name": {"type": "char", "data": "Power of 10 for lowest particle signal bin"},
+                    "units": {"type": "char", "data": "count"},
                 },
             },
-            "status_hex": {
-                "type": "string",
+            "Logmax": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Power of 10 for largest particle signal bin"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "Skip_save": {
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
-                        "data": "Compact display of status codes",
+                        "data": "Value of the “skip_save” parameter set in configuration file",
                     },
+                    "units": {"type": "char", "data": "count"},
                 },
             },
-            "status_ascii": {
-                "type": "string",
+            "MinPeakPts": {
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
-                        "data": "Alphabetic list of all abnormal status codes",
+                        "data": "Minimum number of peak points above threshold to be considered valid particle count",
                     },
+                    "units": {"type": "char", "data": "count"},
                 },
             },
-            "magic_serial_number": {
-                "type": "string",
+            "MaxPeakPts": {
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
                     "long_name": {
                         "type": "char",
-                        "data": "Serial Number",
+                        "data": "Maximum number of peak points above threshold to be considered valid particle count",
                     },
+                    "units": {"type": "char", "data": "count"},
                 },
             },
-            "pump_state": {
+            "RawPts": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {
+                        "type": "char",
+                        "data": "Number of points saved for any raw data recorded",
+                    },
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "diameter": {
+                "type": "float",
+                "shape": ["time", "diameter"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Diameter"},
+                    "units": {"type": "char", "data": "nm"},
+                },
+            },
+            "diameter_bnd_lower": {
+                "type": "float",
+                "shape": ["time", "diameter"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Lower bound of bin diameter"},
+                    "units": {"type": "char", "data": "nm"},
+                },
+            },
+            "diameter_bnd_upper": {
+                "type": "float",
+                "shape": ["time", "diameter"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Upper bound of bin diameter"},
+                    "units": {"type": "char", "data": "nm"},
+                },
+            },
+            "bin_count": {
+                "type": "int",
+                "shape": ["time", "diameter"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Raw bin counts for each diameter"},
+                    "units": {"type": "char", "data": "nm"},
+                },
+            },
+            "pump_power": {
                 "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "setting"},
-                    "long_name": {"type": "char", "data": "Pump State"},
+                    "long_name": {"type": "char", "data": "Pump Power"},
                     "units": {"type": "char", "data": "count"},
                     "valid_min": {"type": "int", "data": 0},
                     "valid_max": {"type": "int", "data": 1},
                     "step_increment": {"type": "int", "data": 1},
                     "default_value": {"type": "int", "data": 1},
                 },
-            },
-            "q_target": {
-                "type": "int",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Target Volumetric Flow Rate",
-                    },
-                    "units": {"type": "char", "data": "cm3 min-1"},
-                    "valid_min": {"type": "int", "data": 240},
-                    "valid_max": {"type": "int", "data": 360},
-                    "step_increment": {"type": "int", "data": 10},
-                    "default_value": {"type": "int", "data": 300},
-                },
-            },
-            "qfc": {
-                "type": "int",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "calibration"},
-                    "long_name": {"type": "char", "data": "Flow Calibration Factor"},
-                    "units": {"type": "char", "data": "count"},
-                    "valid_min": {"type": "int", "data": 1},
-                    "valid_max": {"type": "int", "data": 255},
-                    "step_increment": {"type": "int", "data": 1},
-                    "default_value": {"type": "int", "data": 1},
-                },
-            },
-        },
+            }
+        }
     }
 
     def __init__(self, config=None, **kwargs):
-        super(MAGIC250, self).__init__(config=config, **kwargs)
+        super(POPS1100, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
         # self.configure()
 
         self.default_data_buffer = asyncio.Queue()
 
+        self.lower_dp_bound = [
+            115.,
+            125.,
+            135.,
+            150.,
+            165.,
+            185.,
+            210.,
+            250.,
+            350.,
+            475.,
+            575.,
+            855.,
+            1220.,
+            1530.,
+            1990.,
+            2585.,
+        ]
+
+        self.upper_dp_bound = [
+            125.,
+            135.,
+            150.,
+            165.,
+            185.,
+            210.,
+            250.,
+            350.,
+            475.,
+            575.,
+            855.,
+            1220.,
+            1530.,
+            1990.,
+            2585.,
+            3370.,
+        ]
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
         # self.data_loop_task = None
@@ -400,7 +543,7 @@ class MAGIC250(Sensor):
         self.collecting = False
 
     def configure(self):
-        super(MAGIC250, self).configure()
+        super(POPS1100, self).configure()
 
         # get config from file
         try:
@@ -414,7 +557,7 @@ class MAGIC250(Sensor):
 
         sensor_iface_properties = {
             "default": {
-                "device-interface-properties": {
+                "sensor-interface-properties": {
                     "connection-properties": {
                         "baudrate": 115200,
                         "bytesize": 8,
@@ -438,35 +581,25 @@ class MAGIC250(Sensor):
                         iface[propname] = prop
 
             self.logger.debug(
-                "magcic250.configure", extra={"interfaces": conf["interfaces"]}
+                "pops1100.configure", extra={"interfaces": conf["interfaces"]}
             )
 
-        # TODO change settings for new sensor definition
-        '''
-        The new settings are part [variables] now so this is a bit of a hack to use the existing structure
-        with the new format.
-        '''
-        settings_def = self.get_definition_by_variable_type(MAGIC250.metadata, variable_type="setting")
-        # for name, setting in MAGIC250.metadata["settings"].items():
-        for name, setting in settings_def["variables"].items():
-        
+        for name, setting in POPS1100.metadata["settings"].items():
             requested = setting["attributes"]["default_value"]["data"]
             if "settings" in config and name in config["settings"]:
                 requested = config["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
 
-        meta = DeviceMetadata(
-            attributes=MAGIC250.metadata["attributes"],
-            dimensions=MAGIC250.metadata["dimensions"],
-            variables=MAGIC250.metadata["variables"],
-            # settings=MAGIC250.metadata["settings"],
-            settings=settings_def["variables"]
+        meta = SensorMetadata(
+            attributes=POPS1100.metadata["attributes"],
+            variables=POPS1100.metadata["variables"],
+            settings=POPS1100.metadata["settings"],
         )
 
-        self.config = DeviceConfig(
-            make=MAGIC250.metadata["attributes"]["make"]["data"],
-            model=MAGIC250.metadata["attributes"]["model"]["data"],
+        self.config = SensorConfig(
+            make=POPS1100.metadata["attributes"]["make"]["data"],
+            model=POPS1100.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
             metadata=meta,
             interfaces=conf["interfaces"],
@@ -498,29 +631,23 @@ class MAGIC250(Sensor):
 
         self.logger.debug("iface_map", extra={"map": self.iface_map})
 
-    # async def handle_interface_message(self, message: Message):
-    async def handle_interface_message(self, message: CloudEvent):
+    async def handle_interface_message(self, message: Message):
         pass
 
-    # async def handle_interface_data(self, message: Message):
-    async def handle_interface_data(self, message: CloudEvent):
-        await super(MAGIC250, self).handle_interface_data(message)
+    async def handle_interface_data(self, message: Message):
+        await super(POPS1100, self).handle_interface_data(message)
 
-        # self.logger.debug("interface_recv_data", extra={"data": message})
-        # if message.data["type"] == det.interface_data_recv():
-        if message["type"] == det.interface_data_recv():
+        # self.logger.debug("interface_recv_data", extra={"data": message.data})
+        if message.data["type"] == det.interface_data_recv():
             try:
-                # path_id = message.data["path_id"]
-                path_id = message["path_id"]
+                path_id = message.data["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
                 # if path_id == "default":
                 if path_id == iface_path:
                     self.logger.debug(
-                        # "interface_recv_data", extra={"data": message.data.data}
-                        "interface_recv_data", extra={"data": message.data}
+                        "interface_recv_data", extra={"data": message.data.data}
                     )
-                    # await self.default_data_buffer.put(message.data)
-                    await self.default_data_buffer.put(message)
+                    await self.default_data_buffer.put(message.data)
             except KeyError:
                 pass
 
@@ -558,9 +685,6 @@ class MAGIC250(Sensor):
 
     async def sampling_monitor(self):
 
-        # start_command = f"Log,{self.sampling_interval}\n"
-        start_command = "Log,1\n"
-        stop_command = "Log,0\n"
 
         need_start = True
         start_requested = False
@@ -591,12 +715,12 @@ class MAGIC250(Sensor):
 
                     if need_start:
                         if self.collecting:
-                            await self.interface_send_data(data={"data": stop_command})
+                            # await self.interface_send_data(data={"data": stop_command})
                             await asyncio.sleep(2)
                             self.collecting = False
                             continue
                         else:
-                            await self.interface_send_data(data={"data": start_command})
+                            # await self.interface_send_data(data={"data": start_command})
                             # await self.interface_send_data(data={"data": "\n"})
                             need_start = False
                             start_requested = True
@@ -606,13 +730,13 @@ class MAGIC250(Sensor):
                         if self.collecting:
                             start_requested = False
                         else:
-                            await self.interface_send_data(data={"data": start_command})
+                            # await self.interface_send_data(data={"data": start_command})
                             # await self.interface_send_data(data={"data": "\n"})
                             await asyncio.sleep(2)
                             continue
                 else:
                     if self.collecting:
-                        await self.interface_send_data(data={"data": stop_command})
+                        # await self.interface_send_data(data={"data": stop_command})
                         await asyncio.sleep(2)
                         self.collecting = False
 
@@ -655,6 +779,15 @@ class MAGIC250(Sensor):
                 # print(record)
                 # print(self.sampling())
                 if record and self.sampling():
+
+                    # add diameters
+                    record["variables"]["diameter_bnd_lower"]["data"] = self.lower_dp_bound
+                    record["variables"]["diameter_bnd_upper"]["data"] = self.upper_dp_bound
+                    diams = []
+                    for lower,upper in zip(self.lower_dp_bound, self.upper_dp_bound):
+                        diams.append(round(math.sqrt(lower*upper), 1))
+                    record["variables"]["diameter"]["data"] = diams
+
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
@@ -666,8 +799,8 @@ class MAGIC250(Sensor):
                         "default_data_loop",
                         extra={"data": event, "dest_path": dest_path},
                     )
-                    # message = Message(data=event, dest_path=dest_path)
                     message = event
+                    # message = Message(data=event, dest_path=dest_path)
                     # self.logger.debug("default_data_loop", extra={"m": message})
                     await self.send_message(message)
 
@@ -678,7 +811,6 @@ class MAGIC250(Sensor):
 
     def default_parse(self, data):
         if data:
-            print("DATA HERE", data)
             try:
                 # variables = [
                 #     "time",
@@ -692,23 +824,55 @@ class MAGIC250(Sensor):
                 variables = list(self.config.metadata.variables.keys())
                 # print(f"variables: \n{variables}\n{variables2}")
                 variables.remove("time")
+                variables.remove("diameter")
+                variables.remove("diameter_bnd_lower")
+                variables.remove("diameter_bnd_upper")
                 # variables2.remove("time")
-                print(f"variables: \n{variables}")
+                # print(f"variables: \n{variables}\n{variables2}")
 
-                print(f"include metadata: {self.include_metadata}")
+                # print(f"include metadata: {self.include_metadata}")
                 record = self.build_data_record(meta=self.include_metadata)
-                print(f"default_parse: data: {data}, record: {record}")
+                # print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
                 try:
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
-                    parts = data.data["data"].split(",")
+                    parts = data.data["data"].strip().split(",")
+
+                    # remove first parameter ("POPS") from data line as it's not used
+                    parts.pop(0)
+                    parts.pop(1)
+                    # del_index = -1
+                    # for index, name in enumerate(parts):
+                    #     if "/media/uSD" in name[0]:
+                    #         del_index=index
+                    #         break
+
+                    # if del_index >= 0:
+                    #     parts.pop(del_index)
+
+                    fname_idx = -1
+                    for i in  range(0,len(parts)):
+                        if "/media/uSD" in parts[i]:
+                            fname_idx = i
+                            break
+
+                    if fname_idx>0:
+                        parts.pop(fname_idx)
+
                     # print(f"parts: {parts}, {variables}")
-                    if len(parts) < 10:
+                    dist_index = None
+                    
+                    if len(parts) < 37:
                         return None
                     for index, name in enumerate(variables):
                         if name in record["variables"]:
                             # instvar = self.config.variables[name]
+
+                            if name == "bin_count":
+                                dist_index = index
+                                break
+                            
                             instvar = self.config.metadata.variables[name]
                             vartype = instvar.type
                             if instvar.type == "string":
@@ -723,6 +887,13 @@ class MAGIC250(Sensor):
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
+                    
+                    # get distribution
+                    bin_counts = []
+                    for val in parts[index:]:
+                        bin_counts.append(int(val.strip()))
+                    record["variables"]["bin_count"]["data"] = bin_counts
+
                     return record
                 except KeyError:
                     pass
@@ -773,10 +944,10 @@ async def main(server_config: ServerConfig = None):
         pass
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger(f"AerosolDynamics::MAGIC250::{sn}")
+    logger = logging.getLogger(f"Handix::POPS1100::{sn}")
 
-    logger.debug("Starting MAGIC250")
-    inst = MAGIC250()
+    logger.debug("Starting POPS1100")
+    inst = POPS1100()
     # print(inst)
     # await asyncio.sleep(2)
     inst.run()
@@ -819,7 +990,7 @@ async def main(server_config: ServerConfig = None):
     event_loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
 
     while do_run:
-        logger.debug("mock1.run", extra={"do_run": do_run})
+        logger.debug("POPS1100.run", extra={"do_run": do_run})
         await asyncio.sleep(1)
 
     logger.info("starting shutdown...")
