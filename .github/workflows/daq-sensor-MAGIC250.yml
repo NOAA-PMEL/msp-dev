@@ -88,7 +88,7 @@ jobs:
             dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
             push: true
             tags: |
-              ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:latest
+              ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:${{env.IMAGE_TAG}}
             platforms: linux/amd64,linux/arm64
             # build_args: |
             #   REGISTRY=${{ github.repository_owner }}
