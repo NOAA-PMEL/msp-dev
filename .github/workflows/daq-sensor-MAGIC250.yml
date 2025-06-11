@@ -3,7 +3,7 @@ name: Build and Push aerosoldynamics-magic250
 on:
 
   push:
-    branches: [ dev-* ]
+    branches: [ dev-* , add-envds-package-workflow']
     paths:
       - 'code/apps/daq/sensors/AerosolDynamics/MAGIC250/**'
   
@@ -51,6 +51,17 @@ jobs:
         - name: Set up Docker Buildx
           uses: docker/setup-buildx-action@v2
   
+        - name: Download envds package
+          uses: actions/download-artifact@v4
+          with:
+            name: envds
+            path: code/envds/dist
+        
+        - name: Install envds package
+          run:
+            cd code/envds/dist
+            pip install envds
+
         - name: 'Login to GitHub Container Registry'
           uses: docker/login-action@v1
           with:
