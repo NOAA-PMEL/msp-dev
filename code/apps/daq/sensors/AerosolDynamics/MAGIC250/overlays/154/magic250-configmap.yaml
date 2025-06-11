@@ -7,6 +7,7 @@ metadata:
     app: aerosoldynamics-magic250
     app-group: envds-sensor-mspbase
 data:
+  namespace_prefix: msp 
   sensor.conf: |
     serial_number: "154"
     daq_id: msp
