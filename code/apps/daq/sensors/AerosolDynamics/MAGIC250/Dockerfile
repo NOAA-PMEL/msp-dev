@@ -11,14 +11,13 @@ WORKDIR $APP_HOME
 COPY requirements.txt requirements.txt
 RUN pip3 install -r requirements.txt
 # COPY lib/. /lib
-
 # RUN pip3 install envds
 # RUN pip install testapp
 # RUN pip3 install --no-index --find-links=/lib/envds envds
 # lib/envds-0.1.0-py3-none-any.whl
 
 # for fastapi/uvicorn
-# COPY . .
+# COPY . .s
 # without fastapi/uvicorn
 COPY ./magic250.py .
 
