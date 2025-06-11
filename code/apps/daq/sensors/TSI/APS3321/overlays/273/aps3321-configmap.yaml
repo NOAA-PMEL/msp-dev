@@ -1,20 +1,20 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: aerosoldynamics-magic250-config
+  name: tsi-aps3321-config
   namespace: msp
   labels:
-    app: aerosoldynamics-magic250
+    app: tsi-aps3321
     app-group: envds-sensor-mspbase
 data:
   sensor.conf: |
-    serial_number: "154"
+    serial_number: "273"
     daq_id: msp
     interfaces:
       # default: serial
       default:
         interface_env_id: msp # if omitted, defaults to envds_id of sensor
-        interface_id: USconverters::USCDR301::usc213
+        interface_id: USconverters::USCDR301::usc206
         path: port-1
       #   connection-properties:
       #     baudrate: 115200

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: acoem-aurora3000
+  namespace: msp
+  labels:
+    app: acoem-aurora3000
+spec:
+  selector:
+    matchLabels:
+      app: acoem-aurora3000
+  template:
+    metadata:
+      labels:
+        app: acoem-aurora3000
+    spec:
+      containers:
+      - name: acoem-aurora3000
+        image: registry-msp:5000/msp/sensor/acoem-aurora3000:0.1.0
+        imagePullPolicy: "Always"
+        env:
+          - name: ENVDS_ENV_ID
+            value: mspbase01
+          - name: REDIS_OM_URL
+            value: redis://redis.default
+          - name: LOG_LEVEL
+            value: DEBUG
+        resources:
+          requests:
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - name: http
+          containerPort: 9080
+          protocol: TCP
+        # - name: https
+        #   containerPort: 8883
+        #   protocol: TCP
+        volumeMounts:
+            - name: acoem-aurora3000-config
+              mountPath: /app/config/sensor.conf
+              subPath: sensor.conf
+            # - name: mosquitto-certs
+            #   mountPath: /certs/ca.crt
+            #   subPath: ca.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.crt
+            #   subPath: server.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.key
+            #   subPath: server.key
+      volumes:
+        - name: acoem-aurora3000-config
+          configMap:
+            name: acoem-aurora3000-config
+        # - name: mosquitto-certs
+        #   configMap:
+        #     name: mosquitto-certs

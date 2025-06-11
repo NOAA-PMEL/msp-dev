@@ -20,6 +20,6 @@ resources:
 - ../../base
 - USCDR301-configmap.yaml
 
-nameSuffix: -usc10
+nameSuffix: -usc13
 # patchesStrategicMerge:
 #   - deployment.yaml
