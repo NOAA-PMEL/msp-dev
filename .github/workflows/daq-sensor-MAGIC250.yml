@@ -85,11 +85,12 @@ jobs:
           uses: docker/build-push-action@v4
           with:
             context: code/apps/daq/sensors/AerosolDynamics/MAGIC250/.
-            dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
+            # dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
             push: true
             tags: |
               ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:${{env.IMAGE_TAG}}
             platforms: linux/amd64,linux/arm64
+            
             # build_args: |
             #   REGISTRY=${{ github.repository_owner }}
             #   TAG=${{ github.sha }}
