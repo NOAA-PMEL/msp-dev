@@ -58,9 +58,9 @@ jobs:
         run: unzip pr_number.zip -d "${{ runner.temp }}/artifacts"
       
       - name: Install envds package
-          run:
-            cd code/envds/dist
-            pip install envds
+        run:
+          cd code/envds/dist
+          pip install envds
 
   build-and-push-aerosoldynamics-magic250:
 
