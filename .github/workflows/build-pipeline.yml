@@ -24,7 +24,6 @@ jobs:
       run: |
         cd code/envds
         python -m pip install --upgrade pip setuptools wheel
-        pip3 install 
         if [ -f requirements.txt ]; then pip3 install -r requirements.txt; fi
     
     - name: Run package creation
