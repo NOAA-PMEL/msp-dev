@@ -1,3 +1,4 @@
 FROM python:3.11-slim
 
-RUN pip install /dist/envds envds
+COPY  code/envds/dist envds
+RUN pip install envds
