@@ -24,12 +24,12 @@ jobs:
       run: |
         cd code/envds
         python -m pip install --upgrade pip setuptools wheel
-        if [ -f requirements.txt ]; then pip3 install -r requirements.txt; fi
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     
     - name: Run package creation
       run: |
         cd code/envds
-        python -m pip3 install --user --upgrade build
+        python -m pip install --user --upgrade build
         python -m build
     
     - name: Archive packages
