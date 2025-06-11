@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mqtt
-  namespace: msp-system
+  # namespace: msp-system
   labels:
     app: mqtt
   # namespace: envds-base

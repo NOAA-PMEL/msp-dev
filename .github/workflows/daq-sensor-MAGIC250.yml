@@ -104,5 +104,3 @@ jobs:
  
         # - name: Push the Docker image
         #   run: docker push ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:$IMAGE_TAG
-        # - name: Push the Docker image
-        #   run: docker push ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:$IMAGE_TAG
