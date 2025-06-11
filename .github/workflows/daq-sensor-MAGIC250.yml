@@ -12,10 +12,9 @@ on:
     paths:
       - 'code/apps/daq/sensors/AerosolDynamics/MAGIC250/**'
   
-  workflow_run:
-    workflows: [Build Envds Package]
-    types:
-      - completed
+  # workflow_run:
+  #   workflows: [Build Envds Package]
+  #   types: [completed]
 
 env:
   REGISTRY: ghcr.io
@@ -56,12 +55,20 @@ jobs:
         - name: Set up Docker Buildx
           uses: docker/setup-buildx-action@v2
   
+        # - name: Download envds package
+        #   uses: actions/download-artifact@v4
+        #   with:
+        #     name: envds
+        #     github-token: ${{ github.token }}
+        #     run-id: {{ github.event.workflow_run.id }}
+
         - name: Download envds package
-          uses: actions/download-artifact@v4
+          uses: dawidd6/action-download-artifact@v6
           with:
-            name: envds
-            github-token: ${{ github.token }}
-            run-id: {{ github.event.workflow_run.id }}
+            workflow: build-pipeline.yml
+            name: 'Build Envds Package'
+            path: code/envds/dist
+            branch: add-envds-package-workflow
         
         - name: Install envds package
           run:
