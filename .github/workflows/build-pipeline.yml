@@ -2,7 +2,7 @@ name: Build Envds Package
 
 on:
   push:
-    branches: [ dev-* ]
+    branches: [ dev-* , add-envds-package-workflow']
     paths:
   
   pull_request:
