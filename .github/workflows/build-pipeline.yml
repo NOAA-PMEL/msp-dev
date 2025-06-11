@@ -59,7 +59,7 @@ jobs:
 
     steps:
       - name: 'Checkout Main'
-          uses: actions/checkout@v4
+        uses: actions/checkout@v4
 
       - name: Retrieve artifact
         uses: actions/download-artifact@v4
@@ -87,7 +87,7 @@ jobs:
       - name: Build and push multi-platform image
         uses: docker/build-push-action@v4
         with:
-          context: code/envds/.
+          context: . code/envds/.
           # dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
           push: true
           tags: |
