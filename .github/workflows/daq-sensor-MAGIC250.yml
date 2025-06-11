@@ -84,13 +84,11 @@ jobs:
         - name: Build and push multi-platform image
           uses: docker/build-push-action@v4
           with:
-            context: .
-            dockerfile: Dockerfile
+            context: code/apps/daq/sensors/AerosolDynamics/MAGIC250/.
+            dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
             push: true
             tags: |
-              # ${{ github.repository_owner }}/${{ github.repository_name }}:${{ github.sha }}
-              # ${{ github.repository_owner }}/${{ github.repository_name }}:latest
-              noaa-pmel/msp/aerosoldynamics-magic250:$IMAGE_TAG
+              ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:${{env.IMAGE_TAG}}
             platforms: linux/amd64,linux/arm64
             # build_args: |
             #   REGISTRY=${{ github.repository_owner }}
@@ -100,5 +98,11 @@ jobs:
         # #   run: docker build . --file Dockerfile --tag ghcr.io/acg/verifier:$(date +%s)
         #   run: docker build . --file Dockerfile --tag ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:$IMAGE_TAG
  
+        # - name: Push the Docker image
+        #   run: docker push ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:$IMAGE_TAG
+        #   run: docker build . --file Dockerfile --tag ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:$IMAGE_TAG
+ 
+        # - name: Push the Docker image
+        #   run: docker push ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:$IMAGE_TAG
         # - name: Push the Docker image
         #   run: docker push ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:$IMAGE_TAG
