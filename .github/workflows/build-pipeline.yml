@@ -66,9 +66,6 @@ jobs:
         with:
           name: envds
           path: code/envds/dist
-      
-      - name: Display structure of downloaded files
-        run: ls -R ./code/envds/dist
 
       - name: 'set env variables'
         run: |
