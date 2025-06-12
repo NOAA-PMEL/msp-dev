@@ -91,7 +91,7 @@ jobs:
           # dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
           push: true
           tags: |
-            ghcr.io/noaa-pmel/msp/envds-base:${{env.IMAGE_TAG}}
+            ghcr.io/noaa-pmel/msp/envds-base:${{env.IMAGE_TAG}}, ghcr.io/noaa-pmel/msp/envds-base:latest
           platforms: linux/amd64,linux/arm64
           
   
