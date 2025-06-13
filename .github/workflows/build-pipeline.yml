@@ -4,10 +4,12 @@ on:
   push:
     branches: [ dev-* , add-envds-package-workflow']
     paths:
+      - 'code/envds/envds/**'
   
   pull_request:
     branches: [main, dev-*]
     paths:
+      - 'code/envds/envds/**'
 
 env:
   REGISTRY: ghcr.io
