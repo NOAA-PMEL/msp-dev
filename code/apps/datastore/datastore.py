@@ -87,11 +87,12 @@ class Datastore():
         self.logger.debug("TestClass instantiated")
         self.db_client = None
         self.erddap_client = None
-
+        self.config = Settings()
         self.configure()
 
     def configure(self):
         # set clients
+        
         db_client_config = DBClientConfig(
             type=self.config.db_client_type,
             config={
