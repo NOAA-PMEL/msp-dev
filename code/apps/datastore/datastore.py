@@ -24,7 +24,7 @@ from cloudevents.conversion import to_structured  # , from_http
 from cloudevents.exceptions import InvalidStructuredJSON
 
 from datetime import datetime, timedelta, timezone
-from envds.util.util import get_datetime_string, get_datetime, datetime_to_string
+from envds.util.util import get_datetime_string, get_datetime, datetime_to_string, get_datetime_with_delta
 # import pymongo
 
 import uvicorn
@@ -246,8 +246,9 @@ class Datastore():
 
         if query.last_n_seconds:
             # this overrides explicit start,end times
-            current_time = get_datetime()
-            start_dt = current_time - timedelta(seconds=query.last_n_seconds)
+            start_dt = get_datetime_with_delta(-(query.last_n_seconds))
+            # current_time = get_datetime()
+            # start_dt = current_time - timedelta(seconds=query.last_n_seconds)
             query.start_time = datetime_to_string(start_dt)
             query.end_time = None
 
