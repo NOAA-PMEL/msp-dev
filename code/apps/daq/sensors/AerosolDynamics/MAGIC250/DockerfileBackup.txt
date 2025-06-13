@@ -1,6 +1,5 @@
-# FROM python:3.11-slim
-# FROM ghcr.io/noaa-pmel/msp/envds-base:0.1.0
-FROM ghcr.io/noaa-pmel/msp/envds-base:latest
+FROM python:3.11-slim
+# FROM python:3.10
 
 # Allow statements and log messages to immediately appear in the Knative logs
 ENV PYTHONUNBUFFERED True
