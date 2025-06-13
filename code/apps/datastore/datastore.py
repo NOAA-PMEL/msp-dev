@@ -99,8 +99,8 @@ class Datastore():
                 "connection": self.config.db_client_connection,
                 "hostname": self.config.db_client_connection,
                 "port": self.config.db_client_port,
-                "username": self.config.client_username,
-                "password": self.config.client_password,
+                "username": self.config.db_client_username,
+                "password": self.config.db_client_password,
             }
         )
         self.db_client = DBClientManager(db_client_config)
