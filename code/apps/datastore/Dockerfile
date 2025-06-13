@@ -19,6 +19,7 @@ RUN pip3 install -r requirements.txt
 
 # COPY . .
 COPY ./datastore.py .
+COPY ./datastore_query.py .
 COPY ./main.py .
 COPY ./db_client.py .
 COPY ./redis_client.py .

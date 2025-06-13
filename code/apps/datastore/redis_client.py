@@ -8,7 +8,7 @@ from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.query import NumericFilter, Query
 
 from db_client import DBClient, DBClientConfig
-from datastore import DataStoreQuery
+from datastore_query import DataStoreQuery
 
 class RedisClient(DBClient):
     """docstring for RedisClient."""

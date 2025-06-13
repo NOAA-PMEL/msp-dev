@@ -19,8 +19,7 @@ from cloudevents.conversion import to_structured  # , from_http
 from cloudevents.exceptions import InvalidStructuredJSON
 
 from datetime import datetime, timezone
-from datastore import DataStoreQuery
-
+from datastore_query import DataStoreQuery
 class DBClientConfig(BaseModel):
     type: str | None = "redis"
     # config: dict | None = {"hostname": "localhost", "port": 1883}

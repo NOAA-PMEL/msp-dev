@@ -29,6 +29,7 @@ from envds.util.util import get_datetime_string, get_datetime, datetime_to_strin
 
 import uvicorn
 
+from datastore_query import DataStoreQuery
 from db_client import DBClientManager, DBClientConfig
 
 handler = logging.StreamHandler()
@@ -78,18 +79,6 @@ class Settings(BaseSettings):
     class Config:
         env_prefix = "DATASTORE_"
         case_sensitive = False
-
-class DataStoreQuery(BaseModel):
-    sensor_id: str | None = None
-    make: str | None = None
-    model: str | None = None
-    serial_number: str | None = None
-    version: str | None = None
-    start_time: str | None = None
-    end_time: str | None = None
-    last_n_seconds: int | None
-    variable: List[str] | None = None
-
 
 class Datastore():
     """docstring for TestClass."""
