@@ -103,7 +103,7 @@ class Datastore():
                 "password": self.config.db_client_password,
             }
         )
-        self.db_client = DBClientManager(db_client_config)
+        self.db_client = DBClientManager.create(db_client_config)
 
         if self.config.erddap_enable:
             # setup erddap client
