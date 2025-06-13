@@ -104,7 +104,7 @@ class Datastore():
     def configure(self):
         # set clients
         db_client_config = DBClientConfig(
-            type=self.config.db_client_type
+            type=self.config.db_client_type,
             config={
                 "connection": self.config.db_client_connection,
                 "hostname": self.config.db_client_connection,
