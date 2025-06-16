@@ -72,10 +72,10 @@ async def send_to_knbroker_loop():
                 async for message in client.messages: #() as messages:
 
 
-                    # async for message in messages:
-                    ce = from_json(message)
+                    # # async for message in messages:
+                    # ce = from_json(message.payload)
 
-                    print(f"publish message: {message}")
+                    # print(f"publish message: {message.payload}")
 
                     ce = from_json(message.payload)
                     topic = message.topic
