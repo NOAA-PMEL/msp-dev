@@ -46,8 +46,10 @@ class DBClientManager:
 
         if config.type == "redis":
             # return mqtt client
+            client_mod = "redis_client"
+            client_class = "redis_class"
             mod_ = importlib.import_module("redis_client")
-            print(f"mod_: {"redis_client"}")
+            # print(f"mod_: {"redis_client"}")
             client = getattr(mod_, "RedisClient")(config)
             print(f"client: {client}")
             return client
