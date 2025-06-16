@@ -80,6 +80,7 @@ async def send_to_knbroker_loop():
                     ce = from_json(message.payload)
                     topic = message.topic.value
                     ce["source_path"] = topic
+                    
                     try:
                         L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
                         await send_to_knbroker(ce)
@@ -104,6 +105,7 @@ async def send_to_knbroker(ce: CloudEvent): #, template):
         # Always log the message
         L.debug(ce)#, extra=template)
         try:
+            timeout = httpx.Timeout(5.0, read=0.5)
             headers, body = to_structured(ce)
             L.debug("send_to_knbroker", extra={"broker": config.knative_broker, "h": headers, "b": body})
             # send to knative kafkabroker
@@ -111,7 +113,8 @@ async def send_to_knbroker(ce: CloudEvent): #, template):
                 r = await client.post(
                     config.knative_broker,
                     headers=headers,
-                    data=body
+                    data=body,
+                    timeout=timeout
                 )
                 r.raise_for_status()
         except InvalidStructuredJSON:
