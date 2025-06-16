@@ -1,3 +1,4 @@
+import importlib
 import json
 import logging
 import math
@@ -20,6 +21,7 @@ from cloudevents.exceptions import InvalidStructuredJSON
 
 from datetime import datetime, timezone
 from datastore_query import DataStoreQuery
+
 class DBClientConfig(BaseModel):
     type: str | None = "redis"
     # config: dict | None = {"hostname": "localhost", "port": 1883}
@@ -44,8 +46,13 @@ class DBClientManager:
 
         if config.type == "redis":
             # return mqtt client
-            return RedisClient(config)
-            pass
+            mod_ = importlib.import_module("redis_client")
+            print(f"mod_: {"redis_client"}")
+            client = getattr(mod_, "RedisClient")(config)
+            print(f"client: {client}")
+            return client
+            # return RedisClient(config)
+            # pass
         elif config.type == "mongoDB":
             # return mongoDBClient
             return None
