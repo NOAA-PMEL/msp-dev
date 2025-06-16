@@ -107,11 +107,14 @@ async def send_to_knbroker(ce: CloudEvent): #, template):
         try:
             timeout = httpx.Timeout(5.0, read=0.5)
             ce["datacontenttype"] = "application/json; charset=utf-8"
+            ce["destpath"] = "/test/path"
             headers, body = to_structured(ce)
             L.debug("send_to_knbroker", extra={"broker": config.knative_broker, "h": headers, "b": body})
             # send to knative kafkabroker
-            async with httpx.AsyncClient() as client:
-                r = await client.post(
+            # async with httpx.AsyncClient() as client:
+            #     r = await client.post(
+            with httpx.AsyncClient() as client:
+                r = client.post(
                     config.knative_broker,
                     headers=headers,
                     data=body,
