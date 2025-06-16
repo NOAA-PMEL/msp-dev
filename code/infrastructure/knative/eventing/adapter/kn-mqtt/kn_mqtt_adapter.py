@@ -106,6 +106,7 @@ async def send_to_knbroker(ce: CloudEvent): #, template):
         L.debug(ce)#, extra=template)
         try:
             timeout = httpx.Timeout(5.0, read=0.5)
+            ce["datacontenttype"] = "application/json; charset=utf-8"
             headers, body = to_structured(ce)
             L.debug("send_to_knbroker", extra={"broker": config.knative_broker, "h": headers, "b": body})
             # send to knative kafkabroker
