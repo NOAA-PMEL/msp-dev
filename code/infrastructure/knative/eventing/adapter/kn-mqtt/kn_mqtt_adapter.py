@@ -111,7 +111,7 @@ async def send_to_knbroker(ce: CloudEvent): #, template):
                 r = await client.post(
                     config.knative_broker,
                     headers=headers,
-                    data=body.decode()
+                    data=body
                 )
                 r.raise_for_status()
         except InvalidStructuredJSON:
