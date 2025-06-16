@@ -84,7 +84,7 @@ async def send_to_knbroker_loop():
                         L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
                         await send_to_knbroker(ce)
                     except Exception as e:
-                        L.error("Error sending to knbroker")
+                        L.error("Error sending to knbroker", extra={"reason": e})
         except MqttError as error:
             L.error(
                 f'{error}. Trying again in {reconnect} seconds',
@@ -105,7 +105,7 @@ async def send_to_knbroker(ce: CloudEvent): #, template):
         L.debug(ce)#, extra=template)
         try:
             headers, body = to_structured(ce)
-            
+            L.debug("send_to_knbroker", extra={"broker": config.knative_broker, "h": headers, "b": body})
             # send to knative kafkabroker
             async with httpx.AsyncClient() as client:
                 r = await client.post(
