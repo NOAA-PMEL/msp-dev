@@ -159,11 +159,11 @@ async def data_sensor_get(query: Annotated[DataStoreQuery, Query()]):
     return {"result": result}
     
 @app.post("/sensor/settings/update")
-async def data_settings_update(request: Request):
+async def sensor_settings_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         # L.debug(request.headers,)
-        L.debug("sensor_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
+        L.debug("sensor_data_update", extra={"ce": ce})#, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
     except Exception as e:
