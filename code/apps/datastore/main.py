@@ -165,6 +165,7 @@ async def sensor_settings_update(request: Request):
         # ce = await request.json()
         # print(ce)
         pass
+        print("sensor_settings_update")
         # ce = from_http(request.headers, await request.body())
         # L.debug(request.headers,)
         # L.debug("sensor_data_update", extra={"ce": ce})#, "destpath": ce["destpath"]})
@@ -173,7 +174,8 @@ async def sensor_settings_update(request: Request):
     except Exception as e:
         # L.error("send", extra={"reason": e})
         pass
-    return "ok", 200
+    # return "ok", 200
+    return '',204
     # return "",204
     
 
