@@ -66,7 +66,7 @@ class APS3321(Sensor):
             "variable_types": {"type": "string", "data": "main, setting, calibration"},
             "serial_number": {"type": "string", "data": ""},
         },
-        "dimensions": {"time": 0},
+        "dimensions": {"time": 0, "aerodynamic diameter": 52, "side scatter channel": 64},
         "variables": {
             "time": {
                 "type": "str",
@@ -76,126 +76,208 @@ class APS3321(Sensor):
                     "long_name": {"type": "string", "data": "Time"}
                 },
             },
-            "aurora_date": {
+            # "mode": {
+            #     "type": "str",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "main"},
+            #         "long_name": {"type": "string", "data": "Sampling Mode"}
+            #     },
+            # },
+            # "cal_mode": {
+            #     "type": "str",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "main"},
+            #         "long_name": {"type": "string", "data": "Calibration Mode"}
+            #     },
+            # },
+            "ffff": {
                 "type": "str",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Date"}
+                    "long_name": {"type": "char", "data": "Status Flags (4 digit hex)"},
                 },
             },
-            "aurora_timestamp": {
-                "type": "str",
+            "stime": {
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Timestamp"}
+                    "long_name": {"type": "char", "data": "Sample Time (not corrected for dead time)"},
+                    "units": {"type": "char", "data": "seconds"},
                 },
             },
-            "scattering_coef_ch1": {
+            "dtime": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 1 Scattering Coefficient"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "Dead Time"},
+                    "units": {"type": "char", "data": "milliseconds"},
                 },
             },
-            "scattering_coef_ch2": {
+            "evt1": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Number of Single Hump Events"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "evt3": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Number of 3+ Hump Events"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "evt4": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Number of Timer Overflow Events"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "total": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Total (2-hump) Particles Measured "},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "C": {
+                "type": "int",
+                "shape": ["time", "aerodynamic diameter", "side scatter channel"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Particle Counts in Each Pulse Height Accumulator Bin (Correlated / Paired Record)"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "D": {
+                "type": "int",
+                "shape": ["time", "aerodynamic diameter"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Particle Counts in Calibrated Diameter Channels"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "S": {
+                "type": "int",
+                "shape": ["time", "side scatter channel", "aerodynamic diameter"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Particle Counts in Side Scatter Channels"},
+                    "units": {"type": "char", "data": "count"},
+                },
+            },
+            "bpress": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 2 Scattering Coefficient"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "Barometric Inlet Pressure (average over sample time)"},
+                    "units": {"type": "char", "data": "mbar"},
                 },
             },
-            "scattering_coef_ch3": {
+            "tflow": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 3 Scattering Coefficient"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "Total Flow (average over sample time)"},
+                    "units": {"type": "char", "data": "lpm"},
                 },
             },
-            "backscatter_ch1": {
+            "sflow": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 1 Backscatter"},
-                    "units": {"type": "char", "data": "Mm-1"},
+                    "long_name": {"type": "char", "data": "Sheath Flow (average over sample time)"},
+                    "units": {"type": "char", "data": "lpm"},
                 },
             },
-            "backscatter_ch2": {
-                "type": "float",
+            "lpower": {
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 2 Backscatter"},
-                    "units": {"type": "char", "data": "Mm-1"},
-                },
-            },
-            "backscatter_ch3": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 3 Backscatter"},
-                    "units": {"type": "char", "data": "Mm-1"},
-                },
-            },
-            "sample_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Sample Temperature"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "enclosure_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Enclosure Temperature"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "rh": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Relative Humidity"},
+                    "long_name": {"type": "char", "data": "Laser Power (% of maximum power)"},
                     "units": {"type": "char", "data": "%"},
                 },
             },
-            "pressure": {
+            "lcur": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Barometric Pressure"},
-                    "units": {"type": "char", "data": "%"},
+                    "long_name": {"type": "char", "data": "Laser Current"},
+                    "units": {"type": "char", "data": "mA"},
                 },
             },
-            "major_state": {
-                "type": "string",
+            "spumpv": {
+                "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Major State"},
+                    "long_name": {"type": "char", "data": "Sheath Pump Voltage"},
+                    "units": {"type": "char", "data": "V"},
                 },
             },
-            "DIO_state": {
-                "type": "string",
+            "tpumpv": {
+                "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "DIO State"},
+                    "long_name": {"type": "char", "data": "Total Pump Voltage)"},
+                    "units": {"type": "char", "data": "V"},
+                },
+            },
+            "itemp": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Inlet Temperature"},
+                    "units": {"type": "char", "data": "degrees_C"},
+                },
+            },
+            "btemp": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Internal Box Temperature"},
+                    "units": {"type": "char", "data": "degrees_C"},
+                },
+            },
+            "dtemp": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Detector Temperature for APD and Optics"},
+                    "units": {"type": "char", "data": "degrees_C"},
+                },
+            },
+            "Vop": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "APD Operating Voltage"},
+                    "units": {"type": "char", "data": "V"},
                 },
             },
         },
@@ -209,6 +291,13 @@ class APS3321(Sensor):
         # self.configure()
 
         self.default_data_buffer = asyncio.Queue()
+        self.record_counter = 0
+        self.var_start_index = 0
+        self.var_stop_index = 0
+        self.first_record = 'C,0,C'
+        self.last_record = ',Y,'
+        self.array_buffer = []
+        self.C_counter = 0
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
@@ -252,11 +341,12 @@ class APS3321(Sensor):
                 "device-interface-properties": {
                     "connection-properties": {
                         "baudrate": 38400,
-                        "bytesize": 8,
+                        "bytesize": 7,
                         "parity": "E",
                         "stopbit": 1,
                     },
                     "read-properties": {
+                        # "read-method": "readline",
                         "read-method": "readuntil",  # readline, read-until, readbytes, readbinary
                         "read-terminator": "\r",  # only used for read_until
                         "decode-errors": "strict",
@@ -265,12 +355,13 @@ class APS3321(Sensor):
                 }
             }
         }
-
+        print("CONF:", conf)
         if "interfaces" in conf:
             for name, iface in conf["interfaces"].items():
                 if name in sensor_iface_properties:
                     for propname, prop in sensor_iface_properties[name].items():
                         iface[propname] = prop
+                        print("PROP", prop)
 
             self.logger.debug(
                 "APS3321.configure", extra={"interfaces": conf["interfaces"]}
@@ -376,6 +467,9 @@ class APS3321(Sensor):
         # start_command = f"Log,{self.sampling_interval}\n"
         # start_command = "Log,1\n"
         # stop_command = "Log,0\n"
+        # start_commands = ['S0\r', 'SMT2,5\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
+        start_commands = ['S1\r']
+        stop_command = 'S0\r'
 
         need_start = True
         start_requested = False
@@ -389,16 +483,15 @@ class APS3321(Sensor):
 
                     if need_start:
                         if self.collecting:
-                            # await self.interface_send_data(data={"data": stop_command})
-                            if self.polling_task:
-                                self.polling_task.cancel()
+                            await self.interface_send_data(data={"data": stop_command})
                             await asyncio.sleep(2)
                             self.collecting = False
                             continue
                         else:
-                            # await self.interface_send_data(data={"data": start_command})
+                            for start_command in start_commands:
+                                print(start_command)
+                                await self.interface_send_data(data={"data": start_command})
                             # await self.interface_send_data(data={"data": "\n"})
-                            self.polling_task = asyncio.create_task(self.polling_loop())
                             need_start = False
                             start_requested = True
                             await asyncio.sleep(2)
@@ -407,17 +500,16 @@ class APS3321(Sensor):
                         if self.collecting:
                             start_requested = False
                         else:
-                            if not self.polling_task:
-                                self.polling_task = asyncio.create_task(self.polling_loop())
-                            # await self.interface_send_data(data={"data": start_command})
+                            for start_command in start_commands:
+                                print('here3')
+                                await self.interface_send_data(data={"data": start_command})
                             # await self.interface_send_data(data={"data": "\n"})
                             await asyncio.sleep(2)
                             continue
                 else:
                     if self.collecting:
-                        # await self.interface_send_data(data={"data": stop_command})
-                        if self.polling_task:
-                            self.polling_task.cancel()
+                        print('here 4')
+                        await self.interface_send_data(data={"data": stop_command})
                         await asyncio.sleep(2)
                         self.collecting = False
 
@@ -444,29 +536,27 @@ class APS3321(Sensor):
     # def stop(self):
     #     asyncio.create_task(self.stop_sampling())
     #     super().start()
-
-    async def polling_loop(self):
-
-        poll_cmd = 'D\r'
-        # command_list = ['VI099\r', 'VI004\r', 'VI005\r', 'VI006\r','VI007\r', 'VI008\r', 'VI009\r', 'VI010\r', 'VI011\r', 'VI012\r', 'VI013\r']
-        while True:
-            try:
-                self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
-                await self.interface_send_data(data={"data": poll_cmd})
-                # for poll_cmd in command_list:
-                #     await self.interface_send_data(data={"data": poll_cmd})
-                await asyncio.sleep(time_to_next(self.data_rate/2.))
-            except Exception as e:
-                self.logger.error("polling_loop", extra={"e": e})
     
     async def default_data_loop(self):
 
         while True:
             try:
                 data = await self.default_data_buffer.get()
+                print("DATA IN DEFAULT LOOP", data)
                 # self.collecting = True
                 self.logger.debug("default_data_loop", extra={"data": data})
-                # continue
+
+                # if self.first_record in data:
+                #     record1 = self.default_parse(data)
+                #     self.record_counter += 1
+                #     continue
+
+                # else:
+                #     record2 = self.default_parse(data)
+                #     var_index = 7 + self.record_counter
+                #     # record1["variables"][list(self.config.metadata.variables.keys())[var_index]["data"] = record2["variables"]]
+
+                # # continue
                 record = self.default_parse(data)
                 if record:
                     self.collecting = True
@@ -494,6 +584,15 @@ class APS3321(Sensor):
             except Exception as e:
                 print(f"default_data_loop error: {e}")
             await asyncio.sleep(0.1)
+
+    def check_array_buffer(self, data, array_cond = False):
+        self.array_buffer.append(data)
+        # print("current array buffer:", self.array_buffer)
+        if array_cond:
+            return self.array_buffer
+        else:
+            return None
+
     
     def default_parse(self, data):
         if data:
@@ -509,22 +608,110 @@ class APS3321(Sensor):
                 try:
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
-                    parts = data.data["data"].split(",")
-                    # print(f"parts: {parts}, {variables}")
-                    if len(parts) < 2:
-                        return None
+
+                    if ',C,' in data.data["data"]:
+                        if ',C,0' in data.data["data"]:
+                            parts = data.data["data"].split(",")
+                            parts = parts[5:]
+                            print('PARTS C0', parts)
+                            self.var_start_index = 0
+                            self.var_stop_index = 7
+                            for index, name in enumerate(variables):
+                                if name in record["variables"]:
+                                    instvar = self.config.metadata.variables[name]
+                                    vartype = instvar.type
+                                    if instvar.type == "string":
+                                        vartype = "str"
+                                    try:
+                                        record["variables"][name]["data"] = eval(vartype)(
+                                            parts[index].strip()
+                                        )
+                                    except ValueError:
+                                        if vartype == "str" or vartype == "char":
+                                            record["variables"][name]["data"] = ""
+                                        else:
+                                            record["variables"][name]["data"] = None
+                            self.C_counter = 0
+                        else:
+                            parts = data.data["data"].split(",")
+                            parts = parts[3:]
+                            parts = [x.replace("\r", "") for x in parts]
+                            # print("PARTS originalc", parts)
+                            # Replace all empty strings with values of 0
+                            parts = [int(x) if x else 0 for x in parts]
+                            # Add zeros to the end of the list until the list length reaches 64
+                            zeros_to_add = 64 - len(parts)
+                            parts.extend([0] * zeros_to_add)
+                            # print("PARTS C else with zeros", parts)
+                            self.var_start_index = 7
+                            self.var_stop_index = 8
+                            if self.C_counter < 52:
+                                record = self.check_array_buffer(parts, array_cond=False)
+                                self.C_counter += 1
+                            else:
+                                record = self.check_array_buffer(parts, array_cond=True)
+                                print('COMPLETE C Record', record)
+                                self.array_buffer = []
+                                self.C_counter = 0
+                    
+                    if ',D,' in data.data["data"]:
+                        parts = data.data["data"].split(",")
+                        parts = parts[11:]
+                        print("PARTS D", parts)
+                        # Replace all empty list items with values of 0
+                        parts = [x if x else 0 for x in parts]
+                        # Add zeros to the end of the list until the list length reaches 52
+                        zeros_to_add = 52 - len(parts)
+                        parts.extend([0] * zeros_to_add)
+                        self.var_start_index = 8
+                        self.var_stop_index = 9
+                    
+                    if ',S,' in data.data["data"]:
+                        if ',S,C' in data.data["data"]:
+                            self.S_counter = 0
+                            exit # or pass?
+                        else:
+                            parts = data.data["data"].split(",")
+                            parts = parts[3:]
+                            print("PARTS S", parts)
+                            # Replace all empty strings with values of 0
+                            parts = [x if x else 0 for x in parts]
+                            # Add zeros to the end of the list until the list length reaches 52
+                            zeros_to_add = 52 - len(parts)
+                            parts.extend([0] * zeros_to_add)
+                            self.var_start_index = 9
+                            self.var_stop_index = 10
+                            # record["variables"][name]["data"] = self.array_buffer(parts)
+                            if self.S_counter < 65:
+                                record = self.check_array_buffer(parts, array_cond=False)
+                                self.S_counter += 1
+                            else:
+                                record = self.check_array_buffer(parts, array_cond=True)
+                                self.array_buffer = []
+                                print('COMPLETE S Record', record)
+                    
+                    if ',Y,' in data.data:
+                        parts = data.data["data"].split(",")
+                        print("PARTS Y 2", parts)
+                        parts = parts[2:]
+                        # Remove the analog and digital input voltage levels from the middle of the list
+                        del parts[3:8]
+                        print("PARTS Y 1", parts)
+                        self.var_start_index = 10
+                        self.var_stop_index = 21
+
+
                     for index, name in enumerate(variables):
                         if name in record["variables"]:
-                            # instvar = self.config.variables[name]
                             instvar = self.config.metadata.variables[name]
                             vartype = instvar.type
                             if instvar.type == "string":
                                 vartype = "str"
                             try:
-                                # print(f"default_parse: {record['variables'][name]} - {parts[index].strip()}")
-                                record["variables"][name]["data"] = eval(vartype)(
-                                    parts[index].strip()
-                                )
+                                record["variables"][name]["data"] = self.array_buffer(parts)
+                                # record["variables"][name]["data"] = eval(vartype)(
+                                #     parts[index].strip()
+                                # )
                             except ValueError:
                                 if vartype == "str" or vartype == "char":
                                     record["variables"][name]["data"] = ""
