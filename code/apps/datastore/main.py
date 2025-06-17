@@ -174,7 +174,7 @@ async def sensor_settings_update(request: Request):
         # L.error("send", extra={"reason": e})
         pass
 
-    return "",204
+    # return "",204
     
 
 
