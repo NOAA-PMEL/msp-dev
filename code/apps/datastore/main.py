@@ -173,7 +173,7 @@ async def sensor_settings_update(request: Request):
     except Exception as e:
         # L.error("send", extra={"reason": e})
         pass
-
+    return "ok", 200
     # return "",204
     
 
