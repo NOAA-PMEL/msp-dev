@@ -186,7 +186,7 @@ async def sensor_settings_update(request: Request):
         pass
     # return "ok", 200
     ce = CloudEvent(attributes=attributes, data=response)
-    return to_json(ce), 200
+    return to_json(ce)
 
     return '', 204
     # return "",204
