@@ -56,14 +56,14 @@ class Settings(BaseSettings):
 
 app = FastAPI()
 
-origins = ["*"]  # dev
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# origins = ["*"]  # dev
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=origins,
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
     
 # router = APIRouter()
 # home_router = APIRouter()
@@ -162,9 +162,9 @@ async def data_sensor_get(query: Annotated[DataStoreQuery, Query()]):
 @app.post("/sensor/settings/update")
 async def sensor_settings_update(request: Request):
     try:
-        # ce = await request.json()
-        # print(ce)
-        pass
+        ce = await request.json()
+        print(ce)
+        # pass
         print("sensor_settings_update")
         # ce = from_http(request.headers, await request.body())
         # L.debug(request.headers,)
@@ -175,7 +175,7 @@ async def sensor_settings_update(request: Request):
         # L.error("send", extra={"reason": e})
         pass
     # return "ok", 200
-    return '',204
+    return '', 204
     # return "",204
     
 
