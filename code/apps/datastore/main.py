@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
 from cloudevents.http import CloudEvent, from_http, from_json
-from cloudevents.conversion import to_structured # , from_http
+from cloudevents.conversion import to_structured, to_json # , from_http
 from cloudevents.exceptions import InvalidStructuredJSON
 from cloudevents.pydantic import CloudEvent
 
@@ -161,6 +161,15 @@ async def data_sensor_get(query: Annotated[DataStoreQuery, Query()]):
     
 @app.post("/sensor/settings/update")
 async def sensor_settings_update(request: Request):
+
+    attributes = {
+        # "type": "envds.controller.control.request",
+        "type": "message.ack",
+        "source": "datastore",
+        "id": str(ULID()),
+        "datacontenttype": "application/json; charset=utf-8",
+    }
+    response = {"message": "ok"}
     try:
         ce = await request.json()
         # print(ce)
@@ -175,6 +184,9 @@ async def sensor_settings_update(request: Request):
         # L.error("send", extra={"reason": e})
         pass
     # return "ok", 200
+    ce = CloudEvent(attributes=attributes, data=response)
+    return to_json(ce), 200
+
     return '', 204
     # return "",204
     
