@@ -113,7 +113,7 @@ async def send_to_knbroker(ce: CloudEvent): #, template):
             # send to knative kafkabroker
             # async with httpx.AsyncClient() as client:
             #     r = await client.post(
-            with httpx.AsyncClient() as client:
+            with httpx.Client() as client:
                 r = client.post(
                     config.knative_broker,
                     headers=headers,
