@@ -101,12 +101,18 @@ async def send_to_knbroker(ce: CloudEvent): #, template):
             # wrap in verification cloud event
             pass
 
+        # attributes = {
+        #         "type": msg_type,
+        #         "source": "uasdaq.dashboard",
+        #         "id": str(ULID()),
+        #         "datacontenttype": "application/json; charset=utf-8",
+        #     }
 
         # Always log the message
         L.debug(ce)#, extra=template)
         try:
-            timeout = httpx.Timeout(5.0, read=0.5)
-            ce["datacontenttype"] = "application/json; charset=utf-8"
+            # timeout = httpx.Timeout(5.0, read=0.5)
+            # ce["datacontenttype"] = "application/json"
             ce["destpath"] = "/test/path"
             headers, body = to_structured(ce)
             L.debug("send_to_knbroker", extra={"broker": config.knative_broker, "h": headers, "b": body})
@@ -118,7 +124,7 @@ async def send_to_knbroker(ce: CloudEvent): #, template):
                     config.knative_broker,
                     headers=headers,
                     data=body,
-                    timeout=timeout
+                    # timeout=timeout
                 )
                 r.raise_for_status()
         except InvalidStructuredJSON:
