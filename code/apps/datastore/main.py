@@ -131,7 +131,7 @@ async def data_sensor_update(request: Request):
     except Exception as e:
         # L.error("send", extra={"reason": e})
         pass
-    
+
     return "",204
     
 
@@ -162,8 +162,9 @@ async def data_sensor_get(query: Annotated[DataStoreQuery, Query()]):
 @app.post("/sensor/settings/update")
 async def sensor_settings_update(request: Request):
     try:
-        ce = await request.json()
-        print(ce)
+        # ce = await request.json()
+        # print(ce)
+        pass
         # ce = from_http(request.headers, await request.body())
         # L.debug(request.headers,)
         # L.debug("sensor_data_update", extra={"ce": ce})#, "destpath": ce["destpath"]})
