@@ -1,5 +1,6 @@
 import asyncio
 import signal
+import traceback
 
 # import uvicorn
 # from uvicorn.config import LOGGING_CONFIG
@@ -292,12 +293,12 @@ class APS3321(Sensor):
 
         self.default_data_buffer = asyncio.Queue()
         self.record_counter = 0
-        self.var_start_index = 0
-        self.var_stop_index = 0
+        self.var_name = None
         self.first_record = 'C,0,C'
         self.last_record = ',Y,'
         self.array_buffer = []
         self.C_counter = 0
+        self.S_counter = 0
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
@@ -501,14 +502,12 @@ class APS3321(Sensor):
                             start_requested = False
                         else:
                             for start_command in start_commands:
-                                print('here3')
                                 await self.interface_send_data(data={"data": start_command})
                             # await self.interface_send_data(data={"data": "\n"})
                             await asyncio.sleep(2)
                             continue
                 else:
                     if self.collecting:
-                        print('here 4')
                         await self.interface_send_data(data={"data": stop_command})
                         await asyncio.sleep(2)
                         self.collecting = False
@@ -527,35 +526,39 @@ class APS3321(Sensor):
 
             await asyncio.sleep(0.1)
 
-    # async def start_command(self):
-    #     pass # Log,{sampling interval}
 
-    # async def stop_command(self):
-    #     pass # Log,0
-
-    # def stop(self):
-    #     asyncio.create_task(self.stop_sampling())
-    #     super().start()
-    
     async def default_data_loop(self):
 
         while True:
             try:
                 data = await self.default_data_buffer.get()
-                print("DATA IN DEFAULT LOOP", data)
+                print("DATA IN DEFAULT LOOP", data.data['data'])
                 # self.collecting = True
                 self.logger.debug("default_data_loop", extra={"data": data})
 
-                # if self.first_record in data:
-                #     record1 = self.default_parse(data)
-                #     self.record_counter += 1
-                #     continue
+                if self.first_record in data.data['data']:
+                    record1 = self.default_parse(data)
+                    self.record_counter += 1
+                    continue
 
-                # else:
-                #     record2 = self.default_parse(data)
-                #     var_index = 7 + self.record_counter
-                #     # record1["variables"][list(self.config.metadata.variables.keys())[var_index]["data"] = record2["variables"]]
+                elif self.last_record in data.data['data']:
+                    record2 = self.default_parse(data)
+                    for var in record2["variables"]:
+                        if record2["variables"][var]["data"]:
+                            record1["variables"][var]["data"] = record2["variables"][var]["data"]
+                    # record1.update((k,v) for k,v in record2.items() if v is not None)
 
+                else:
+                    record2 = self.default_parse(data)
+                    if not record2:
+                        continue
+                    else:
+                        for var in record2["variables"]:
+                            if record2["variables"][var]["data"]:
+                                record1["variables"][var]["data"] = record2["variables"][var]["data"]
+                        continue
+                record = record1
+                print("RECORD FINAL", record)
                 # # continue
                 record = self.default_parse(data)
                 if record:
@@ -613,114 +616,104 @@ class APS3321(Sensor):
                         if ',C,0' in data.data["data"]:
                             parts = data.data["data"].split(",")
                             parts = parts[5:]
-                            print('PARTS C0', parts)
-                            self.var_start_index = 0
-                            self.var_stop_index = 7
-                            for index, name in enumerate(variables):
-                                if name in record["variables"]:
-                                    instvar = self.config.metadata.variables[name]
-                                    vartype = instvar.type
-                                    if instvar.type == "string":
-                                        vartype = "str"
-                                    try:
-                                        record["variables"][name]["data"] = eval(vartype)(
-                                            parts[index].strip()
-                                        )
-                                    except ValueError:
-                                        if vartype == "str" or vartype == "char":
-                                            record["variables"][name]["data"] = ""
-                                        else:
-                                            record["variables"][name]["data"] = None
+                            parts = [x.replace("\r", "") for x in parts]
+                            self.var_name = ['ffff', 'stime', 'dtime', 'evt1', 'evt3', 'evt4', 'total']
+                            compiled_record = parts
                             self.C_counter = 0
                         else:
                             parts = data.data["data"].split(",")
                             parts = parts[3:]
                             parts = [x.replace("\r", "") for x in parts]
-                            # print("PARTS originalc", parts)
                             # Replace all empty strings with values of 0
                             parts = [int(x) if x else 0 for x in parts]
                             # Add zeros to the end of the list until the list length reaches 64
                             zeros_to_add = 64 - len(parts)
                             parts.extend([0] * zeros_to_add)
-                            # print("PARTS C else with zeros", parts)
-                            self.var_start_index = 7
-                            self.var_stop_index = 8
-                            if self.C_counter < 52:
-                                record = self.check_array_buffer(parts, array_cond=False)
+                            self.var_name = ['C']
+
+                            if self.C_counter < 51:
+                                temp_record = self.check_array_buffer(parts, array_cond=False)
                                 self.C_counter += 1
+                                return
+
                             else:
-                                record = self.check_array_buffer(parts, array_cond=True)
-                                print('COMPLETE C Record', record)
+                                compiled_record = self.check_array_buffer(parts, array_cond=True)
                                 self.array_buffer = []
                                 self.C_counter = 0
                     
                     if ',D,' in data.data["data"]:
                         parts = data.data["data"].split(",")
                         parts = parts[11:]
-                        print("PARTS D", parts)
+                        parts = [x.replace("\r", "") for x in parts]
                         # Replace all empty list items with values of 0
-                        parts = [x if x else 0 for x in parts]
+                        parts = [int(x) if x else 0 for x in parts]
                         # Add zeros to the end of the list until the list length reaches 52
                         zeros_to_add = 52 - len(parts)
                         parts.extend([0] * zeros_to_add)
-                        self.var_start_index = 8
-                        self.var_stop_index = 9
+                        self.var_name =['D']
+                        compiled_record = parts
                     
                     if ',S,' in data.data["data"]:
                         if ',S,C' in data.data["data"]:
                             self.S_counter = 0
-                            exit # or pass?
+                            return
                         else:
                             parts = data.data["data"].split(",")
                             parts = parts[3:]
-                            print("PARTS S", parts)
+                            parts = [x.replace("\r", "") for x in parts]
                             # Replace all empty strings with values of 0
-                            parts = [x if x else 0 for x in parts]
+                            parts = [int(x) if x else 0 for x in parts]
                             # Add zeros to the end of the list until the list length reaches 52
                             zeros_to_add = 52 - len(parts)
                             parts.extend([0] * zeros_to_add)
-                            self.var_start_index = 9
-                            self.var_stop_index = 10
-                            # record["variables"][name]["data"] = self.array_buffer(parts)
-                            if self.S_counter < 65:
-                                record = self.check_array_buffer(parts, array_cond=False)
+                            self.var_name = ['S']
+
+                            if self.S_counter < 63:
+                                print('S counter', self.S_counter)
+                                temp_record = self.check_array_buffer(parts, array_cond=False)
                                 self.S_counter += 1
+                                return
+
                             else:
-                                record = self.check_array_buffer(parts, array_cond=True)
+                                compiled_record = self.check_array_buffer(parts, array_cond=True)
+                                print('s record', compiled_record)
                                 self.array_buffer = []
-                                print('COMPLETE S Record', record)
+                                self.S_counter = 0
                     
-                    if ',Y,' in data.data:
+                    if ',Y,' in data.data["data"]:
                         parts = data.data["data"].split(",")
-                        print("PARTS Y 2", parts)
                         parts = parts[2:]
+                        parts = [x.replace("\r", "") for x in parts]
                         # Remove the analog and digital input voltage levels from the middle of the list
                         del parts[3:8]
-                        print("PARTS Y 1", parts)
-                        self.var_start_index = 10
-                        self.var_stop_index = 21
+                        compiled_record = parts
+                        # print("PARTS Y 1", parts)
+                        self.var_name = ['bpress', 'tflow', 'sflow', 'lpower', 'lcur', 'spumpv', 'tpumpv', 'itemp', 'btemp', 'dtemp', 'Vop']
 
 
-                    for index, name in enumerate(variables):
+                    for index, name in enumerate(self.var_name):
+                    # for index, name in enumerate(variables):
                         if name in record["variables"]:
                             instvar = self.config.metadata.variables[name]
                             vartype = instvar.type
                             if instvar.type == "string":
                                 vartype = "str"
                             try:
-                                record["variables"][name]["data"] = self.array_buffer(parts)
-                                # record["variables"][name]["data"] = eval(vartype)(
-                                #     parts[index].strip()
-                                # )
+                                if len(self.var_name) == 1:
+                                    record["variables"][name]["data"] = compiled_record
+                                else:
+                                    record["variables"][name]["data"] = compiled_record[index]
                             except ValueError:
                                 if vartype == "str" or vartype == "char":
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
+                    print("RECORD BEING RETURNED", record)
                     return record
                 except KeyError:
                     pass
             except Exception as e:
+                print(traceback.extract_tb(e.__traceback__))
                 print(f"default_parse error: {e}")
         # else:
         return None
