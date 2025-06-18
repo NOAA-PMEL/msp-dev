@@ -195,6 +195,36 @@ async def sensor_settings_update(request: Request):
     # return "",204
     
 
+app.post("/status/update", status_code=status.HTTP_202_ACCEPTED)
+async def status_update(request: Request):
+
+    # attributes = {
+    #     # "type": "envds.controller.control.request",
+    #     "type": "message.ack",
+    #     "source": "datastore",
+    #     "id": str(ULID()),
+    #     "datacontenttype": "application/json; charset=utf-8",
+    # }
+    # response = {"message": "ok"}
+    try:
+        # ce = from_json(await request.json())
+        # print(ce)
+        # pass
+        # print("sensor_settings_update")
+        ce = from_http(request.headers, await request.body())
+        # print(ce)
+        # L.debug(request.headers,)
+        L.debug("status_update", extra={"ce": ce})#, "destpath": ce["destpath"]})
+        # await adapter.send_to_mqtt(ce)
+        # await datastore.data_sensor_update(ce)
+    except Exception as e:
+        # print(e)
+        L.error("status_update", extra={"reason": e})
+        pass
+    # return "ok", 200
+    # ce = CloudEvent(attributes=attributes, data=response)
+    # return to_json(ce)
+    return {"message": "OK"}
 
 # @app.post("/settings/update")
 # async def settings_update(ce: CloudEvent):
