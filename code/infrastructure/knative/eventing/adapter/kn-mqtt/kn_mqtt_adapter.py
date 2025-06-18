@@ -224,15 +224,15 @@ class KNMQTTClient():
                     headers, body = to_structured(ce)
                     self.logger.debug("send_to_knbroker", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
                     # send to knative kafkabroker
-                    async with httpx.AsyncClient() as client:
-                        r = await client.post(
-                            self.config.knative_broker,
-                            headers=headers,
-                            data=body,
-                            timeout=timeout
-                        )
-                        # self.logger.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
-                        r.raise_for_status()
+                    # async with httpx.AsyncClient() as client:
+                    #     r = await client.post(
+                    #         self.config.knative_broker,
+                    #         headers=headers,
+                    #         data=body,
+                    #         timeout=timeout
+                    #     )
+                    #     # self.logger.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
+                    #     r.raise_for_status()
                 except InvalidStructuredJSON:
                     self.logger.error(f"INVALID MSG: {ce}")
                 except httpx.TimeoutException:
