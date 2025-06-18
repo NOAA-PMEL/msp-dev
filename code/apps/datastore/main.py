@@ -209,6 +209,7 @@ async def status_update(request: Request):
     try:
         # ce = from_json(await request.json())
         # print(ce)
+        L.debug(await request.body())
         # pass
         # print("sensor_settings_update")
         ce = from_http(request.headers, await request.body())
