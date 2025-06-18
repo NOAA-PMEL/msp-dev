@@ -186,7 +186,7 @@ class KNMQTTClient():
 
                         ce = from_json(message.payload)
                         topic = message.topic.value
-                        ce["source_path"] = topic
+                        ce["sourcepath"] = topic
                         
                         try:
                             L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
