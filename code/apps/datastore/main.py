@@ -195,7 +195,7 @@ async def sensor_settings_update(request: Request):
     # return "",204
     
 
-app.post("/status/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/status/update", status_code=status.HTTP_202_ACCEPTED)
 async def status_update(request: Request):
 
     # attributes = {
