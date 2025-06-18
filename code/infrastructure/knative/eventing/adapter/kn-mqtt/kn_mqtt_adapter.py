@@ -111,24 +111,25 @@ async def send_to_knbroker(ce: CloudEvent): #, template):
         # Always log the message
         L.debug(ce)#, extra=template)
         try:
-            # timeout = httpx.Timeout(5.0, read=0.5)
+            timeout = httpx.Timeout(5.0, read=0.1)
             # ce["datacontenttype"] = "application/json"
             ce["destpath"] = "/test/path"
             headers, body = to_structured(ce)
-            L.debug("send_to_knbroker", extra={"broker": config.knative_broker, "h": headers, "b": body})
+            # L.debug("send_to_knbroker", extra={"broker": config.knative_broker, "h": headers, "b": body})
             # send to knative kafkabroker
-            # async with httpx.AsyncClient() as client:
-            #     r = await client.post(
-            with httpx.Client() as client:
-                r = client.post(
+            async with httpx.AsyncClient() as client:
+                r = await client.post(
                     config.knative_broker,
                     headers=headers,
                     data=body,
-                    # timeout=timeout
+                    timeout=timeout
                 )
+                # L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
                 r.raise_for_status()
         except InvalidStructuredJSON:
             L.error(f"INVALID MSG: {ce}")
+        except httpx.TimeoutException:
+            pass
         except httpx.HTTPError as e:
             L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
 

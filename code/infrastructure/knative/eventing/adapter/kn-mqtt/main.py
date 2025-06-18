@@ -4,7 +4,7 @@ import json
 import logging
 import socket
 
-from fastapi import FastAPI, Request  # , APIRouter
+from fastapi import FastAPI, Request, status  # , APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -125,14 +125,18 @@ async def root():
 
 
 #Accept data from Knative system and publish to MQTT broker
-@app.post("/mqtt/send")
+@app.post("/mqtt/send", status_code=status.HTTP_202_ACCEPTED)
 async def mqtt_send(request: Request):
     try:
-        ce = from_http(request.headers, await request.body())
+        ce = await request.json()
+        print(ce)
+        # ce = from_http(request.headers, await request.body())
         # L.debug(request.headers)
-        L.debug("mqtt_send", extra={"ce": ce, "destpath": ce["destpath"]})
-        await adapter.send_to_mqtt(ce)
+        # L.debug("mqtt_send", extra={"ce": ce, "destpath": ce["destpath"]})
+        # await adapter.send_to_mqtt(ce)
     except Exception as e:
-        L.error("send", extra={"reason": e})
+        # L.error("send", extra={"reason": e})
+        pass
 
-    return "",204
+    return {"message": "OK"}
+    # return "",204
