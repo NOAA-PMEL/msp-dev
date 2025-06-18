@@ -24,7 +24,7 @@ handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
-L.setLevel(logging.INFO)
+L.setLevel(logging.DEBUG)
 
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
@@ -175,16 +175,16 @@ async def sensor_settings_update(request: Request):
         # ce = from_json(await request.json())
         # print(ce)
         # pass
-        print("sensor_settings_update")
+        # print("sensor_settings_update")
         ce = from_http(request.headers, await request.body())
-        print(ce)
+        # print(ce)
         # L.debug(request.headers,)
-        # L.debug("sensor_settings_update", extra={"ce": ce})#, "destpath": ce["destpath"]})
+        L.debug("sensor_settings_update", extra={"ce": ce})#, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
     except Exception as e:
-        print(e)
-        # L.error("send", extra={"reason": e})
+        # print(e)
+        L.error("send", extra={"reason": e})
         pass
     # return "ok", 200
     # ce = CloudEvent(attributes=attributes, data=response)
