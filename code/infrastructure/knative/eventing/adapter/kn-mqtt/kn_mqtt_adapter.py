@@ -219,7 +219,7 @@ class KNMQTTClient():
                 L.debug(ce)#, extra=template)
                 try:
                     timeout = httpx.Timeout(5.0, read=0.1)
-                    # ce["datacontenttype"] = "application/json"
+                    ce["datacontenttype"] = "application/json"
                     # ce["destpath"] = "/test/path"
                     headers, body = to_structured(ce)
                     L.debug("send_to_knbroker", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
