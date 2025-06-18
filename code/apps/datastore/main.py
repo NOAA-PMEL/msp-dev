@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import json
 import logging
 
-from fastapi import FastAPI, Request, Query  # , APIRouter
+from fastapi import FastAPI, Request, Query, status  # , APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -121,7 +121,7 @@ async def root():
 # async def data_request()
 #     pass
 
-@app.post("/sensor/data/update")
+@app.post("/sensor/data/update", status_code=status.HTTP_202_ACCEPTED)
 async def data_sensor_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -160,7 +160,7 @@ async def data_sensor_get(query: Annotated[DataStoreQuery, Query()]):
     result = await datastore.data_sensor_get(query)
     return {"result": result}
     
-@app.post("/sensor/settings/update")
+@app.post("/sensor/settings/update", status_code=status.HTTP_202_ACCEPTED)
 async def sensor_settings_update(request: Request):
 
     attributes = {
@@ -182,11 +182,13 @@ async def sensor_settings_update(request: Request):
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
     except Exception as e:
+        print(e)
         # L.error("send", extra={"reason": e})
         pass
     # return "ok", 200
-    ce = CloudEvent(attributes=attributes, data=response)
-    return to_json(ce)
+    # ce = CloudEvent(attributes=attributes, data=response)
+    # return to_json(ce)
+    return {"message": "OK"}
 
     return '', 204
     # return "",204
