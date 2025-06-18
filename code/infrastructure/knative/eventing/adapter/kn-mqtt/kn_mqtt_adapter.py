@@ -237,7 +237,7 @@ class KNMQTTClient():
             except httpx.HTTPError as e:
                 self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
 
-            asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)
 
 
 async def shutdown():
