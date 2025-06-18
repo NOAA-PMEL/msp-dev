@@ -213,13 +213,13 @@ class KNMQTTClient():
                 # wrap in verification cloud event
                 pass
 
-            # self.logger.debug(ce)#, extra=template)
+            self.logger.debug(ce)#, extra=template)
             try:
                 timeout = httpx.Timeout(5.0, read=0.1)
                 # ce["datacontenttype"] = "application/json"
                 # ce["destpath"] = "/test/path"
                 headers, body = to_structured(ce)
-                # self.logger.debug("send_to_knbroker", extra={"broker": config.knative_broker, "h": headers, "b": body})
+                self.logger.debug("send_to_knbroker", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
                 # send to knative kafkabroker
                 async with httpx.AsyncClient() as client:
                     r = await client.post(
