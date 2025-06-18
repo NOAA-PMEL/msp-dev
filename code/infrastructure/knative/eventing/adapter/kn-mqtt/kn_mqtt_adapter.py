@@ -39,9 +39,9 @@ class KNMQTTAdapterSettings(BaseSettings):
         env_prefix = 'KN_MQTT_'
         case_sensitive = False
 
-    class Config:
-        env_prefix = 'KN_MQTT_'
-        case_sensitive = False
+    # class Config:
+    #     env_prefix = 'KN_MQTT_'
+    #     case_sensitive = False
 
 # async def send_to_knbroker_loop():
 #     reconnect = 3
@@ -148,7 +148,7 @@ class KNMQTTClient():
         reconnect = 3
         while True:
             try:
-                self.logger.debug("listen", extra={"config": config})
+                self.logger.debug("listen", extra={"config": self.config})
                 async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
                     while True:
                         ce = await self.to_mqtt_buffer.get()
@@ -162,7 +162,7 @@ class KNMQTTClient():
             except MqttError as error:
                 self.logger.error(
                     f'{error}. Trying again in {reconnect} seconds',
-                    extra={ k: v for k, v in config.dict().items() if k.lower().startswith('mqtt_') }
+                    extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
                 )
             finally:
                 await asyncio.sleep(reconnect)
@@ -171,9 +171,9 @@ class KNMQTTClient():
         reconnect = 3
         while True:
             try:
-                self.logger.debug("listen", extra={"config": config})
-                async with Client(config.mqtt_broker, port=config.mqtt_port) as client:
-                    for topic in config.mqtt_topic_subscriptions.split("\n"):
+                self.logger.debug("listen", extra={"config": self.config})
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
+                    for topic in self.config.mqtt_topic_subscriptions.split("\n"):
                         # print(f"run - topic: {topic.strip()}")
                         # self.logger.debug("run", extra={"topic": topic})
                         if topic.strip():
@@ -209,7 +209,7 @@ class KNMQTTClient():
             ce = await self.to_knbroker_buffer.get()
 
             # TODO discuss validation requirements
-            if config.validation_required:
+            if self.config.validation_required:
                 # wrap in verification cloud event
                 pass
 
@@ -223,7 +223,7 @@ class KNMQTTClient():
                 # send to knative kafkabroker
                 async with httpx.AsyncClient() as client:
                     r = await client.post(
-                        config.knative_broker,
+                        self.config.knative_broker,
                         headers=headers,
                         data=body,
                         timeout=timeout
