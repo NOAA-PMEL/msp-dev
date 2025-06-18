@@ -202,12 +202,14 @@ class KNMQTTClient():
                 await asyncio.sleep(reconnect)
 
     async def send_to_knbroker(self, ce: CloudEvent):
+        print("send ", ce)
         await self.to_knbroker_buffer.put(ce)
 
     async def send_to_knbroker_loop(self): #, template):
         while True:
             ce = await self.to_knbroker_buffer.get()
-
+            print(ce)
+            continue
             # TODO discuss validation requirements
             if self.config.validation_required:
                 # wrap in verification cloud event
