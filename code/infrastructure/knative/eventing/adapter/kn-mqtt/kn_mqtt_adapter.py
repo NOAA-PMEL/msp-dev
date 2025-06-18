@@ -208,8 +208,8 @@ class KNMQTTClient():
     async def send_to_knbroker_loop(self): #, template):
         while True:
             ce = await self.to_knbroker_buffer.get()
-            print(ce)
-            continue
+            # print(ce)
+            # continue
             # TODO discuss validation requirements
             if self.config.validation_required:
                 # wrap in verification cloud event
