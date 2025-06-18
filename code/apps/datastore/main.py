@@ -176,7 +176,7 @@ async def sensor_settings_update(request: Request):
         # print(ce)
         # pass
         print("sensor_settings_update")
-        ce = await from_http(request.headers, await request.body())
+        ce = from_http(request.headers, await request.body())
         # L.debug(request.headers,)
         L.debug("sensor_settings_update", extra={"ce": ce})#, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
