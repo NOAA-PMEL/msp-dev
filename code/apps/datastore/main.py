@@ -177,8 +177,9 @@ async def sensor_settings_update(request: Request):
         # pass
         print("sensor_settings_update")
         ce = from_http(request.headers, await request.body())
+        print(ce)
         # L.debug(request.headers,)
-        L.debug("sensor_settings_update", extra={"ce": ce})#, "destpath": ce["destpath"]})
+        # L.debug("sensor_settings_update", extra={"ce": ce})#, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
     except Exception as e:
