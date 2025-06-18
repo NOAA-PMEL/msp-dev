@@ -210,35 +210,37 @@ class KNMQTTClient():
             ce = await self.to_knbroker_buffer.get()
             # print(ce)
             # continue
-            # TODO discuss validation requirements
-            if self.config.validation_required:
-                # wrap in verification cloud event
-                pass
-
-            self.logger.debug(ce)#, extra=template)
             try:
-                timeout = httpx.Timeout(5.0, read=0.1)
-                # ce["datacontenttype"] = "application/json"
-                # ce["destpath"] = "/test/path"
-                headers, body = to_structured(ce)
-                self.logger.debug("send_to_knbroker", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
-                # send to knative kafkabroker
-                async with httpx.AsyncClient() as client:
-                    r = await client.post(
-                        self.config.knative_broker,
-                        headers=headers,
-                        data=body,
-                        timeout=timeout
-                    )
-                    # self.logger.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
-                    r.raise_for_status()
-            except InvalidStructuredJSON:
-                self.logger.error(f"INVALID MSG: {ce}")
-            except httpx.TimeoutException:
-                pass
-            except httpx.HTTPError as e:
-                self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+                # TODO discuss validation requirements
+                if self.config.validation_required:
+                    # wrap in verification cloud event
+                    pass
 
+                self.logger.debug(ce)#, extra=template)
+                try:
+                    timeout = httpx.Timeout(5.0, read=0.1)
+                    # ce["datacontenttype"] = "application/json"
+                    # ce["destpath"] = "/test/path"
+                    headers, body = to_structured(ce)
+                    self.logger.debug("send_to_knbroker", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
+                    # send to knative kafkabroker
+                    async with httpx.AsyncClient() as client:
+                        r = await client.post(
+                            self.config.knative_broker,
+                            headers=headers,
+                            data=body,
+                            timeout=timeout
+                        )
+                        # self.logger.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
+                        r.raise_for_status()
+                except InvalidStructuredJSON:
+                    self.logger.error(f"INVALID MSG: {ce}")
+                except httpx.TimeoutException:
+                    pass
+                except httpx.HTTPError as e:
+                    self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+            except Exception as e:
+                print("error", e)
             await asyncio.sleep(0.01)
 
 
