@@ -208,6 +208,7 @@ class KNMQTTClient():
     async def send_to_knbroker_loop(self): #, template):
         while True:
             ce = await self.to_knbroker_buffer.get()
+            print(type(ce))
             # print(ce)
             # continue
             try:
@@ -219,6 +220,16 @@ class KNMQTTClient():
                 L.debug(ce)#, extra=template)
                 try:
                     timeout = httpx.Timeout(5.0, read=0.1)
+                    if "dest_path" in ce:
+                        attrs = {}
+                        for k,v in ce.items():
+                            if k == "data":
+                                continue
+                            elif k == "dest_path":
+                                attrs["destpath"] = v
+                            else:
+                                attrs[k] = v
+                        ce = CloudEvent(attributes=attrs, data=ce.data)
                     ce["datacontenttype"] = "application/json"
                     # ce["destpath"] = "/test/path"
                     headers, body = to_structured(ce)
