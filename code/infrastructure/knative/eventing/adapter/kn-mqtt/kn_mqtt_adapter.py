@@ -226,7 +226,8 @@ class KNMQTTClient():
                     # send to knative kafkabroker
                     async with httpx.AsyncClient() as client:
                         r = await client.post(
-                            self.config.knative_broker,
+                            # self.config.knative_broker,
+                            "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
                             headers=headers,
                             data=body,
                             timeout=timeout
