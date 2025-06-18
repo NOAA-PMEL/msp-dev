@@ -163,22 +163,22 @@ async def data_sensor_get(query: Annotated[DataStoreQuery, Query()]):
 @app.post("/sensor/settings/update", status_code=status.HTTP_202_ACCEPTED)
 async def sensor_settings_update(request: Request):
 
-    attributes = {
-        # "type": "envds.controller.control.request",
-        "type": "message.ack",
-        "source": "datastore",
-        "id": str(ULID()),
-        "datacontenttype": "application/json; charset=utf-8",
-    }
-    response = {"message": "ok"}
+    # attributes = {
+    #     # "type": "envds.controller.control.request",
+    #     "type": "message.ack",
+    #     "source": "datastore",
+    #     "id": str(ULID()),
+    #     "datacontenttype": "application/json; charset=utf-8",
+    # }
+    # response = {"message": "ok"}
     try:
-        ce = await request.json()
+        ce = from_json(await request.json())
         print(ce)
         # pass
         print("sensor_settings_update")
         # ce = await from_http(request.headers, await request.body())
         # L.debug(request.headers,)
-        # L.debug("sensor_settings_update", extra={"ce": ce})#, "destpath": ce["destpath"]})
+        L.debug("sensor_settings_update", extra={"ce": ce})#, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
     except Exception as e:
