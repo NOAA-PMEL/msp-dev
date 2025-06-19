@@ -155,27 +155,27 @@ class APS3321(Sensor):
                     "units": {"type": "char", "data": "count"},
                 },
             },
-            "C": {
+            "particle_counts_accum": {
                 "type": "int",
-                "shape": ["time", "aerodynamic diameter", "side scatter channel"],
+                "shape": ["time", "diameter", "channel"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Particle Counts in Each Pulse Height Accumulator Bin (Correlated / Paired Record)"},
                     "units": {"type": "char", "data": "count"},
                 },
             },
-            "D": {
+            "particle_counts": {
                 "type": "int",
-                "shape": ["time", "aerodynamic diameter"],
+                "shape": ["time", "diameter"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Particle Counts in Calibrated Diameter Channels"},
                     "units": {"type": "char", "data": "count"},
                 },
             },
-            "S": {
+            "particle_counts_ss": {
                 "type": "int",
-                "shape": ["time", "side scatter channel", "aerodynamic diameter"],
+                "shape": ["time", "channel", "diameter"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "char", "data": "Particle Counts in Side Scatter Channels"},
@@ -356,13 +356,11 @@ class APS3321(Sensor):
                 }
             }
         }
-        print("CONF:", conf)
         if "interfaces" in conf:
             for name, iface in conf["interfaces"].items():
                 if name in sensor_iface_properties:
                     for propname, prop in sensor_iface_properties[name].items():
                         iface[propname] = prop
-                        print("PROP", prop)
 
             self.logger.debug(
                 "APS3321.configure", extra={"interfaces": conf["interfaces"]}
@@ -489,10 +487,9 @@ class APS3321(Sensor):
                             self.collecting = False
                             continue
                         else:
-                            for start_command in start_commands:
-                                print(start_command)
-                                await self.interface_send_data(data={"data": start_command})
-                            # await self.interface_send_data(data={"data": "\n"})
+                            # for start_command in start_commands:
+                            #     await self.interface_send_data(data={"data": start_command})
+                            await self.interface_send_data(data={"data": start_commands[0]})
                             need_start = False
                             start_requested = True
                             await asyncio.sleep(2)
@@ -501,9 +498,9 @@ class APS3321(Sensor):
                         if self.collecting:
                             start_requested = False
                         else:
-                            for start_command in start_commands:
-                                await self.interface_send_data(data={"data": start_command})
-                            # await self.interface_send_data(data={"data": "\n"})
+                            # for start_command in start_commands:
+                            #     await self.interface_send_data(data={"data": start_command})
+                            await self.interface_send_data(data={"data": start_commands[0]})
                             await asyncio.sleep(2)
                             continue
                 else:
@@ -514,13 +511,6 @@ class APS3321(Sensor):
 
                 await asyncio.sleep(0.1)
 
-                # if self.collecting:
-                #     # await self.stop_command()
-                #     self.logger.debug("sampling_monitor:5", extra={"self.collecting": self.collecting})
-                #     await self.interface_send_data(data={"data": stop_command})
-                #     # self.logger.debug("sampling_monitor:6", extra={"self.collecting": self.collecting})
-                #     self.collecting = False
-                #     # self.logger.debug("sampling_monitor:7", extra={"self.collecting": self.collecting})
             except Exception as e:
                 print(f"sampling monitor error: {e}")
 
@@ -532,9 +522,14 @@ class APS3321(Sensor):
         while True:
             try:
                 data = await self.default_data_buffer.get()
-                print("DATA IN DEFAULT LOOP", data.data['data'])
+                # print('DATA', data)
+                if data:
+                    self.collecting = True
+                # if self.default_data_buffer.empty():
+                #     print('no data')
+                # print("DATA", data)
                 # self.collecting = True
-                self.logger.debug("default_data_loop", extra={"data": data})
+                # self.logger.debug("default_data_loop", extra={"data": data})
 
                 if self.first_record in data.data['data']:
                     record1 = self.default_parse(data)
@@ -544,9 +539,9 @@ class APS3321(Sensor):
                 elif self.last_record in data.data['data']:
                     record2 = self.default_parse(data)
                     for var in record2["variables"]:
-                        if record2["variables"][var]["data"]:
-                            record1["variables"][var]["data"] = record2["variables"][var]["data"]
-                    # record1.update((k,v) for k,v in record2.items() if v is not None)
+                        if var != 'time':
+                            if record2["variables"][var]["data"]:
+                                record1["variables"][var]["data"] = record2["variables"][var]["data"]
 
                 else:
                     record2 = self.default_parse(data)
@@ -554,18 +549,19 @@ class APS3321(Sensor):
                         continue
                     else:
                         for var in record2["variables"]:
-                            if record2["variables"][var]["data"]:
-                                record1["variables"][var]["data"] = record2["variables"][var]["data"]
+                            if var != 'time':
+                                if record2["variables"][var]["data"]:
+                                    record1["variables"][var]["data"] = record2["variables"][var]["data"]
                         continue
                 record = record1
                 print("RECORD FINAL", record)
+                # print("C length", len(record["variables"]["particle_counts_accum"]["data"]), len(record["variables"]["particle_counts_accum"]["data"][0]))
                 # # continue
                 record = self.default_parse(data)
                 if record:
                     self.collecting = True
 
-                # print(record)
-                # print(self.sampling())
+
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
@@ -586,15 +582,14 @@ class APS3321(Sensor):
                 # self.logger.debug("default_data_loop", extra={"record": record})
             except Exception as e:
                 print(f"default_data_loop error: {e}")
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.001)
 
     def check_array_buffer(self, data, array_cond = False):
         self.array_buffer.append(data)
-        # print("current array buffer:", self.array_buffer)
         if array_cond:
             return self.array_buffer
         else:
-            return None
+            return
 
     
     def default_parse(self, data):
@@ -602,11 +597,11 @@ class APS3321(Sensor):
             try:
                 variables = list(self.config.metadata.variables.keys())
                 variables.remove("time")
-                print(f"variables: \n{variables}")
+                # print(f"variables: \n{variables}")
 
-                print(f"include metadata: {self.include_metadata}")
+                # print(f"include metadata: {self.include_metadata}")
                 record = self.build_data_record(meta=self.include_metadata)
-                print(f"default_parse: data: {data}, record: {record}")
+                # print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
                 try:
                     record["timestamp"] = data.data["timestamp"]
@@ -629,16 +624,18 @@ class APS3321(Sensor):
                             # Add zeros to the end of the list until the list length reaches 64
                             zeros_to_add = 64 - len(parts)
                             parts.extend([0] * zeros_to_add)
-                            self.var_name = ['C']
+                            self.var_name = ['particle_counts_accum']
 
                             if self.C_counter < 51:
-                                temp_record = self.check_array_buffer(parts, array_cond=False)
+                                self.check_array_buffer(parts, array_cond=False)
+                                print('C loop')
                                 self.C_counter += 1
                                 return
 
                             else:
                                 compiled_record = self.check_array_buffer(parts, array_cond=True)
                                 self.array_buffer = []
+                                print('REC last C')
                                 self.C_counter = 0
                     
                     if ',D,' in data.data["data"]:
@@ -650,12 +647,13 @@ class APS3321(Sensor):
                         # Add zeros to the end of the list until the list length reaches 52
                         zeros_to_add = 52 - len(parts)
                         parts.extend([0] * zeros_to_add)
-                        self.var_name =['D']
+                        self.var_name =['particle_counts']
                         compiled_record = parts
                     
                     if ',S,' in data.data["data"]:
                         if ',S,C' in data.data["data"]:
                             self.S_counter = 0
+                            print('REC first S')
                             return
                         else:
                             parts = data.data["data"].split(",")
@@ -666,17 +664,15 @@ class APS3321(Sensor):
                             # Add zeros to the end of the list until the list length reaches 52
                             zeros_to_add = 52 - len(parts)
                             parts.extend([0] * zeros_to_add)
-                            self.var_name = ['S']
+                            self.var_name = ['particle_counts_ss']
 
                             if self.S_counter < 63:
-                                print('S counter', self.S_counter)
-                                temp_record = self.check_array_buffer(parts, array_cond=False)
+                                self.check_array_buffer(parts, array_cond=False)
                                 self.S_counter += 1
                                 return
 
                             else:
                                 compiled_record = self.check_array_buffer(parts, array_cond=True)
-                                print('s record', compiled_record)
                                 self.array_buffer = []
                                 self.S_counter = 0
                     
@@ -687,7 +683,6 @@ class APS3321(Sensor):
                         # Remove the analog and digital input voltage levels from the middle of the list
                         del parts[3:8]
                         compiled_record = parts
-                        # print("PARTS Y 1", parts)
                         self.var_name = ['bpress', 'tflow', 'sflow', 'lpower', 'lcur', 'spumpv', 'tpumpv', 'itemp', 'btemp', 'dtemp', 'Vop']
 
 
@@ -695,20 +690,22 @@ class APS3321(Sensor):
                     # for index, name in enumerate(variables):
                         if name in record["variables"]:
                             instvar = self.config.metadata.variables[name]
-                            vartype = instvar.type
-                            if instvar.type == "string":
-                                vartype = "str"
                             try:
                                 if len(self.var_name) == 1:
+                                    print("HERE", compiled_record)
                                     record["variables"][name]["data"] = compiled_record
                                 else:
-                                    record["variables"][name]["data"] = compiled_record[index]
+                                    if instvar.type == "int":
+                                        record["variables"][name]["data"] = int(compiled_record[index])
+                                    elif instvar.type == "float":
+                                        record["variables"][name]["data"] = float(compiled_record[index])
+                                    else:
+                                        record["variables"][name]["data"] = compiled_record[index]
                             except ValueError:
-                                if vartype == "str" or vartype == "char":
+                                if instvar.type == "str" or instvar.type == "char":
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
-                    print("RECORD BEING RETURNED", record)
                     return record
                 except KeyError:
                     pass
