@@ -220,25 +220,28 @@ class KNMQTTClient():
                 L.debug(ce)#, extra=template)
                 try:
                     timeout = httpx.Timeout(5.0, read=0.1)
-                    if "dest_path" in ce:
-                        attrs = {}
-                        for k,v in ce.items():
-                            if k == "data":
-                                continue
-                            elif k == "dest_path":
-                                attrs["destpath"] = v
-                            else:
-                                attrs[k] = v
-                        ce = CloudEvent(attributes=attrs, data=ce.data)
                     ce["datacontenttype"] = "application/json"
+                    attrs = {
+                        # "type": "envds.controller.control.request",
+                        "type": ce["type"],
+                        "source": ce["source"],
+                        "id": ce["id"],
+                        "datacontenttype": "application/json",
+                    }
+
+                    if "dest_path" in ce:
+                        attrs["destpath"] = ce["dest_path"]
+                    if "source_path" in ce:
+                        attrs["sourcepath"] = ce["source_path"]
+                    ce = CloudEvent(attributes=attrs, data=ce.data)
                     # ce["destpath"] = "/test/path"
                     headers, body = to_structured(ce)
                     L.debug("send_to_knbroker", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
                     # send to knative kafkabroker
                     async with httpx.AsyncClient() as client:
                         r = await client.post(
-                            # self.config.knative_broker,
-                            "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
+                            self.config.knative_broker,
+                            # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
                             headers=headers,
                             data=body,
                             timeout=timeout
