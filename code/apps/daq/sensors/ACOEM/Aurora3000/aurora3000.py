@@ -515,13 +515,13 @@ class Aurora3000(Sensor):
                         source=self.get_id_as_source(),
                         data=record,
                     )
-                    dest_path = f"/{self.get_id_as_topic()}/data/update"
-                    event["dest_path"] = dest_path
+                    destpath = f"/{self.get_id_as_topic()}/data/update"
+                    event["destpath"] = destpath
                     self.logger.debug(
                         "default_data_loop",
-                        extra={"data": event, "dest_path": dest_path},
+                        extra={"data": event, "destpath": destpath},
                     )
-                    # message = Message(data=event, dest_path=dest_path)
+                    # message = Message(data=event, destpath=destpath)
                     message = event
                     # self.logger.debug("default_data_loop", extra={"m": message})
                     await self.send_message(message)

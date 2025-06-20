@@ -21,8 +21,8 @@ class Message(object):
     def __init__(
         self,
         data: CloudEvent,
-        dest_path: str = None,
-        source_path: str = None
+        destpath: str = None,
+        sourcepath: str = None
         # data_type: str = "cloudevent",
         # encryption: EncryptedMessageConfig = None,
     ):
@@ -31,8 +31,8 @@ class Message(object):
         self.logger = logging.getLogger(__name__)
 
         self.data = data
-        self.dest_path = dest_path
-        self.source_path = source_path
+        self.destpath = destpath
+        self.sourcepath = sourcepath
         # self.data_type = data_type
         # self.encryption = encryption
 

@@ -269,7 +269,7 @@ class Controller(envdsBase):
                         self.logger.debug("registry_monitor:5")
 
                         # send client status update
-                        dest_path = f"{self.get_id_as_topic()}/{id}/status/update"
+                        destpath = f"{self.get_id_as_topic()}/{id}/status/update"
                         extra_header = {"path_id": id}
                         event = DAQEvent.create_status_update(
                             # source="envds.core", data={"test": "one", "test2": 2}
@@ -277,9 +277,9 @@ class Controller(envdsBase):
                             data=self.status.get_status(),
                             extra_header=extra_header,
                         )
-                        event["dest_path"] = dest_path
+                        event["destpath"] = destpath
                         self.logger.debug("status update", extra={"event": event})
-                        # message = Message(data=event, dest_path=dest_path)
+                        # message = Message(data=event, destpath=destpath)
                         message = event
                         await self.send_message(message)
             except Exception as e:
@@ -334,12 +334,12 @@ class Controller(envdsBase):
             try:
                 # client_id = message.data["path_id"]
                 # source = message.data["source"]
-                # # source_path = message["source_path"]
+                # # sourcepath = message["sourcepath"]
                 # state = message.data.data["state"]
                 # requested = message.data.data["requested"]
                 client_id = message["path_id"]
                 source = message["source"]
-                # source_path = message["source_path"]
+                # sourcepath = message["sourcepath"]
                 state = message.data["state"]
                 requested = message.data["requested"]
 
@@ -358,7 +358,7 @@ class Controller(envdsBase):
                         client_id=client_id, source=source, deregister=deregister
                     )
                 
-                    #    self.register_client(data=message.data, source_path=message["source_path"])
+                    #    self.register_client(data=message.data, sourcepath=message["sourcepath"])
                 if requested == envdsStatus.TRUE:
                     print(f"id_as_topic: {self.get_id_as_topic()}")
                     self.enable()
@@ -380,7 +380,7 @@ class Controller(envdsBase):
         #     try:
         #         client_id = message.data["path_id"]
         #         source = message.data["source"]
-        #         # source_path = message["source_path"]
+        #         # sourcepath = message["sourcepath"]
         #         # state = message.data["state"]
         #         # requested = message.data["requested"]
         #         self.update_client_registry(
@@ -400,15 +400,15 @@ class Controller(envdsBase):
         # # elif message.data["type"] == det.interface_connect_request():
         # #     self.logger.debug("interface connection request", extra={"data": message.data})
         # #     self.update_client_registry(Message)
-        # #         #    self.register_client(data=message.data, source_path=message["source_path"])
+        # #         #    self.register_client(data=message.data, sourcepath=message["sourcepath"])
 
 
     async def update_recv_data(self, client_id: str, data: dict):
         # self.logger.debug("update_recv_data", extra={"client_id": client_id, "data": data})
-        dest_path = f"/{self.get_id_as_topic()}/{client_id}/data/update"
-        # extra_header = {"source_path": id}
+        destpath = f"/{self.get_id_as_topic()}/{client_id}/data/update"
+        # extra_header = {"sourcepath": id}
         # extra_header = {"path_id": client_id}
-        extra_header = {"path_id": client_id, "dest_path": dest_path}
+        extra_header = {"path_id": client_id, "destpath": destpath}
         # event = DAQEvent.create_data_update(
         event = DAQEvent.create_controller_data_recv(
             # source="envds.core", data={"test": "one", "test2": 2}
@@ -417,7 +417,7 @@ class Controller(envdsBase):
             extra_header=extra_header,
         )
         self.logger.debug("data update", extra={"event": event})
-        # message = Message(data=event, dest_path=dest_path)
+        # message = Message(data=event, destpath=destpath)
         message = event
         await self.send_message(message)
     
@@ -552,8 +552,8 @@ class Controller(envdsBase):
                     if (client := self.client_map[id]["client"]):
 
                         topic_base = self.get_id_as_topic()
-                        dest_path = f"{topic_base}/{id}/status/update"
-                        extra_header = {"path_id": id, "dest_path": dest_path}
+                        destpath = f"{topic_base}/{id}/status/update"
+                        extra_header = {"path_id": id, "destpath": destpath}
                         event = DAQEvent.create_controller_status_update(
                             # source="envds.core", data={"test": "one", "test2": 2}
                             source=self.get_id_as_source(),
@@ -561,8 +561,8 @@ class Controller(envdsBase):
                             extra_header=extra_header
                         )
                         self.logger.debug("send_controller_status_update", extra={"event": event})
-                        # message = Message(data=event, dest_path="/envds/status/update")
-                        # message = Message(data=event, dest_path=dest_path)
+                        # message = Message(data=event, destpath="/envds/status/update")
+                        # message = Message(data=event, destpath=destpath)
                         message = event
                         await self.send_message(message)
                         # self.logger.debug("heartbeat", extra={"msg": message})

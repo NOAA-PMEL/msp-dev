@@ -268,7 +268,7 @@ class Device(envdsBase):
     def add_interface(self, name: str, interface: dict, update: bool = True):
 
 
-        # dest_path = f"/envds/{iface_envds_env_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+        # destpath = f"/envds/{iface_envds_env_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
         print(f"name:1 {name}, iface: {interface}")
         if name and interface:
 
@@ -349,7 +349,7 @@ class Device(envdsBase):
     # async def handle_status(self, message: Message):
     async def handle_status(self, message: CloudEvent):
         await super().handle_status(message)
-        # # self.logger.debug("handle_status", extra={"data": message.data, "path": message.dest_path})
+        # # self.logger.debug("handle_status", extra={"data": message.data, "path": message.destpath})
         # if message.data["type"] == det.status_request():
         #     try:
         #         # self.logger.debug("handle_status", extra={"data.data": message.data.data})
@@ -437,12 +437,12 @@ class Device(envdsBase):
                     source=self.get_id_as_source(),
                     data={"settings": self.settings.get_settings()},
                 )
-                dest_path = f"/{self.get_id_as_topic()}/settings/update"
+                destpath = f"/{self.get_id_as_topic()}/settings/update"
                 self.logger.debug(
-                    "settings_monitor", extra={"data": event, "dest_path": dest_path}
+                    "settings_monitor", extra={"data": event, "destpath": destpath}
                 )
-                event["dest_path"] = dest_path
-                # message = Message(data=event, dest_path=dest_path)
+                event["destpath"] = destpath
+                # message = Message(data=event, destpath=destpath)
                 message = event
                 # self.logger.debug("default_data_loop", extra={"m": message})
                 await self.send_message(message)
@@ -467,10 +467,10 @@ class Device(envdsBase):
             except KeyError:
                 iface_envds_id = self.id.app_env_id
 
-            dest_path = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/send"
+            destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/send"
 
             # extra_header = {"path_id": iface["interface"]["path"]}
-            extra_header = {"path_id": iface["interface"]["path"], "dest_path": dest_path}
+            extra_header = {"path_id": iface["interface"]["path"], "destpath": destpath}
 
             # event = DAQEvent.create_interface_connect_request(
             event = DAQEvent.create_interface_data_send(
@@ -480,10 +480,10 @@ class Device(envdsBase):
                 data={"data": data},
                 extra_header=extra_header
             )
-            self.logger.debug("interface_send_data", extra={"n": path_id, "e": event, "dest_path": dest_path})
-            # message = Message(data=event, dest_path=dest_path)
+            self.logger.debug("interface_send_data", extra={"n": path_id, "e": event, "destpath": destpath})
+            # message = Message(data=event, destpath=destpath)
             message = event
-            self.logger.debug("interface_send_data", extra={"dest_path": dest_path})
+            self.logger.debug("interface_send_data", extra={"destpath": destpath})
             await self.send_message(message)
         except Exception as e:
             self.logger.error("interface_send_data", extra={"error": e})
@@ -521,10 +521,10 @@ class Device(envdsBase):
                             break
 
                         self.logger.debug("client_config_monitor", extra={"id": name, "data": config_data})
-                        # dest_path = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
-                        dest_path = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/config/request"
+                        # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+                        destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/config/request"
                         # extra_header = {"path_id": iface["interface"]["path"]}
-                        extra_header = {"path_id": iface["interface"]["path"], "dest_path": dest_path}
+                        extra_header = {"path_id": iface["interface"]["path"], "destpath": destpath}
                         # event = DAQEvent.create_interface_connect_request(
                         event = DAQEvent.create_interface_config_request(
                             # source="envds.core", data={"test": "one", "test2": 2}
@@ -533,10 +533,10 @@ class Device(envdsBase):
                             data={"config": config_data},
                             extra_header=extra_header
                         )
-                        self.logger.debug("client_config_monitor", extra={"n": name, "e": event, "dest_path": dest_path})
-                        # message = Message(data=event, dest_path=dest_path)
+                        self.logger.debug("client_config_monitor", extra={"n": name, "e": event, "destpath": destpath})
+                        # message = Message(data=event, destpath=destpath)
                         message = event
-                        self.logger.debug("client_config_monitor", extra={"dest_path": dest_path})
+                        self.logger.debug("client_config_monitor", extra={"destpath": destpath})
                         await self.send_message(message)
                         
                         # always send
@@ -732,9 +732,9 @@ class Device(envdsBase):
                                 except KeyError:
                                     iface_envds_id = self.id.app_env_id
 
-                                # dest_path = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
-                                dest_path = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
-                                extra_header = {"path_id": iface["interface"]["path"], "dest_path": dest_path}
+                                # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+                                destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
+                                extra_header = {"path_id": iface["interface"]["path"], "destpath": destpath}
                                 # event = DAQEvent.create_interface_connect_request(
                                 event = DAQEvent.create_interface_status_request(
                                     # source="envds.core", data={"test": "one", "test2": 2}
@@ -743,10 +743,10 @@ class Device(envdsBase):
                                     data={"state": envdsStatus.ENABLED, "requested": envdsStatus.TRUE},
                                     extra_header=extra_header
                                 )
-                                self.logger.debug("enable interface", extra={"n": name, "e": event, "dest_path": dest_path})
-                                # message = Message(data=event, dest_path=dest_path)
+                                self.logger.debug("enable interface", extra={"n": name, "e": event, "destpath": destpath})
+                                # message = Message(data=event, destpath=destpath)
                                 message = event
-                                # self.logger.debug("interface check", extra={"dest_path": dest_path})
+                                # self.logger.debug("interface check", extra={"destpath": destpath})
                                 await self.send_message(message)
 
                             #     # set the route to recv data
@@ -765,9 +765,9 @@ class Device(envdsBase):
                             except KeyError:
                                 iface_envds_id = self.id.app_env_id
 
-                            # dest_path = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
-                            dest_path = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
-                            extra_header = {"path_id": iface['interface']["path"], "dest_path": dest_path}
+                            # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+                            destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
+                            extra_header = {"path_id": iface['interface']["path"], "destpath": destpath}
                             # event = DAQEvent.create_interface_connect_request(
                             event = DAQEvent.create_interface_status_request(
                                 # source="envds.core", data={"test": "one", "test2": 2}
@@ -777,7 +777,7 @@ class Device(envdsBase):
                                 extra_header=extra_header
                             )
                             self.logger.debug("connect interface", extra={"n": name, "e": event})
-                            # message = Message(data=event, dest_path=dest_path)
+                            # message = Message(data=event, destpath=destpath)
                             message = event
                             await self.send_message(message)
 
@@ -798,8 +798,8 @@ class Device(envdsBase):
                         except KeyError:
                             iface_envds_id = self.id.app_env_id
 
-                        dest_path = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/keepalive/request"
-                        extra_header = {"path_id": iface["interface"]["path"], "dest_path": dest_path}
+                        destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/keepalive/request"
+                        extra_header = {"path_id": iface["interface"]["path"], "destpath": destpath}
                         event = DAQEvent.create_interface_keepalive_request(
                             # source="envds.core", data={"test": "one", "test2": 2}
                             source=self.get_id_as_source(),
@@ -814,7 +814,7 @@ class Device(envdsBase):
                         #     data={"path_id": iface["path"]} #, "state": envdsStatus.ENABLED, "requested": envdsStatus.TRUE},
                         # )
                         self.logger.debug("interface keepalive request", extra={"n": name, "e": event})
-                        # message = Message(data=event, dest_path=dest_path)
+                        # message = Message(data=event, destpath=destpath)
                         message = event
                         await self.send_message(message)
             except Exception as e:
@@ -848,7 +848,7 @@ class Device(envdsBase):
         # update device instance on db/redis
         # send registry_update message
 
-        dest_path = f"/envds/{self.id.app_env_id}/sensor/registry/update"
+        destpath = f"/envds/{self.id.app_env_id}/sensor/registry/update"
         event = DAQEvent.create_sensor_registry_update(
             # source="envds.core", data={"test": "one", "test2": 2}
             source=self.get_id_as_source(),
@@ -866,9 +866,9 @@ class Device(envdsBase):
         #     source=self.get_id_as_source(),
         #     data={"path_id": iface["path"]} #, "state": envdsStatus.ENABLED, "requested": envdsStatus.TRUE},
         # )
-        event["dest_path"] = dest_path
+        event["destpath"] = destpath
         self.logger.debug("device registry update", extra={"e": event})
-        # message = Message(data=event, dest_path=dest_path)
+        # message = Message(data=event, destpath=destpath)
         message = event
         await self.send_message(message)
 

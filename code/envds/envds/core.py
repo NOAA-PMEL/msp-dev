@@ -482,8 +482,8 @@ class envdsBase(abc.ABC):
         """
         self.logger.debug(
             "handle_message",
-            # extra={"source_path": message.source_path, "data": message.data},
-            extra={"source_path": message["source_path"], "data": message},
+            # extra={"sourcepath": message.sourcepath, "data": message.data},
+            extra={"sourcepath": message["sourcepath"], "data": message},
         )
         pass
 
@@ -784,11 +784,11 @@ class envdsBase(abc.ABC):
             # source="envds.core", data={"test": "one", "test2": 2}
             source=self.get_id_as_source(),
             data=self.status.get_status(),
-            extra_header={"dest_path": f"{topic_base}/status/update"}
+            extra_header={"destpath": f"{topic_base}/status/update"}
         )
         self.logger.debug("send_status_update", extra={"event": event})
-        # message = Message(data=event, dest_path="/envds/status/update")
-        # message = Message(data=event, dest_path=f"{topic_base}/status/update")
+        # message = Message(data=event, destpath="/envds/status/update")
+        # message = Message(data=event, destpath=f"{topic_base}/status/update")
         message = event
         await self.send_message(message)
         # self.logger.debug("heartbeat", extra={"msg": message})
@@ -807,8 +807,8 @@ class envdsBase(abc.ABC):
             #     data=self.status.get_status(),
             # )
             # self.logger.debug("heartbeat", extra={"event": event})
-            # # message = Message(data=event, dest_path="/envds/status/update")
-            # message = Message(data=event, dest_path=f"{topic_base}/status/update")
+            # # message = Message(data=event, destpath="/envds/status/update")
+            # message = Message(data=event, destpath=f"{topic_base}/status/update")
             # await self.send_message(message)
             # # self.logger.debug("heartbeat", extra={"msg": message})
 

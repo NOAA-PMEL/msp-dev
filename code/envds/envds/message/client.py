@@ -208,10 +208,10 @@ class MQTTMessageClient(MessageClient):
                             self.logger.debug("mqtt client:", extra={"payload": from_json(message.payload)})
                             # msg = Message(
                             #     data=from_json(message.payload),
-                            #     source_path=message.topic,
+                            #     sourcepath=message.topic,
                             # )
                             msg = from_json(message.payload)
-                            msg["source_path"] = message.topic
+                            msg["sourcepath"] = message.topic
                             # self.logger.debug(
                             #     "mqtt receive message:", extra={"data": msg.data}
                             # )
@@ -256,9 +256,9 @@ class MQTTMessageClient(MessageClient):
                 msg = await self.pub_data.get()
                 # print(f"msg = {msg}")
                 # print(f"publisher:msg: {msg}")
-                # print(f"msg: {msg.dest_path}")#, {to_json(msg.data)}")
-                print(f"msg: {msg['dest_path']}")#, {to_json(msg.data)}")
-                # print(f"msg: {msg.dest_path}, {to_json(msg.data)}")
+                # print(f"msg: {msg.destpath}")#, {to_json(msg.data)}")
+                print(f"msg: {msg['destpath']}")#, {to_json(msg.data)}")
+                # print(f"msg: {msg.destpath}, {to_json(msg.data)}")
                 # print(msg.keys())
                 # print(f"msg type: {type(msg.data)}")
                 # bpayload = to_json(msg.data)
@@ -266,15 +266,15 @@ class MQTTMessageClient(MessageClient):
                 # payload = bpayload.decode()
                 # print(f"payload = {payload}")
                 try:
-                    # dest_path = msg.dest_path
-                    dest_path = msg["dest_path"]
-                    if dest_path[0] != "/":
-                        dest_path = f"/{dest_path}"
-                    # await self.client.publish(dest_path, payload=to_json(msg.data))
-                    await self.client.publish(dest_path, payload=to_json(msg))
-                    # self.logger.debug("MQTT.publisher", extra={"dest_path": dest_path, "payload": to_json(msg.data), "client": self.client})
-                    self.logger.debug("MQTT.publisher", extra={"dest_path": dest_path, "payload": to_json(msg), "client": self.client})
-                    # await self.client.publish(msg.dest_path, payload=payload)
+                    # destpath = msg.destpath
+                    destpath = msg["destpath"]
+                    if destpath[0] != "/":
+                        destpath = f"/{destpath}"
+                    # await self.client.publish(destpath, payload=to_json(msg.data))
+                    await self.client.publish(destpath, payload=to_json(msg))
+                    # self.logger.debug("MQTT.publisher", extra={"destpath": destpath, "payload": to_json(msg.data), "client": self.client})
+                    self.logger.debug("MQTT.publisher", extra={"destpath": destpath, "payload": to_json(msg), "client": self.client})
+                    # await self.client.publish(msg.destpath, payload=payload)
                 except MqttError as error:
                     self.logger.error("MQTT Client - MQTTError", extra={"error": error})
                 
@@ -293,7 +293,7 @@ class MQTTMessageClient(MessageClient):
             #     async with Client(self.mqtt_config["hostname"]) as client:
             #         while self.do_run:
             #             msg = await self.pub_data.get()
-            #             await client.publish(msg.dest_path, payload=to_json(msg.data))
+            #             await client.publish(msg.destpath, payload=to_json(msg.data))
             #             # await self.client.publish(md.path, payload=to_json(md.payload))
             #             # await client.publish("measurements/instrument/trh/humidity", payload=json.dumps({"data": 45.1, "units": "%"}))
             #             # await client.publish("measurements/instrument/trh/temperature", payload=json.dumps({"data": 25.3, "units": "degC"}))
@@ -311,8 +311,8 @@ class MQTTMessageClient(MessageClient):
 
         # send a message to trigger the shutdown
         event = et.create_ping(source=f"{self.client_id}")
-        # await self.send(Message(data=event, dest_path=f"mqtt/manage/{self.client_id}"))
-        event["dest_path"] = f"mqtt/manage/{self.client_id}"
+        # await self.send(Message(data=event, destpath=f"mqtt/manage/{self.client_id}"))
+        event["destpath"] = f"mqtt/manage/{self.client_id}"
         await self.send(event)
         # self.client.disconnect()
         # await self.messages.aclose()

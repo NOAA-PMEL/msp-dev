@@ -1114,14 +1114,14 @@ def add_service_image(app: str = "envds-manage", app_group: str = "") -> str:
             while req := req_file.readline():
                 print("\tcopying wheel(s) to app library")
                 src_path = os.path.join(req, "lib")
-                # dest_path = os.path.join("apps", app, "lib", req)
-                dest_path = os.path.join(app_path, "lib", req)
-                print(f"{src_path}, {dest_path}")
-                os.makedirs(dest_path, exist_ok=True)
+                # destpath = os.path.join("apps", app, "lib", req)
+                destpath = os.path.join(app_path, "lib", req)
+                print(f"{src_path}, {destpath}")
+                os.makedirs(destpath, exist_ok=True)
                 for f in os.listdir(src_path):
                     if f.endswith(".whl"):
                         shutil.copyfile(
-                            os.path.join(src_path, f), os.path.join(dest_path, f)
+                            os.path.join(src_path, f), os.path.join(destpath, f)
                         )
                         # os.remove(os.path.join(wheel_path, f))
     except FileNotFoundError:
@@ -1165,13 +1165,13 @@ def add_sensor_image(make: str = "MockCo", model: str = "Mock1") -> str:
         while req := req_file.readline():
             print("\tcopying wheel(s) to app library")
             src_path = os.path.join(req, "lib")
-            dest_path = os.path.join(inst_path, "lib", req)
-            print(f"{src_path}, {dest_path}")
-            os.makedirs(dest_path, exist_ok=True)
+            destpath = os.path.join(inst_path, "lib", req)
+            print(f"{src_path}, {destpath}")
+            os.makedirs(destpath, exist_ok=True)
             for f in os.listdir(src_path):
                 if f.endswith(".whl"):
                     shutil.copyfile(
-                        os.path.join(src_path, f), os.path.join(dest_path, f)
+                        os.path.join(src_path, f), os.path.join(destpath, f)
                     )
                     # os.remove(os.path.join(wheel_path, f))
     client = docker.from_env()
@@ -1211,13 +1211,13 @@ def add_interface_image(type: str = "system", name: str = "default") -> str:
         while req := req_file.readline():
             print("\tcopying wheel(s) to app library")
             src_path = os.path.join(req, "lib")
-            dest_path = os.path.join(iface_path, "lib", req)
-            print(f"{src_path}, {dest_path}")
-            os.makedirs(dest_path, exist_ok=True)
+            destpath = os.path.join(iface_path, "lib", req)
+            print(f"{src_path}, {destpath}")
+            os.makedirs(destpath, exist_ok=True)
             for f in os.listdir(src_path):
                 if f.endswith(".whl"):
                     shutil.copyfile(
-                        os.path.join(src_path, f), os.path.join(dest_path, f)
+                        os.path.join(src_path, f), os.path.join(destpath, f)
                     )
                     # os.remove(os.path.join(wheel_path, f))
     client = docker.from_env()
