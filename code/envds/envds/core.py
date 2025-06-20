@@ -744,7 +744,7 @@ class envdsBase(abc.ABC):
                     # extra={"data": msg.data, "message_error": e}
                     extra={"data": msg, "message_error": e}
                 )
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.0001)
 
     async def update_registry(self):
         # each type of app should update itself
