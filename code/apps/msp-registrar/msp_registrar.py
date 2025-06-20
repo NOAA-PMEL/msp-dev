@@ -424,9 +424,9 @@ class envdsRegistrar(envdsBase):
                 extra={
                     "type": det.data_update(),
                     # "data": message.data,
-                    # "source_path": message.source_path,
+                    # "sourcepath": message.sourcepath,
                     "data": message,
-                    "source_path": message["source_path"],
+                    "sourcepath": message["sourcepath"],
                 },
             )
 
@@ -474,9 +474,9 @@ class envdsRegistrar(envdsBase):
                 extra={
                     "type": det.sensor_registry_update(),
                     # "data": message.data,
-                    # "source_path": message.source_path,
+                    # "sourcepath": message.sourcepath,
                     "data": message,
-                    "source_path": message["source_path"],
+                    "sourcepath": message["sourcepath"],
                 },
             )
 
@@ -524,10 +524,10 @@ class envdsRegistrar(envdsBase):
                     extra={
                         "type": det.registry_bcast(),
                         # "data": message.data,
-                        # "source_path": message.source_path,
+                        # "sourcepath": message.sourcepath,
                         # "source": message.data["source"],
                         "data": message,
-                        "source_path": message["source_path"],
+                        "sourcepath": message["sourcepath"],
                         "source": message["source"],
                      },
                 )
@@ -563,14 +563,14 @@ class envdsRegistrar(envdsBase):
                                     "data": req_data,
                                 },
                             )
-                            # dest_path = f"/{self.get_id_as_topic()}/registry/update"
-                            dest_path = f"/{self.get_id_as_topic()}/registry/request"
-                            event["dest_path"] = dest_path
+                            # destpath = f"/{self.get_id_as_topic()}/registry/update"
+                            destpath = f"/{self.get_id_as_topic()}/registry/request"
+                            event["destpath"] = destpath
                             self.logger.debug(
                                 "sensor_definition_monitor",
-                                extra={"data": event, "dest_path": dest_path},
+                                extra={"data": event, "destpath": destpath},
                             )
-                            # message = Message(data=event, dest_path=dest_path)
+                            # message = Message(data=event, destpath=destpath)
                             message = event
                             # self.logger.debug("default_data_loop", extra={"m": message})
                             await self.send_message(message)
@@ -598,10 +598,10 @@ class envdsRegistrar(envdsBase):
                     extra={
                         "type": det.registry_update(),
                         # "data": message.data,
-                        # "source_path": message.source_path,
+                        # "sourcepath": message.sourcepath,
                         # "source": message.data["source"],
                         "data": message,
-                        "source_path": message["source_path"],
+                        "sourcepath": message["sourcepath"],
                         "source": message["source"],
                     },
                 )
@@ -650,10 +650,10 @@ class envdsRegistrar(envdsBase):
                     extra={
                         "type": det.registry_request(),
                         # "data": message.data,
-                        # "source_path": message.source_path,
+                        # "sourcepath": message.sourcepath,
                         # "source": message.data["source"],
                         "data": message,
-                        "source_path": message["source_path"],
+                        "sourcepath": message["sourcepath"],
                         "source": message["source"],
                     },
                 )
@@ -683,14 +683,14 @@ class envdsRegistrar(envdsBase):
                                     "data": resp_data,
                                 },
                             )
-                            # dest_path = f"/{self.get_id_as_topic()}/registry/update"
-                            dest_path = f"/{self.get_id_as_topic()}/registry/update"
-                            event["dest_path"] = dest_path
+                            # destpath = f"/{self.get_id_as_topic()}/registry/update"
+                            destpath = f"/{self.get_id_as_topic()}/registry/update"
+                            event["destpath"] = destpath
                             self.logger.debug(
                                 "sensor_definition_monitor",
-                                extra={"data": event, "dest_path": dest_path},
+                                extra={"data": event, "destpath": destpath},
                             )
-                            # message = Message(data=event, dest_path=dest_path)
+                            # message = Message(data=event, destpath=destpath)
                             message = event
                             # self.logger.debug("default_data_loop", extra={"m": message})
                             await self.send_message(message)
@@ -895,14 +895,14 @@ class envdsRegistrar(envdsBase):
                         "data": reg_data,
                     },
                 )
-                # dest_path = f"/{self.get_id_as_topic()}/registry/update"
-                dest_path = f"/{self.get_id_as_topic()}/registry/bcast"
-                event["dest_path"] = dest_path
+                # destpath = f"/{self.get_id_as_topic()}/registry/update"
+                destpath = f"/{self.get_id_as_topic()}/registry/bcast"
+                event["destpath"] = destpath
                 self.logger.debug(
                     "sensor_definition_monitor",
-                    extra={"data": event, "dest_path": dest_path},
+                    extra={"data": event, "destpath": destpath},
                 )
-                # message = Message(data=event, dest_path=dest_path)
+                # message = Message(data=event, destpath=destpath)
                 message = event
                 # self.logger.debug("default_data_loop", extra={"m": message})
                 await self.send_message(message)

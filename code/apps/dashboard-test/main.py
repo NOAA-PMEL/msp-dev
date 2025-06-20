@@ -288,13 +288,13 @@ class WebInterfaceManager():
     def send_data(self, data):
         # syn11
         try:
-            dest_path = "/webinterface/control/request"
+            destpath = "/webinterface/control/request"
             event = DAQEvent.create_controller_control_request(
                 source=data['device'],
                 data=data
             )
-            event["dest_path"] = dest_path
-            # message = Message(data=event, dest_path=dest_path)
+            event["destpath"] = destpath
+            # message = Message(data=event, destpath=destpath)
             message = event
             # print('message', message.data)
             print('message', message)
@@ -364,9 +364,9 @@ async def test_ws_endpoint(
                         message_to_send = {'device': 'pdu', 'outlet': outlet, 'message': 'off'}
                         print('message to send', message_to_send)
                         message = web_interface_manager.send_data(message_to_send)
-                        dest_path = message.dest_path
+                        destpath = message.destpath
                         # await client.publish("websocket_topic", payload = json.dumps({'device': 'pdu', 'outlet': outlet, 'message': 'off'}))
-                        await client.publish(dest_path, payload = to_json(message.data))
+                        await client.publish(destpath, payload = to_json(message.data))
 
                 elif data['data'] == "True":
                     async with Client('mqtt.default', 1883) as client:
@@ -374,8 +374,8 @@ async def test_ws_endpoint(
                         message_to_send = {'device': 'pdu', 'outlet': outlet, 'message': 'on'}
                         # await web_interface_manager.send_data(message_to_send)
                         message = web_interface_manager.send_data(message_to_send)
-                        dest_path = message.dest_path
-                        await client.publish(dest_path, payload = to_json(message.data))
+                        destpath = message.destpath
+                        await client.publish(destpath, payload = to_json(message.data))
                         # await client.publish("websocket_topic", payload = json.dumps({'device': 'pdu', 'outlet': outlet, 'message': 'on'}))
 
             # print(f"sensor data: {data}")

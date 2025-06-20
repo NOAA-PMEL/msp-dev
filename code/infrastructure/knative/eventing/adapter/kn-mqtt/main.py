@@ -96,9 +96,9 @@ app = FastAPI()
 #                         ce = await self.to_mqtt_buffer.get()
 #                         L.debug("ce", extra={"ce": ce})
 #                         try:
-#                             dest_path = ce["destpath"]
-#                             L.debug(dest_path)
-#                             await client.publish(dest_path, payload=to_json(ce))
+#                             destpath = ce["destpath"]
+#                             L.debug(destpath)
+#                             await client.publish(destpath, payload=to_json(ce))
 #                         except Exception as e:
 #                             L.error("send_to_mqtt", extra={"reason": e})    
 #             except MqttError as error:

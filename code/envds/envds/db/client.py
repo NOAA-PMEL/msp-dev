@@ -182,7 +182,7 @@ class RedisDBClient(DBClient):
             #                 print(f"message({message.topic}")
             #                 if self.do_run:
             #                     # print(f"listen: {self.do_run}, {self.connected}")
-            #                     msg  = Message(data=from_json(message.payload), source_path=message.topic)
+            #                     msg  = Message(data=from_json(message.payload), sourcepath=message.topic)
             #                     self.logger.debug("mqtt receive message:", extra={"message": msg.data})
             #                     await self.sub_data.put(msg)
             #                     print(
@@ -213,14 +213,14 @@ class RedisDBClient(DBClient):
             # print(f"publish: {self.do_run}, {self.connected}")
             if self.connected:
                 msg = await self.pub_data.get()
-                await self.client.publish(msg.dest_path, payload=to_json(msg.data))
+                await self.client.publish(msg.destpath, payload=to_json(msg.data))
             else:
                 await asyncio.sleep(1)
             # try:
             #     async with Client(self.mqtt_config["hostname"]) as client:
             #         while self.do_run:
             #             msg = await self.pub_data.get()
-            #             await client.publish(msg.dest_path, payload=to_json(msg.data))
+            #             await client.publish(msg.destpath, payload=to_json(msg.data))
             #             # await self.client.publish(md.path, payload=to_json(md.payload))
             #             # await client.publish("measurements/instrument/trh/humidity", payload=json.dumps({"data": 45.1, "units": "%"}))
             #             # await client.publish("measurements/instrument/trh/temperature", payload=json.dumps({"data": 25.3, "units": "degC"}))
@@ -238,9 +238,9 @@ class RedisDBClient(DBClient):
 
         # send a message to trigger the shutdown
         event = et.create_ping(source=f"{self.client_id}")
-        # await self.put(Message(data=event, dest_path=f"mqtt/manage/{self.client_id}"))
-        event["dest_path"] = f"mqtt/manage/{self.client_id}"
-        # await self.put(data=event, extra_header={"dest_path": f"mqtt/manage/{self.client_id}"})
+        # await self.put(Message(data=event, destpath=f"mqtt/manage/{self.client_id}"))
+        event["destpath"] = f"mqtt/manage/{self.client_id}"
+        # await self.put(data=event, extra_header={"destpath": f"mqtt/manage/{self.client_id}"})
         await self.put(event)
         # self.client.disconnect()
         # await self.messages.aclose()

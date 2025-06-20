@@ -68,7 +68,7 @@ class KNMQTTAdapterSettings(BaseSettings):
 
 #                     ce = from_json(message.payload)
 #                     topic = message.topic.value
-#                     ce["source_path"] = topic
+#                     ce["sourcepath"] = topic
                     
 #                     try:
 #                         L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
@@ -154,9 +154,9 @@ class KNMQTTClient():
                         ce = await self.to_mqtt_buffer.get()
                         L.debug("ce", extra={"ce": ce})
                         try:
-                            dest_path = ce["destpath"]
-                            L.debug(dest_path)
-                            await client.publish(dest_path, payload=to_json(ce))
+                            destpath = ce["destpath"]
+                            L.debug(destpath)
+                            await client.publish(destpath, payload=to_json(ce))
                         except Exception as e:
                             L.error("send_to_mqtt", extra={"reason": e})    
             except MqttError as error:
@@ -229,10 +229,10 @@ class KNMQTTClient():
                         "datacontenttype": "application/json",
                     }
 
-                    if "dest_path" in ce:
-                        attrs["destpath"] = ce["dest_path"]
-                    if "source_path" in ce:
-                        attrs["sourcepath"] = ce["source_path"]
+                    if "destpath" in ce:
+                        attrs["destpath"] = ce["destpath"]
+                    if "sourcepath" in ce:
+                        attrs["sourcepath"] = ce["sourcepath"]
                     ce = CloudEvent(attributes=attrs, data=ce.data)
                     # ce["destpath"] = "/test/path"
                     headers, body = to_structured(ce)

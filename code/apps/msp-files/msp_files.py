@@ -252,8 +252,8 @@ class envdsFiles(envdsBase):
                     "type": bet.data_update(),
                     # "data": message.data,
                     "data": message,
-                    # "source_path": message.source_path,
-                    "source_path": message["source_path"],
+                    # "sourcepath": message.sourcepath,
+                    "sourcepath": message["sourcepath"],
                 },
             )
 
