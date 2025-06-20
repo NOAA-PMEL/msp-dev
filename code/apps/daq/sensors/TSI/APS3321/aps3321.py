@@ -528,13 +528,11 @@ class APS3321(Sensor):
 
                 if self.first_record in data.data['data']:
                     record1 = self.default_parse(data)
-                    print("TIME 1st rec received", datetime.now().strftime("%H:%M:%S.%f"))
                     self.record_counter += 1
                     continue
 
                 elif self.last_record in data.data['data']:
                     record2 = self.default_parse(data)
-                    print("TIME last rec received", datetime.now().strftime("%H:%M:%S.%f"))
                     for var in record2["variables"]:
                         if var != 'time':
                             if record2["variables"][var]["data"]:
@@ -551,10 +549,6 @@ class APS3321(Sensor):
                                     record1["variables"][var]["data"] = record2["variables"][var]["data"]
                         continue
                 record = record1
-                print("TIME final record being sent", datetime.now().strftime("%H:%M:%S.%f"))
-                print("RECORD FINAL", record)
-                # print("C length", len(record["variables"]["particle_counts_accum"]["data"]), len(record["variables"]["particle_counts_accum"]["data"][0]))
-                # # continue
                 record = self.default_parse(data)
                 if record:
                     self.collecting = True
@@ -634,7 +628,6 @@ class APS3321(Sensor):
                                 compiled_record = self.check_array_buffer(parts, array_cond=True)
                                 self.array_buffer = []
                                 self.C_counter = 0
-                                print("TIME last C rec received", datetime.now().strftime("%H:%M:%S.%f"))
                     
                     if ',D,' in data.data["data"]:
                         parts = data.data["data"].split(",")
@@ -647,7 +640,6 @@ class APS3321(Sensor):
                         parts.extend([0] * zeros_to_add)
                         self.var_name =['particle_counts']
                         compiled_record = parts
-                        print("TIME D rec received", datetime.now().strftime("%H:%M:%S.%f"))
                     
                     if ',S,' in data.data["data"]:
                         if ',S,C' in data.data["data"]:
@@ -673,7 +665,6 @@ class APS3321(Sensor):
                                 compiled_record = self.check_array_buffer(parts, array_cond=True)
                                 self.array_buffer = []
                                 self.S_counter = 0
-                                print("TIME last S rec received", datetime.now().strftime("%H:%M:%S.%f"))
                     
                     if ',Y,' in data.data["data"]:
                         parts = data.data["data"].split(",")
@@ -683,7 +674,6 @@ class APS3321(Sensor):
                         del parts[3:8]
                         compiled_record = parts
                         self.var_name = ['bpress', 'tflow', 'sflow', 'lpower', 'lcur', 'spumpv', 'tpumpv', 'itemp', 'btemp', 'dtemp', 'Vop']
-                        print("TIME Y rec received", datetime.now().strftime("%H:%M:%S.%f"))
 
 
                     for index, name in enumerate(self.var_name):
