@@ -60,7 +60,7 @@ jobs:
         - name: Build and push multi-platform image
           uses: docker/build-push-action@v4
           with:
-            context: code/apps/daq/sensors/AerosolDynamics/MAGIC250/.
+            context: code/infrastructure/knative/eventing/adapter/kn-mqtt/.
             # dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
             push: true
             tags: |

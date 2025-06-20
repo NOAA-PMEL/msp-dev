@@ -1,5 +1,6 @@
-FROM python:3.11-slim
+# FROM python:3.11-slim
 # FROM python:3.10
+FROM ghcr.io/noaa-pmel/msp/envds-base:latest
 
 # Allow statements and log messages to immediately appear in the Knative logs
 ENV PYTHONUNBUFFERED=True
@@ -18,7 +19,10 @@ RUN pip3 install -r requirements.txt
 
 # COPY . .
 COPY ./datastore.py .
+COPY ./datastore_query.py .
 COPY ./main.py .
+COPY ./db_client.py .
+COPY ./redis_client.py .
 # WORKDIR $APP_HOME/envds
 # COPY ./apis ./apis
 # COPY ./registry.py ./registry.py

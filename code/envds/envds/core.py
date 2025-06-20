@@ -9,7 +9,7 @@ from logfmter import Logfmter
 
 
 # from typing import Union
-from pydantic import BaseModel
+from pydantic import BaseModel, BaseSettings
 
 # from pydantic import BaseSettings, Field
 import signal
@@ -19,10 +19,20 @@ from envds.message.client import MessageClientManager
 from envds.event.event import envdsEvent, EventRouter
 from envds.event.types import BaseEventType as et
 
-from envds.message.client import MessageClientManager
+from envds.message.client import MessageClientManager, MessageClientConfig
 from envds.exceptions import envdsRunTransitionException, envdsRunErrorException, envdsRunWaitException
 from cloudevents.http import CloudEvent, from_dict, from_json
 
+
+class envdsCoreSettings(BaseSettings):
+    namespace_prefix: str | None = None
+    mqtt_host: str | None = None
+    mqtt_port: int  = 1883
+    redis_host: str | None = None
+    redis_port: int = 6379
+    class Config:
+        env_prefix = "ENVDS_CORE_"
+        case_sensitive = False
 
 class envdsLogger(object):
     """docstring for envdsLogger."""
@@ -110,6 +120,7 @@ class envdsStatus:
 
     def __init__(self, status: dict = None):
         super(envdsStatus, self).__init__()
+
         if status is None:
             self.status = {"id": {}, "state": {}}
             # self.name = ""
@@ -249,6 +260,9 @@ class envdsBase(abc.ABC):
 
         self.loop = asyncio.get_event_loop()
         # self.instance_config = {"envds_id": "default"}
+
+        # new: add envdsCoreSettings to specify ns, etc via configmap values
+        self.core_settings = envdsCoreSettings()
 
         # id fields
         self.id = envdsAppID(
@@ -440,7 +454,20 @@ class envdsBase(abc.ABC):
     def start_message_bus(self):
 
         self.start_message_buffers()
-        self.message_client = MessageClientManager.create()
+
+        mqtt_host = "mqtt.default"
+        if self.core_settings.namespace_prefix:
+            mqtt_host = f"mqtt.{self.core_settings.namespace_prefix}-system"
+        
+        if self.core_settings.mqtt_host:
+            mqtt_host = self.core_settings.mqtt_host
+
+        mqtt_port = self.core_settings.mqtt_port
+        mc_config = MessageClientConfig(
+            type="mqtt",
+            config={"hostname": mqtt_host, "port": mqtt_port}
+        )
+        self.message_client = MessageClientManager.create(mc_config)
 
     def start_message_buffers(self):
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import math
 import json
@@ -32,6 +32,12 @@ def string_to_datetime(dt_string: str, fraction: bool=True):
             return datetime.strptime(dt_string, get_datetime_format())
         except ValueError:
             return None
+
+def get_datetime_with_delta(dt:datetime, delta: timedelta):
+    if timedelta < 0:
+        return dt - timedelta(seconds=abs(delta))
+    else:
+        return dt + timedelta(seconds=abs(delta))
 
 def datetime_mod_sec(sec: int) -> int:
     return get_datetime().second % sec

@@ -84,11 +84,12 @@ jobs:
         - name: Build and push multi-platform image
           uses: docker/build-push-action@v4
           with:
-            context: code/apps/daq/sensors/AerosolDynamics/MAGIC250/.
+            context: code/apps/datastore/.
             # dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
             push: true
             tags: |
               ghcr.io/noaa-pmel/msp/datastore:${{env.IMAGE_TAG}}
+              ghcr.io/noaa-pmel/msp/datastore:latest
             platforms: linux/amd64,linux/arm64
 
         # - name: Build the Docker image

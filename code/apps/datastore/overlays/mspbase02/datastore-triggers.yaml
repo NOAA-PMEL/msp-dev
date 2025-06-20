@@ -8,10 +8,13 @@ spec:
   filter:
     attributes:
       type: sensor.data.update
+  filters:
+    suffix:
+      type: sensor.data.update
   subscriber:
     ref:
       apiVersion: v1
       kind: Service
       name: datastore
       namespace: msp
-    uri: /data/update
+    uri: /sensor/data/update
