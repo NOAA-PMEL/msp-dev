@@ -169,7 +169,7 @@ class Datastore():
         try:
             # database = "data"
             # collection = "sensor"
-            self.logger.debug("data_sensor_update", extra={"ce": ce})
+            # self.logger.debug("data_sensor_update", extra={"ce": ce})
             attributes = ce.data["attributes"]
             dimensions = ce.data["dimensions"]
             variables = ce.data["variables"]
@@ -196,7 +196,7 @@ class Datastore():
                 # "last_update": datetime.now(tz=timezone.utc),
             }
 
-            self.logger.debug("sensor_data_update", extra={"sensor-doc": doc})
+            # self.logger.debug("sensor_data_update", extra={"sensor-doc": doc})
             # filter = {
             #     "make": make,
             #     "model": model,

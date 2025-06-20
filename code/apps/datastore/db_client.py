@@ -73,6 +73,7 @@ class DBClient:
             self.config = DBClientConfig()
         self.client = None
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
         # self.connection = connection
 
     def connect(self):

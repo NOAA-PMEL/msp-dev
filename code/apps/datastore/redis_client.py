@@ -81,7 +81,7 @@ class RedisClient(DBClient):
             #     "variables": variables,
             #     # "last_update": datetime.now(tz=timezone.utc),
             # }
-
+            self.logger.debug("redis_client", extra={"update-doc": doc, "ttl": ttl})
             make = document["make"]
             model = document["model"]
             serial_number = document["serial_number"]
