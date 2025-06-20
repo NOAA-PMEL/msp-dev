@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import json
 import logging
 
-from fastapi import FastAPI  # , APIRouter
+from fastapi import FastAPI, Request  # , APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -15,6 +15,8 @@ from cloudevents.pydantic import CloudEvent
 import httpx
 from logfmter import Logfmter
 from pydantic import BaseModel, BaseSettings, Field
+
+from datastore import Datastore
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -90,6 +92,7 @@ app.add_middleware(
 #     end_time: str | None = None
 #     custom: dict | None = None
 
+datastore = Datastore()
 
 @app.get("/")
 async def root():
@@ -112,9 +115,12 @@ async def root():
 
 #     return None
 
+# @app.get("/data/request")
+# async def data_request()
+#     pass
 
 @app.post("/data/update")
-async def data_update(ce: CloudEvent):
+async def data_update(request: Request):
 
     # examine and route cloudevent to the proper handler
     return 200

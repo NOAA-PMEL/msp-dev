@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+metadata:
+  name: mqtt
+
+# set namespace
+namespace: msp01
+
+# Example configuration for the webserver
+# at https://github.com/monopole/hello
+# commonLabels:
+#   app: nginx
+
+# resources:
+# Example configuration for the webserver
+# at https://github.com/monopole/hello
+# namePrefix: dev-
+# commonLabels:
+#   app: nginx
+#   variant: lopez
+
+resources:
+- mqtt-ns.yaml
+- mqtt-configmap.yaml
+- ../../base
+
+# patchesStrategicMerge:
+#   - deployment.yaml

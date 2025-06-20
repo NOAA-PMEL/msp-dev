@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 metadata:
-  name: kn-mqtt-adapter
+  name: dashboard
 
 # Example configuration for the webserver
 # at https://github.com/monopole/hello
@@ -18,7 +18,6 @@ metadata:
 
 resources:
 - ../../base
-- kn-mqtt-configmap.yaml
-- adapter-triggers.yaml
-# - datastore-sealedsecrets.yaml
+- dashboard-configmap.yaml
+- dashboard-sealedsecrets.yaml
 
