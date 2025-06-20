@@ -85,6 +85,7 @@ class Datastore():
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.debug("TestClass instantiated")
+        self.logger.setLevel(logging.DEBUG)
         self.db_client = None
         self.erddap_client = None
         self.config = Settings()
@@ -168,6 +169,7 @@ class Datastore():
         try:
             # database = "data"
             # collection = "sensor"
+            self.logger.debug("data_sensor_update", extra={"ce": ce})
             attributes = ce.data["attributes"]
             dimensions = ce.data["dimensions"]
             variables = ce.data["variables"]
