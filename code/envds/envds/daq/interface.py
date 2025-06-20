@@ -59,7 +59,7 @@ class InterfacePath(object):
         while True:
             data = await self.send_buffer.get()
             await self.send_data(data)
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.0001)
 
     # can be overloaded by InterfacePath to handle client specific data
     async def send_data(self, data: str):
@@ -75,7 +75,7 @@ class InterfacePath(object):
         while True:
             data = await self.recv_data()
             await self.recv_buffer.put(data)
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.0001)
 
     async def recv_data(self):
         return await self.client.recv()

@@ -62,7 +62,9 @@ class DAQClient(abc.ABC):
     def __init__(self, config: DAQClientConfig = None, **kwargs):
         super(DAQClient, self).__init__()
 
-        self.min_recv_delay = 0.1
+        # self.min_recv_delay = 0.1
+        self.min_recv_delay = 0.0001
+        print('minimum recv delay', self.min_recv_delay)
 
         # print("daqclient: 1")
         default_log_level = logging.INFO
@@ -406,9 +408,9 @@ class DAQClient(abc.ABC):
                     self.logger.debug("client.recv_loop", extra={"data": data})
                     await self.recv_buffer.put(data)
                     # self.logger.debug("client.recv_loop:4")
-                else:
-                    # self.logger.debug("client.recv_loop:5")
-                    await asyncio.sleep(1)
+                # else:
+                #     # self.logger.debug("client.recv_loop:5")
+                #     await asyncio.sleep(1)
                 await asyncio.sleep(self.min_recv_delay)
             except Exception as e:
                 self.logger.error("client.recv_loop", extra={"error": e})
