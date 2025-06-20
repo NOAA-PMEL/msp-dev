@@ -179,6 +179,7 @@ class Datastore():
             serial_number = attributes["serial_number"]["data"]
             format_version = attributes["format_version"]["data"]
             parts = format_version.split(".")
+            self.logger.debug(f"parts: {parts}, {format_version}")
             erddap_version = f"v{parts[0]}"
             sensor_id = "::".join([make, model, serial_number])
             timestamp = ce.data["timestamp"]
