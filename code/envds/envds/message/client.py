@@ -278,7 +278,7 @@ class MQTTMessageClient(MessageClient):
                 except MqttError as error:
                     self.logger.error("MQTT Client - MQTTError", extra={"error": error})
                 
-                await asyncio.sleep(.1)
+                await asyncio.sleep(.0001)
 
             else:
                 self.logger.debug(
