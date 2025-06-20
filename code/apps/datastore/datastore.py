@@ -194,6 +194,7 @@ class Datastore():
                 # "last_update": datetime.now(tz=timezone.utc),
             }
 
+            self.logger.debug("sensor_data_update", extra={"sensor-doc": doc})
             # filter = {
             #     "make": make,
             #     "model": model,
@@ -215,7 +216,7 @@ class Datastore():
             #     # upsert=True,
             #     ttl=self.config.db_data_ttl
             # )
-            L.info("sensor_data_update result", extra={"result": result})
+            # L.info("sensor_data_update result", extra={"result": result})
 
         except Exception as e:
             L.error("sensor_data_update", extra={"reason": e})

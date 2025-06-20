@@ -90,6 +90,7 @@ class RedisClient(DBClient):
             sensor_id = "::".join([make,model,serial_number])
 
             key = f"data:sensor:{sensor_id}:{timestamp}"
+            self.logger("redis_client", extra={"key": key, "sensor-doc": document})
             self.client.json().set(
                 key,
                 "$",
