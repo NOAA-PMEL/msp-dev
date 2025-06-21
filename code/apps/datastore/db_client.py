@@ -116,7 +116,7 @@ class DBClient:
             return result
         return None
 
-    async def data_sensor_update(
+    async def sensor_data_update(
         self,
         # database: str,
         # collection: str,
@@ -128,7 +128,7 @@ class DBClient:
     ):
         return None
 
-    async def data_sensor_get(self, query: DataStoreQuery):
+    async def sensor_data_get(self, query: DataStoreQuery):
         return None
 
     # def update_one(

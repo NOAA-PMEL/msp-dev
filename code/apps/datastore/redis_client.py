@@ -59,12 +59,12 @@ class RedisClient(DBClient):
     #         keys = database.split(":")
     #         self.client.json().set(database, f"$.{keys[-1]}", {collection: []})
 
-    async def data_sensor_update(
+    async def sensor_data_update(
         self,
         document: dict,
         ttl: int = 300
     ):
-        super(RedisClient, self).data_sensor_update(document, ttl)
+        super(RedisClient, self).sensor_data_update(document, ttl)
         try:
             self.connect()
 
@@ -103,7 +103,7 @@ class RedisClient(DBClient):
             return None
         
     async def sensor_data_get(self, query: DataStoreQuery):
-        super(RedisClient, self).data_sensor_get(query)
+        super(RedisClient, self).sensor_data_get(query)
 
         query_args = [f"@make:{query.make}"]
         query_args.append([f"@model:{query.model}"])
