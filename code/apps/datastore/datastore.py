@@ -170,19 +170,31 @@ class Datastore():
             # database = "data"
             # collection = "sensor"
             # self.logger.debug("data_sensor_update", extra={"ce": ce})
+            print("here:1")
             attributes = ce.data["attributes"]
+            print("here:2")
             dimensions = ce.data["dimensions"]
+            print("here:3")
             variables = ce.data["variables"]
+            print("here:4")
 
             make = attributes["make"]["data"]
+            print("here:5")
             model = attributes["model"]["data"]
+            print("here:6")
             serial_number = attributes["serial_number"]["data"]
+            print("here:7")
             format_version = attributes["format_version"]["data"]
+            print("here:8")
             parts = format_version.split(".")
+            print("here:9")
             self.logger.debug(f"parts: {parts}, {format_version}")
+            print("here:10")
             erddap_version = f"v{parts[0]}"
             sensor_id = "::".join([make, model, serial_number])
+            print("here:11")
             timestamp = ce.data["timestamp"]
+            print("here:12")
 
             doc = {
                 # "_id": id,
