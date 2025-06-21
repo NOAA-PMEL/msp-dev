@@ -182,7 +182,9 @@ class Datastore():
             print("here:5")
             model = attributes["model"]["data"]
             print("here:6")
-            serial_number = attributes["serial_number"]["data"]
+            # serial_number = attributes["serial_number"]["data"]
+            # TODO fix serial number in magic data record, tmp workaround for now
+            serial_number = attributes["serial_number"]
             print("here:7")
             format_version = attributes["format_version"]["data"]
             print("here:8")
