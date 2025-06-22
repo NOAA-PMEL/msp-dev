@@ -151,27 +151,28 @@ class KNMQTTClient():
         reconnect = 5
         while True:
             try:
-                L.debug("listen", extra={"config": self.config})
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
-                    while True:
-                        ce = await self.to_mqtt_buffer.get()
-                        L.debug("ce", extra={"ce": ce})
-                        while not self.client:
-                            L.info("waiting for mqtt client")
-                            await asyncio.sleep(1)
-                        try:
-                            destpath = ce["destpath"]
-                            L.debug(destpath)
-                            await self.client.publish(destpath, payload=to_json(ce))
-                        except Exception as e:
-                            L.error("send_to_mqtt", extra={"reason": e})    
+                # L.debug("listen", extra={"config": self.config})
+                # async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as self.client:
+                while True:
+                    ce = await self.to_mqtt_buffer.get()
+                    L.debug("ce", extra={"ce": ce})
+                    while not self.client:
+                        L.info("waiting for mqtt client")
+                        await asyncio.sleep(reconnect)
+                    try:
+                        destpath = ce["destpath"]
+                        L.debug(destpath)
+                        await self.client.publish(destpath, payload=to_json(ce))
+                    except Exception as e:
+                        L.error("send_to_mqtt", extra={"reason": e})    
             except MqttError as error:
                 L.error(
                     f'{error}. Trying again in {reconnect} seconds',
                     extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
                 )
-            finally:
                 await asyncio.sleep(reconnect)
+            # finally:
+            #     await asyncio.sleep(reconnect)
 
     async def get_from_mqtt_loop(self):
         reconnect = 10
