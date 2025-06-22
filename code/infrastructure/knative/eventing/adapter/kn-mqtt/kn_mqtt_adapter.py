@@ -140,6 +140,9 @@ class KNMQTTClient():
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.send_to_knbroker_loop())
 
+        self.client = None
+
+
     async def send_to_mqtt(self, ce: CloudEvent):
         await self.to_mqtt_buffer.put(ce)
 
@@ -153,10 +156,13 @@ class KNMQTTClient():
                     while True:
                         ce = await self.to_mqtt_buffer.get()
                         L.debug("ce", extra={"ce": ce})
+                        while not self.client:
+                            L.info("waiting for mqtt client")
+                            await asyncio.sleep(1)
                         try:
                             destpath = ce["destpath"]
                             L.debug(destpath)
-                            await client.publish(destpath, payload=to_json(ce))
+                            await self.client.publish(destpath, payload=to_json(ce))
                         except Exception as e:
                             L.error("send_to_mqtt", extra={"reason": e})    
             except MqttError as error:
@@ -172,17 +178,17 @@ class KNMQTTClient():
         while True:
             try:
                 L.debug("listen", extra={"config": self.config})
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as self.client:
                     for topic in self.config.mqtt_topic_subscriptions.split("\n"):
                         # print(f"run - topic: {topic.strip()}")
                         # L.debug("run", extra={"topic": topic})
                         if topic.strip():
                             L.debug("subscribe", extra={"topic": topic.strip()})
-                            await client.subscribe(topic.strip())
+                            await self.client.subscribe(topic.strip())
 
                         # await client.subscribe(config.mqtt_topic_subscription, qos=2)
                     # async with client.messages() as messages:
-                    async for message in client.messages: #() as messages:
+                    async for message in self.client.messages: #() as messages:
 
                         ce = from_json(message.payload)
                         topic = message.topic.value
