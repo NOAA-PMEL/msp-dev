@@ -145,7 +145,7 @@ class KNMQTTClient():
 
     async def send_to_mqtt_loop(self):
 
-        reconnect = 3
+        reconnect = 5
         while True:
             try:
                 L.debug("listen", extra={"config": self.config})
@@ -168,7 +168,7 @@ class KNMQTTClient():
                 await asyncio.sleep(reconnect)
 
     async def get_from_mqtt_loop(self):
-        reconnect = 3
+        reconnect = 10
         while True:
             try:
                 L.debug("listen", extra={"config": self.config})
