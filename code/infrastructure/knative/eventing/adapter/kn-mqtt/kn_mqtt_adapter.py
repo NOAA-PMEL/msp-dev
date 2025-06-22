@@ -152,7 +152,7 @@ class KNMQTTClient():
         while True:
             try:
                 # L.debug("listen", extra={"config": self.config})
-                # async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as self.client:
+                # async with Client(self.conwfig.mqtt_broker, port=self.config.mqtt_port) as self.client:
                 while True:
                     ce = await self.to_mqtt_buffer.get()
                     L.debug("ce", extra={"ce": ce})
@@ -203,7 +203,7 @@ class KNMQTTClient():
             except MqttError as error:
                 L.error(
                     f'{error}. Trying again in {reconnect} seconds',
-                    extra={ k: v for k, v in config.dict().items() if k.lower().startswith('mqtt_') }
+                    extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
                 )
             finally:
                 await asyncio.sleep(reconnect)
