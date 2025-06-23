@@ -41,7 +41,7 @@ L.setLevel(logging.INFO)
 
 # test
 
-class Settings(BaseSettings):
+class DatastoreConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     debug: bool = True
@@ -88,7 +88,7 @@ class Datastore():
         self.logger.setLevel(logging.DEBUG)
         self.db_client = None
         self.erddap_client = None
-        self.config = Settings()
+        self.config = DatastoreConfig()
         self.configure()
 
     def configure(self):
@@ -98,7 +98,7 @@ class Datastore():
             type=self.config.db_client_type,
             config={
                 "connection": self.config.db_client_connection,
-                "hostname": self.config.db_client_connection,
+                "hostname": self.config.db_client_hostname,
                 "port": self.config.db_client_port,
                 "username": self.config.db_client_username,
                 "password": self.config.db_client_password,
@@ -281,7 +281,7 @@ async def main(config):
 if __name__ == "__main__":
     # app.run(debug=config.debug, host=config.host, port=config.port)
     # app.run()
-    config = Settings()
+    config = DatastoreConfig()
     # asyncio.run(main(config))
 
     try:

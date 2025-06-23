@@ -26,10 +26,10 @@ class DBClientConfig(BaseModel):
     type: str | None = "redis"
     # config: dict | None = {"hostname": "localhost", "port": 1883}
     config: dict | None = {
-        "hostname": "mosquitto.default", 
-        "port": 1883,
-        "username": "unknown",
-        "password": "unknown"
+        "hostname": "", 
+        "port": None,
+        "username": "",
+        "password": ""
     }
 
 
@@ -45,7 +45,7 @@ class DBClientManager:
             config = DBClientConfig()
 
         if config.type == "redis":
-            # return mqtt client
+
             client_mod = "redis_client"
             client_class = "redis_class"
             mod_ = importlib.import_module("redis_client")
@@ -68,9 +68,10 @@ class DBClientManager:
 class DBClient:
     def __init__(self, config: DBClientConfig) -> None:
         # self.db_type = db_type
-        self.config = config
+        # self.config = config
         if config is None:
-            self.config = DBClientConfig()
+            config = DBClientConfig()
+        self.config = config.config
         self.client = None
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.DEBUG)

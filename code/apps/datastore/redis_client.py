@@ -20,7 +20,7 @@ class RedisClient(DBClient):
         if not self.client:
             try:
                 self.logger.debug("connect", extra={"self.config": self.config})
-                self.client = redis.Redis(host=self.config.db_client_hostname, port=self.config.db_client_port)
+                self.client = redis.Redis(host=self.config["hostname"], port=self.config["port"])
             except Exception as e:
                 self.logger.error("redis connect", extra={"reason": e})
                 self.client = None
