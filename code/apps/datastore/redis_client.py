@@ -68,7 +68,7 @@ class RedisClient(DBClient):
         document: dict,
         ttl: int = 300
     ):
-        super(RedisClient, self).sensor_data_update(document, ttl)
+        await super(RedisClient, self).sensor_data_update(document, ttl)
         try:
             self.connect()
 
@@ -107,7 +107,7 @@ class RedisClient(DBClient):
             return None
         
     async def sensor_data_get(self, query: DataStoreQuery):
-        super(RedisClient, self).sensor_data_get(query)
+        await super(RedisClient, self).sensor_data_get(query)
 
         query_args = [f"@make:{query.make}"]
         query_args.append([f"@model:{query.model}"])

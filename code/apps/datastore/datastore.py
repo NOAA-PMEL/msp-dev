@@ -104,6 +104,7 @@ class Datastore():
                 "password": self.config.db_client_password,
             }
         )
+        self.logger.debug("configure", extra={"self.config": self.config, "db_client_config": db_client_config})
         self.db_client = DBClientManager.create(db_client_config)
 
         if self.config.erddap_enable:

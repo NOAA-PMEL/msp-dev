@@ -51,7 +51,7 @@ class DBClientManager:
             mod_ = importlib.import_module("redis_client")
             # print(f"mod_: {"redis_client"}")
             client = getattr(mod_, "RedisClient")(config)
-            print(f"client: {client}")
+            print(f"client: {client}, {config}")
             return client
             # return RedisClient(config)
             # pass
@@ -75,6 +75,7 @@ class DBClient:
         self.client = None
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.DEBUG)
+        self.logger.debug(config, self.config)
         # self.connection = connection
 
     def connect(self):
