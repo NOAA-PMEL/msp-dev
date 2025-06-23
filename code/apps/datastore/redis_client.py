@@ -19,6 +19,8 @@ class RedisClient(DBClient):
     def connect(self):
         if not self.client:
             try:
+                if self.config["port"] is None:
+                    self.config["port"] = 6379
                 self.logger.debug("connect", extra={"self.config": self.config})
                 self.client = redis.Redis(host=self.config["hostname"], port=self.config["port"])
             except Exception as e:
