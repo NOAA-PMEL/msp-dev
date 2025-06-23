@@ -15,9 +15,11 @@ class RedisClient(DBClient):
     def __init__(self, config: DBClientConfig):
         super(RedisClient, self).__init__(config)
         self.data_sensor_index_name = "idx:data-sensor"
+    
     def connect(self):
         if not self.client:
             try:
+                self.logger.debug("connect", extra="self.config": self.config)
                 self.client = redis.Redis(host=self.config.db_client_hostname, port=self.config.db_client_port)
             except Exception as e:
                 self.logger.error("redis connect", extra={"reason": e})
