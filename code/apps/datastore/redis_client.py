@@ -3,8 +3,8 @@ import redis
 from redis.commands.json.path import Path
 # import redis.commands.search.aggregation as aggregations
 # import redis.commands.search.reducers as reducers
-from redis.commands.search.field import TextField, NumericField, TagField
 from redis.commands.search.index_definition import IndexDefinition, IndexType
+from redis.commands.search.field import TextField, NumericField, TagField
 from redis.commands.search.query import NumericFilter, Query
 
 from db_client import DBClient, DBClientConfig
@@ -110,17 +110,17 @@ class RedisClient(DBClient):
         await super(RedisClient, self).sensor_data_get(query)
 
         query_args = [f"@make:{query.make}"]
-        query_args.append([f"@model:{query.model}"])
-        query_args.append([f"@serial_number:{query.serial_number}"])
+        query_args.append(f"@model:{query.model}")
+        query_args.append(f"@serial_number:{query.serial_number}")
 
         if query.version:
-            query_args.append([f"@version:{query.version}"])
+            query_args.append(f"@version:{query.version}")
 
         if query.start_time:
-            query_args.append([f"@timestamp >= {query.start_time}"])
+            query_args.append(f"@timestamp >= {query.start_time}")
         
         if query.end_time:
-            query_args.append([f"@timestamp < {query.end_time}"])
+            query_args.append(f"@timestamp < {query.end_time}")
 
         qstring = " ".join(query_args)
         self.logger.debug("sensor_data_get", extra={"query_string": qstring})
