@@ -10,6 +10,7 @@ from fastapi import (
     Request,
     WebSocket,
     WebSocketDisconnect,
+    status
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.wsgi import WSGIMiddleware
@@ -656,7 +657,7 @@ async def chat_ws_endpoint(
 #     # event = from_http(ce.headers, ce.get_data)
 #     # print(event)
 
-@app.post("/sensor/data/update")
+@app.post("/sensor/data/update", status_code=status.HTTP_202_ACCEPTED)
 async def sensor_data_update(request: Request):
     L.info("sensor/data/update")
     data = await request.body()
@@ -698,5 +699,5 @@ async def sensor_data_update(request: Request):
 
     await manager.broadcast(json.dumps(ce.data), "sensor", sensor_id)
 
-
-    return "ok", 200
+    return {"message": "OK"}
+    # return "ok", 200
