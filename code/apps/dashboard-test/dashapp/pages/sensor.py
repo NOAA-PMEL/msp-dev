@@ -30,7 +30,7 @@ import httpx
 dash.register_page(
     __name__,
     path_template="/sensor/<sensor_id>",
-    title="UAS-DAQ Sensors",  # , prevent_initial_callbacks=True
+    title="Sensors",  # , prevent_initial_callbacks=True
 )
 
 
@@ -569,7 +569,7 @@ def layout(sensor_id=None):
         # print(f"get_layout: {query}")
         
         # TODO: replace with datastore call
-        results = 0
+        results = []
         # results = db_registry_client.find(
         #     database="registry", collection="sensor_definition", query=query
         # )
