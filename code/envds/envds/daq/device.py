@@ -917,7 +917,7 @@ class Device(envdsBase):
             record["attributes"] = {
                 "make": {"data": self.config.make},
                 "model": {"data": self.config.model},
-                "serial_number": self.config.serial_number,
+                "serial_number": {"data": self.config.serial_number},
                 "mode": {"data": "default"},
                 "format_version": {"data": self.device_format_version},
                 "variable_types": {"data": ",".join(variable_types)}
