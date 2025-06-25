@@ -1228,6 +1228,7 @@ def update_sensor_data_buffer(e):
     if e is not None and "data" in e:
         try:
             msg = json.loads(e["data"])
+            print(f"update_sensor_data: {msg}")
             if msg:
                 return msg
         except Exception as e:
