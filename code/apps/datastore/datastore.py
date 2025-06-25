@@ -179,6 +179,7 @@ class Datastore():
             make = attributes["make"]["data"]
             model = attributes["model"]["data"]
             serial_number = attributes["serial_number"]["data"]
+            
             # TODO fix serial number in magic data record, tmp workaround for now
             # serial_number = attributes["serial_number"]
 
