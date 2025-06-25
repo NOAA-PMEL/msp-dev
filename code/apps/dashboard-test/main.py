@@ -687,6 +687,8 @@ async def sensor_data_update(request: Request):
 
         make = attributes["make"]["data"]
         model = attributes["model"]["data"]
+        # # TODO fix serial number in magic data record, tmp workaround for now
+        # serial_number = attributes["serial_number"]
         serial_number = attributes["serial_number"]["data"]
         # format_version = attributes["format_version"]["data"]
         # parts = format_version.split(".")
