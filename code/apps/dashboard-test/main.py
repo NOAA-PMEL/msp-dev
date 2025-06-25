@@ -662,42 +662,43 @@ async def sensor_data_update(request: Request):
     L.info("sensor/data/update")
     data = await request.body()
     L.info(f"headers: {request.headers}, data: {data}")
+    headers = request.headers
     # headers = dict(request.headers)
 
-    # try:
-    #     ce = from_http(headers=headers, data=data)
-    #     # to support local testing...
-    #     if isinstance(ce.data, str):
-    #         ce.data = json.loads(ce.data)
-    # except InvalidStructuredJSON:
-    #     L.error("not a valid cloudevent")
-    #     return "not a valid cloudevent", 400
+    try:
+        ce = from_http(headers=headers, data=data)
+        # to support local testing...
+        if isinstance(ce.data, str):
+            ce.data = json.loads(ce.data)
+    except InvalidStructuredJSON:
+        L.error("not a valid cloudevent")
+        return "not a valid cloudevent", 400
 
-    # # parts = Path(ce["source"]).parts
-    # L.info(
-    #     "dashboard sensor update",
-    #     extra={"ce-source": ce["source"], "ce-type": ce["type"], "ce-data": ce.data},
-    # )
+    # parts = Path(ce["source"]).parts
+    L.info(
+        "dashboard sensor update",
+        extra={"ce-source": ce["source"], "ce-type": ce["type"], "ce-data": ce.data},
+    )
 
-    # try:
-    #     attributes = ce.data["attributes"]
-    #     # dimensions = ce.data["dimensions"]
-    #     # variables = ce.data["variables"]
+    try:
+        attributes = ce.data["attributes"]
+        # dimensions = ce.data["dimensions"]
+        # variables = ce.data["variables"]
 
-    #     make = attributes["make"]["data"]
-    #     model = attributes["model"]["data"]
-    #     serial_number = attributes["serial_number"]["data"]
-    #     # format_version = attributes["format_version"]["data"]
-    #     # parts = format_version.split(".")
-    #     # erddap_version = f"v{parts[0]}"
-    #     sensor_id = "::".join([make, model, serial_number])
-    #     # timestamp = ce.data["timestamp"]
+        make = attributes["make"]["data"]
+        model = attributes["model"]["data"]
+        serial_number = attributes["serial_number"]["data"]
+        # format_version = attributes["format_version"]["data"]
+        # parts = format_version.split(".")
+        # erddap_version = f"v{parts[0]}"
+        sensor_id = "::".join([make, model, serial_number])
+        # timestamp = ce.data["timestamp"]
 
-    # except KeyError:
-    #     L.error("dashboard sensor update error", extra={"sensor": ce.data})
-    #     return "bad sensor data", 400
+    except KeyError:
+        L.error("dashboard sensor update error", extra={"sensor": ce.data})
+        return "bad sensor data", 400
 
-    # await manager.broadcast(json.dumps(ce.data), "sensor", sensor_id)
+    await manager.broadcast(json.dumps(ce.data), "sensor", sensor_id)
 
     return {"message": "OK"}
     # return "ok", 200
