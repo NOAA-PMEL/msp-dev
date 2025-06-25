@@ -661,8 +661,8 @@ async def chat_ws_endpoint(
 async def sensor_data_update(request: Request):
     L.info("sensor/data/update")
     data = await request.body()
-    L.info(f"data: {data}")
-    headers = dict(request.headers)
+    L.info(f"headers: {request.headers}, data: {data}")
+    # headers = dict(request.headers)
 
     # try:
     #     ce = from_http(headers=headers, data=data)
