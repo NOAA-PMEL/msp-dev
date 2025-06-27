@@ -70,6 +70,41 @@ class DAQEvent(envdsEvent):
         )
 
     @staticmethod
+    def create_device_definition_registry_update(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.device_definition_registry_update(), source=source, data=data, extra_header=extra_header
+        )
+
+    @staticmethod
+    def create_device_definition_registry_request(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.device_definition_registry_request(),
+            source=source,
+            data=data,
+            extra_header=extra_header,
+        )
+
+    @staticmethod
+    def create_device_definition_registry_ack(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.device_definition_registry_ack(), source=source, data=data, extra_header=extra_header
+        )
+
+    def create_device_registry_update(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.device_registry_update(), source=source, data=data, extra_header=extra_header
+        )
+
+    @staticmethod
+    def create_device_registry_request(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.device_registry_request(),
+            source=source,
+            data=data,
+            extra_header=extra_header,
+        )
+
+    @staticmethod
     def create_interface_registry_update(source: str, data: dict = {}, extra_header: dict = None):
         return envdsEvent.create(
             type=et.interface_registry_update(), source=source, data=data, extra_header=extra_header

@@ -142,6 +142,9 @@ class Device(envdsBase):
 
         self.settings = RuntimeSettings()
 
+        self.device_definition_registered = False
+        self.device_registered = False
+
         # list of sampling tasks to start/stop in do_start
         # self.sampling_task_list = []
         # # running tasks
@@ -172,6 +175,8 @@ class Device(envdsBase):
         # asyncio.create_task(self.send_metadata_loop())
 
         self.enable_task_list.append(self.interface_config_monitor())
+        self.enable_task_list.append(self.register_device_definition())
+        self.enable_task_list.append(self.register_device())
         self.run_task_list.append(self.interface_monitor())
         self.run_task_list.append(self.settings_monitor())
         # self.instance_config["daq_id"] = "default"
@@ -202,6 +207,12 @@ class Device(envdsBase):
         #     model=self.config.model,
         #     metadata=self.get_metadata()
         # )
+
+    async def register_device_definition():
+        pass
+
+    async def register_device_definition():
+        pass
 
     async def register_device_type(self):
         # await init_db_models()
@@ -316,6 +327,32 @@ class Device(envdsBase):
 
         # self.router.register_route(key=et.control_request(), route=self.handle_control)
         # # self.router.register_route(key=et.control_update, route=self.handle_control)
+
+    async def handle_registry(self, message: CloudEvent):
+
+        # if message.data["type"] == det.sensor_registry_update():
+        if message["type"] == det.device_definition_registry_request():
+            dev_id = message.data.get("device-definition", None)
+            if dev_id:
+                if dev_id["make"] == self.make and dev_id["model"] == self.model:
+                    self.device_definition_registered = False
+
+        elif message["type"] == det.device_definition_registry_ack():
+            dev_id = message.data.get("device-definition", None)
+            if dev_id:
+                if dev_id["make"] == self.make and dev_id["model"] == self.model:
+                    self.device_definition_registered = True
+
+            # self.logger.debug(
+            #     "handle_sensor_registry",
+            #     extra={
+            #         "type": det.sensor_registry_update(),
+            #         # "data": message.data,
+            #         # "sourcepath": message.sourcepath,
+            #         "data": message,
+            #         "sourcepath": message["sourcepath"],
+            #     },
+            # )
 
     # async def handle_settings(self, message: Message):
     async def handle_settings(self, message: CloudEvent):

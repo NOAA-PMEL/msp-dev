@@ -14,6 +14,7 @@ class BaseEventType(object):
     ACTION_REQUEST = "request"
     ACTION_UPDATE = "update"
     ACTION_BCAST = "broadcast"
+    ACTION_ACK = "ack"
 
     def __init__(self):
         super(BaseEventType, self).__init__()

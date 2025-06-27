@@ -76,6 +76,53 @@ class Sensor(Device):
                     except envdsRunTransitionException:
                         pass
 
+    async def register_device(self):
+        
+        while True:
+        
+            if self.enabled and not self.device_registered:
+                
+                event = det.create_device_registry_update(
+                    # source="device.mockco-mock1-1234", data=record
+                    source=self.get_id_as_source(),
+                    data={"sensor-instance": self.metadata["attributes"]},
+                )
+                destpath = f"/{self.get_id_as_topic()}/registry/update"
+                self.logger.debug(
+                    "register_device_definition", extra={"data": event, "destpath": destpath}
+                )
+                event["destpath"] = destpath
+                # message = Message(data=event, destpath=destpath)
+                message = event
+                # self.logger.debug("default_data_loop", extra={"m": message})
+                await self.send_message(message)
+        
+            await asyncio.sleep(5)
+
+    async def register_device_definition(self):
+        
+        while True:
+        
+            if not self.device_definition_registered:
+                
+                event = det.create_device_definition_registry_update(
+                    # source="device.mockco-mock1-1234", data=record
+                    source=self.get_id_as_source(),
+                    data={"sensor-definition": self.metadata},
+                )
+                destpath = f"/{self.get_id_as_topic()}/registry/update"
+                self.logger.debug(
+                    "register_device_definition", extra={"data": event, "destpath": destpath}
+                )
+                event["destpath"] = destpath
+                # message = Message(data=event, destpath=destpath)
+                message = event
+                # self.logger.debug("default_data_loop", extra={"m": message})
+                await self.send_message(message)
+        
+            await asyncio.sleep(5)
+
+
     def sampling(self) -> bool:
             # self.logger.debug("sensor.sampling")
             if self.status.get_requested(Sensor.SAMPLING) == envdsStatus.TRUE:
