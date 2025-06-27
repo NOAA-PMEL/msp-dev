@@ -24,12 +24,27 @@ from cloudevents.conversion import to_structured  # , from_http
 from cloudevents.exceptions import InvalidStructuredJSON
 
 from datetime import datetime, timedelta, timezone
-from envds.util.util import get_datetime_string, get_datetime, datetime_to_string, get_datetime_with_delta
+from envds.util.util import (
+    get_datetime_string,
+    get_datetime,
+    datetime_to_string,
+    get_datetime_with_delta,
+)
+
 # import pymongo
 
 import uvicorn
 
-from datastore_query import DataStoreQuery
+from datastore_requests import (
+    DataStoreQuery,
+    DataUpdate,
+    DataRequest,
+    DeviceDefinitionUpdate,
+    DeviceDefinitionRequest,
+    DeviceInstanceUpdate,
+    DeviceInstanceRequest,
+    DatastoreRequest
+)
 from db_client import DBClientManager, DBClientConfig
 
 handler = logging.StreamHandler()
@@ -40,6 +55,7 @@ L.setLevel(logging.INFO)
 
 
 # test
+
 
 class DatastoreConfig(BaseSettings):
     host: str = "0.0.0.0"
@@ -60,7 +76,7 @@ class DatastoreConfig(BaseSettings):
     #     "https://uasdaq.pmel.noaa.gov/uasdaq/dataserver/erddap"
     # )
     # # erddap_author: str = "fake_author"
-    
+
     db_client_type: str | None = None
     db_client_connection: str | None = None
     db_client_hostname: str | None = None
@@ -68,8 +84,9 @@ class DatastoreConfig(BaseSettings):
     db_client_username: str | None = None
     db_client_password: str | None = None
 
-    db_data_ttl: int = 600 # seconds
-    db_reg_device_instance_ttl: int = 600 # seconds
+    db_data_ttl: int = 600  # seconds
+    db_reg_device_definition_ttl: int = 0  # permanent
+    db_reg_device_instance_ttl: int = 600  # seconds
 
     erddap_enable: bool = False
     erddap_http_connection: str | None = None
@@ -80,8 +97,10 @@ class DatastoreConfig(BaseSettings):
         env_prefix = "DATASTORE_"
         case_sensitive = False
 
-class Datastore():
+
+class Datastore:
     """docstring for TestClass."""
+
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.debug("TestClass instantiated")
@@ -93,7 +112,7 @@ class Datastore():
 
     def configure(self):
         # set clients
-        
+
         self.logger.debug("configure", extra={"self.config": self.config})
         db_client_config = DBClientConfig(
             type=self.config.db_client_type,
@@ -103,7 +122,7 @@ class Datastore():
                 "port": self.config.db_client_port,
                 "username": self.config.db_client_username,
                 "password": self.config.db_client_password,
-            }
+            },
         )
         self.logger.debug("configure", extra={"db_client_config": db_client_config})
         self.db_client = DBClientManager.create(db_client_config)
@@ -112,8 +131,7 @@ class Datastore():
             # setup erddap client
             pass
 
-
-    def find_one(self):#, database: str, collection: str, query: dict):
+    def find_one(self):  # , database: str, collection: str, query: dict):
         # self.connect()
         # if self.client:
         #     db = self.client[database]
@@ -125,7 +143,7 @@ class Datastore():
         #     return result
         return None
 
-    def insert_one(self):#, database: str, collection: str, document: dict):
+    def insert_one(self):  # , database: str, collection: str, document: dict):
         # self.connect()
         # if self.client:
         #     db = self.client[database]
@@ -145,14 +163,14 @@ class Datastore():
     #     return None
 
     def update_one(self):
-    #     self,
-    #     database: str,
-    #     collection: str,
-    #     document: dict,
-    #     update: dict,
-    #     filter: dict = None,
-    #     upsert=False,
-    # ):
+        #     self,
+        #     database: str,
+        #     collection: str,
+        #     document: dict,
+        #     update: dict,
+        #     filter: dict = None,
+        #     upsert=False,
+        # ):
         # self.connect()
         # if self.client:
         #     db = self.client[database]
@@ -165,9 +183,9 @@ class Datastore():
         #     result = sensor.update_one(filter=filter, update=set_update, upsert=upsert)
         #     return result
         return None
-    
-    async def data_sensor_update(self, ce: CloudEvent):
-        
+
+    async def sensor_data_update(self, ce: CloudEvent):
+
         try:
             # database = "data"
             # collection = "sensor"
@@ -179,7 +197,7 @@ class Datastore():
             make = attributes["make"]["data"]
             model = attributes["model"]["data"]
             serial_number = attributes["serial_number"]["data"]
-            
+
             # TODO fix serial number in magic data record, tmp workaround for now
             # serial_number = attributes["serial_number"]
 
@@ -203,6 +221,21 @@ class Datastore():
                 # "last_update": datetime.now(tz=timezone.utc),
             }
 
+            update = DataUpdate(
+                make=make,
+                model=model,
+                version=erddap_version,
+                timestamp=timestamp,
+                attributes=attributes,
+                dimensions=dimensions,
+                variables=variables                        
+            )
+
+            request = DatastoreRequest(
+                database="data",
+                collection="sensor",
+                request=update
+            )
             # self.logger.debug("sensor_data_update", extra={"sensor-doc": doc})
             # filter = {
             #     "make": make,
@@ -211,11 +244,12 @@ class Datastore():
             #     "serial_number": serial_number,
             #     "timestamp": timestamp,
             # }
-
             await self.db_client.sensor_data_update(
-                document=doc,
-                ttl=self.config.db_data_ttl
+                request=request, ttl=self.config.db_data_ttl
             )
+            # await self.db_client.sensor_data_update(
+            #     document=doc, ttl=self.config.db_data_ttl
+            # )
             # result = self.db_client.update_one(
             #     database="data",
             #     collection="sensor",
@@ -253,12 +287,86 @@ class Datastore():
             query.end_time = None
 
         return await self.db_client.sensor_data_get(query)
-    
+
+    async def device_definition_registry_update(self, ce: CloudEvent):
+
+        try:
+            for device_type, device_def in ce.data.items():
+                make = device_def["attributes"]["make"]["data"]
+                model = device_def["attributes"]["model"]["data"]
+                format_version = device_def["attributes"]["format_version"]["data"]
+                parts = format_version.split(".")
+                version = f"v{parts[0]}"
+                valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
+
+                if device_type == "sensor-definition":
+                    attributes = device_def["attributes"]
+                    dimensions = device_def["dimensions"]
+                    variables = device_def["variables"]
+
+                    update = DeviceDefinitionUpdate(
+                        make=make,
+                        model=model,
+                        version=version,
+                        valid_time=valid_time,
+                        attributes=attributes,
+                        dimensions=dimensions,
+                        variables=variables                        
+                    )
+
+                    request = DatastoreRequest(
+                        database="registry",
+                        collection="sensor-definition",
+                        request=update
+                    )
+
+            if self.db_client:
+                await self.db_client.device_definition_registry_update(request, ttl=0)
+
+        except Exception as e:
+            L.error("sensor_data_update", extra={"reason": e})
+        pass
+
+    async def device_instance_registry_update(self, ce: CloudEvent):
+
+        try:
+            for device_type, device_def in ce.data.items():
+                make = device_def["attributes"]["make"]["data"]
+                model = device_def["attributes"]["model"]["data"]
+                serial_number = device_def["attributes"]["serial_number"]["data"]
+                format_version = device_def["attributes"]["format_version"]["data"]
+                parts = format_version.split(".")
+                version = f"v{parts[0]}"
+
+                if device_type == "sensor-instance":
+                    attributes = device_def["attributes"]
+
+                    update = DeviceDefinitionUpdate(
+                        make=make,
+                        model=model,
+                        version=version,
+                        attributes=attributes,
+                    )
+
+                    request = DatastoreRequest(
+                        database="registry",
+                        collection="sensor-instance",
+                        request=update
+                    )
+
+            if self.db_client:
+                await self.db_client.device_instance_registry_update(request, ttl=0)
+
+        except Exception as e:
+            L.error("sensor_data_update", extra={"reason": e})
+        pass
+
 async def shutdown():
     print("shutting down")
     # for task in task_list:
     #     print(f"cancel: {task}")
     #     task.cancel()
+
 
 async def main(config):
     config = uvicorn.Config(
@@ -309,4 +417,3 @@ if __name__ == "__main__":
         pass
 
     asyncio.run(main(config))
-

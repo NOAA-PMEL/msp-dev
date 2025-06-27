@@ -20,7 +20,16 @@ from cloudevents.conversion import to_structured  # , from_http
 from cloudevents.exceptions import InvalidStructuredJSON
 
 from datetime import datetime, timezone
-from datastore_query import DataStoreQuery
+from datastore_requests import (
+    DataStoreQuery,
+    DataUpdate,
+    DataRequest,
+    DeviceDefinitionUpdate,
+    DeviceDefinitionRequest,
+    DeviceInstanceUpdate,
+    DeviceInstanceRequest,
+    DatastoreRequest
+)
 
 class DBClientConfig(BaseModel):
     type: str | None = "redis"
@@ -122,7 +131,8 @@ class DBClient:
         self,
         # database: str,
         # collection: str,
-        document: dict,
+        # document: dict,
+        request: DatastoreRequest,
         # update: dict,
         # filter: dict = None,
         # upsert=False,
@@ -133,26 +143,17 @@ class DBClient:
     async def sensor_data_get(self, query: DataStoreQuery):
         return None
 
-    # def update_one(
-    #     self,
-    #     database: str,
-    #     collection: str,
-    #     document: dict,
-    #     # update: dict,
-    #     filter: dict = None,
-    #     # upsert=False,
-    #     ttl: int = 300
-    # ):
-    #     pass
-    #     # self.connect()
-    #     # if self.client:
-    #     #     db = self.client[database]
-    #     #     sensor = db[collection]
-    #     #     if filter is None:
-    #     #         filter = document
-    #     #     set_update = {"$set": update}
-    #     #     if upsert:
-    #     #         set_update["$setOnInsert"] = document
-    #     #     result = sensor.update_one(filter=filter, update=set_update, upsert=upsert)
-    #     #     return result
-    #     return None
+    async def device_definition_registry_update(
+        self,
+        request: DeviceDefinitionUpdate,
+        ttl: int = 0
+    ):
+        return None
+
+    async def device_instance_registry_update(
+        self,
+        request: DeviceInstanceUpdate,
+        ttl: int = 0
+    ):
+        return None
+

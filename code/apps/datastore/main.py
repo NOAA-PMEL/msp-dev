@@ -18,7 +18,7 @@ from typing import Annotated
 from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
 
-from datastore import Datastore, DataStoreQuery
+from datastore_requests import Datastore, DataStoreQuery, DataRequest, DeviceDefinitionRequest, DeviceInstanceRequest
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -128,7 +128,7 @@ async def data_sensor_update(request: Request):
         L.debug(request.headers)
         L.debug("sensor_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
-        await datastore.data_sensor_update(ce)
+        await datastore.sensor_data_update(ce)
     except Exception as e:
         # L.error("send", extra={"reason": e})
         pass
@@ -157,7 +157,7 @@ async def data_sensor_get(query: Annotated[DataStoreQuery, Query()]):
     #     start_time=start_time,
     #     end_time=end_time
     # )
-    result = await datastore.data_sensor_get(query)
+    result = await datastore.sensor_data_get(query)
     return {"result": result}
     
 @app.post("/sensor/settings/update", status_code=status.HTTP_202_ACCEPTED)
@@ -244,3 +244,79 @@ async def status_update(request: Request):
 
 #     # examine and route cloudevent to the proper handler
 #     return 200
+
+@app.post("/device/registry/update", status_code=status.HTTP_202_ACCEPTED)
+async def device_registry_update(request: Request):
+    try:
+        ce = from_http(request.headers, await request.body())
+        L.debug(request.headers)
+        L.debug("sensor_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
+        # await adapter.send_to_mqtt(ce)
+        await datastore.device_registry_update(ce)
+    except Exception as e:
+        # L.error("send", extra={"reason": e})
+        pass
+
+    return "",204
+    
+@app.get("/device/registry/get")
+async def device_registry_get(query: Annotated[DeviceInstanceRequest, Query()], device_type: str="sensor", ):
+#     sensor_id: str | None = None,
+#     make: str | None = None,
+#     model: str | None = None,
+#     serial_number: str | None = None,
+#     version: str | None = None,
+#     start_time: str | None = None,
+#     end_time: str | None = None
+# ):
+
+    # query_params = request.query_params
+    # query = DataStoreQuery(
+    #     sensor_id=sensor_id,
+    #     make=make,
+    #     model=model,
+    #     serial_number=serial_number,
+    #     version=version,
+    #     start_time=start_time,
+    #     end_time=end_time
+    # )
+    result = await datastore.registry_device_get(query, device_type=device_type)
+    return {"result": result}
+
+@app.post("/device-definition/registry/update", status_code=status.HTTP_202_ACCEPTED)
+async def device_definition_registry_update(request: Request):
+    try:
+        ce = from_http(request.headers, await request.body())
+        L.debug(request.headers)
+        L.debug("sensor_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
+        # await adapter.send_to_mqtt(ce)
+        await datastore.device_definition_registry_update(ce)
+    except Exception as e:
+        # L.error("send", extra={"reason": e})
+        pass
+
+    return "",204
+    
+@app.get("/device/registry/get")
+async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()], device_type: str="sensor", ):
+#     sensor_id: str | None = None,
+#     make: str | None = None,
+#     model: str | None = None,
+#     serial_number: str | None = None,
+#     version: str | None = None,
+#     start_time: str | None = None,
+#     end_time: str | None = None
+# ):
+
+    # query_params = request.query_params
+    # query = DataStoreQuery(
+    #     sensor_id=sensor_id,
+    #     make=make,
+    #     model=model,
+    #     serial_number=serial_number,
+    #     version=version,
+    #     start_time=start_time,
+    #     end_time=end_time
+    # )
+    result = await datastore.device_definition_registry_get(query, device_type=device_type)
+    return {"result": result}
