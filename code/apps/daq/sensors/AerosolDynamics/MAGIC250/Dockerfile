@@ -21,7 +21,7 @@ RUN pip3 install -r requirements.txt
 # for fastapi/uvicorn
 # COPY . .s
 # without fastapi/uvicorn
-COPY ./AerosolDynamics_MAGIC250_sensor_definition.json .
+# COPY ./AerosolDynamics_MAGIC250_sensor_definition.json .
 COPY ./magic250.py .
 
 # WORKDIR $APP_HOME/envds
