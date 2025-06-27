@@ -1,0 +1,148 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: registrar
+  namespace: default
+spec:
+  template:
+    # metadata:
+    #   annotations:
+    #     autoscaling.knative.dev/max-scale: "3"
+    spec:
+      containers:
+      # - image: uasbase2.pmel.noaa.gov:448/test/registrar@sha256:06155357e95e62c50d6b4b395ee74f33e8f4985b6cffc80b9e4185eee27324d4  
+      - image: 776103873773.dkr.ecr.us-east-1.amazonaws.com/iot-daq/registrar:v1.0.4 
+      # - image: uasbase2.pmel.noaa.gov:448/test/verify:v1.0.6
+        env:
+        - name: REGISTRAR_KNATIVE_BROKER
+          valueFrom:
+            configMapKeyRef:
+              name: registrar
+              key: knative_broker
+        - name: REGISTRAR_MONGODB_USER_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: registrar
+              key: mongodb_registry_user_name
+        - name: REGISTRAR_MONGODB_USER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: registrar-registry-user-password
+              key: password
+        - name: REGISTRAR_MONGODB_CONNECTION
+          valueFrom:
+            configMapKeyRef:
+              name: registrar
+              key: mongodb_connection
+        - name: REGISTRAR_ERDDAP_HTTP_CONNECTION
+          valueFrom:
+            configMapKeyRef:
+              name: registrar
+              key: erddap_http_connection
+        - name: REGISTRAR_ERDDAP_HTTPS_CONNECTION
+          valueFrom:
+            configMapKeyRef:
+              name: registrar
+              key: erddap_https_connection
+        - name: REGISTRAR_ERDDAP_AUTHOR
+          valueFrom:
+            secretKeyRef:
+              name: registrar-registry-erddap-author
+              key: author
+        securityContext:
+          allowPrivilegeEscalation: false
+      #   volumeMounts:
+      #       - mountPath: /datasets.d
+      #         name: erddap-datasetd-storage
+      #         readOnly: false
+      #       - mountPath: /erddap_content
+      #         name: erddap-content-storage
+      #         readOnly: false
+      # volumes:
+      #   - name: erddap-datasetd-storage
+      #     persistentVolumeClaim:
+      #       claimName: dataserver-erddap-datasetsd-pvc
+      #       readOnly: false
+      #   - name: erddap-content-storage
+      #     persistentVolumeClaim:
+      #       claimName: dataserver-erddap-content-pvc
+      #       readOnly: false
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: register-sensor-update
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: sensor.registry.update
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: registrar
+    uri: /register/sensor/update
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: register-manage-init
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: manage.registry.init
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: registrar
+    uri: /register/init
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: register-sensor-sync
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: sensor.registry.sync
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: registrar
+    uri: /register/sensor/sync
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: register-sensor-request
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: sensor.registry.request
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: registrar
+    uri: /register/sensor/request
+# ---
+# apiVersion: eventing.knative.dev/v1
+# kind: Trigger
+# metadata:
+#   name: erddap-insert-qc
+# spec:
+#   broker: default
+#   filter:
+#     attributes:
+#       type: gov.noaa.pmel.acg.data.insert.envds.v2.qc
+#   subscriber:
+#     ref:
+#       apiVersion: v1
+#       kind: Service
+#       name: erddap-insert
