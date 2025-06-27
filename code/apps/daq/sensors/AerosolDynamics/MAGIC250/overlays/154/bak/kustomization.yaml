@@ -3,8 +3,6 @@ kind: Kustomization
 metadata:
   name: aerosoldynamics-magic250
 
-
-namespace: payload03-hardware
 # Example configuration for the webserver
 # at https://github.com/monopole/hello
 # commonLabels:
@@ -23,19 +21,5 @@ resources:
 - magic250-configmap.yaml
 
 nameSuffix: "-154"
-
 # patchesStrategicMerge:
 #   - deployment.yaml
-
-patches:
-  # change configmap names to account for s/n suffix
-  - target:
-      kind: Deployment
-      name: aerosoldynamics-magic250
-    patch: |-
-      - op: replace 
-        path: /spec/template/spec/volumes/0/configMap/name
-        value: aerosoldynamics-magic250-config-154
-      - op: replace 
-        path: /spec/template/spec/volumes/1/configMap/name
-        value: sensor-definition-154

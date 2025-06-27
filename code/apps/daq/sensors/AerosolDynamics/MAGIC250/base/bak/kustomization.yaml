@@ -11,8 +11,3 @@ metadata:
 resources:
 - magic250-deployment.yaml
 - magic250-service.yaml
-
-configMapGenerator:
-  - name: sensor-definition
-    files:
-      - AerosolDynamics_MAGIC250_sensor_definition.json

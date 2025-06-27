@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: aerosoldynamics-magic250
-  # namespace: msp
+  namespace: msp
   labels:
     app: aerosoldynamics-magic250
 spec:
@@ -14,12 +14,9 @@ spec:
       labels:
         app: aerosoldynamics-magic250
     spec:
-      imagePullSecrets:
-      - name: ghcr-ro-secret
       containers:
       - name: aerosoldynamics-magic250
-        # image: registry-msp:5000/msp/sensor/aerosoldynamics-magic250:0.1.0
-        image: ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:0.1.3
+        image: registry-msp:5000/msp/sensor/aerosoldynamics-magic250:0.1.0
         imagePullPolicy: "Always"
         env:
           - name: ENVDS_CORE_NAMESPACE_PREFIX
@@ -28,11 +25,7 @@ spec:
                 name: aerosoldynamics-magic250-config
                 key: namespace_prefix
           - name: ENVDS_ENV_ID
-            valueFrom:
-              configMapKeyRef:
-                name: aerosoldynamics-magic250-config
-                key: envds_env_id
-            # value: mspbase01
+            value: mspbase01
           - name: REDIS_OM_URL
             value: redis://redis.default
           - name: LOG_LEVEL
@@ -47,17 +40,26 @@ spec:
         - name: http
           containerPort: 9080
           protocol: TCP
+        # - name: https
+        #   containerPort: 8883
+        #   protocol: TCP
         volumeMounts:
             - name: aerosoldynamics-magic250-config
               mountPath: /app/config/sensor.conf
               subPath: sensor.conf
-            - name: sensor-definition
-              mountPath: /app/AerosolDynamics_MAGIC250_sensor_definition.json
-              subPath: AerosolDynamics_MAGIC250_sensor_definition.json
+            # - name: mosquitto-certs
+            #   mountPath: /certs/ca.crt
+            #   subPath: ca.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.crt
+            #   subPath: server.crt
+            # - name: mosquitto-certs
+            #   mountPath: /certs/server.key
+            #   subPath: server.key
       volumes:
         - name: aerosoldynamics-magic250-config
           configMap:
             name: aerosoldynamics-magic250-config
-        - name: sensor-definition
-          configMap:
-            name: sensor-definition
+        # - name: mosquitto-certs
+        #   configMap:
+        #     name: mosquitto-certs

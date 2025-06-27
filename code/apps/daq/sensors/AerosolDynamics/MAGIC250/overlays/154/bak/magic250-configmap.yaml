@@ -2,21 +2,20 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: aerosoldynamics-magic250-config
-  # namespace: msp
+  namespace: msp
   labels:
     app: aerosoldynamics-magic250
-    app-group: envds-sensor-payload03
+    app-group: envds-sensor-mspbase
 data:
-  namespace_prefix: payload03
-  envds_env_id: payload03
+  namespace_prefix: msp 
   sensor.conf: |
     serial_number: "154"
-    daq_id: payload03
+    daq_id: msp
     interfaces:
       # default: serial
       default:
         interface_env_id: msp # if omitted, defaults to envds_id of sensor
-        interface_id: USconverters::USCDR301::usc13
+        interface_id: USconverters::USCDR301::usc213
         path: port-1
       #   connection-properties:
       #     baudrate: 115200
