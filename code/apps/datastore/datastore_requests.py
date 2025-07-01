@@ -1,5 +1,5 @@
 from typing import List
-from pydantic import BaseModel
+from pydantic import BaseModel, Union
 
 
 class DataStoreQuery(BaseModel):
@@ -77,11 +77,11 @@ class DeviceInstanceRequest(BaseModel):
 class DatastoreRequest(BaseModel):
     database: str
     collection: str
-    request: (
-        DataUpdate
-        | DataRequest
-        | DeviceDefinitionUpdate
-        | DeviceDefinitionRequest
-        | DeviceInstanceUpdate
-        | DeviceInstanceRequest
-    )
+    request: Union[
+        DataUpdate,
+        DataRequest,
+        DeviceDefinitionUpdate,
+        DeviceDefinitionRequest,
+        DeviceInstanceUpdate,
+        DeviceInstanceRequest,
+    ]

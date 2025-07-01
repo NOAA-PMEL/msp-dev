@@ -289,7 +289,7 @@ async def device_definition_registry_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(request.headers)
-        L.debug("sensor_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
+        L.debug("device_definition_registry_update", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         await datastore.device_definition_registry_update(ce)
     except Exception as e:

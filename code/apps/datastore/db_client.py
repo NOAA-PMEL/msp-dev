@@ -145,7 +145,7 @@ class DBClient:
 
     async def device_definition_registry_update(
         self,
-        request: DeviceDefinitionUpdate,
+        request: DatastoreRequest,
         ttl: int = 0
     ) -> bool:
         return False
@@ -158,7 +158,7 @@ class DBClient:
 
     async def device_instance_registry_update(
         self,
-        request: DeviceInstanceUpdate,
+        request: DatastoreRequest,
         ttl: int = 0
     ) -> bool:
         return False

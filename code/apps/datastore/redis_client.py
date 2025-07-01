@@ -274,6 +274,6 @@ class RedisClient(DBClient):
             return result
         
         except Exception as e:
-            self.logger.error("sensor_data_update", extra={"reason": e})
+            self.logger.error("device_definition_registry_update", extra={"reason": e})
             return False
 
