@@ -211,7 +211,7 @@ class Device(envdsBase):
     async def register_device_definition():
         pass
 
-    async def register_device_definition():
+    async def register_device():
         pass
 
     async def register_device_type(self):

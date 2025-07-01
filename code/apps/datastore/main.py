@@ -297,7 +297,7 @@ async def device_definition_registry_update(request: Request):
 
     return "",204
     
-@app.get("/device/registry/get")
+@app.get("/device-definition/registry/get")
 async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()], device_type: str="sensor", ):
 #     sensor_id: str | None = None,
 #     make: str | None = None,
