@@ -132,7 +132,7 @@ class DBClient:
         # database: str,
         # collection: str,
         # document: dict,
-        request: DatastoreRequest,
+        request: DataUpdate,
         # update: dict,
         # filter: dict = None,
         # upsert=False,
@@ -145,7 +145,9 @@ class DBClient:
 
     async def device_definition_registry_update(
         self,
-        request: DatastoreRequest,
+        database: str,
+        collection: str,
+        request: DeviceDefinitionUpdate,
         ttl: int = 0
     ) -> bool:
         return False
@@ -158,7 +160,9 @@ class DBClient:
 
     async def device_instance_registry_update(
         self,
-        request: DatastoreRequest,
+        database: str,
+        collection: str,
+        request: DeviceInstanceUpdate,
         ttl: int = 0
     ) -> bool:
         return False

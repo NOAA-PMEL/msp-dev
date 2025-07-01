@@ -76,7 +76,9 @@ class RedisClient(DBClient):
     async def sensor_data_update(
         self,
         # document: dict,
-        request: DatastoreRequest,
+        database: str,
+        collection: str,
+        request: DataUpdate,
         ttl: int = 300
     ):
         await super(RedisClient, self).sensor_data_update(request, ttl)
@@ -97,7 +99,7 @@ class RedisClient(DBClient):
             #     # "last_update": datetime.now(tz=timezone.utc),
             # }
             self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
-            document = request.request.dict()
+            document = request.dict()
             make = document["make"]
             model = document["model"]
             serial_number = document["serial_number"]
@@ -110,7 +112,7 @@ class RedisClient(DBClient):
 
             sensor_id = "::".join([make,model,serial_number])
 
-            key = f"{request.database}:{request.collection}:{sensor_id}:{timestamp}"
+            key = f"{database}:{collection}:{sensor_id}:{timestamp}"
             self.logger.debug("redis_client", extra={"key": key, "sensor-doc": document})
             self.client.json().set(
                 key,
@@ -149,7 +151,9 @@ class RedisClient(DBClient):
     async def device_definition_registry_update(
         self,
         # document: dict,
-        request: DatastoreRequest,
+        database: str,
+        collection: str,
+        request: DeviceDefinitionUpdate,
         ttl: int = 300
     ) -> bool:
         await super(RedisClient, self).device_definition_registry_update(request, ttl)
@@ -170,11 +174,15 @@ class RedisClient(DBClient):
             #     # "last_update": datetime.now(tz=timezone.utc),
             # }
             self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
-            document = request.request.dict()
+            document = request.dict()
             make = document["make"]
             model = document["model"]
             version = document["version"]
             
+            make = request.make
+            model = request.model
+            version = request.version
+            document = request.dict().pop("database").pop("collection")
             # make = request.request.make
             # model = request.request.model
             # serial_number = request.request.serial_number
@@ -182,7 +190,7 @@ class RedisClient(DBClient):
 
             id = "::".join([make,model,version])
 
-            key = f"{request.database}:{request.collection}:{id}"
+            key = f"{database}:{collection}:{id}"
             self.logger.debug("redis_client", extra={"key": key, "sensor-doc": document})
             result = self.client.json().set(
                 key,
@@ -193,7 +201,7 @@ class RedisClient(DBClient):
             return result
         
         except Exception as e:
-            self.logger.error("sensor_data_update", extra={"reason": e})
+            self.logger.error("device_definition_registry_update", extra={"reason": e})
             return False
 
     async def sensor_data_get(self, query: DataStoreQuery):
@@ -229,7 +237,9 @@ class RedisClient(DBClient):
     async def device_instance_registry_update(
         self,
         # document: dict,
-        request: DatastoreRequest,
+        database: str,
+        collection: str,
+        request: DeviceInstanceUpdate,
         ttl: int = 300
     ) -> bool:
         await super(RedisClient, self).device_definition_registry_update(request, ttl)
@@ -250,7 +260,7 @@ class RedisClient(DBClient):
             #     # "last_update": datetime.now(tz=timezone.utc),
             # }
             self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
-            document = request.request.dict()
+            document = request.dict()
             make = document["make"]
             model = document["model"]
             serial_number = document["serial_number"]
@@ -263,7 +273,7 @@ class RedisClient(DBClient):
 
             device_id = "::".join([make,model,serial_number])
 
-            key = f"{request.database}:{request.collection}:{device_id}:{version}"
+            key = f"{database}:{collection}:{device_id}:{version}"
             self.logger.debug("redis_client", extra={"key": key, "sensor-doc": document})
             result = self.client.json().set(
                 key,
@@ -274,6 +284,6 @@ class RedisClient(DBClient):
             return result
         
         except Exception as e:
-            self.logger.error("device_definition_registry_update", extra={"reason": e})
+            self.logger.error("device_instance_registry_update", extra={"reason": e})
             return False
 

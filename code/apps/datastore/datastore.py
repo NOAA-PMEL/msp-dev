@@ -43,7 +43,7 @@ from datastore_requests import (
     DeviceDefinitionRequest,
     DeviceInstanceUpdate,
     DeviceInstanceRequest,
-    DatastoreRequest
+    DatastoreRequest,
 )
 from db_client import DBClientManager, DBClientConfig
 
@@ -190,6 +190,8 @@ class Datastore:
             # database = "data"
             # collection = "sensor"
             # self.logger.debug("data_sensor_update", extra={"ce": ce})
+            database = "data"
+            collection = "sensor"
             attributes = ce.data["attributes"]
             dimensions = ce.data["dimensions"]
             variables = ce.data["variables"]
@@ -221,7 +223,7 @@ class Datastore:
                 # "last_update": datetime.now(tz=timezone.utc),
             }
 
-            update = DataUpdate(
+            request = DataUpdate(
                 make=make,
                 model=model,
                 serial_number=serial_number,
@@ -229,14 +231,12 @@ class Datastore:
                 timestamp=timestamp,
                 attributes=attributes,
                 dimensions=dimensions,
-                variables=variables                        
+                variables=variables,
             )
 
-            request = DatastoreRequest(
-                database="data",
-                collection="sensor",
-                request=update
-            )
+            # request = DatastoreRequest(
+            #     database="data", collection="sensor", request=update
+            # )
             # self.logger.debug("sensor_data_update", extra={"sensor-doc": doc})
             # filter = {
             #     "make": make,
@@ -246,7 +246,10 @@ class Datastore:
             #     "timestamp": timestamp,
             # }
             await self.db_client.sensor_data_update(
-                request=request, ttl=self.config.db_data_ttl
+                database=database,
+                collection=collection,
+                request=request,
+                ttl=self.config.db_data_ttl,
             )
             # await self.db_client.sensor_data_update(
             #     document=doc, ttl=self.config.db_data_ttl
@@ -301,29 +304,38 @@ class Datastore:
                 valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
 
                 if device_type == "sensor-definition":
+                    database = "data"
+                    collection = "sensor-definition"
                     attributes = device_def["attributes"]
                     dimensions = device_def["dimensions"]
                     variables = device_def["variables"]
 
-                    update = DeviceDefinitionUpdate(
+                    request = DeviceDefinitionUpdate(
                         make=make,
                         model=model,
                         version=version,
                         valid_time=valid_time,
                         attributes=attributes,
                         dimensions=dimensions,
-                        variables=variables                        
+                        variables=variables,
                     )
 
-                    request = DatastoreRequest(
-                        database="registry",
-                        collection="sensor-definition",
-                        request=update
-                    )
+                    # request = DatastoreRequest(
+                    #     database="registry",
+                    #     collection="sensor-definition",
+                    #     request=update
+                    # )
 
-            self.logger.debug("device_definition_registry_update", extra={"request": request})
+            self.logger.debug(
+                "device_definition_registry_update", extra={"request": request}
+            )
             if self.db_client:
-                await self.db_client.device_definition_registry_update(request, ttl=0)
+                await self.db_client.device_definition_registry_update(
+                    database=database,
+                    collection=collection,
+                    request=request,
+                    ttl=config.db_reg_device_definition_ttl,
+                )
 
         except Exception as e:
             self.logger.error("device_definition_registry_update", extra={"reason": e})
@@ -341,27 +353,36 @@ class Datastore:
                 version = f"v{parts[0]}"
 
                 if device_type == "sensor-instance":
+                    database = "registry"
+                    collection = "sensor-instance"
                     attributes = device_def["attributes"]
 
-                    update = DeviceDefinitionUpdate(
+                    request = DeviceInstanceUpdate(
                         make=make,
                         model=model,
+                        serial_number=serial_number,
                         version=version,
                         attributes=attributes,
                     )
 
-                    request = DatastoreRequest(
-                        database="registry",
-                        collection="sensor-instance",
-                        request=update
-                    )
+                    # request = DatastoreRequest(
+                    #     database="registry",
+                    #     collection="sensor-instance",
+                    #     request=update,
+                    # )
 
             if self.db_client:
-                await self.db_client.device_instance_registry_update(request, ttl=0)
+                await self.db_client.device_instance_registry_update(
+                    database=database,
+                    collection=collection,
+                    request=request,
+                    ttl=config.db_reg_device_instance_ttl,
+                )
 
         except Exception as e:
-            L.error("sensor_data_update", extra={"reason": e})
+            L.error("device_instance_registry_update", extra={"reason": e})
         pass
+
 
 async def shutdown():
     print("shutting down")
