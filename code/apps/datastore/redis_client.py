@@ -151,7 +151,7 @@ class RedisClient(DBClient):
         # document: dict,
         request: DatastoreRequest,
         ttl: int = 300
-    ):
+    ) -> bool:
         await super(RedisClient, self).device_definition_registry_update(request, ttl)
         try:
             self.connect()
@@ -184,23 +184,54 @@ class RedisClient(DBClient):
 
             key = f"{request.database}:{request.collection}:{id}"
             self.logger.debug("redis_client", extra={"key": key, "sensor-doc": document})
-            self.client.json().set(
+            result = self.client.json().set(
                 key,
                 "$",
                 {"registration": document}
             )
             self.client.expire(key, ttl)
-
+            return result
+        
         except Exception as e:
             self.logger.error("sensor_data_update", extra={"reason": e})
-            return None
+            return False
+
+    async def sensor_data_get(self, query: DataStoreQuery):
+        await super(RedisClient, self).sensor_data_get(query)
+
+        query_args = [f"@make:{query.make}"]
+        query_args.append(f"@model:{query.model}")
+        query_args.append(f"@serial_number:{query.serial_number}")
+
+        if query.version:
+            query_args.append(f"@version:{query.version}")
+
+        if query.start_time:
+            query_args.append(f"@timestamp >= {query.start_time}")
+        
+        if query.end_time:
+            query_args.append(f"@timestamp < {query.end_time}")
+
+        qstring = " ".join(query_args)
+        self.logger.debug("sensor_data_get", extra={"query_string": qstring})
+        q = Query(qstring).sort_by("timestamp")
+        result = self.client.ft(self.data_sensor_index_name).search(q).docs
+
+        return {"result": result}
+
+    async def device_definition_registry_get(
+            self,
+            request: DeviceDefinitionRequest
+    ) -> dict:
+        
+        return {}
 
     async def device_instance_registry_update(
         self,
         # document: dict,
         request: DatastoreRequest,
         ttl: int = 300
-    ):
+    ) -> bool:
         await super(RedisClient, self).device_definition_registry_update(request, ttl)
         try:
             self.connect()
@@ -234,13 +265,15 @@ class RedisClient(DBClient):
 
             key = f"{request.database}:{request.collection}:{device_id}:{version}"
             self.logger.debug("redis_client", extra={"key": key, "sensor-doc": document})
-            self.client.json().set(
+            result = self.client.json().set(
                 key,
                 "$",
                 {"registration": document}
             )
             self.client.expire(key, ttl)
-
+            return result
+        
         except Exception as e:
             self.logger.error("sensor_data_update", extra={"reason": e})
-            return None
+            return False
+

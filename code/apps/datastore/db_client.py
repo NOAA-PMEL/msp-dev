@@ -147,13 +147,19 @@ class DBClient:
         self,
         request: DeviceDefinitionUpdate,
         ttl: int = 0
-    ):
-        return None
+    ) -> bool:
+        return False
+
+    async def device_definition_registry_get(
+            self,
+            request: DeviceDefinitionRequest
+    ) -> dict:
+        return {}
 
     async def device_instance_registry_update(
         self,
         request: DeviceInstanceUpdate,
         ttl: int = 0
-    ):
-        return None
+    ) -> bool:
+        return False
 
