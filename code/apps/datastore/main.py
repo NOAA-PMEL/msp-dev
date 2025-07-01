@@ -19,7 +19,7 @@ from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
 
 from datastore import Datastore
-from datastore_requests import Datastore, DataStoreQuery, DataRequest, DeviceDefinitionRequest, DeviceInstanceRequest
+from datastore_requests import DataStoreQuery, DataRequest, DeviceDefinitionRequest, DeviceInstanceRequest
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
