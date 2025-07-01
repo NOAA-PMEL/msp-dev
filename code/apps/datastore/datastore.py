@@ -310,10 +310,11 @@ class Datastore:
                     dimensions = device_def["dimensions"]
                     variables = device_def["variables"]
 
+                    device_id = "::".join([make,model,format_version])
                     request = DeviceDefinitionUpdate(
                         make=make,
                         model=model,
-                        version=version,
+                        version=format_version,
                         valid_time=valid_time,
                         attributes=attributes,
                         dimensions=dimensions,
@@ -330,7 +331,7 @@ class Datastore:
                 "device_definition_registry_update", extra={"request": request}
             )
             if self.db_client:
-                await self.db_client.device_definition_registry_update(
+                result = await self.db_client.device_definition_registry_update(
                     database=database,
                     collection=collection,
                     request=request,

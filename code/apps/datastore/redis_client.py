@@ -175,14 +175,14 @@ class RedisClient(DBClient):
             # }
             self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
             document = request.dict()
-            make = document["make"]
-            model = document["model"]
-            version = document["version"]
+            # make = document["make"]
+            # model = document["model"]
+            # version = document["version"]
             
             make = request.make
             model = request.model
             version = request.version
-            document = request.dict().pop("database").pop("collection")
+            # document = request.dict().pop("database").pop("collection")
             # make = request.request.make
             # model = request.request.model
             # serial_number = request.request.serial_number
