@@ -175,13 +175,15 @@ class Device(envdsBase):
         # asyncio.create_task(self.send_metadata_loop())
 
         self.enable_task_list.append(self.interface_config_monitor())
-        self.enable_task_list.append(self.register_device_definition())
-        self.enable_task_list.append(self.register_device())
+        self.run_task_list.append(self.register_device_definition())
+        self.run_task_list.append(self.register_device())
         self.run_task_list.append(self.interface_monitor())
         self.run_task_list.append(self.settings_monitor())
-        # self.instance_config["daq_id"] = "default"
-        # if daq_id := os.getenv("DAQ_ID"):
-        #     self.instance_config["daq_id"] = daq_id
+
+        # remove below for now to see if breaks things
+        # self.run_task_list.append(self.register_device_type())
+
+
 
     def configure(self):
         super(Device, self).configure()
@@ -198,7 +200,7 @@ class Device(envdsBase):
         self.logger = logging.getLogger(self.build_app_uid())
         self.update_id("app_uid", self.build_app_uid())
 
-        asyncio.create_task(self.register_device_type())
+        # asyncio.create_task(self.register_device_type())
 
         # TODO: decide if device self registers or send registry request (I think latter)
         # init_device_registration()
@@ -208,10 +210,10 @@ class Device(envdsBase):
         #     metadata=self.get_metadata()
         # )
 
-    async def register_device_definition():
+    async def register_device_definition(self):
         pass
 
-    async def register_device():
+    async def register_device(self):
         pass
 
     async def register_device_type(self):

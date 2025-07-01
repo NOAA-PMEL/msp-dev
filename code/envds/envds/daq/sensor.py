@@ -80,7 +80,8 @@ class Sensor(Device):
         
         while True:
         
-            if self.enabled and not self.device_registered:
+            # if self.enabled and not self.device_registered:
+            if not self.device_registered:
                 
                 event = det.create_device_registry_update(
                     # source="device.mockco-mock1-1234", data=record
