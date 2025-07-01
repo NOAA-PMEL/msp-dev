@@ -334,7 +334,7 @@ class Datastore:
                     database=database,
                     collection=collection,
                     request=request,
-                    ttl=config.db_reg_device_definition_ttl,
+                    ttl=self.config.db_reg_device_definition_ttl,
                 )
 
         except Exception as e:
@@ -376,7 +376,7 @@ class Datastore:
                     database=database,
                     collection=collection,
                     request=request,
-                    ttl=config.db_reg_device_instance_ttl,
+                    ttl=self.config.db_reg_device_instance_ttl,
                 )
 
         except Exception as e:
