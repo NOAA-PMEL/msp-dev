@@ -224,6 +224,7 @@ class Datastore:
             update = DataUpdate(
                 make=make,
                 model=model,
+                serial_number=serial_number,
                 version=erddap_version,
                 timestamp=timestamp,
                 attributes=attributes,
@@ -320,11 +321,12 @@ class Datastore:
                         request=update
                     )
 
+            self.logger.debug("device_definition_registry_update", extra={"request": request})
             if self.db_client:
                 await self.db_client.device_definition_registry_update(request, ttl=0)
 
         except Exception as e:
-            L.error("sensor_data_update", extra={"reason": e})
+            self.logger.error("device_definition_registry_update", extra={"reason": e})
         pass
 
     async def device_instance_registry_update(self, ce: CloudEvent):
