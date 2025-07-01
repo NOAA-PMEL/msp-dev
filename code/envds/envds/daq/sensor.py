@@ -4,6 +4,7 @@ import asyncio
 from envds.exceptions import envdsRunTransitionException, envdsRunWaitException, envdsRunErrorException
 # from envds.message.message import Message
 from envds.daq.types import DAQEventType as det
+from envds.daq.event import DAQEvent
 from cloudevents.http import CloudEvent
 
 
@@ -83,7 +84,7 @@ class Sensor(Device):
             # if self.enabled and not self.device_registered:
             if not self.device_registered:
                 
-                event = det.create_device_registry_update(
+                event = DAQEvent.create_device_registry_update(
                     # source="device.mockco-mock1-1234", data=record
                     source=self.get_id_as_source(),
                     data={"sensor-instance": self.metadata["attributes"]},
@@ -106,7 +107,7 @@ class Sensor(Device):
         
             if not self.device_definition_registered:
                 try:
-                    event = det.create_device_definition_registry_update(
+                    event = DAQEvent.create_device_definition_registry_update(
                         # source="device.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
                         data={"sensor-definition": self.metadata},
