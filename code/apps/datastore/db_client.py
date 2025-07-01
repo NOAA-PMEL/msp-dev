@@ -129,8 +129,8 @@ class DBClient:
 
     async def sensor_data_update(
         self,
-        # database: str,
-        # collection: str,
+        database: str,
+        collection: str,
         # document: dict,
         request: DataUpdate,
         # update: dict,

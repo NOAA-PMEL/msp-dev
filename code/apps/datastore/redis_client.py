@@ -81,7 +81,7 @@ class RedisClient(DBClient):
         request: DataUpdate,
         ttl: int = 300
     ):
-        await super(RedisClient, self).sensor_data_update(request, ttl)
+        await super(RedisClient, self).sensor_data_update(database, collection, request, ttl)
         try:
             self.connect()
 
@@ -156,7 +156,7 @@ class RedisClient(DBClient):
         request: DeviceDefinitionUpdate,
         ttl: int = 300
     ) -> bool:
-        await super(RedisClient, self).device_definition_registry_update(request, ttl)
+        await super(RedisClient, self).device_definition_registry_update(database, collection, request, ttl)
         try:
             self.connect()
 
@@ -242,7 +242,7 @@ class RedisClient(DBClient):
         request: DeviceInstanceUpdate,
         ttl: int = 300
     ) -> bool:
-        await super(RedisClient, self).device_definition_registry_update(request, ttl)
+        await super(RedisClient, self).device_definition_registry_update(database, collection, request, ttl)
         try:
             self.connect()
 
@@ -273,7 +273,7 @@ class RedisClient(DBClient):
 
             device_id = "::".join([make,model,serial_number])
 
-            key = f"{database}:{collection}:{device_id}:{version}"
+            key = f"{database}:{collection}:{device_id}"
             self.logger.debug("redis_client", extra={"key": key, "sensor-doc": document})
             result = self.client.json().set(
                 key,
