@@ -128,7 +128,7 @@ async def mqtt_send(request: Request):
         # ce = from_http(request.headers, await request.body())
         # L.debug(request.headers)
         # L.debug("mqtt_send", extra={"ce": ce, "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
+        await adapter.send_to_mqtt(ce)
     except Exception as e:
         # L.error("send", extra={"reason": e})
         pass
