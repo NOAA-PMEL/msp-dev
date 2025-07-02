@@ -18,7 +18,7 @@
         },
         "format_version": {
             "type": "char",
-            "data": "2.0.0"
+            "data": "1.0.0"
         },
         "variable_types": {
             "type": "string",
@@ -31,15 +31,7 @@
         "serial_number": {
             "type": "string",
             "data": ""
-        },
-        "device_type": {
-            "type": "string",
-            "data": "sensor"
-        },
-        "change_log": {
-            "type": "string",
-            "data": "2.0.0: added device_type, change_log to attributes, removed settings and added variable_type to attributes of each variable"
-        } 
+        }
     },
     "dimensions": {
         "time": 0
