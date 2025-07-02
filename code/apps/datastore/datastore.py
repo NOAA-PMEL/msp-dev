@@ -32,7 +32,7 @@ from envds.util.util import (
 )
 
 from envds.daq.event import DAQEvent
-import envds.daq.type as det
+import envds.daq.types as det
 
 # import pymongo
 
