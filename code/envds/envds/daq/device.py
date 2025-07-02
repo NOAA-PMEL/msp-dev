@@ -188,7 +188,7 @@ class Device(envdsBase):
 
         self.enable_task_list.append(self.interface_config_monitor())
         self.run_task_list.append(self.register_device_definition())
-        self.run_task_list.append(self.register_device())
+        self.run_task_list.append(self.register_device_instance())
         self.run_task_list.append(self.interface_monitor())
         self.run_task_list.append(self.settings_monitor())
 
@@ -221,10 +221,50 @@ class Device(envdsBase):
         # )
 
     async def register_device_definition(self):
-        pass
+        while True:
+        
+            if not self.device_definition_registered:
+                try:
+                    event = DAQEvent.create_device_definition_registry_update(
+                        # source="device.mockco-mock1-1234", data=record
+                        source=self.get_id_as_source(),
+                        data={"device-definition": self.metadata},
+                    )
+                    destpath = f"/{self.get_id_as_topic()}/registry/update"
+                    self.logger.debug(
+                        "register_device_definition", extra={"data": event, "destpath": destpath}
+                    )
+                    event["destpath"] = destpath
+                    # message = Message(data=event, destpath=destpath)
+                    message = event
+                    # self.logger.debug("default_data_loop", extra={"m": message})
+                    await self.send_message(message)
+                except Exception as e:
+                    self.logger.error("register_device_definition", extra={"reason": e})
+            await asyncio.sleep(5)
 
-    async def register_device(self):
-        pass
+    async def register_device_instance(self):
+        while True:
+        
+            # if self.enabled and not self.device_registered:
+            if not self.device_registered:
+                
+                event = DAQEvent.create_device_registry_update(
+                    # source="device.mockco-mock1-1234", data=record
+                    source=self.get_id_as_source(),
+                    data={"device-instance": self.metadata["attributes"]},
+                )
+                destpath = f"/{self.get_id_as_topic()}/registry/update"
+                self.logger.debug(
+                    "register_device_definition", extra={"data": event, "destpath": destpath}
+                )
+                event["destpath"] = destpath
+                # message = Message(data=event, destpath=destpath)
+                message = event
+                # self.logger.debug("default_data_loop", extra={"m": message})
+                await self.send_message(message)
+        
+            await asyncio.sleep(5)
 
     async def register_device_type(self):
         # await init_db_models()
@@ -259,6 +299,16 @@ class Device(envdsBase):
             route=self.handle_settings,
             enable=enable,
         )
+
+        topic = f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+        self.set_route(
+            # subscription=f"{topic_base}/registry/ack",
+            subscription = topic,
+            route_key=det.device_definition_registry_ack(),
+            route=self.handle_registry,
+            enable=enable
+        )
+
 
         for name, iface in self.iface_map.items():
             try:
