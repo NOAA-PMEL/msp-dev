@@ -31,6 +31,9 @@ from envds.util.util import (
     get_datetime_with_delta,
 )
 
+from envds.daq.event import DAQEvent
+import envds.daq.type as det
+
 # import pymongo
 
 import uvicorn
@@ -77,6 +80,8 @@ class DatastoreConfig(BaseSettings):
     # )
     # # erddap_author: str = "fake_author"
 
+    namespace_prefix: str | None = None
+
     db_client_type: str | None = None
     db_client_connection: str | None = None
     db_client_hostname: str | None = None
@@ -93,6 +98,7 @@ class DatastoreConfig(BaseSettings):
     erddap_http_connection: str | None = None
     erddap_author: str = "fake_author"
 
+    knative_broker: str | None = None
     class Config:
         env_prefix = "DATASTORE_"
         case_sensitive = False
@@ -130,6 +136,33 @@ class Datastore:
         if self.config.erddap_enable:
             # setup erddap client
             pass
+
+    async def send_event(self, ce):
+        try:
+            self.logger.debug(ce)#, extra=template)
+            try:
+                timeout = httpx.Timeout(5.0, read=0.1)
+                headers, body = to_structured(ce)
+                self.logger.debug("send_event", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
+                # send to knative broker
+                async with httpx.AsyncClient() as client:
+                    r = await client.post(
+                        self.config.knative_broker,
+                        headers=headers,
+                        data=body,
+                        timeout=timeout
+                    )
+                    r.raise_for_status()
+            except InvalidStructuredJSON:
+                self.logger.error(f"INVALID MSG: {ce}")
+            except httpx.TimeoutException:
+                pass
+            except httpx.HTTPError as e:
+                self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+        except Exception as e:
+            print("error", e)
+        await asyncio.sleep(0.01)
+
 
     def find_one(self):  # , database: str, collection: str, query: dict):
         # self.connect()
@@ -337,6 +370,14 @@ class Datastore:
                     request=request,
                     ttl=self.config.db_reg_device_definition_ttl,
                 )
+                if result:
+                    ack = DAQEvent.create_device_definition_registry_ack(
+                        source=f"envds.datastore.{self.config.namespace_prefix}",
+                        data={"device-definition": {"make": make, "model":model, "version": format_version}}
+
+                    )
+                    ack["destpath"] = f"envds/{self.config.namespace_prefix}/sensor/{device_id}/registry/ack"
+                    await self.send_event(ack)
 
         except Exception as e:
             self.logger.error("device_definition_registry_update", extra={"reason": e})

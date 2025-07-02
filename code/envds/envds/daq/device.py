@@ -6,15 +6,21 @@ from ulid import ULID
 import asyncio
 import logging
 from logfmter import Logfmter
+
 # from typing import Union
 from pydantic import BaseModel, ValidationError, validator
 from typing import Any
 from cloudevents.http import CloudEvent
 from envds.core import envdsBase, envdsAppID, envdsStatus
+
 # from envds.message.message import Message
 from envds.daq.event import DAQEvent
 from envds.daq.types import DAQEventType as det
-from envds.exceptions import envdsRunTransitionException, envdsRunWaitException, envdsRunErrorException
+from envds.exceptions import (
+    envdsRunTransitionException,
+    envdsRunWaitException,
+    envdsRunErrorException,
+)
 from envds.daq.interface import Interface
 
 from envds.util.util import (
@@ -38,10 +44,11 @@ class DeviceAttribute(BaseModel):
             data_type = values["type"]
             if data_type == "char" or data_type == "string":
                 data_type = "str"
-                
+
             if "type" in values and not isinstance(v, eval(data_type)):
                 raise ValueError("attribute data is wrong type")
         return v
+
 
 class DeviceVariable(BaseModel):
     """docstring for DeviceVariable."""
@@ -53,6 +60,7 @@ class DeviceVariable(BaseModel):
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
 
+
 class DeviceSetting(BaseModel):
     """docstring for DeviceSetting."""
 
@@ -63,12 +71,15 @@ class DeviceSetting(BaseModel):
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
 
+
 class DeviceMetadata(BaseModel):
     """docstring for DeviceMetadata."""
+
     attributes: dict[str, DeviceAttribute]
-    dimensions: dict[str, int|None]
+    dimensions: dict[str, int | None]
     variables: dict[str, DeviceVariable]
     settings: dict[str, DeviceSetting]
+
 
 class DeviceConfig(BaseModel):
     """docstring for DeviceConfig."""
@@ -85,13 +96,15 @@ class DeviceConfig(BaseModel):
     interfaces: dict | None = {}
     daq: str | None = "default"
 
+
 class RuntimeSettings(object):
     """docstring for RuntimeSettings."""
+
     def __init__(self, settings: dict = None):
 
         if settings is None:
             self.settings = dict()
-    
+
     def set_setting(self, name: str, requested, actual=None):
         if name not in self.settings:
             self.settings[name] = dict()
@@ -103,27 +116,27 @@ class RuntimeSettings(object):
         if name in self.settings:
             return self.settings[name]
         return None
-    
+
     def get_settings(self):
         return self.settings
-    
+
     def get_health_setting(self, name: str) -> bool:
-        if (setting:=self.get_setting(name)) is not None:
+        if (setting := self.get_setting(name)) is not None:
             return setting["requested"] == setting["actual"]
         return False
-    
+
     def get_health(self) -> bool:
         for name in self.settings.keys():
             if not self.get_health_setting(name):
                 return False
-        return True    
+        return True
 
 
 class Device(envdsBase):
     """docstring for Device."""
 
     # Device states
-    #SAMPLING = "sampling"
+    # SAMPLING = "sampling"
     # CONNECTED = "connected"
 
     # ID_DELIM = "::"
@@ -134,7 +147,7 @@ class Device(envdsBase):
         self.make = "DefaultMake"
         self.model = "DefaultModel"
         self.sn = str(ULID())
-        
+
         # default format version, inherited can override
         self.device_format_version = "1.0.0"
 
@@ -153,7 +166,6 @@ class Device(envdsBase):
         # self.status.set_requested(Device.SAMPLING, envdsStatus.FALSE)
         # # self.device_status_monitor_task = asyncio.create_task(self.device_status_monitor())
 
-
         # self.run_state = "STOPPED"
         # self.metadata = InstrumentMeta()
 
@@ -164,10 +176,10 @@ class Device(envdsBase):
         self.logger.debug("device id", extra={"self.id": self.id})
 
         self.status.set_id_AppID(self.id)
-        #self.status.set_state_param(Device.SAMPLING, requested=envdsStatus.FALSE, actual=envdsStatus.FALSE)
+        # self.status.set_state_param(Device.SAMPLING, requested=envdsStatus.FALSE, actual=envdsStatus.FALSE)
 
-        #self.sampling_interval = 1 # default collection interval in seconds
-        
+        # self.sampling_interval = 1 # default collection interval in seconds
+
         # set default metadata interval
         self.include_metadata_interval = 60
         self.include_metadata = True
@@ -182,8 +194,6 @@ class Device(envdsBase):
 
         # remove below for now to see if breaks things
         # self.run_task_list.append(self.register_device_type())
-
-
 
     def configure(self):
         super(Device, self).configure()
@@ -220,13 +230,15 @@ class Device(envdsBase):
         # await init_db_models()
         while True:
             await register_device_type(
-                make=self.get_make(), model=self.get_model(), metadata=self.get_metadata()
+                make=self.get_make(),
+                model=self.get_model(),
+                metadata=self.get_metadata(),
             )
             await asyncio.sleep(10)
 
     def get_make(self):
         return self.config.make
-    
+
     def get_model(self):
         return self.config.model
 
@@ -234,14 +246,10 @@ class Device(envdsBase):
         return self.config.serial_number
 
     def build_app_uid(self):
-        parts = [
-            self.get_make(),
-            self.get_model(),
-            self.get_serial_number()
-        ]
+        parts = [self.get_make(), self.get_model(), self.get_serial_number()]
         return (self.ID_DELIM).join(parts)
 
-    def set_routes(self, enable: bool=True):
+    def set_routes(self, enable: bool = True):
         super(Device, self).set_routes()
 
         topic_base = self.get_id_as_topic()
@@ -249,7 +257,7 @@ class Device(envdsBase):
             subscription=f"{topic_base}/settings/request",
             route_key=det.sensor_settings_request(),
             route=self.handle_settings,
-            enable=enable
+            enable=enable,
         )
 
         for name, iface in self.iface_map.items():
@@ -264,12 +272,14 @@ class Device(envdsBase):
                     subscription=f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
                     route_key=det.interface_data_recv(),
                     # route=iface["recv_task"]
-                    route=self.handle_interface_data
+                    route=self.handle_interface_data,
                 )
 
             except Exception as e:
-                self.logger.error("can't set interface data/update route", extra={"reason": e})
- 
+                self.logger.error(
+                    "can't set interface data/update route", extra={"reason": e}
+                )
+
     #     topic_base = self.get_id_as_topic()
     #     self.set_route(
     #         subscription=f"{topic_base}/connect/update",
@@ -279,7 +289,6 @@ class Device(envdsBase):
     #     )
 
     def add_interface(self, name: str, interface: dict, update: bool = True):
-
 
         # destpath = f"/envds/{iface_envds_env_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
         print(f"name:1 {name}, iface: {interface}")
@@ -292,10 +301,7 @@ class Device(envdsBase):
 
             print(f"name:2 {name}, iface: {interface}")
             if name not in self.iface_map or update:
-                self.iface_map[name] = {
-                    "interface": interface,
-                    "status": envdsStatus()
-                }
+                self.iface_map[name] = {"interface": interface, "status": envdsStatus()}
                 print(f"name:3 {name}, iface: {interface}")
                 self.iface_map[name]["status"].set_state_param(
                     envdsStatus.RUNNING,
@@ -311,11 +317,10 @@ class Device(envdsBase):
                 self.set_route(
                     subscription=f"/envds/{env_id}/interface/{id}/{path}/status/update",
                     route_key=det.interface_status_update(),
-                    route=self.handle_interface_status
+                    route=self.handle_interface_status,
                 )
                 print(f"name:6 {name}, iface: {interface}")
 
- 
         # if enable:
         #     self.message_client.subscribe(f"{topic_base}/connect/update")
         #     self.router.register_route(key=det.interface_connect_update(), route=self.handle_interface_connect)
@@ -344,7 +349,13 @@ class Device(envdsBase):
             if dev_id:
                 if dev_id["make"] == self.make and dev_id["model"] == self.model:
                     self.device_definition_registered = True
-
+            self.logger.debug(
+                "handle_registry",
+                extra={
+                    "dev_id": dev_id,
+                    "registered": self.device_definition_registered,
+                },
+            )
             # self.logger.debug(
             #     "handle_sensor_registry",
             #     extra={
@@ -367,19 +378,18 @@ class Device(envdsBase):
                 src = message["source"]
                 setting = message.data.get("settings", None)
                 requested = message.data.get("requested", None)
-                self.logger.debug("handle_settings", extra={"source": src, "setting": setting})
+                self.logger.debug(
+                    "handle_settings", extra={"source": src, "setting": setting}
+                )
                 if setting and requested:
                     # name = setting["settings"]
                     current = self.settings.get_setting(setting)
                     self.settings.set_setting(
-                        name=setting,
-                        requested=requested,
-                        actual=current["actual"]
+                        name=setting, requested=requested, actual=current["actual"]
                     )
 
-            except (KeyError,Exception) as e:
+            except (KeyError, Exception) as e:
                 self.logger.error("databuffer save error", extra={"error": e})
-
 
     # async def handle_interface_data(self, message: Message):
     async def handle_interface_data(self, message: CloudEvent):
@@ -407,7 +417,6 @@ class Device(envdsBase):
         #     except Exception as e:
         #         self.logger.error("handle_status", extra={"error": e})
 
-        
         #     # get path from message and update proper interface status
 
         # pass
@@ -423,12 +432,17 @@ class Device(envdsBase):
                 # client_id = message.data["path_id"]
                 client_id = message["path_id"]
                 for name, interface in self.iface_map.items():
-                    self.logger.debug("handle_interface_status", extra={"iface": interface})
+                    self.logger.debug(
+                        "handle_interface_status", extra={"iface": interface}
+                    )
                     if interface["interface"]["path"] == client_id:
                         # self.logger.debug("handle_interface_status", extra={"status": interface["status"].get_status()})
                         # self.logger.debug("handle_interface_status", extra={"data": message.data.data["state"]})
-                        self.logger.debug("handle_interface_status", extra={"data": message.data["state"]})
-                        
+                        self.logger.debug(
+                            "handle_interface_status",
+                            extra={"data": message.data["state"]},
+                        )
+
                         # interface["status"].set_state(message.data.data["state"])
                         interface["status"].set_state(message.data["state"])
 
@@ -440,8 +454,8 @@ class Device(envdsBase):
 
         # while True:
 
-            # try:
-        await super(Device,self).status_check()
+        # try:
+        await super(Device, self).status_check()
         pass
 
         # if not self.status.get_health(): # something has changed
@@ -468,7 +482,7 @@ class Device(envdsBase):
                 await self.settings_check()
             except Exception as e:
                 self.logger.error("settings_monitor", extra={"error": e})
-            
+
             if self.enabled() and send_settings:
                 # send settings every other second
                 event = DAQEvent.create_sensor_settings_update(
@@ -499,7 +513,7 @@ class Device(envdsBase):
             iface = self.iface_map[path_id]
         except KeyError:
             return
-        
+
         try:
             try:
                 iface_envds_id = iface["interface"]["interface_envds_env_id"]
@@ -517,9 +531,12 @@ class Device(envdsBase):
                 source=self.get_id_as_source(),
                 # data={"path_id": iface["path"], "state": envdsStatus.ENABLED, "requested": envdsStatus.FALSE},
                 data={"data": data},
-                extra_header=extra_header
+                extra_header=extra_header,
             )
-            self.logger.debug("interface_send_data", extra={"n": path_id, "e": event, "destpath": destpath})
+            self.logger.debug(
+                "interface_send_data",
+                extra={"n": path_id, "e": event, "destpath": destpath},
+            )
             # message = Message(data=event, destpath=destpath)
             message = event
             self.logger.debug("interface_send_data", extra={"destpath": destpath})
@@ -541,7 +558,9 @@ class Device(envdsBase):
             if send_config:
 
                 for name, iface in self.iface_map.items():
-                    self.logger.debug("interface_config_monitor", extra={"n": name, "iface": iface})
+                    self.logger.debug(
+                        "interface_config_monitor", extra={"n": name, "iface": iface}
+                    )
                     # status = iface["status"]
                     # self.logger.debug("interface_check", extra={"status": status.get_status()})
                     # if not status.get_health():
@@ -549,35 +568,53 @@ class Device(envdsBase):
                     #         if status.get_requested(envdsStatus.ENABLED) == envdsStatus.TRUE:
                     try:
                         try:
-                            iface_envds_id = iface["interface"]["interface_envds_env_id"]
+                            iface_envds_id = iface["interface"][
+                                "interface_envds_env_id"
+                            ]
                         except KeyError:
                             iface_envds_id = self.id.app_env_id
 
                         try:
                             print(f"iface: {iface}")
-                            config_data = {"path": iface["interface"]["path"], "device-interface-properties": iface["interface"]["device-interface-properties"]}
+                            config_data = {
+                                "path": iface["interface"]["path"],
+                                "device-interface-properties": iface["interface"][
+                                    "device-interface-properties"
+                                ],
+                            }
                         except KeyError:
                             break
 
-                        self.logger.debug("client_config_monitor", extra={"id": name, "data": config_data})
+                        self.logger.debug(
+                            "client_config_monitor",
+                            extra={"id": name, "data": config_data},
+                        )
                         # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
                         destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/config/request"
                         # extra_header = {"path_id": iface["interface"]["path"]}
-                        extra_header = {"path_id": iface["interface"]["path"], "destpath": destpath}
+                        extra_header = {
+                            "path_id": iface["interface"]["path"],
+                            "destpath": destpath,
+                        }
                         # event = DAQEvent.create_interface_connect_request(
                         event = DAQEvent.create_interface_config_request(
                             # source="envds.core", data={"test": "one", "test2": 2}
                             source=self.get_id_as_source(),
                             # data={"path_id": iface["path"], "state": envdsStatus.ENABLED, "requested": envdsStatus.FALSE},
                             data={"config": config_data},
-                            extra_header=extra_header
+                            extra_header=extra_header,
                         )
-                        self.logger.debug("client_config_monitor", extra={"n": name, "e": event, "destpath": destpath})
+                        self.logger.debug(
+                            "client_config_monitor",
+                            extra={"n": name, "e": event, "destpath": destpath},
+                        )
                         # message = Message(data=event, destpath=destpath)
                         message = event
-                        self.logger.debug("client_config_monitor", extra={"destpath": destpath})
+                        self.logger.debug(
+                            "client_config_monitor", extra={"destpath": destpath}
+                        )
                         await self.send_message(message)
-                        
+
                         # always send
                         # send_config = False
                     except Exception as e:
@@ -622,7 +659,7 @@ class Device(envdsBase):
 
     async def do_start(self):
         pass
-    
+
     #     try:
     #         # print("do_start:1")
     #         # self.enable()
@@ -713,10 +750,12 @@ class Device(envdsBase):
 
     def stop(self):
         pass
+
     #     self.status.set_requested(Device.SAMPLING, envdsStatus.FALSE)
 
     async def do_stop(self):
         pass
+
     #     self.logger.debug("do_stop")
     #     requested = self.status.get_requested(Device.SAMPLING)
     #     actual = self.status.get_actual(Device.SAMPLING)
@@ -752,7 +791,7 @@ class Device(envdsBase):
                 await self.interface_check()
             except Exception as e:
                 self.logger.debug("interface_status_monitor error", extra={"e": e})
-            
+
             await asyncio.sleep(2)
 
     async def interface_check(self):
@@ -761,28 +800,44 @@ class Device(envdsBase):
         for name, iface in self.iface_map.items():
             try:
                 status = iface["status"]
-                self.logger.debug("interface_check", extra={"status": status.get_status()})
+                self.logger.debug(
+                    "interface_check", extra={"status": status.get_status()}
+                )
                 if not status.get_health():
                     if not status.get_health_state(envdsStatus.ENABLED):
-                        if status.get_requested(envdsStatus.ENABLED) == envdsStatus.TRUE:
+                        if (
+                            status.get_requested(envdsStatus.ENABLED)
+                            == envdsStatus.TRUE
+                        ):
                             try:
                                 try:
-                                    iface_envds_id = iface["interface"]["interface_envds_env_id"]
+                                    iface_envds_id = iface["interface"][
+                                        "interface_envds_env_id"
+                                    ]
                                 except KeyError:
                                     iface_envds_id = self.id.app_env_id
 
                                 # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
                                 destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
-                                extra_header = {"path_id": iface["interface"]["path"], "destpath": destpath}
+                                extra_header = {
+                                    "path_id": iface["interface"]["path"],
+                                    "destpath": destpath,
+                                }
                                 # event = DAQEvent.create_interface_connect_request(
                                 event = DAQEvent.create_interface_status_request(
                                     # source="envds.core", data={"test": "one", "test2": 2}
                                     source=self.get_id_as_source(),
                                     # data={"path_id": iface["path"], "state": envdsStatus.ENABLED, "requested": envdsStatus.FALSE},
-                                    data={"state": envdsStatus.ENABLED, "requested": envdsStatus.TRUE},
-                                    extra_header=extra_header
+                                    data={
+                                        "state": envdsStatus.ENABLED,
+                                        "requested": envdsStatus.TRUE,
+                                    },
+                                    extra_header=extra_header,
                                 )
-                                self.logger.debug("enable interface", extra={"n": name, "e": event, "destpath": destpath})
+                                self.logger.debug(
+                                    "enable interface",
+                                    extra={"n": name, "e": event, "destpath": destpath},
+                                )
                                 # message = Message(data=event, destpath=destpath)
                                 message = event
                                 # self.logger.debug("interface check", extra={"destpath": destpath})
@@ -800,22 +855,32 @@ class Device(envdsBase):
                         else:
 
                             try:
-                                iface_envds_id = iface["interface"]["interface_envds_env_id"]
+                                iface_envds_id = iface["interface"][
+                                    "interface_envds_env_id"
+                                ]
                             except KeyError:
                                 iface_envds_id = self.id.app_env_id
 
                             # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
                             destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
-                            extra_header = {"path_id": iface['interface']["path"], "destpath": destpath}
+                            extra_header = {
+                                "path_id": iface["interface"]["path"],
+                                "destpath": destpath,
+                            }
                             # event = DAQEvent.create_interface_connect_request(
                             event = DAQEvent.create_interface_status_request(
                                 # source="envds.core", data={"test": "one", "test2": 2}
                                 source=self.get_id_as_source(),
                                 # data={"path_id": iface["path"], "state": envdsStatus.ENABLED, "requested": envdsStatus.FALSE},
-                                data={"state": envdsStatus.ENABLED, "requested": envdsStatus.FALSE},
-                                extra_header=extra_header
+                                data={
+                                    "state": envdsStatus.ENABLED,
+                                    "requested": envdsStatus.FALSE,
+                                },
+                                extra_header=extra_header,
                             )
-                            self.logger.debug("connect interface", extra={"n": name, "e": event})
+                            self.logger.debug(
+                                "connect interface", extra={"n": name, "e": event}
+                            )
                             # message = Message(data=event, destpath=destpath)
                             message = event
                             await self.send_message(message)
@@ -829,22 +894,26 @@ class Device(envdsBase):
                             #     enable=False
                             # )
 
-
                 else:
                     if status.get_health_state(envdsStatus.ENABLED):
                         try:
-                            iface_envds_id = iface["interface"]["interface_envds_env_id"]
+                            iface_envds_id = iface["interface"][
+                                "interface_envds_env_id"
+                            ]
                         except KeyError:
                             iface_envds_id = self.id.app_env_id
 
                         destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/keepalive/request"
-                        extra_header = {"path_id": iface["interface"]["path"], "destpath": destpath}
+                        extra_header = {
+                            "path_id": iface["interface"]["path"],
+                            "destpath": destpath,
+                        }
                         event = DAQEvent.create_interface_keepalive_request(
                             # source="envds.core", data={"test": "one", "test2": 2}
                             source=self.get_id_as_source(),
                             # data={"path_id": iface["path"], "state": envdsStatus.ENABLED, "requested": envdsStatus.FALSE},
                             data={},
-                            extra_header=extra_header
+                            extra_header=extra_header,
                         )
                         # # event = DAQEvent.create_interface_connect_request(
                         # event = DAQEvent.create_interface_keepalive_request(
@@ -852,7 +921,9 @@ class Device(envdsBase):
                         #     source=self.get_id_as_source(),
                         #     data={"path_id": iface["path"]} #, "state": envdsStatus.ENABLED, "requested": envdsStatus.TRUE},
                         # )
-                        self.logger.debug("interface keepalive request", extra={"n": name, "e": event})
+                        self.logger.debug(
+                            "interface keepalive request", extra={"n": name, "e": event}
+                        )
                         # message = Message(data=event, destpath=destpath)
                         message = event
                         await self.send_message(message)
@@ -871,7 +942,7 @@ class Device(envdsBase):
     # async def connect_interfaces(self):
     #     for name, iface in self.iface_map.items():
     #         self.logger.debug("connect_interfaces", extra={"name": name, "iface": iface})
-        
+
     #     # send message to interface:
     #     #   - request connect (also acts to register)
     #     #   - start keepalive loop
@@ -925,8 +996,10 @@ class Device(envdsBase):
                 self.include_metadata = True
                 await asyncio.sleep(1)
 
-    def build_data_record(self, meta: bool = False, variable_types: list[str] = ["main"]) -> dict:
-        #TODO: change data_format -> format_version
+    def build_data_record(
+        self, meta: bool = False, variable_types: list[str] = ["main"]
+    ) -> dict:
+        # TODO: change data_format -> format_version
         # TODO: create record for any number of variable_types
         record = {
             # "time": get_datetime_string(),
@@ -942,15 +1015,12 @@ class Device(envdsBase):
             # print(record)
             record["attributes"]["serial_number"] = {
                 "type": "char",
-                "data": self.config.serial_number
-                }
-            record["attributes"]["mode"] = {
-                "type": "char",
-                "data": "default"
-                }
+                "data": self.config.serial_number,
+            }
+            record["attributes"]["mode"] = {"type": "char", "data": "default"}
             record["attributes"]["variable_types"] = {
                 "type": "string",
-                "data": ",".join(variable_types)
+                "data": ",".join(variable_types),
             }
         else:
             record["attributes"] = {
@@ -959,14 +1029,14 @@ class Device(envdsBase):
                 "serial_number": {"data": self.config.serial_number},
                 "mode": {"data": "default"},
                 "format_version": {"data": self.device_format_version},
-                "variable_types": {"data": ",".join(variable_types)}
+                "variable_types": {"data": ",".join(variable_types)},
             }
         # record["attributes"]["serial_number"] = {"data": self.config.serial_number}
         # record["attributes"]["mode"] = {"data": "default"}
         # record["attributes"]["variable_types"] = {"data": ",".join(variable_type)}
 
         # print(record)
-        
+
         #     "variables": {},
         # }
 
@@ -976,27 +1046,31 @@ class Device(envdsBase):
         # record["variables"] = dict()
         if meta:
             for name, variable in self.config.metadata.dict()["variables"].items():
-                variable_type = variable["attributes"].get("variable_type", {"type": "string", "data": "main"})
+                variable_type = variable["attributes"].get(
+                    "variable_type", {"type": "string", "data": "main"}
+                )
                 if variable_type["data"] in variable_types:
-                    record["variables"][name] = self.config.metadata.dict()["variables"][name]
+                    record["variables"][name] = self.config.metadata.dict()[
+                        "variables"
+                    ][name]
 
             # record["variables"] = self.config.metadata.dict()["variables"]
 
             # print(1, record)
-            for name,_ in record["variables"].items():
+            for name, _ in record["variables"].items():
                 record["variables"][name]["data"] = None
             # print(2, record)
         else:
             for name, variable in self.config.metadata.dict()["variables"].items():
-                variable_type = variable["attributes"].get("variable_type", {"type": "string", "data": "main"})
+                variable_type = variable["attributes"].get(
+                    "variable_type", {"type": "string", "data": "main"}
+                )
                 # print(f"variable_type: {variable_type}, {variable_types}")
                 if variable_type["data"] in variable_types:
                     # print(f"name: {name}")
                     record["variables"][name] = {
-                        "attributes": {
-                            "variable_type": {"data": variable_type}
-                        },
-                        "data": None
+                        "attributes": {"variable_type": {"data": variable_type}},
+                        "data": None,
                     }
             # print(3, record)
 
@@ -1005,26 +1079,30 @@ class Device(envdsBase):
             #     record["variables"][name] = {"data": None}
 
         return record
-    
-    def get_definition_by_variable_type(self, device_def: dict, variable_type: str = "main") -> dict:
-        
+
+    def get_definition_by_variable_type(
+        self, device_def: dict, variable_type: str = "main"
+    ) -> dict:
+
         result = dict()
         if device_def:
             result["attributes"] = device_def["attributes"]
             result["attributes"]["variable_types"] = {
                 "type": "string",
-                "data": variable_type
+                "data": variable_type,
             }
             result["dimensions"] = device_def["dimensions"]
             result["variables"] = dict()
             for name, variable in device_def["variables"].items():
-                var_type = variable["attributes"].get("variable_type", {"type": "string", "data": "main"})
+                var_type = variable["attributes"].get(
+                    "variable_type", {"type": "string", "data": "main"}
+                )
                 if var_type["data"] == variable_type:
                     result["variables"][name] = variable
         return result
 
     def build_settings_record(self, meta: bool = False, mode: str = "default") -> dict:
-        #TODO: change data_format -> format_version
+        # TODO: change data_format -> format_version
 
         record = {
             # "time": get_datetime_string(),
@@ -1040,10 +1118,10 @@ class Device(envdsBase):
             # print(record)
             record["attributes"]["serial_number"] = {
                 "type": "char",
-                }
+            }
             record["attributes"]["mode"] = {
                 "type": "char",
-                }
+            }
         else:
             record["attributes"] = {
                 "make": {"data": self.config.make},
@@ -1056,7 +1134,7 @@ class Device(envdsBase):
         record["attributes"]["mode"] = {"data": mode}
 
         # print(record)
-        
+
         #     "variables": {},
         # }
 
@@ -1064,11 +1142,11 @@ class Device(envdsBase):
         if meta:
             record["settings"] = self.config.metadata.dict()["settings"]
             # print(record)
-            for name,_ in record["settings"].items():
+            for name, _ in record["settings"].items():
                 record["settings"][name]["data"] = None
             # print(record)
         else:
             record["settings"] = dict()
-            for name,_ in self.config.metadata.variables.items():
+            for name, _ in self.config.metadata.variables.items():
                 record["settings"][name] = {"data": None}
         return record

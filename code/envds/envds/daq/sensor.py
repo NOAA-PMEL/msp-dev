@@ -53,6 +53,24 @@ class Sensor(Device):
                 self.logger.error("handle_status", extra={"error": e})
         pass
 
+    def set_routes(self, enable: bool=True):
+        super(Sensor, self).set_routes()
+
+        topic_base = self.get_id_as_topic()
+        self.set_route(
+            subscription=f"{topic_base}/settings/request",
+            route_key=det.sensor_settings_request(),
+            route=self.handle_settings,
+            enable=enable
+        )
+
+        self.set_route(
+            subscription=f"{topic_base}/registry/ack",
+            route_key=det.device_definition_registry_ack(),
+            route=self.handle_registry,
+            enable=enable
+        )
+
     async def status_check(self):
 
         # while True:
