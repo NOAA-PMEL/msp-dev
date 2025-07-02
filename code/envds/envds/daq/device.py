@@ -337,6 +337,7 @@ class Device(envdsBase):
 
     async def handle_registry(self, message: CloudEvent):
 
+        self.logger.debug("handle_registry", extra={"ce-type": message["type"]})
         # if message.data["type"] == det.sensor_registry_update():
         if message["type"] == det.device_definition_registry_request():
             dev_id = message.data.get("device-definition", None)
