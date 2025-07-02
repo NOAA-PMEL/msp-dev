@@ -7,10 +7,11 @@ import logging
 from fastapi import FastAPI, Request, status  # , APIRouter
 # from fastapi.middleware.cors import CORSMiddleware
 
-# from cloudevents.http import from_http
-# from cloudevents.http import CloudEvent, from_http, from_json, to_json
-# from cloudevents.conversion import to_structured # , from_http
+from cloudevents.http import from_http
+# from cloudevents.http import CloudEvent, from_http, from_json
+# from cloudevents.conversion import to_structured, to_json # , from_http
 # from cloudevents.exceptions import InvalidStructuredJSON
+# from cloudevents.pydantic import CloudEvent
 
 # from cloudevents.conversion import from_http
 # from cloudevents.conversion import to_structured  # , from_http
@@ -123,8 +124,9 @@ async def root():
 @app.post("/mqtt/send", status_code=status.HTTP_202_ACCEPTED)
 async def mqtt_send(request: Request):
     try:
-        ce = await request.json()
-        print(ce)
+        ce = from_http(request.headers, await request.body())
+        # L.debug(request.headers)
+        L.debug("mqtt_send", extra={"ce": ce, "destpath": ce["destpath"]})
         # ce = from_http(request.headers, await request.body())
         # L.debug(request.headers)
         # L.debug("mqtt_send", extra={"ce": ce, "destpath": ce["destpath"]})
