@@ -122,12 +122,12 @@ class DBClient:
         self.connect()
         if self.client:
             db = self.client[database]
-            sensor_defs = db[collection]
-            result = sensor_defs.insert_one(document)
+            device_defs = db[collection]
+            result = device_defs.insert_one(document)
             return result
         return None
 
-    async def sensor_data_update(
+    async def device_data_update(
         self,
         database: str,
         collection: str,
@@ -140,7 +140,7 @@ class DBClient:
     ):
         return None
 
-    async def sensor_data_get(self, query: DataStoreQuery):
+    async def device_data_get(self, query: DataRequest):
         return None
 
     async def device_definition_registry_update(

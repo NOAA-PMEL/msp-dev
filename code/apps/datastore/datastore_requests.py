@@ -3,11 +3,12 @@ from pydantic import BaseModel
 
 
 class DataStoreQuery(BaseModel):
-    sensor_definition_id: str | None = None
+    device_definition_id: str | None = None
     make: str | None = None
     model: str | None = None
     serial_number: str | None = None
     version: str | None = None
+    device_type: str | None = None
     start_time: str | None = None
     end_time: str | None = None
     last_n_seconds: int | None
@@ -15,7 +16,7 @@ class DataStoreQuery(BaseModel):
 
 
 class DataUpdate(BaseModel):
-    sensor_definition_id: str | None = None
+    device_id: str | None = None
     make: str | None = None
     model: str | None = None
     serial_number: str | None = None
@@ -27,11 +28,12 @@ class DataUpdate(BaseModel):
 
 
 class DataRequest(BaseModel):
-    sensor_id: str | None = None
+    device_id: str | None = None
     make: str | None = None
     model: str | None = None
     serial_number: str | None = None
     version: str | None = None
+    device_type: str | None = None
     start_time: str | None = None
     end_time: str | None = None
     last_n_seconds: int | None
@@ -43,6 +45,7 @@ class DeviceDefinitionUpdate(BaseModel):
     make: str | None = None
     model: str | None = None
     version: str
+    device_type: str
     valid_time: str
     attributes: dict
     dimensions: dict
@@ -54,6 +57,7 @@ class DeviceDefinitionRequest(BaseModel):
     make: str | None = None
     model: str | None = None
     version: str | None = None
+    device_type: str | None = None
     valid_time: str | None = None
 
 

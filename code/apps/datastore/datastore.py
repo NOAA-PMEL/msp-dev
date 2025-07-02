@@ -181,8 +181,8 @@ class Datastore:
         # self.connect()
         # if self.client:
         #     db = self.client[database]
-        #     sensor_defs = db[collection]
-        #     result = sensor_defs.insert_one(document)
+        #     device_defs = db[collection]
+        #     result = device_defs.insert_one(document)
         #     return result
         return None
 
@@ -190,9 +190,9 @@ class Datastore:
     #     self.connect()
     #     if self.client:
     #         db = self.client[database]
-    #         sensor_defs = db[collection]
+    #         device_defs = db[collection]
     #         set_update = {"$set": update}
-    #         result = sensor_defs.update_one(document, set_update, upsert)
+    #         result = device_defs.update_one(document, set_update, upsert)
     #         return result
     #     return None
 
@@ -208,24 +208,24 @@ class Datastore:
         # self.connect()
         # if self.client:
         #     db = self.client[database]
-        #     sensor = db[collection]
+        #     device = db[collection]
         #     if filter is None:
         #         filter = document
         #     set_update = {"$set": update}
         #     if upsert:
         #         set_update["$setOnInsert"] = document
-        #     result = sensor.update_one(filter=filter, update=set_update, upsert=upsert)
+        #     result = device.update_one(filter=filter, update=set_update, upsert=upsert)
         #     return result
         return None
 
-    async def sensor_data_update(self, ce: CloudEvent):
+    async def device_data_update(self, ce: CloudEvent):
 
         try:
             # database = "data"
-            # collection = "sensor"
-            # self.logger.debug("data_sensor_update", extra={"ce": ce})
+            # collection = "device"
+            # self.logger.debug("data_device_update", extra={"ce": ce})
             database = "data"
-            collection = "sensor"
+            collection = "device"
             attributes = ce.data["attributes"]
             dimensions = ce.data["dimensions"]
             variables = ce.data["variables"]
@@ -241,7 +241,7 @@ class Datastore:
             parts = format_version.split(".")
             self.logger.debug(f"parts: {parts}, {format_version}")
             erddap_version = f"v{parts[0]}"
-            sensor_id = "::".join([make, model, serial_number])
+            device_id = "::".join([make, model, serial_number])
             timestamp = ce.data["timestamp"]
 
             doc = {
@@ -269,9 +269,9 @@ class Datastore:
             )
 
             # request = DatastoreRequest(
-            #     database="data", collection="sensor", request=update
+            #     database="data", collection="device", request=update
             # )
-            # self.logger.debug("sensor_data_update", extra={"sensor-doc": doc})
+            # self.logger.debug("device_data_update", extra={"device-doc": doc})
             # filter = {
             #     "make": make,
             #     "model": model,
@@ -279,39 +279,40 @@ class Datastore:
             #     "serial_number": serial_number,
             #     "timestamp": timestamp,
             # }
-            await self.db_client.sensor_data_update(
+            await self.db_client.device_data_update(
                 database=database,
                 collection=collection,
                 request=request,
                 ttl=self.config.db_data_ttl,
             )
-            # await self.db_client.sensor_data_update(
+            # await self.db_client.device_data_update(
             #     document=doc, ttl=self.config.db_data_ttl
             # )
             # result = self.db_client.update_one(
             #     database="data",
-            #     collection="sensor",
+            #     collection="device",
             #     filter=filter,
             #     # update=update,
             #     document=doc,
             #     # upsert=True,
             #     ttl=self.config.db_data_ttl
             # )
-            # L.info("sensor_data_update result", extra={"result": result})
+            # L.info("device_data_update result", extra={"result": result})
 
         except Exception as e:
-            L.error("sensor_data_update", extra={"reason": e})
+            L.error("device_data_update", extra={"reason": e})
         pass
 
-    async def sensor_data_get(self, query: DataStoreQuery):
+    # async def device_data_get(self, query: DataStoreQuery):
+    async def device_data_get(self, query: DataRequest):
 
         # fill in useful values based on user request
 
-        # if not make,model,serial_number try to build from sensor_id
+        # if not make,model,serial_number try to build from device_id
         if not query.make or not query.model or not query.serial_number:
-            if not query.serial_number:
+            if not query.device_id:
                 return {}
-            parts = query.serial_number.split("::")
+            parts = query.device_id.split("::")
             query.make = parts[0]
             query.model = parts[1]
             query.serial_number = parts[2]
@@ -324,12 +325,12 @@ class Datastore:
             query.start_time = datetime_to_string(start_dt)
             query.end_time = None
 
-        return await self.db_client.sensor_data_get(query)
+        return await self.db_client.device_data_get(query)
 
     async def device_definition_registry_update(self, ce: CloudEvent):
 
         try:
-            for device_type, device_def in ce.data.items():
+            for definition_type, device_def in ce.data.items():
                 make = device_def["attributes"]["make"]["data"]
                 model = device_def["attributes"]["model"]["data"]
                 format_version = device_def["attributes"]["format_version"]["data"]
@@ -337,18 +338,29 @@ class Datastore:
                 version = f"v{parts[0]}"
                 valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
 
-                if device_type == "sensor-definition":
-                    database = "data"
-                    collection = "sensor-definition"
+                if definition_type == "device-definition":
+                    database = "registry"
+                    collection = "device-definition"
                     attributes = device_def["attributes"]
                     dimensions = device_def["dimensions"]
                     variables = device_def["variables"]
+
+                    if "device_type" in device_def["attributes"]:
+                        device_type = device_def["attributes"]["device_type"]["data"]
+                    else:
+                        # default for backward compatibility
+                        device_def["attributes"]["device_type"] = {
+                            "type": "string",
+                            "data": "sensor"
+                        }
+                        device_type = "sensor"
 
                     device_id = "::".join([make,model,format_version])
                     request = DeviceDefinitionUpdate(
                         make=make,
                         model=model,
                         version=format_version,
+                        device_type=device_type,
                         valid_time=valid_time,
                         attributes=attributes,
                         dimensions=dimensions,
@@ -357,7 +369,7 @@ class Datastore:
 
                     # request = DatastoreRequest(
                     #     database="registry",
-                    #     collection="sensor-definition",
+                    #     collection="device-definition",
                     #     request=update
                     # )
 
@@ -374,16 +386,21 @@ class Datastore:
                 if result:
                     self.logger.debug("configure", extra={"self.config": self.config})
                     ack = DAQEvent.create_device_definition_registry_ack(
-                        source=f"envds.datastore.{self.config.daq_id}",
+                        source=f"envds.{self.config.daq_id}.datastore",
                         data={"device-definition": {"make": make, "model":model, "version": format_version}}
 
                     )
-                    ack["destpath"] = f"envds/{self.config.daq_id}/sensor/{device_id}/registry/ack"
+                    # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                    ack["destpath"] = f"envds/{self.config.daq_id}/device/registry/ack"
                     await self.send_event(ack)
 
         except Exception as e:
             self.logger.error("device_definition_registry_update", extra={"reason": e})
         pass
+
+    async def device_definition_registry_get(self, query: DeviceDefinitionRequest) -> list:
+        
+        return []
 
     async def device_instance_registry_update(self, ce: CloudEvent):
 
@@ -396,9 +413,9 @@ class Datastore:
                 parts = format_version.split(".")
                 version = f"v{parts[0]}"
 
-                if device_type == "sensor-instance":
+                if device_type == "device-instance":
                     database = "registry"
-                    collection = "sensor-instance"
+                    collection = "device-instance"
                     attributes = device_def["attributes"]
 
                     request = DeviceInstanceUpdate(
@@ -411,7 +428,7 @@ class Datastore:
 
                     # request = DatastoreRequest(
                     #     database="registry",
-                    #     collection="sensor-instance",
+                    #     collection="device-instance",
                     #     request=update,
                     # )
 

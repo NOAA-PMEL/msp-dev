@@ -23,8 +23,9 @@ class RedisClient(DBClient):
     """docstring for RedisClient."""
     def __init__(self, config: DBClientConfig):
         super(RedisClient, self).__init__(config)
-        self.data_sensor_index_name = "idx:data-sensor"
-        self.registry_sensor_definition_index_name = "idx:registry-sensor-definition"
+        self.data_device_index_name = "idx:data-device"
+        self.registry_device_definition_index_name = "idx:registry-device-definition"
+        self.registry_device_instance_index_name = "idx:registry-device-instance"
     
     def connect(self):
         if not self.client:
@@ -41,26 +42,55 @@ class RedisClient(DBClient):
 
         self.connect()
         
-        # data:sensor
-        # index_name = "idx:data-sensor"
+        # data:device
+        # index_name = "idx:data-device"
         try:
-            self.client.ft(self.data_sensor_index_name).dropindex()
+            self.client.ft(self.data_device_index_name).dropindex()
+            self.client.ft(self.registry_device_definition_index_name).dropindex()
+            self.client.ft(self.registry_device_instance_index_name).dropindex()
         except:
             pass
 
+        # data:device
         schema = (
             TextField("$.record.make", as_name="make"),
             TextField("$.record.model", as_name="model"),
             TextField("$.record.serial_number", as_name="serial_number"),
             TextField("$.record.version", as_name="version"),
+            # TextField("$.record.device_type", as_name="device_type"),
             TextField("$.record.timestamp", as_name="timestamp")
         )
         definition = IndexDefinition(
-            prefix=["data:sensor:"],
+            prefix=["data:device:"],
             index_type=IndexType.JSON
         )
-        self.client.ft(self.data_sensor_index_name).create_index(schema, definition=definition)
+        self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
 
+        # registry:device-definition
+        schema = (
+            TextField("$.record.make", as_name="make"),
+            TextField("$.record.model", as_name="model"),
+            TextField("$.record.version", as_name="version"),
+            TextField("$.record.device_type", as_name="device_type"),
+        )
+        definition = IndexDefinition(
+            prefix=["registry:device-definition:"],
+            index_type=IndexType.JSON
+        )
+        self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
+
+        # registry:device-instance
+        schema = (
+            TextField("$.record.make", as_name="make"),
+            TextField("$.record.model", as_name="model"),
+            TextField("$.record.serial_number", as_name="serial_number"),
+            # TextField("$.record.device_type", as_name="device_type"),
+        )
+        definition = IndexDefinition(
+            prefix=["registry:device-instance:"],
+            index_type=IndexType.JSON
+        )
+        self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
 
     # def check_db(self, database):
     #     if not self.client.json().get(database, "$"):
@@ -73,7 +103,7 @@ class RedisClient(DBClient):
     #         keys = database.split(":")
     #         self.client.json().set(database, f"$.{keys[-1]}", {collection: []})
 
-    async def sensor_data_update(
+    async def device_data_update(
         self,
         # document: dict,
         database: str,
@@ -81,7 +111,7 @@ class RedisClient(DBClient):
         request: DataUpdate,
         ttl: int = 300
     ):
-        await super(RedisClient, self).sensor_data_update(database, collection, request, ttl)
+        await super(RedisClient, self).device_data_update(database, collection, request, ttl)
         try:
             self.connect()
 
@@ -110,10 +140,10 @@ class RedisClient(DBClient):
             # serial_number = request.request.serial_number
             # timestamp = request.request.timestamp
 
-            sensor_id = "::".join([make,model,serial_number])
+            device_id = "::".join([make,model,serial_number])
 
-            key = f"{database}:{collection}:{sensor_id}:{timestamp}"
-            self.logger.debug("redis_client", extra={"key": key, "sensor-doc": document})
+            key = f"{database}:{collection}:{device_id}:{timestamp}"
+            self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
             self.client.json().set(
                 key,
                 "$",
@@ -122,11 +152,11 @@ class RedisClient(DBClient):
             self.client.expire(key, ttl)
 
         except Exception as e:
-            self.logger.error("sensor_data_update", extra={"reason": e})
+            self.logger.error("device_data_update", extra={"reason": e})
             return None
         
-    async def sensor_data_get(self, query: DataStoreQuery):
-        await super(RedisClient, self).sensor_data_get(query)
+    async def device_data_get(self, query: DataStoreQuery):
+        await super(RedisClient, self).device_data_get(query)
 
         query_args = [f"@make:{query.make}"]
         query_args.append(f"@model:{query.model}")
@@ -142,9 +172,9 @@ class RedisClient(DBClient):
             query_args.append(f"@timestamp < {query.end_time}")
 
         qstring = " ".join(query_args)
-        self.logger.debug("sensor_data_get", extra={"query_string": qstring})
+        self.logger.debug("device_data_get", extra={"query_string": qstring})
         q = Query(qstring).sort_by("timestamp")
-        result = self.client.ft(self.data_sensor_index_name).search(q).docs
+        result = self.client.ft(self.data_device_index_name).search(q).docs
 
         return result
     
@@ -191,7 +221,7 @@ class RedisClient(DBClient):
             id = "::".join([make,model,version])
 
             key = f"{database}:{collection}:{id}"
-            self.logger.debug("redis_client", extra={"key": key, "sensor-doc": document})
+            self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
             result = self.client.json().set(
                 key,
                 "$",
@@ -204,8 +234,9 @@ class RedisClient(DBClient):
             self.logger.error("device_definition_registry_update", extra={"reason": e})
             return False
 
-    async def sensor_data_get(self, query: DataStoreQuery):
-        await super(RedisClient, self).sensor_data_get(query)
+    # async def device_data_get(self, query: DataStoreQuery):
+    async def device_data_get(self, query: DataRequest):
+        await super(RedisClient, self).device_data_get(query)
 
         query_args = [f"@make:{query.make}"]
         query_args.append(f"@model:{query.model}")
@@ -221,9 +252,9 @@ class RedisClient(DBClient):
             query_args.append(f"@timestamp < {query.end_time}")
 
         qstring = " ".join(query_args)
-        self.logger.debug("sensor_data_get", extra={"query_string": qstring})
+        self.logger.debug("device_data_get", extra={"query_string": qstring})
         q = Query(qstring).sort_by("timestamp")
-        result = self.client.ft(self.data_sensor_index_name).search(q).docs
+        result = self.client.ft(self.data_device_index_name).search(q).docs
 
         return {"result": result}
 
@@ -274,7 +305,7 @@ class RedisClient(DBClient):
             device_id = "::".join([make,model,serial_number])
 
             key = f"{database}:{collection}:{device_id}"
-            self.logger.debug("redis_client", extra={"key": key, "sensor-doc": document})
+            self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
             result = self.client.json().set(
                 key,
                 "$",
