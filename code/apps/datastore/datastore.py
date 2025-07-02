@@ -80,7 +80,8 @@ class DatastoreConfig(BaseSettings):
     # )
     # # erddap_author: str = "fake_author"
 
-    namespace_prefix: str | None = None
+    # TODO fix ns prefix
+    daq_id: str | None = None
 
     db_client_type: str | None = None
     db_client_connection: str | None = None
@@ -373,11 +374,11 @@ class Datastore:
                 if result:
                     self.logger.debug("configure", extra={"self.config": self.config})
                     ack = DAQEvent.create_device_definition_registry_ack(
-                        source=f"envds.datastore.{self.config.namespace_prefix}",
+                        source=f"envds.datastore.{self.config.daq_id}",
                         data={"device-definition": {"make": make, "model":model, "version": format_version}}
 
                     )
-                    ack["destpath"] = f"envds/{self.config.namespace_prefix}/sensor/{device_id}/registry/ack"
+                    ack["destpath"] = f"envds/{self.config.daq_id}/sensor/{device_id}/registry/ack"
                     await self.send_event(ack)
 
         except Exception as e:
