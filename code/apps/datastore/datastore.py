@@ -371,6 +371,7 @@ class Datastore:
                     ttl=self.config.db_reg_device_definition_ttl,
                 )
                 if result:
+                    self.logger.debug("configure", extra={"self.config": self.config})
                     ack = DAQEvent.create_device_definition_registry_ack(
                         source=f"envds.datastore.{self.config.namespace_prefix}",
                         data={"device-definition": {"make": make, "model":model, "version": format_version}}
