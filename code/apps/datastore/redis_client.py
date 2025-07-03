@@ -55,11 +55,6 @@ class RedisClient(DBClient):
         except Exception as e:
             self.logger.error("build_index", extra={"reason": e})
             pass
-        try:
-            r.ft(index_name).dropindex()
-            print(f"Index '{index_name}' dropped successfully.")
-        except Exception as e:
-            print(f"Error dropping index: {e}")
 
         try:
             # data:device
