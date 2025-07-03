@@ -405,8 +405,10 @@ class Datastore:
     async def device_instance_registry_update(self, ce: CloudEvent):
 
         try:
+            self.logger.debug("device_instance_registry_update", extra={"ce": ce})
             for instance_type, instance_reg in ce.data.items():
                 request = None
+                self.logger.debug("device_instance_registry_update", extra={"instance_type": instance_type, "instance_reg": instance_reg})
                 try:
                     make = instance_reg["make"]
                     model = instance_reg["model"]
@@ -433,13 +435,13 @@ class Datastore:
                             # default for backward compatibility
                             device_type = "sensor"
 
-                            request = DeviceInstanceUpdate(
-                                make=make,
-                                model=model,
-                                serial_number=serial_number,
-                                version=format_version,
-                                attributes=attributes,
-                            )
+                        request = DeviceInstanceUpdate(
+                            make=make,
+                            model=model,
+                            serial_number=serial_number,
+                            version=format_version,
+                            attributes=attributes,
+                        )
 
                 except [KeyError, IndexError] as e:
                         self.logger.error("device_instance_registry_update", extra={"reason": e})
