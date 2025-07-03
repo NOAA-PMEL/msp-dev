@@ -306,15 +306,52 @@ class RedisClient(DBClient):
 
             key = f"{database}:{collection}:{device_id}"
             self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
-            result = self.client.json().set(
-                key,
-                "$",
-                {"registration": document}
+
+            check_request = DeviceInstanceRequest(
+                make=make,
+                model=model,
+                serial_number=serial_number,
+                version=version
             )
-            self.client.expire(key, ttl)
+            check = await self.device_instance_registry_get(check_request)
+            if check:
+                result = True
+            else:
+                result = self.client.json().set(
+                    key,
+                    "$",
+                    {"registration": document}
+                )
+            if result:
+                self.client.expire(key, ttl)
+
+            self.logger.debug("device_instance_registry_update", extra={"check_request": check_request, "check": check, "result": result})
             return result
         
         except Exception as e:
             self.logger.error("device_instance_registry_update", extra={"reason": e})
             return False
 
+    async def device_instance_registry_get(self, request: DeviceInstanceRequest):
+        await super(RedisClient, self).device_instance_registry_get(request)
+
+        query_args = []
+        if request.make:
+            query_args.append(f"@make:{request.make}")
+        if request.model:
+            query_args.append(f"@model:{request.model}")
+        if request.serial_number:
+            query_args.append(f"@serial_number:{request.serial_number}")
+
+        if request.version:
+            query_args.append(f"@version:{request.version}")
+
+        if request.device_type:
+            query_args.append(f"@device_type >= {request.device_type}")
+        
+        qstring = " ".join(query_args)
+        self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
+        q = Query(qstring).sort_by("version", asc=False)
+        result = self.client.ft(self.registry_device_instance_index_name).search(q).docs
+
+        return {"result": result}

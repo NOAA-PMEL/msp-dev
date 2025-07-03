@@ -167,3 +167,9 @@ class DBClient:
     ) -> bool:
         return False
 
+    async def device_instance_registry_get(
+        self,
+        request: DeviceInstanceRequest
+    ) -> dict:
+        return {}
+
