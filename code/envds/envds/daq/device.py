@@ -398,7 +398,8 @@ class Device(envdsBase):
         elif message["type"] == det.device_definition_registry_ack():
             dev_id = message.data.get("device-definition", None)
             if dev_id:
-                if dev_id["make"] == self.make and dev_id["model"] == self.model:
+                self.logger.debug("handle_registry", extra={"make": self.config.make, "model": self.config.model})
+                if dev_id["make"] == self.config.make and dev_id["model"] == self.config.model:
                     self.device_definition_registered = True
             self.logger.debug(
                 "handle_registry",
