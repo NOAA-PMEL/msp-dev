@@ -67,6 +67,7 @@ class DeviceInstanceUpdate(BaseModel):
     model: str | None = None
     serial_number: str | None = None
     version: str
+    device_type: str
     attributes: dict
 
 
@@ -76,6 +77,7 @@ class DeviceInstanceRequest(BaseModel):
     model: str | None = None
     serial_number: str | None = None
     version: str | None = None
+    device_type: str | None = None
 
 
 class DatastoreRequest(BaseModel):

@@ -84,7 +84,7 @@ class RedisClient(DBClient):
             TextField("$.record.make", as_name="make"),
             TextField("$.record.model", as_name="model"),
             TextField("$.record.serial_number", as_name="serial_number"),
-            # TextField("$.record.device_type", as_name="device_type"),
+            TextField("$.record.device_type", as_name="device_type"),
         )
         definition = IndexDefinition(
             prefix=["registry:device-instance:"],

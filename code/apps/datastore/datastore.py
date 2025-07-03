@@ -405,26 +405,45 @@ class Datastore:
     async def device_instance_registry_update(self, ce: CloudEvent):
 
         try:
-            for device_type, device_def in ce.data.items():
-                make = device_def["attributes"]["make"]["data"]
-                model = device_def["attributes"]["model"]["data"]
-                serial_number = device_def["attributes"]["serial_number"]["data"]
-                format_version = device_def["attributes"]["format_version"]["data"]
-                parts = format_version.split(".")
-                version = f"v{parts[0]}"
+            for instance_type, instance_reg in ce.data.items():
+                request = None
+                try:
+                    make = instance_reg["make"]
+                    model = instance_reg["model"]
+                    serial_number = instance_reg["serial_number"]
+                    format_version = instance_reg["format_version"]
+                    parts = format_version.split(".")
+                    version = f"v{parts[0]}"
 
-                if device_type == "device-instance":
-                    database = "registry"
-                    collection = "device-instance"
-                    attributes = device_def["attributes"]
+                    if make is None or model is None or serial_number is None:
+                        # if "device_id" in instance_reg and instance_reg["device_id"] is not None:
+                            parts = instance_reg["device_id"].split("::")
+                            make = parts[0]
+                            model = parts[1]
+                            serial_number = parts[2]
 
-                    request = DeviceInstanceUpdate(
-                        make=make,
-                        model=model,
-                        serial_number=serial_number,
-                        version=version,
-                        attributes=attributes,
-                    )
+                    if instance_type == "device-instance":
+                        database = "registry"
+                        collection = "device-instance"
+                        attributes = instance_reg["attributes"]
+
+                    if "device_type" in instance_reg["attributes"]:
+                        device_type = instance_reg["attributes"]["device_type"]["data"]
+                    else:
+                        # default for backward compatibility
+                        device_type = "sensor"
+
+                        request = DeviceInstanceUpdate(
+                            make=make,
+                            model=model,
+                            serial_number=serial_number,
+                            version=format_version,
+                            attributes=attributes,
+                        )
+
+                except [KeyError, IndexError] as e:
+                        self.logger.error("device_instance_registry_update", extra={"reason": e})
+                        continue
 
                     # request = DatastoreRequest(
                     #     database="registry",
@@ -432,7 +451,7 @@ class Datastore:
                     #     request=update,
                     # )
 
-            if self.db_client:
+            if self.db_client and request:
                 await self.db_client.device_instance_registry_update(
                     database=database,
                     collection=collection,
