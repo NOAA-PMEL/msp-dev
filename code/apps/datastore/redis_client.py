@@ -27,7 +27,7 @@ class RedisClient(DBClient):
         self.registry_device_definition_index_name = "idx:registry-device-definition"
         self.registry_device_instance_index_name = "idx:registry-device-instance"
         self.build_indexes()
-        
+
     def connect(self):
         if not self.client:
             try:
@@ -52,47 +52,50 @@ class RedisClient(DBClient):
         except:
             pass
 
-        # data:device
-        schema = (
-            TextField("$.record.make", as_name="make"),
-            TextField("$.record.model", as_name="model"),
-            TextField("$.record.serial_number", as_name="serial_number"),
-            TextField("$.record.version", as_name="version"),
-            # TextField("$.record.device_type", as_name="device_type"),
-            TextField("$.record.timestamp", as_name="timestamp")
-        )
-        definition = IndexDefinition(
-            prefix=["data:device:"],
-            index_type=IndexType.JSON
-        )
-        self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
+        try:
+            # data:device
+            schema = (
+                TextField("$.record.make", as_name="make"),
+                TextField("$.record.model", as_name="model"),
+                TextField("$.record.serial_number", as_name="serial_number"),
+                TextField("$.record.version", as_name="version"),
+                # TextField("$.record.device_type", as_name="device_type"),
+                TextField("$.record.timestamp", as_name="timestamp")
+            )
+            definition = IndexDefinition(
+                prefix=["data:device:"],
+                index_type=IndexType.JSON
+            )
+            self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
 
-        # registry:device-definition
-        schema = (
-            TextField("$.record.make", as_name="make"),
-            TextField("$.record.model", as_name="model"),
-            TextField("$.record.version", as_name="version"),
-            TextField("$.record.device_type", as_name="device_type"),
-        )
-        definition = IndexDefinition(
-            prefix=["registry:device-definition:"],
-            index_type=IndexType.JSON
-        )
-        self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
+            # registry:device-definition
+            schema = (
+                TextField("$.record.make", as_name="make"),
+                TextField("$.record.model", as_name="model"),
+                TextField("$.record.version", as_name="version"),
+                TextField("$.record.device_type", as_name="device_type"),
+            )
+            definition = IndexDefinition(
+                prefix=["registry:device-definition:"],
+                index_type=IndexType.JSON
+            )
+            self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
 
-        # registry:device-instance
-        schema = (
-            TextField("$.record.make", as_name="make"),
-            TextField("$.record.model", as_name="model"),
-            TextField("$.record.serial_number", as_name="serial_number"),
-            TextField("$.record.device_type", as_name="device_type"),
-        )
-        definition = IndexDefinition(
-            prefix=["registry:device-instance:"],
-            index_type=IndexType.JSON
-        )
-        self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
+            # registry:device-instance
+            schema = (
+                TextField("$.record.make", as_name="make"),
+                TextField("$.record.model", as_name="model"),
+                TextField("$.record.serial_number", as_name="serial_number"),
+                TextField("$.record.device_type", as_name="device_type"),
+            )
+            definition = IndexDefinition(
+                prefix=["registry:device-instance:"],
+                index_type=IndexType.JSON
+            )
+            self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
 
+        except Exception as e:
+            self.logger.error("build_indexes", extra={"reason": e})
     # def check_db(self, database):
     #     if not self.client.json().get(database, "$"):
     #         keys = database.split(":")
