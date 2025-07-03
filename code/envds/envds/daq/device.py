@@ -249,10 +249,18 @@ class Device(envdsBase):
             # if self.enabled and not self.device_registered:
             if not self.device_registered:
                 
+                instance_reg = {
+                    "make": self.config.make,
+                    "model": self.config.model,
+                    "serial_number": self.config.serial_number,
+                    "format_version": self.metadata["attributes"]["format_version"]["data"],
+                    "attributes": self.metadata["attributes"]
+                }
+
                 event = DAQEvent.create_device_registry_update(
                     # source="device.mockco-mock1-1234", data=record
                     source=self.get_id_as_source(),
-                    data={"device-instance": self.metadata["attributes"]},
+                    data={"device-instance": instance_reg},
                 )
                 destpath = f"{self.get_id_as_topic()}/registry/update"
                 self.logger.debug(
