@@ -451,14 +451,14 @@ class Datastore:
                     #     request=update,
                     # )
 
-            self.logger.debug("datastore:device_instance_registry_update", extra={"request": request, "db_client": self.db_client})
-            if self.db_client and request:
-                await self.db_client.device_instance_registry_update(
-                    database=database,
-                    collection=collection,
-                    request=request,
-                    ttl=self.config.db_reg_device_instance_ttl,
-                )
+                self.logger.debug("datastore:device_instance_registry_update", extra={"request": request, "db_client": self.db_client})
+                if self.db_client and request:
+                    await self.db_client.device_instance_registry_update(
+                        database=database,
+                        collection=collection,
+                        request=request,
+                        ttl=self.config.db_reg_device_instance_ttl,
+                    )
 
         except Exception as e:
             L.error("device_instance_registry_update", extra={"reason": e})
