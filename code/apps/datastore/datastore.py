@@ -440,6 +440,7 @@ class Datastore:
                             model=model,
                             serial_number=serial_number,
                             version=format_version,
+                            device_type=device_type,
                             attributes=attributes,
                         )
 
