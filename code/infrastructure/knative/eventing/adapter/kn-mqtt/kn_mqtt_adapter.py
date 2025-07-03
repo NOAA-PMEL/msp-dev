@@ -102,7 +102,7 @@ class KNMQTTAdapterSettings(BaseSettings):
 #         try:
 #             timeout = httpx.Timeout(5.0, read=0.1)
 #             # ce["datacontenttype"] = "application/json"
-#             ce["destpath"] = "/test/path"
+#             ce["destpath"] = "test/path"
 #             headers, body = to_structured(ce)
 #             # L.debug("send_to_knbroker", extra={"broker": config.knative_broker, "h": headers, "b": body})
 #             # send to knative kafkabroker
@@ -241,7 +241,7 @@ class KNMQTTClient():
                     if "sourcepath" in ce:
                         attrs["sourcepath"] = ce["sourcepath"]
                     ce = CloudEvent(attributes=attrs, data=ce.data)
-                    # ce["destpath"] = "/test/path"
+                    # ce["destpath"] = "test/path"
                     headers, body = to_structured(ce)
                     L.debug("send_to_knbroker", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
                     # send to knative kafkabroker

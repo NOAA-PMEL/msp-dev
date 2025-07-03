@@ -564,7 +564,7 @@ class envdsRegistrar(envdsBase):
                                 },
                             )
                             # destpath = f"/{self.get_id_as_topic()}/registry/update"
-                            destpath = f"/{self.get_id_as_topic()}/registry/request"
+                            destpath = f"{self.get_id_as_topic()}/registry/request"
                             event["destpath"] = destpath
                             self.logger.debug(
                                 "sensor_definition_monitor",
@@ -683,8 +683,8 @@ class envdsRegistrar(envdsBase):
                                     "data": resp_data,
                                 },
                             )
-                            # destpath = f"/{self.get_id_as_topic()}/registry/update"
-                            destpath = f"/{self.get_id_as_topic()}/registry/update"
+                            # destpath = f"{self.get_id_as_topic()}/registry/update"
+                            destpath = f"{self.get_id_as_topic()}/registry/update"
                             event["destpath"] = destpath
                             self.logger.debug(
                                 "sensor_definition_monitor",
@@ -706,70 +706,70 @@ class envdsRegistrar(envdsBase):
         print(f"set_routes: {enable}")
 
         self.set_route(
-            subscription=f"/envds/+/sensor/+/data/update",
+            subscription=f"envds/+/sensor/+/data/update",
             route_key=bet.data_update(),
             route=self.handle_data,
             enable=enable
         )
 
         self.set_route(
-            subscription=f"/envds/+/core/+/registry/bcast",
+            subscription=f"envds/+/core/+/registry/bcast",
             route_key=det.registry_bcast(),
             route=self.handle_registry,
             enable=enable,
         )
 
         self.set_route(
-            subscription=f"/envds/+/core/+/registry/update",
+            subscription=f"envds/+/core/+/registry/update",
             route_key=det.registry_update(),
             route=self.handle_registry,
             enable=enable,
         )
 
         self.set_route(
-            subscription=f"/envds/+/core/+/registry/request",
+            subscription=f"envds/+/core/+/registry/request",
             route_key=det.registry_request(),
             route=self.handle_registry,
             enable=enable,
         )
 
         self.set_route(
-            subscription=f"/envds/+/sensor/registry/update",
+            subscription=f"envds/+/sensor/registry/update",
             route_key=det.sensor_registry_update(),
             route=self.handle_registry,
             enable=enable,
         )
 
         self.set_route(
-            subscription=f"/envds/+/interface/registry/update",
+            subscription=f"envds/+/interface/registry/update",
             route_key=det.interface_registry_update(),
             route=self.handle_registry,
             enable=enable,
         )
 
         self.set_route(
-            subscription=f"/envds/+/service/registry/update",
+            subscription=f"envds/+/service/registry/update",
             route_key=det.service_registry_update(),
             route=self.handle_registry,
             enable=enable,
         )
 
         # self.set_route(
-        #     subscription=f"/envds/+/registry/update",
+        #     subscription=f"envds/+/registry/update",
         #     route_key=bet.registry_update(),
         #     route=self.handle_registry,
         #     enable=enable,
         # )
 
         # self.set_route(
-        #     subscription=f"/envds/+/status/update",
+        #     subscription=f"envds/+/status/update",
         #     route_key=bet.status_update(),
         #     route=self.handle_status,
         #     enable=enable,
         # )
 
         # self.set_route(
-        #     subscription=f"/envds/+/registry/request",
+        #     subscription=f"envds/+/registry/request",
         #     route_key=bet.registry_request(),
         #     route=self.handle_registry,
         #     enable=enable,
@@ -895,8 +895,8 @@ class envdsRegistrar(envdsBase):
                         "data": reg_data,
                     },
                 )
-                # destpath = f"/{self.get_id_as_topic()}/registry/update"
-                destpath = f"/{self.get_id_as_topic()}/registry/bcast"
+                # destpath = f"{self.get_id_as_topic()}/registry/update"
+                destpath = f"{self.get_id_as_topic()}/registry/bcast"
                 event["destpath"] = destpath
                 self.logger.debug(
                     "sensor_definition_monitor",

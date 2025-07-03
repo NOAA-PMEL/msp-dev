@@ -230,7 +230,7 @@ class Device(envdsBase):
                         source=self.get_id_as_source(),
                         data={"device-definition": self.metadata},
                     )
-                    destpath = f"/{self.get_id_as_topic()}/registry/update"
+                    destpath = f"{self.get_id_as_topic()}/registry/update"
                     self.logger.debug(
                         "register_device_definition", extra={"data": event, "destpath": destpath}
                     )
@@ -254,7 +254,7 @@ class Device(envdsBase):
                     source=self.get_id_as_source(),
                     data={"device-instance": self.metadata["attributes"]},
                 )
-                destpath = f"/{self.get_id_as_topic()}/registry/update"
+                destpath = f"{self.get_id_as_topic()}/registry/update"
                 self.logger.debug(
                     "register_device_definition", extra={"data": event, "destpath": destpath}
                 )
@@ -319,7 +319,7 @@ class Device(envdsBase):
 
                 # set the route to recv data
                 self.set_route(
-                    subscription=f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
+                    subscription=f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
                     route_key=det.interface_data_recv(),
                     # route=iface["recv_task"]
                     route=self.handle_interface_data,
@@ -340,7 +340,7 @@ class Device(envdsBase):
 
     def add_interface(self, name: str, interface: dict, update: bool = True):
 
-        # destpath = f"/envds/{iface_envds_env_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+        # destpath = f"envds/{iface_envds_env_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
         print(f"name:1 {name}, iface: {interface}")
         if name and interface:
 
@@ -365,7 +365,7 @@ class Device(envdsBase):
 
                 print(f"name:5 {name}, iface: {interface}")
                 self.set_route(
-                    subscription=f"/envds/{env_id}/interface/{id}/{path}/status/update",
+                    subscription=f"envds/{env_id}/interface/{id}/{path}/status/update",
                     route_key=det.interface_status_update(),
                     route=self.handle_interface_status,
                 )
@@ -541,7 +541,7 @@ class Device(envdsBase):
                     source=self.get_id_as_source(),
                     data={"settings": self.settings.get_settings()},
                 )
-                destpath = f"/{self.get_id_as_topic()}/settings/update"
+                destpath = f"{self.get_id_as_topic()}/settings/update"
                 self.logger.debug(
                     "settings_monitor", extra={"data": event, "destpath": destpath}
                 )
@@ -571,7 +571,7 @@ class Device(envdsBase):
             except KeyError:
                 iface_envds_id = self.id.app_env_id
 
-            destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/send"
+            destpath = f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/send"
 
             # extra_header = {"path_id": iface["interface"]["path"]}
             extra_header = {"path_id": iface["interface"]["path"], "destpath": destpath}
@@ -640,8 +640,8 @@ class Device(envdsBase):
                             "client_config_monitor",
                             extra={"id": name, "data": config_data},
                         )
-                        # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
-                        destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/config/request"
+                        # destpath = f"envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+                        destpath = f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/config/request"
                         # extra_header = {"path_id": iface["interface"]["path"]}
                         extra_header = {
                             "path_id": iface["interface"]["path"],
@@ -868,8 +868,8 @@ class Device(envdsBase):
                                 except KeyError:
                                     iface_envds_id = self.id.app_env_id
 
-                                # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
-                                destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
+                                # destpath = f"envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+                                destpath = f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
                                 extra_header = {
                                     "path_id": iface["interface"]["path"],
                                     "destpath": destpath,
@@ -896,7 +896,7 @@ class Device(envdsBase):
 
                             #     # set the route to recv data
                             #     self.set_route(
-                            #         subscription=f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
+                            #         subscription=f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
                             #         route_key=det.interface_data_recv(),
                             #         # route=iface["recv_task"]
                             #         route=self.handle_interface_data
@@ -912,8 +912,8 @@ class Device(envdsBase):
                             except KeyError:
                                 iface_envds_id = self.id.app_env_id
 
-                            # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
-                            destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
+                            # destpath = f"envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+                            destpath = f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
                             extra_header = {
                                 "path_id": iface["interface"]["path"],
                                 "destpath": destpath,
@@ -938,7 +938,7 @@ class Device(envdsBase):
 
                             # # remove route
                             # self.set_route(
-                            #     subscription=f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
+                            #     subscription=f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
                             #     route_key=det.interface_data_recv(),
                             #     # route=iface["recv_task"],
                             #     route=self.handle_interface_data,
@@ -954,7 +954,7 @@ class Device(envdsBase):
                         except KeyError:
                             iface_envds_id = self.id.app_env_id
 
-                        destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/keepalive/request"
+                        destpath = f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/keepalive/request"
                         extra_header = {
                             "path_id": iface["interface"]["path"],
                             "destpath": destpath,
@@ -1009,7 +1009,7 @@ class Device(envdsBase):
         # update device instance on db/redis
         # send registry_update message
 
-        destpath = f"/envds/{self.id.app_env_id}/sensor/registry/update"
+        destpath = f"envds/{self.id.app_env_id}/sensor/registry/update"
         event = DAQEvent.create_sensor_registry_update(
             # source="envds.core", data={"test": "one", "test2": 2}
             source=self.get_id_as_source(),

@@ -787,7 +787,7 @@ class envdsBase(abc.ABC):
             extra_header={"destpath": f"{topic_base}/status/update"}
         )
         self.logger.debug("send_status_update", extra={"event": event})
-        # message = Message(data=event, destpath="/envds/status/update")
+        # message = Message(data=event, destpath="envds/status/update")
         # message = Message(data=event, destpath=f"{topic_base}/status/update")
         message = event
         await self.send_message(message)

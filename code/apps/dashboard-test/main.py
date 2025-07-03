@@ -289,7 +289,7 @@ class WebInterfaceManager():
     def send_data(self, data):
         # syn11
         try:
-            destpath = "/webinterface/control/request"
+            destpath = "webinterface/control/request"
             event = DAQEvent.create_controller_control_request(
                 source=data['device'],
                 data=data

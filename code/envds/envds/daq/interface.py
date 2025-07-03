@@ -210,17 +210,17 @@ class Interface(envdsBase):
         # )
 
         self.set_route(
-            subscription=f"/{topic_base}/+/status/request",
+            subscription=f"{topic_base}/+/status/request",
             route_key=det.interface_status_request(),
             route=self.handle_status,
             enable=enable,
         )
 
         self.logger.debug(
-            "set_config_request", extra={"sub": f"/{topic_base}/+/config/request"}
+            "set_config_request", extra={"sub": f"{topic_base}/+/config/request"}
         )
         self.set_route(
-            subscription=f"/{topic_base}/+/config/request",
+            subscription=f"{topic_base}/+/config/request",
             route_key=det.interface_config_request(),
             route=self.handle_config,
             enable=enable,
@@ -235,14 +235,14 @@ class Interface(envdsBase):
         # )
 
         self.set_route(
-            subscription=f"/{topic_base}/+/keepalive/request",
+            subscription=f"{topic_base}/+/keepalive/request",
             route_key=det.interface_keepalive_request(),
             route=self.handle_keepalive,
             enable=enable,
         )
 
         self.set_route(
-            subscription=f"/{topic_base}/+/data/send",
+            subscription=f"{topic_base}/+/data/send",
             route_key=det.interface_data_send(),
             route=self.handle_data,
             enable=enable,
@@ -512,7 +512,7 @@ class Interface(envdsBase):
     # TODO client_id vs id?
     async def update_recv_data(self, client_id: str, data: dict):
         # self.logger.debug("update_recv_data", extra={"client_id": client_id, "data": data})
-        destpath = f"/{self.get_id_as_topic()}/{client_id}/data/update"
+        destpath = f"{self.get_id_as_topic()}/{client_id}/data/update"
         # extra_header = {"sourcepath": id}
         # extra_header = {"path_id": client_id}
         extra_header = {"path_id": client_id, "destpath": destpath}
@@ -679,7 +679,7 @@ class Interface(envdsBase):
                             extra_header=extra_header
                         )
                         self.logger.debug("send_interface_status_update", extra={"event": event})
-                        # message = Message(data=event, destpath="/envds/status/update")
+                        # message = Message(data=event, destpath="envds/status/update")
                         # message = Message(data=event, destpath=destpath)
                         message = event
                         await self.send_message(message)

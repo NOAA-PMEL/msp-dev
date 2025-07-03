@@ -377,7 +377,7 @@ class MAGIC250(Sensor):
 
 
         self.sensor_definition_file = "AerosolDynamics_MAGIC250_sensor_definition.json"
-        
+
         try:
             
             with open(self.sensor_definition_file, "r") as f:
@@ -671,7 +671,7 @@ class MAGIC250(Sensor):
                         source=self.get_id_as_source(),
                         data=record,
                     )
-                    destpath = f"/{self.get_id_as_topic()}/data/update"
+                    destpath = f"{self.get_id_as_topic()}/data/update"
                     event["destpath"] = destpath
                     self.logger.debug(
                         "default_data_loop",

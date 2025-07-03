@@ -109,7 +109,7 @@ class Sensor(Device):
     #                 source=self.get_id_as_source(),
     #                 data={"sensor-instance": self.metadata["attributes"]},
     #             )
-    #             destpath = f"/{self.get_id_as_topic()}/registry/update"
+    #             destpath = f"{self.get_id_as_topic()}/registry/update"
     #             self.logger.debug(
     #                 "register_device_definition", extra={"data": event, "destpath": destpath}
     #             )
@@ -132,7 +132,7 @@ class Sensor(Device):
     #                     source=self.get_id_as_source(),
     #                     data={"sensor-definition": self.metadata},
     #                 )
-    #                 destpath = f"/{self.get_id_as_topic()}/registry/update"
+    #                 destpath = f"{self.get_id_as_topic()}/registry/update"
     #                 self.logger.debug(
     #                     "register_device_definition", extra={"data": event, "destpath": destpath}
     #                 )

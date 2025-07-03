@@ -141,13 +141,15 @@ class MQTTMessageClient(MessageClient):
         self.subscriptions = []
 
         self._start()
-        self.subscribe(f"/mqtt/manage/{self.client_id}")
+        self.subscribe(f"mqtt/manage/{self.client_id}")
 
     async def _subscribe_all(self):
         for sub in self.subscriptions:
             await self._subscribe(sub)
 
     def subscribe(self, topic: str):
+        if topic.startswith("/"):
+            topic = topic[1:]
         if topic not in self.subscriptions:
             self.subscriptions.append(topic)
         asyncio.create_task(self._subscribe(topic))
@@ -160,7 +162,7 @@ class MQTTMessageClient(MessageClient):
                 self.logger.debug(f"subscribe topic: {topic}")
                 await self.client.subscribe(topic)
             except MqttError as error:
-                self.logger.warn(f"MQTT Client _subscribe: {error}")
+                self.logger.warning(f"MQTT Client _subscribe: {error}")
 
     async def _unsubscribe_all(self):
         for sub in self.subscriptions:
@@ -268,8 +270,12 @@ class MQTTMessageClient(MessageClient):
                 try:
                     # destpath = msg.destpath
                     destpath = msg["destpath"]
-                    if destpath[0] != "/":
-                        destpath = f"/{destpath}"
+                    # change this to the opposite
+                    # if destpath[0] != "/":
+                    #     destpath = f"/{destpath}"
+                    if destpath.startswith("/"):
+                        destpath = destpath[1:]
+                        msg["destpath"] = destpath
                     # await self.client.publish(destpath, payload=to_json(msg.data))
                     await self.client.publish(destpath, payload=to_json(msg))
                     # self.logger.debug("MQTT.publisher", extra={"destpath": destpath, "payload": to_json(msg.data), "client": self.client})
