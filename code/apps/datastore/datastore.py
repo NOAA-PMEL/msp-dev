@@ -427,19 +427,19 @@ class Datastore:
                         collection = "device-instance"
                         attributes = instance_reg["attributes"]
 
-                    if "device_type" in instance_reg["attributes"]:
-                        device_type = instance_reg["attributes"]["device_type"]["data"]
-                    else:
-                        # default for backward compatibility
-                        device_type = "sensor"
+                        if "device_type" in instance_reg["attributes"]:
+                            device_type = instance_reg["attributes"]["device_type"]["data"]
+                        else:
+                            # default for backward compatibility
+                            device_type = "sensor"
 
-                        request = DeviceInstanceUpdate(
-                            make=make,
-                            model=model,
-                            serial_number=serial_number,
-                            version=format_version,
-                            attributes=attributes,
-                        )
+                            request = DeviceInstanceUpdate(
+                                make=make,
+                                model=model,
+                                serial_number=serial_number,
+                                version=format_version,
+                                attributes=attributes,
+                            )
 
                 except [KeyError, IndexError] as e:
                         self.logger.error("device_instance_registry_update", extra={"reason": e})
@@ -451,6 +451,7 @@ class Datastore:
                     #     request=update,
                     # )
 
+            self.logger.debug("datastore:device_instance_registry_update", extra={"request": request, "db_client": self.db_client})
             if self.db_client and request:
                 await self.db_client.device_instance_registry_update(
                     database=database,
