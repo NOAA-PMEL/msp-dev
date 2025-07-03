@@ -19,7 +19,7 @@ spec:
       containers:
       - name: aerosoldynamics-magic250
         # image: registry-msp:5000/msp/sensor/aerosoldynamics-magic250:0.1.0
-        image: ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:0.1.3
+        image: ghcr.io/noaa-pmel/msp/aerosoldynamics-magic250:0.1.4
         imagePullPolicy: "Always"
         env:
           - name: ENVDS_CORE_NAMESPACE_PREFIX
