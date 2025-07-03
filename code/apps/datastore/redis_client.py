@@ -47,10 +47,19 @@ class RedisClient(DBClient):
         # index_name = "idx:data-device"
         try:
             self.client.ft(self.data_device_index_name).dropindex()
+            self.logger.debug("build_index:dropped", extra={"index": self.data_device_index_name})
             self.client.ft(self.registry_device_definition_index_name).dropindex()
+            self.logger.debug("build_index:dropped", extra={"index": self.registry_device_definition_index_name})
             self.client.ft(self.registry_device_instance_index_name).dropindex()
-        except:
+            self.logger.debug("build_index:dropped", extra={"index": self.registry_device_instance_index_name})
+        except Exception as e:
+            self.logger.error("build_index", extra={"reason": e})
             pass
+        try:
+            r.ft(index_name).dropindex()
+            print(f"Index '{index_name}' dropped successfully.")
+        except Exception as e:
+            print(f"Error dropping index: {e}")
 
         try:
             # data:device
