@@ -26,7 +26,8 @@ class RedisClient(DBClient):
         self.data_device_index_name = "idx:data-device"
         self.registry_device_definition_index_name = "idx:registry-device-definition"
         self.registry_device_instance_index_name = "idx:registry-device-instance"
-    
+        self.build_indexes()
+        
     def connect(self):
         if not self.client:
             try:
