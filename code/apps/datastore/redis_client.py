@@ -96,7 +96,7 @@ class RedisClient(DBClient):
                 prefix=["registry:device-instance:"],
                 index_type=IndexType.JSON
             )
-            self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
+            self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
 
         except Exception as e:
             self.logger.error("build_indexes", extra={"reason": e})
