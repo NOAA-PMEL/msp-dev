@@ -443,7 +443,7 @@ class Datastore:
                             attributes=attributes,
                         )
 
-                except [KeyError, IndexError] as e:
+                except (KeyError, IndexError) as e:
                         self.logger.error("device_instance_registry_update", extra={"reason": e})
                         continue
 
