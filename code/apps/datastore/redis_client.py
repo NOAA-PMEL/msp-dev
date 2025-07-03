@@ -351,15 +351,15 @@ class RedisClient(DBClient):
         if request.serial_number:
             query_args.append(f"@serial_number:{request.serial_number}")
 
-        if request.version:
-            query_args.append(f"@version:{request.version}")
+        # if request.version:
+        #     query_args.append(f"@version:{request.version}")
 
         if request.device_type:
             query_args.append(f"@device_type >= {request.device_type}")
         
         qstring = " ".join(query_args)
         self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
-        q = Query(qstring).sort_by("version", asc=False)
+        q = Query(qstring)#.sort_by("version", asc=False)
         result = self.client.ft(self.registry_device_instance_index_name).search(q).docs
 
         return {"result": result}
