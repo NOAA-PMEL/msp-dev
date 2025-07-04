@@ -60,6 +60,7 @@ class RedisClient(DBClient):
         try:
             # data:device
             schema = (
+                TextField("$.record.device_id", as_name="device_id"),
                 TextField("$.record.make", as_name="make"),
                 TextField("$.record.model", as_name="model"),
                 TextField("$.record.serial_number", as_name="serial_number"),
@@ -75,6 +76,7 @@ class RedisClient(DBClient):
 
             # registry:device-definition
             schema = (
+                TextField("$.registration.device_definition_id", as_name="device_definition_id"),
                 TextField("$.registration.make", as_name="make"),
                 TextField("$.registration.model", as_name="model"),
                 TextField("$.registration.version", as_name="version"),
@@ -88,6 +90,7 @@ class RedisClient(DBClient):
 
             # registry:device-instance
             schema = (
+                TextField("$.registration.device_id", as_name="make"),
                 TextField("$.registration.make", as_name="make"),
                 TextField("$.registration.model", as_name="model"),
                 TextField("$.registration.serial_number", as_name="serial_number"),
@@ -167,9 +170,15 @@ class RedisClient(DBClient):
     async def device_data_get(self, query: DataStoreQuery):
         await super(RedisClient, self).device_data_get(query)
 
-        query_args = [f"@make:{query.make}"]
-        query_args.append(f"@model:{query.model}")
-        query_args.append(f"@serial_number:{query.serial_number}")
+        query_args = []
+        if query.device_id:
+            query_args.append(f"@device_id:{query.device_id}")
+        if query.make:
+            query_args.append(f"@make:{query.make}")
+        if query.model:
+            query_args.append(f"@model:{query.model}")
+        if query.serial_number:
+            query_args.append(f"@serial_number:{query.serial_number}")
 
         if query.version:
             query_args.append(f"@version:{query.version}")
@@ -263,9 +272,18 @@ class RedisClient(DBClient):
         qstring = " ".join(query_args)
         self.logger.debug("device_data_get", extra={"query_string": qstring})
         q = Query(qstring).sort_by("timestamp")
-        result = self.client.ft(self.data_device_index_name).search(q).docs
+        docs = self.client.ft(self.data_device_index_name).search(q).docs
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    results.append(reg["registration"])
+            except Exception as e:
+                self.logger.error("device_instance_registry_get", extra={"reason": e})
+                continue
 
-        return {"result": result}
+        return {"results": results}
 
     async def device_definition_registry_get(
             self,
@@ -295,11 +313,11 @@ class RedisClient(DBClient):
         for doc in docs:
             try:
                 if doc.json:
-                    results.append(json.loads(doc.json))
+                    reg = json.loads(doc.json)
+                    results.append(reg["registration"])
             except Exception as e:
                 self.logger.error("device_instance_registry_get", extra={"reason": e})
                 continue
-
         return {"results": results}
 
     async def device_instance_registry_update(
@@ -350,10 +368,11 @@ class RedisClient(DBClient):
                 serial_number=serial_number,
                 version=version
             )
-            check = await self.device_instance_registry_get(check_request)
-            self.logger.debug("device_instance_registry_update", extra={"check": check})
-            check = False # tmp
-            if check:
+            check_results = await self.device_instance_registry_get(check_request)
+            self.logger.debug("device_instance_registry_update", extra={"check": check_results})
+            # check = False # tmp
+            if check_results["results"]: # check if there are any results
+                self.logger.debug("check_results", extra={"results": check_results["results"]})
                 result = True
             else:
                 result = self.client.json().set(
@@ -364,7 +383,7 @@ class RedisClient(DBClient):
             if result:
                 self.client.expire(key, ttl)
 
-            self.logger.debug("device_instance_registry_update", extra={"check_request": check_request, "check": check, "result": result})
+            self.logger.debug("device_instance_registry_update", extra={"check_request": check_request, "result": result})
             return result
         
         except Exception as e:
