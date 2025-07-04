@@ -90,7 +90,7 @@ class RedisClient(DBClient):
 
             # registry:device-instance
             schema = (
-                TextField("$.registration.device_id", as_name="make"),
+                TextField("$.registration.device_id", as_name="device_id"),
                 TextField("$.registration.make", as_name="make"),
                 TextField("$.registration.model", as_name="model"),
                 TextField("$.registration.serial_number", as_name="serial_number"),
@@ -277,8 +277,8 @@ class RedisClient(DBClient):
         for doc in docs:
             try:
                 if doc.json:
-                    reg = json.loads(doc.json)
-                    results.append(reg["registration"])
+                    record = json.loads(doc.json)
+                    results.append(record["record"])
             except Exception as e:
                 self.logger.error("device_instance_registry_get", extra={"reason": e})
                 continue
