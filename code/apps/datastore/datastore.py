@@ -324,8 +324,12 @@ class Datastore:
             # start_dt = current_time - timedelta(seconds=query.last_n_seconds)
             query.start_time = datetime_to_string(start_dt)
             query.end_time = None
+            
+        # TODO add in logic to get/sync from erddap if available
+        if self.db_client:
+            return await self.db_client.device_data_get(query)
 
-        return await self.db_client.device_data_get(query)
+        return {"results": []}
 
     async def device_definition_registry_update(self, ce: CloudEvent):
 
@@ -355,8 +359,9 @@ class Datastore:
                         }
                         device_type = "sensor"
 
-                    device_id = "::".join([make,model,format_version])
+                    device_definition_id = "::".join([make,model,format_version])
                     request = DeviceDefinitionUpdate(
+                        device_definition_id=device_definition_id,
                         make=make,
                         model=model,
                         version=format_version,
@@ -398,9 +403,13 @@ class Datastore:
             self.logger.error("device_definition_registry_update", extra={"reason": e})
         pass
 
-    async def device_definition_registry_get(self, query: DeviceDefinitionRequest) -> list:
+    async def device_definition_registry_get(self, query: DeviceDefinitionRequest) -> dict:
         
-        return []
+        # TODO add in logic to get/sync from erddap if available
+        if self.db_client:
+            return await self.db_client.device_definition_registry_get(query)
+        
+        return {"results": []}
 
     async def device_instance_registry_update(self, ce: CloudEvent):
 
@@ -410,6 +419,7 @@ class Datastore:
                 request = None
                 self.logger.debug("device_instance_registry_update", extra={"instance_type": instance_type, "instance_reg": instance_reg})
                 try:
+                    device_id = instance_reg["device_id"]
                     make = instance_reg["make"]
                     model = instance_reg["model"]
                     serial_number = instance_reg["serial_number"]
@@ -424,6 +434,9 @@ class Datastore:
                             model = parts[1]
                             serial_number = parts[2]
 
+                    if device_id is None:
+                        device_id = "::".join([make, model, serial_number])
+
                     if instance_type == "device-instance":
                         database = "registry"
                         collection = "device-instance"
@@ -436,6 +449,7 @@ class Datastore:
                             device_type = "sensor"
 
                         request = DeviceInstanceUpdate(
+                            device_id=device_id,
                             make=make,
                             model=model,
                             serial_number=serial_number,
@@ -467,6 +481,13 @@ class Datastore:
             L.error("device_instance_registry_update", extra={"reason": e})
         pass
 
+    async def device_instance_registry_get(self, query: DeviceInstanceRequest) -> dict:
+        
+        # TODO add in logic to get/sync from erddap if available?
+        if self.db_client:
+            return await self.db_client.device_instance_registry_get(query)
+        
+        return {"results": []}
 
 async def shutdown():
     print("shutting down")
