@@ -290,9 +290,17 @@ class RedisClient(DBClient):
         qstring = " ".join(query_args)
         self.logger.debug("device_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring).sort_by("version", asc=False)
-        result = self.client.ft(self.registry_device_definition_index_name).search(q).docs.json
+        docs = self.client.ft(self.registry_device_definition_index_name).search(q).docs
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    results.append(json.loads(doc.json))
+            except Exception as e:
+                self.logger.error("device_instance_registry_get", extra={"reason": e})
+                continue
 
-        return {"result": result}
+        return {"results": results}
 
     async def device_instance_registry_update(
         self,
@@ -388,9 +396,10 @@ class RedisClient(DBClient):
         for doc in docs:
             try:
                 if doc.json:
-                    results.append(json.loads(doc.json))
+                    reg = json.loads(doc.json)
+                    results.append(reg["registration"])
             except Exception as e:
                 self.logger.error("device_instance_registry_get", extra={"reason": e})
                 continue
-            
+
         return {"results": results}
