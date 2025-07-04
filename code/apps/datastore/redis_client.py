@@ -74,10 +74,10 @@ class RedisClient(DBClient):
 
             # registry:device-definition
             schema = (
-                TextField("$.record.make", as_name="make"),
-                TextField("$.record.model", as_name="model"),
-                TextField("$.record.version", as_name="version"),
-                TextField("$.record.device_type", as_name="device_type"),
+                TextField("$.registration.make", as_name="make"),
+                TextField("$.registration.model", as_name="model"),
+                TextField("$.registration.version", as_name="version"),
+                TextField("$.registration.device_type", as_name="device_type"),
             )
             definition = IndexDefinition(
                 prefix=["registry:device-definition:"],
@@ -87,10 +87,10 @@ class RedisClient(DBClient):
 
             # registry:device-instance
             schema = (
-                TextField("$.record.make", as_name="make"),
-                TextField("$.record.model", as_name="model"),
-                TextField("$.record.serial_number", as_name="serial_number"),
-                TextField("$.record.device_type", as_name="device_type"),
+                TextField("$.registration.make", as_name="make"),
+                TextField("$.registration.model", as_name="model"),
+                TextField("$.registration.serial_number", as_name="serial_number"),
+                TextField("$.registration.device_type", as_name="device_type"),
             )
             definition = IndexDefinition(
                 prefix=["registry:device-instance:"],
@@ -322,6 +322,7 @@ class RedisClient(DBClient):
                 version=version
             )
             check = await self.device_instance_registry_get(check_request)
+            check = False # tmp
             if check:
                 result = True
             else:
