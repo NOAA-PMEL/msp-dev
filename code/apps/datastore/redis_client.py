@@ -270,8 +270,28 @@ class RedisClient(DBClient):
             self,
             request: DeviceDefinitionRequest
     ) -> dict:
+        await super(RedisClient, self).device_definition_registry_get(request)
+
+        query_args = []
+        if request.make:
+            query_args.append(f"@make:{request.make}")
+        if request.model:
+            query_args.append(f"@model:{request.model}")
+        if request.version:
+            query_args.append(f"@version:{request.version}")
+
+        # if request.version:
+        #     query_args.append(f"@version:{request.version}")
+
+        if request.device_type:
+            query_args.append(f"@device_type:{request.device_type}")
         
-        return {}
+        qstring = " ".join(query_args)
+        self.logger.debug("device_definition_registry_get", extra={"query_string": qstring})
+        q = Query(qstring).sort_by("version", asc=False)
+        result = self.client.ft(self.registry_device_definition_index_name).search(q).docs.json
+
+        return {"result": result}
 
     async def device_instance_registry_update(
         self,
@@ -362,6 +382,9 @@ class RedisClient(DBClient):
         qstring = " ".join(query_args)
         self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        result = self.client.ft(self.registry_device_instance_index_name).search(q).docs.json
+        docs = self.client.ft(self.registry_device_instance_index_name).search(q).docs
+        results = []
+        for doc in docs:
+            results.append(doc.json)
 
-        return {"result": result}
+        return {"results": results}
