@@ -1,4 +1,5 @@
 import asyncio
+import json
 import redis
 from redis.commands.json.path import Path
 # import redis.commands.search.aggregation as aggregations
@@ -385,6 +386,11 @@ class RedisClient(DBClient):
         docs = self.client.ft(self.registry_device_instance_index_name).search(q).docs
         results = []
         for doc in docs:
-            results.append(doc.json)
-
+            try:
+                if doc.json:
+                    results.append(json.loads(doc.json))
+            except Exception as e:
+                self.logger.error("device_instance_registry_get", extra={"reason": e})
+                continue
+            
         return {"results": results}
