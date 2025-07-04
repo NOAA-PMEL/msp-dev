@@ -322,6 +322,7 @@ class RedisClient(DBClient):
                 version=version
             )
             check = await self.device_instance_registry_get(check_request)
+            self.logger.debug("device_instance_registry_update", extra={"check": check})
             check = False # tmp
             if check:
                 result = True
@@ -356,7 +357,7 @@ class RedisClient(DBClient):
         #     query_args.append(f"@version:{request.version}")
 
         if request.device_type:
-            query_args.append(f"@device_type >= {request.device_type}")
+            query_args.append(f"@device_type:{request.device_type}")
         
         qstring = " ".join(query_args)
         self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
