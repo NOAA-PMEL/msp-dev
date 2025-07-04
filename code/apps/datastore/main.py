@@ -158,8 +158,8 @@ async def device_data_get(query: Annotated[DataStoreQuery, Query()]):
     #     start_time=start_time,
     #     end_time=end_time
     # )
-    result = await datastore.device_data_get(query)
-    return {"result": result}
+    return await datastore.device_data_get(query)
+    # return {"result": result}
     
 @app.post("/device/settings/update", status_code=status.HTTP_202_ACCEPTED)
 async def device_settings_update(request: Request):
@@ -300,24 +300,8 @@ async def device_definition_registry_update(request: Request):
     
 @app.get("/device-definition/registry/get")
 async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
-#     sensor_id: str | None = None,
-#     make: str | None = None,
-#     model: str | None = None,
-#     serial_number: str | None = None,
-#     version: str | None = None,
-#     start_time: str | None = None,
-#     end_time: str | None = None
-# ):
+    return await datastore.device_definition_registry_get(query)
 
-    # query_params = request.query_params
-    # query = DataStoreQuery(
-    #     sensor_id=sensor_id,
-    #     make=make,
-    #     model=model,
-    #     serial_number=serial_number,
-    #     version=version,
-    #     start_time=start_time,
-    #     end_time=end_time
-    # )
-    result = await datastore.device_definition_registry_get(query)
-    return {"result": result}
+@app.get("/device-instance/registry/get")
+async def device_definition_registry_get(query: Annotated[DeviceInstanceRequest, Query()]):
+    return await datastore.device_instance_registry_get(query)
