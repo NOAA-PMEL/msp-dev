@@ -362,6 +362,6 @@ class RedisClient(DBClient):
         qstring = " ".join(query_args)
         self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        result = self.client.ft(self.registry_device_instance_index_name).search(q).docs
+        result = self.client.ft(self.registry_device_instance_index_name).search(q).docs.json
 
         return {"result": result}
