@@ -240,12 +240,27 @@ class RedisClient(DBClient):
 
             key = f"{database}:{collection}:{id}"
             self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
-            result = self.client.json().set(
-                key,
-                "$",
-                {"registration": document}
+            check_request = DeviceInstanceRequest(
+                make=make,
+                model=model,
+                version=version
             )
-            self.client.expire(key, ttl)
+            check_results = await self.device_definition_registry_get(check_request)
+            self.logger.debug("device_definition_registry_update", extra={"check": check_results})
+            # check = False # tmp
+            if check_results["results"]: # check if there are any results
+                self.logger.debug("check_results", extra={"results": check_results["results"]})
+                result = True
+            else:
+                result = self.client.json().set(
+                    key,
+                    "$",
+                    {"registration": document}
+                )
+            if result:
+                self.client.expire(key, ttl)
+
+            self.logger.debug("device_defintion_registry_update", extra={"check_request": check_request, "result": result})
             return result
         
         except Exception as e:
@@ -292,6 +307,8 @@ class RedisClient(DBClient):
         await super(RedisClient, self).device_definition_registry_get(request)
 
         query_args = []
+        if request.device_definition_id:
+            query_args.append(f"@device_defintion_id:{request.device_definition_id}")
         if request.make:
             query_args.append(f"@make:{request.make}")
         if request.model:
