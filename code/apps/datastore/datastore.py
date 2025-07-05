@@ -419,7 +419,7 @@ class Datastore:
                 request = None
                 self.logger.debug("device_instance_registry_update", extra={"instance_type": instance_type, "instance_reg": instance_reg})
                 try:
-                    device_id = instance_reg["device_id"]
+                    # device_id = instance_reg.get("device_id", None)
                     make = instance_reg["make"]
                     model = instance_reg["model"]
                     serial_number = instance_reg["serial_number"]
@@ -429,11 +429,13 @@ class Datastore:
 
                     if make is None or model is None or serial_number is None:
                         # if "device_id" in instance_reg and instance_reg["device_id"] is not None:
-                            parts = instance_reg["device_id"].split("::")
-                            make = parts[0]
-                            model = parts[1]
-                            serial_number = parts[2]
-
+                            # parts = instance_reg["device_id"].split("::")
+                            # make = parts[0]
+                            # model = parts[1]
+                            # serial_number = parts[2]
+                        self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
+                        return
+                    
                     if device_id is None:
                         device_id = "::".join([make, model, serial_number])
 
