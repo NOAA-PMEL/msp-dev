@@ -14,7 +14,7 @@ from cloudevents.pydantic import CloudEvent
 
 import httpx
 from logfmter import Logfmter
-from typing import Annotated
+from typing import Annotated, List
 from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
 
@@ -138,28 +138,33 @@ async def device_data_update(request: Request):
     
 
 @app.get("/device/data/get")
-async def device_data_get(query: Annotated[DataStoreQuery, Query()]):
-#     sensor_id: str | None = None,
-#     make: str | None = None,
-#     model: str | None = None,
-#     serial_number: str | None = None,
-#     version: str | None = None,
-#     start_time: str | None = None,
-#     end_time: str | None = None
-# ):
-
-    # query_params = request.query_params
-    # query = DataStoreQuery(
-    #     device_id=sensor_id,
-    #     make=make,
-    #     model=model,
-    #     serial_number=serial_number,
-    #     version=version,
-    #     start_time=start_time,
-    #     end_time=end_time
-    # )
+# async def device_data_get(query: Annotated[DataStoreQuery, Query()]):
+async def device_data_get(
+    device_id: str | None = None,
+    make: str | None = None,
+    model: str | None = None,
+    serial_number: str | None = None,
+    version: str | None = None,
+    device_type: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    last_n_seconds: int | None = None,
+    variable: List[str] | None = None
+):
+    
+    query = DataRequest(
+        device_id=device_id,
+        make=make,
+        model=model,
+        serial_number=serial_number,
+        version=version,
+        device_type=device_type,
+        start_time=start_time,
+        end_time=end_time,
+        last_n_seconds=last_n_seconds,
+        variable=variable
+    )
     return await datastore.device_data_get(query)
-    # return {"result": result}
     
 @app.post("/device/settings/update", status_code=status.HTTP_202_ACCEPTED)
 async def device_settings_update(request: Request):
