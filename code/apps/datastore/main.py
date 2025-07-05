@@ -299,7 +299,24 @@ async def device_definition_registry_update(request: Request):
     return "",204
     
 @app.get("/device-definition/registry/get/")
-async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
+# async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
+async def device_definition_registry_get(
+    device_definition_id: str | None = None,
+    make: str | None = None,
+    model: str | None = None,
+    version: str | None = None,
+    device_type: str | None = None,
+    valid_time: str | None = None
+):
+    
+    query = DeviceDefinitionRequest(
+        device_definition_id=device_definition_id,
+        make=make,
+        model=model,
+        version=version,
+        device_type=device_type,
+        valid_time=valid_time
+    )
     return await datastore.device_definition_registry_get(query)
 
 @app.get("/device-instance/registry/get/")
