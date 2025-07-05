@@ -298,10 +298,10 @@ async def device_definition_registry_update(request: Request):
 
     return "",204
     
-@app.get("/device-definition/registry/get")
+@app.get("/device-definition/registry/get/")
 async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
     return await datastore.device_definition_registry_get(query)
 
-@app.get("/device-instance/registry/get")
+@app.get("/device-instance/registry/get/")
 async def device_definition_registry_get(query: Annotated[DeviceInstanceRequest, Query()]):
     return await datastore.device_instance_registry_get(query)
