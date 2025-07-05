@@ -303,5 +303,23 @@ async def device_definition_registry_get(query: Annotated[DeviceDefinitionReques
     return await datastore.device_definition_registry_get(query)
 
 @app.get("/device-instance/registry/get/")
-async def device_definition_registry_get(query: Annotated[DeviceInstanceRequest, Query()]):
+# async def device_definition_registry_get(query: Annotated[DeviceInstanceRequest, Query()]):
+async def device_definition_registry_get(
+    device_id: str | None = None,
+    make: str | None = None,
+    model: str | None = None,
+    serial_number: str | None = None,
+    version: str | None = None,
+    device_type: str | None = None
+    ):
+
+    query = DeviceInstanceRequest(
+        device_id=device_id,
+        make=make,
+        model=model,
+        serial_number=serial_number,
+        version=version,
+        device_type=device_type
+    )
+
     return await datastore.device_instance_registry_get(query)
