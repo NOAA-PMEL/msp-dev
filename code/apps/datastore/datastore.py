@@ -324,7 +324,7 @@ class Datastore:
             # start_dt = current_time - timedelta(seconds=query.last_n_seconds)
             query.start_time = datetime_to_string(start_dt)
             query.end_time = None
-            
+
         # TODO add in logic to get/sync from erddap if available
         if self.db_client:
             return await self.db_client.device_data_get(query)
@@ -459,7 +459,7 @@ class Datastore:
                         )
 
                 except (KeyError, IndexError) as e:
-                        self.logger.error("device_instance_registry_update", extra={"reason": e})
+                        self.logger.error("datastore:device_instance_registry_update", extra={"reason": e})
                         continue
 
                     # request = DatastoreRequest(

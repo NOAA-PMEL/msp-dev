@@ -404,7 +404,7 @@ class RedisClient(DBClient):
             return result
         
         except Exception as e:
-            self.logger.error("device_instance_registry_update", extra={"reason": e})
+            self.logger.error("redis_client:device_instance_registry_update", extra={"reason": e})
             return False
 
     async def device_instance_registry_get(self, request: DeviceInstanceRequest):
