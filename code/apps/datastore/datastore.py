@@ -436,8 +436,8 @@ class Datastore:
                         self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
                         return
                     
-                    if device_id is None:
-                        device_id = "::".join([make, model, serial_number])
+                    # if device_id is None:
+                    device_id = "::".join([make, model, serial_number])
 
                     if instance_type == "device-instance":
                         database = "registry"
