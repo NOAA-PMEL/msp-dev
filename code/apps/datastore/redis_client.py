@@ -240,7 +240,7 @@ class RedisClient(DBClient):
 
             key = f"{database}:{collection}:{id}"
             self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
-            check_request = DeviceInstanceRequest(
+            check_request = DeviceDefinitionRequest(
                 make=make,
                 model=model,
                 version=version
