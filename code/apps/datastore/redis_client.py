@@ -326,6 +326,7 @@ class RedisClient(DBClient):
         self.logger.debug("device_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring).sort_by("version", asc=False)
         docs = self.client.ft(self.registry_device_definition_index_name).search(q).docs
+        self.logger.debug("device_definition_registry_get", extra={"docs": docs})
         results = []
         for doc in docs:
             try:
