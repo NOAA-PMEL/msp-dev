@@ -41,7 +41,7 @@ class DataRequest(BaseModel):
 
 
 class DeviceDefinitionUpdate(BaseModel):
-    device_id: str | None = None
+    device_definition_id: str | None = None
     make: str | None = None
     model: str | None = None
     version: str
@@ -53,7 +53,7 @@ class DeviceDefinitionUpdate(BaseModel):
 
 
 class DeviceDefinitionRequest(BaseModel):
-    device_id: str | None = None
+    device_definition_id: str | None = None
     make: str | None = None
     model: str | None = None
     version: str | None = None

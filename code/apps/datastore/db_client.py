@@ -156,7 +156,7 @@ class DBClient:
             self,
             request: DeviceDefinitionRequest
     ) -> dict:
-        return {}
+        return {"results": []}
 
     async def device_instance_registry_update(
         self,
@@ -171,5 +171,5 @@ class DBClient:
         self,
         request: DeviceInstanceRequest
     ) -> dict:
-        return {}
+        return {"results": []}
 
