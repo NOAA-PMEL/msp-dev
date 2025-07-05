@@ -295,7 +295,7 @@ class RedisClient(DBClient):
                     record = json.loads(doc.json)
                     results.append(record["record"])
             except Exception as e:
-                self.logger.error("device_instance_registry_get", extra={"reason": e})
+                self.logger.error("device_data_get", extra={"reason": e})
                 continue
 
         return {"results": results}
@@ -333,7 +333,7 @@ class RedisClient(DBClient):
                     reg = json.loads(doc.json)
                     results.append(reg["registration"])
             except Exception as e:
-                self.logger.error("device_instance_registry_get", extra={"reason": e})
+                self.logger.error("device_definition_registry_get", extra={"reason": e})
                 continue
         return {"results": results}
 
@@ -345,7 +345,7 @@ class RedisClient(DBClient):
         request: DeviceInstanceUpdate,
         ttl: int = 300
     ) -> bool:
-        await super(RedisClient, self).device_definition_registry_update(database, collection, request, ttl)
+        await super(RedisClient, self).device_instance_registry_update(database, collection, request, ttl)
         try:
             self.connect()
 
