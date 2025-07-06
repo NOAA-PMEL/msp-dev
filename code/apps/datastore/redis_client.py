@@ -257,7 +257,7 @@ class RedisClient(DBClient):
                     "$",
                     {"registration": document}
                 )
-            if result:
+            if result and ttl > 0:
                 self.client.expire(key, ttl)
 
             self.logger.debug("device_defintion_registry_update", extra={"check_request": check_request, "result": result})
