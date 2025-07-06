@@ -566,6 +566,8 @@ def layout(sensor_id=None):
         }
         # print(f"get_layout: {sensor_meta}")
         query = {"make": sensor_meta["make"], "model": sensor_meta["model"]}
+        response = httpx.get(f"http://{datastore_url}/device-definition/registry/get", params=query)
+        print(f"response: {response}")
         # print(f"get_layout: {query}")
         
         # TODO: replace with datastore call
