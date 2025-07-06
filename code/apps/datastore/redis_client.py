@@ -322,7 +322,10 @@ class RedisClient(DBClient):
         if request.device_type:
             query_args.append(f"@device_type:{request.device_type}")
         
-        qstring = " ".join(query_args)
+        if query_args:
+            qstring = " ".join(query_args)
+        else:
+            qstring = "*"
         self.logger.debug("device_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
         docs = self.client.ft(self.registry_device_definition_index_name).search(q).docs
@@ -425,7 +428,11 @@ class RedisClient(DBClient):
         if request.device_type:
             query_args.append(f"@device_type:{request.device_type}")
         
-        qstring = " ".join(query_args)
+        # qstring = " ".join(query_args)
+        if query_args:
+            qstring = " ".join(query_args)
+        else:
+            qstring = "*"
         self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
         docs = self.client.ft(self.registry_device_instance_index_name).search(q).docs
