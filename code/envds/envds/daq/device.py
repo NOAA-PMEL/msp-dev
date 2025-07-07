@@ -210,7 +210,7 @@ class Device(envdsBase):
         self.logger = logging.getLogger(self.build_app_uid())
         self.update_id("app_uid", self.build_app_uid())
 
-        # asyncio.create_task(self.register_device_type())
+        asyncio.create_task(self.register_device_type())
 
         # TODO: decide if device self registers or send registry request (I think latter)
         # init_device_registration()
