@@ -379,7 +379,6 @@ class MAGIC250(Sensor):
         self.sensor_definition_file = "AerosolDynamics_MAGIC250_sensor_definition.json"
 
         try:
-            
             with open(self.sensor_definition_file, "r") as f:
                 self.metadata = json.load(f)
         except FileNotFoundError:
