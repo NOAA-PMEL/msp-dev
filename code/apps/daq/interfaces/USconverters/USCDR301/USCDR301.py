@@ -17,6 +17,7 @@ task_list = []
 class USCDR301(Interface):
     """docstring for USCDR301."""
 
+
     metadata = {
         "attributes": {
             "type": {"type": "char", "data": "USconverters"},
