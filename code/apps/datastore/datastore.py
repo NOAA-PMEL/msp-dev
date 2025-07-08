@@ -244,7 +244,9 @@ class Datastore:
             self.logger.debug(f"parts: {parts}, {format_version}")
             erddap_version = f"v{parts[0]}"
             device_id = "::".join([make, model, serial_number])
+            self.logger.debug("device_data_update", extra={"device_id": device_id})
             timestamp = string_to_timestamp(ce.data["timestamp"]) # change to an actual timestamp
+            self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
 
             doc = {
                 # "_id": id,
