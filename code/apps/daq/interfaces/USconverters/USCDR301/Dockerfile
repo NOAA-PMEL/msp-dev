@@ -1,6 +1,6 @@
 # FROM python:3.10-slim
 # FROM python:3.10
-FROM ghcr.io/noaa-pmel/msp/envds-base:latest
+FROM ghcr.io/noaa-pmel/msp/envds-base:sha256:4200e5eb2a28620978225ae885d112abcff2045e24f90ea249f25c5f67ece652
 
 
 # Allow statements and log messages to immediately appear in the Knative logs
