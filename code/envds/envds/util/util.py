@@ -45,7 +45,7 @@ def string_to_timestamp(dt_string: str, fraction: bool=True) -> float:
         return dt.timestamp()
     return None
 
-def get_datetime_with_delta(dt:datetime, delta: timedelta):
+def get_datetime_with_delta(delta: timedelta, dt: datetime=datetime.now(datetime.timezone.utc)):
     if timedelta < 0:
         return dt - timedelta(seconds=abs(delta))
     else:
