@@ -131,7 +131,7 @@ async def device_data_update(request: Request):
         # await adapter.send_to_mqtt(ce)
         await datastore.device_data_update(ce)
     except Exception as e:
-        # L.error("send", extra={"reason": e})
+        L.error("device_data_update", extra={"reason": e})
         pass
 
     return "",204
