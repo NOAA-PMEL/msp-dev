@@ -270,6 +270,7 @@ class Datastore:
                 variables=variables,
             )
 
+            self.logger.debug("device_data_update", extra={"request": request})
             # request = DatastoreRequest(
             #     database="data", collection="device", request=update
             # )
