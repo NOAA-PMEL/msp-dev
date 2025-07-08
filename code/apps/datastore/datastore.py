@@ -29,6 +29,8 @@ from envds.util.util import (
     get_datetime,
     datetime_to_string,
     get_datetime_with_delta,
+    string_to_timestamp,
+    timestamp_to_string
 )
 
 from envds.daq.event import DAQEvent
@@ -242,7 +244,7 @@ class Datastore:
             self.logger.debug(f"parts: {parts}, {format_version}")
             erddap_version = f"v{parts[0]}"
             device_id = "::".join([make, model, serial_number])
-            timestamp = ce.data["timestamp"]
+            timestamp = string_to_timestamp(ce.data["timestamp"]) # change to an actual timestamp
 
             doc = {
                 # "_id": id,
@@ -316,14 +318,23 @@ class Datastore:
             query.make = parts[0]
             query.model = parts[1]
             query.serial_number = parts[2]
+        else:
+            query.device_id = "::".join([query.make,query.model,query.serial_number])
+
+        if query.start_time:
+            query.start_timestamp = string_to_timestamp(query.start_time)
+
+        if query.end_time:
+            query.end_timestamp = string_to_timestamp(query.end_time)
+
 
         if query.last_n_seconds:
             # this overrides explicit start,end times
             start_dt = get_datetime_with_delta(-(query.last_n_seconds))
             # current_time = get_datetime()
             # start_dt = current_time - timedelta(seconds=query.last_n_seconds)
-            query.start_time = datetime_to_string(start_dt)
-            query.end_time = None
+            query.start_timestamp = start_dt.timestamp()
+            query.end_timestamp = None
 
         # TODO add in logic to get/sync from erddap if available
         if self.db_client:

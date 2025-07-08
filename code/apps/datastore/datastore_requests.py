@@ -21,7 +21,7 @@ class DataUpdate(BaseModel):
     model: str | None = None
     serial_number: str | None = None
     version: str
-    timestamp: str
+    timestamp: float
     attributes: dict
     dimensions: dict
     variables: dict
@@ -36,6 +36,8 @@ class DataRequest(BaseModel):
     device_type: str | None = None
     start_time: str | None = None
     end_time: str | None = None
+    start_timestamp: float | None = None
+    end_timestamp: float | None = None
     last_n_seconds: int | None
     variable: List[str] | None = None
 

@@ -66,7 +66,7 @@ class RedisClient(DBClient):
                 TextField("$.record.serial_number", as_name="serial_number"),
                 TextField("$.record.version", as_name="version"),
                 # TextField("$.record.device_type", as_name="device_type"),
-                TextField("$.record.timestamp", as_name="timestamp")
+                NumericField("$.record.timestamp", as_name="timestamp")
             )
             definition = IndexDefinition(
                 prefix=["data:device:"],
@@ -184,10 +184,17 @@ class RedisClient(DBClient):
             query_args.append(f"@version:{query.version}")
 
         if query.start_time:
-            query_args.append(f"@timestamp >= {query.start_time}")
+            query_args.append(f"@timestamp>={query.start_timestamp}")
         
         if query.end_time:
-            query_args.append(f"@timestamp < {query.end_time}")
+            query_args.append(f"@timestamp<{query.end_timestamp}")
+
+        # if query.start_timestamp and query.end_timestamp is None:
+        #     query_args.append(f"@timestamp:[{query.start_timestamp} Inf]")
+        # elif query.start_timestamp is None and query.end_timestamp:
+        #     query_args.append(f"@timestamp:[-Inf {query.end_timestamp}]")
+        # elif query.start_timestamp and query.end_timestamp:
+        #     query_args.append(f"@timestamp:[{query.start_timestamp} {query.end_timestamp}]")
 
         qstring = " ".join(query_args)
         self.logger.debug("device_data_get", extra={"query_string": qstring})
@@ -278,11 +285,11 @@ class RedisClient(DBClient):
         if query.version:
             query_args.append(f"@version:{query.version}")
 
-        if query.start_time:
-            query_args.append(f"@timestamp >= {query.start_time}")
+        if query.start_timestamp:
+            query_args.append(f"@timestamp >= {query.start_timestamp}")
         
-        if query.end_time:
-            query_args.append(f"@timestamp < {query.end_time}")
+        if query.end_timestamp:
+            query_args.append(f"@timestamp < {query.end_timestamp}")
 
         qstring = " ".join(query_args)
         self.logger.debug("device_data_get", extra={"query_string": qstring})
