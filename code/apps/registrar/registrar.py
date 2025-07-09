@@ -71,8 +71,10 @@ class Settings(BaseSettings):
 # app = Flask(__name__)
 config = Settings()
 
-class Registrar():
+
+class Registrar:
     """docstring for Registrar."""
+
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.debug("TestClass instantiated")
@@ -91,18 +93,25 @@ class Registrar():
 
     async def send_event(self, ce):
         try:
-            self.logger.debug(ce)#, extra=template)
+            self.logger.debug(ce)  # , extra=template)
             try:
                 timeout = httpx.Timeout(5.0, read=0.1)
                 headers, body = to_structured(ce)
-                self.logger.debug("send_event", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
+                self.logger.debug(
+                    "send_event",
+                    extra={
+                        "broker": self.config.knative_broker,
+                        "h": headers,
+                        "b": body,
+                    },
+                )
                 # send to knative broker
                 async with httpx.AsyncClient() as client:
                     r = await client.post(
                         self.config.knative_broker,
                         headers=headers,
                         data=body,
-                        timeout=timeout
+                        timeout=timeout,
                     )
                     r.raise_for_status()
             except InvalidStructuredJSON:
@@ -124,12 +133,14 @@ class Registrar():
         except Exception as e:
             self.logger.error("submit_request", extra={"reason": e})
             return None
-        
+
     async def get_device_definitions_loop(self):
 
         while True:
             query = {}
-            results = await self.submit_request(path="device-definition/registry/get", query=query)
+            results = await self.submit_request(
+                path="device-definition/registry/get", query=query
+            )
             # results = httpx.get(f"http://{self.datastore_url}/device-definition/registry/get/", parmams=query)
             self.logger.debug("get_device_definitions_loop", extra={"results": results})
 
@@ -144,9 +155,7 @@ class Registrar():
 
                 self.logger.debug("configure", extra={"self.config": self.config})
                 bcast = DAQEvent.create_registry_sync_bcast(
-                    source=f"envds.{self.config.daq_id}.registrar",
-                    data=reg
-
+                    source=f"envds.{self.config.daq_id}.registrar", data=reg
                 )
                 # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
                 bcast["destpath"] = f"envds/{self.config.daq_id}/registry-sync/bcast"
@@ -156,9 +165,9 @@ class Registrar():
 
             await asyncio.sleep(5)
         pass
-    
+
     async def get_device_instance(self, devices: list[str]) -> list:
-        pass        
+        pass
 
     async def get_device_instances_loop(self):
         while True:
@@ -168,13 +177,22 @@ class Registrar():
     async def handle_registry_sync(self, message: CloudEvent):
 
         if message["type"] == det.registry_sync_bcast():
-            self.logger.debug("handle_registry_sync", extra={"ce-type": message["type"], "data": message.data})
+            self.logger.debug(
+                "handle_registry_sync",
+                extra={"ce-type": message["type"], "data": message.data},
+            )
             # compare with local registry and request updates for any changes
         elif message["type"] == det.registry_sync_update():
-            self.logger.debug("handle_registry_sync", extra={"ce-type": message["type"], "data": message.data})
+            self.logger.debug(
+                "handle_registry_sync",
+                extra={"ce-type": message["type"], "data": message.data},
+            )
             # add to registry if needed
         elif message["type"] == det.registry_sync_request():
-            self.logger.debug("handle_registry_sync", extra={"ce-type": message["type"], "data": message.data})
+            self.logger.debug(
+                "handle_registry_sync",
+                extra={"ce-type": message["type"], "data": message.data},
+            )
             # respond with requested information
 
     async def registry_compare_bcast(self, message: CloudEvent):
@@ -184,29 +202,45 @@ class Registrar():
             if bcast_type == "device-definition-list":
 
                 # send updates for items remote is missing
-                missing_remote = [item for item in self.current_device_definition_list if item not in bcast_list]
+                missing_remote = [
+                    item
+                    for item in self.current_device_definition_list
+                    if item not in bcast_list
+                ]
                 for id in missing_remote:
                     query = {"device_definition_id": id}
-                    results = await self.submit_request(path="device-definition/registry/get", query=query)
+                    results = await self.submit_request(
+                        path="device-definition/registry/get", query=query
+                    )
                     if results:
                         update = DAQEvent.create_registry_sync_update(
-                        source=f"envds.{self.config.daq_id}.registrar",
-                        data={"device-definition-update": results[0]} # just send the dict
-                )
+                            source=f"envds.{self.config.daq_id}.registrar",
+                            data={
+                                "device-definition-update": results[0]
+                            },  # just send the dict
+                        )
                 # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
                 update["destpath"] = f"envds/{self.config.daq_id}/registry-sync/update"
                 await self.send_event(update)
 
-                missing_local = [item for item in bcast_list if item not in self.current_device_definition_list]
+                missing_local = [
+                    item
+                    for item in bcast_list
+                    if item not in self.current_device_definition_list
+                ]
                 request = DAQEvent.create_registry_sync_request(
-                source=f"envds.{self.config.daq_id}.registrar",
-                data={"device-definition-request": missing_local} # just send the dict
+                    source=f"envds.{self.config.daq_id}.registrar",
+                    data={
+                        "device-definition-request": missing_local
+                    },  # just send the dict
+                )
                 # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
                 update["destpath"] = f"envds/{self.config.daq_id}/registry-sync/request"
                 await self.send_event(update)
 
             elif bcast_type == "device-instance-list":
                 pass
+
 
 # def build_sensor_registry_document(sensor_def: dict):
 #     L.debug("build_sensor_registry_document", extra={"sd": sensor_def})
@@ -831,11 +865,13 @@ class Registrar():
 # #     app.run(debug=config.debug, host=config.host, port=config.port)
 # #     # app.run()
 
+
 async def shutdown():
     print("shutting down")
     # for task in task_list:
     #     print(f"cancel: {task}")
     #     task.cancel()
+
 
 async def main(config):
     config = uvicorn.Config(
@@ -886,4 +922,3 @@ if __name__ == "__main__":
         pass
 
     asyncio.run(main(config))
-
