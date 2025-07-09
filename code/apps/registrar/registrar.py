@@ -88,7 +88,7 @@ class Registrar():
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
             results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
-            self.logger.debug("submit_request", extra={"results": results})
+            self.logger.debug("submit_request", extra={"results": results.json()})
             return results
         except Exception as e:
             self.logger.error("submit_request", extra={"reason": e})
@@ -100,7 +100,7 @@ class Registrar():
             query = {}
             results = await self.submit_request(path="device-definition/registry/get", query=query)
             # results = httpx.get(f"http://{self.datastore_url}/device-definition/registry/get/", parmams=query)
-            print(f"results: {results}")
+            self.logger.debug("get_device_definitions_loop", extra={"results": results})
 
             await asyncio.sleep(5)
         pass
