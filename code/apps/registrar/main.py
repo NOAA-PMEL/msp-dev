@@ -18,7 +18,7 @@ from typing import Annotated
 from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
 
-from datastore import Datastore, DataStoreQuery
+from registrar import Registrar
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())

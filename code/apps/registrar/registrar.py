@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8787
     debug: bool = False
-    namespace_prefix: str | None = None
+    daq_id: str | None = None
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
@@ -76,7 +76,7 @@ class Registrar():
         self.logger.setLevel(logging.DEBUG)
         self.config = Settings()
 
-        self.datastore_url = f"datastore.{self.config.namespace_prefix}-system"
+        self.datastore_url = f"datastore.{self.config.daq_id}-system"
 
         self.task_list = []
         self.task_list.append(self.get_device_definitions_loop())
@@ -84,15 +84,15 @@ class Registrar():
         for task in self.task_list:
             asyncio.create_task(task)
 
-    async def submit_request(self, database: str, collection: str, query: dict):
-        results = httpx.get(f"http://{self.datastore_url}/{collection}/{database}/get/", parmams=query)
+    async def submit_request(self, path: str, query: dict):
+        results = httpx.get(f"http://{self.datastore_url}/{path}/", parmams=query)
         return results
 
     async def get_device_definitions_loop(self):
 
         while True:
             query = {}
-            results = await self.submit_request(database="registry", collection="device-definition", query=query)
+            results = await self.submit_request(path="device-definition/registry/get", query=query)
             # results = httpx.get(f"http://{self.datastore_url}/device-definition/registry/get/", parmams=query)
             print(f"results: {results}")
 
