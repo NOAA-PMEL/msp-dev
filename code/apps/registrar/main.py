@@ -1,10 +1,10 @@
-import asyncio
+# import asyncio
 from datetime import datetime, timezone
 import json
 import logging
 
-from fastapi import FastAPI, Request, Query, status  # , APIRouter
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request
+# from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
 from cloudevents.http import CloudEvent, from_http, from_json
