@@ -18,7 +18,8 @@ COPY VERSION .
 # COPY datasets.d.sh .
 # RUN chmod +x datasets.d.sh
 
-COPY ./registrar.py ./app.py
+COPY ./registrar.py ./registrar.py
+COPY ./main.py ./main.py
 
 # run the same as tomcat so we can update the erddap datasets for now
 RUN chown -R registrar:registrar $APP_HOME
@@ -26,4 +27,4 @@ USER registrar
 
 # CMD [ "python3", "verify.py" ]
 # CMD exec gunicorn --workers 1 --threads 8 --timeout 0 app:app
-CMD ["python", "app.py", "--host", "0.0.0.0"]
+CMD ["python", "registrar.py", "--host", "0.0.0.0"]
