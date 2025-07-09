@@ -346,6 +346,7 @@ class RedisClient(DBClient):
             except Exception as e:
                 self.logger.error("device_definition_registry_get", extra={"reason": e})
                 continue
+        self.logger.debug("device_definition_registry_get", extra={"results": results})
         return {"results": results}
 
     async def device_instance_registry_update(
