@@ -87,7 +87,7 @@ class Registrar():
     async def submit_request(self, path: str, query: dict):
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
-            results = httpx.get(f"http://{self.datastore_url}/{path}/", parmams=query)
+            results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
             self.logger.debug("submit_request", extra={"results": results})
             return results
         except Exception as e:
