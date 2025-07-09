@@ -1,5 +1,5 @@
 # FROM python:3.10-slim
-FROM python:3.12-slim-bullseye
+FROM ghcr.io/noaa-pmel/msp/envds-base:latest
 
 RUN groupadd  registrar
 RUN useradd -m -g registrar -s /bin/bash registrar
