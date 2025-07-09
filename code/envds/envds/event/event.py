@@ -86,6 +86,24 @@ class envdsEvent(object):
         )
 
     @staticmethod
+    def create_registry_sync_bcast(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.registry_sync_bcast(), source=source, data=data, extra_header=extra_header
+        )
+
+    @staticmethod
+    def create_registry_sync_request(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.registry_sync_request(), source=source, data=data, extra_header=extra_header
+        )
+
+    @staticmethod
+    def create_registry_sync_update(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.registry_sync_update(), source=source, data=data, extra_header=extra_header
+        )
+
+    @staticmethod
     def create_service_registry_update(source: str, data: dict = {}, extra_header: dict = None):
         return envdsEvent.create(
             type=et.service_registry_update(), source=source, data=data, extra_header=extra_header
