@@ -1,7 +1,7 @@
 # asyncio_mqtt==0.12.1
 cloudevents
 # flask
-gunicorn
+uvicorn
 httpx
 logfmter
 pydantic==1.9.1
