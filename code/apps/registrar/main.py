@@ -99,3 +99,17 @@ registrar = Registrar()
 @app.get("/")
 async def root():
     return {"message": "Hello World from Registrar"}
+
+@app.post("/registry-sync/", status_code=status.HTTP_202_ACCEPTED)
+async def registry_sync(request: Request):
+    try:
+        ce = from_http(request.headers, await request.body())
+        L.debug(request.headers)
+        L.debug("device_definition_registry_update", extra={"ce": ce, "destpath": ce["destpath"]})
+        # await adapter.send_to_mqtt(ce)
+        await registrar.handle_registry_sync(ce)
+    except Exception as e:
+        # L.error("send", extra={"reason": e})
+        pass
+
+    return "",204
