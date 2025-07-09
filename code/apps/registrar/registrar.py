@@ -149,7 +149,7 @@ class Registrar:
                 for device_def in results["results"]:
                     self.logger.debug("get_device_definitions_loop", extra={"device_def": device_def})
                     id = device_def.get("device_definition_id", None)
-                    id = None
+                    # id = None
                     if id:
                         def_list.append(id)
                 reg = {"device-definition-list": def_list}
