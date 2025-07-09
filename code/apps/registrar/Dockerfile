@@ -26,4 +26,4 @@ USER registrar
 
 # CMD [ "python3", "verify.py" ]
 # CMD exec gunicorn --workers 1 --threads 8 --timeout 0 app:app
-CMD ["python", "registrar.py", "--host", "0.0.0.0"]
+CMD ["python", "app.py", "--host", "0.0.0.0"]
