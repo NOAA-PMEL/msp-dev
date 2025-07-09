@@ -1,6 +1,5 @@
-# asyncio_mqtt==0.12.1
 cloudevents
-# flask
+fastapi>=0.79.0,<0.80.0
 uvicorn
 httpx
 logfmter
