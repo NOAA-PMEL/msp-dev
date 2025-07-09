@@ -85,9 +85,15 @@ class Registrar():
             asyncio.create_task(task)
 
     async def submit_request(self, path: str, query: dict):
-        results = httpx.get(f"http://{self.datastore_url}/{path}/", parmams=query)
-        return results
-
+        try:
+            self.logger.debug("submit_request", extra={"path": path, "query": query})
+            results = httpx.get(f"http://{self.datastore_url}/{path}/", parmams=query)
+            self.logger.debug("submit_request", extra={"results": results})
+            return results
+        except Exception as e:
+            self.logger.error("submit_request", extra={"reason": e})
+            return []
+        
     async def get_device_definitions_loop(self):
 
         while True:
