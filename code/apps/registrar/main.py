@@ -94,7 +94,7 @@ app = FastAPI()
 #     end_time: str | None = None
 #     custom: dict | None = None
 
-registrar = Registrar()
+# registrar = Registrar()
 
 @app.get("/")
 async def root():

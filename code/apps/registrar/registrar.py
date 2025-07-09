@@ -742,7 +742,7 @@ async def main(config):
         host=config.host,
         port=config.port,
         # log_level=server_config.log_level,
-        root_path="/msp/datastore",
+        root_path="/msp/registrar",
         # log_config=dict_config,
     )
 
