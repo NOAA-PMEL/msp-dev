@@ -186,6 +186,8 @@ class Registrar:
                 extra={"ce-type": message["type"], "data": message.data},
             )
             # compare with local registry and request updates for any changes
+            self.registry_compare_bcast(message)
+            
         elif message["type"] == det.registry_sync_update():
             self.logger.debug(
                 "handle_registry_sync",
