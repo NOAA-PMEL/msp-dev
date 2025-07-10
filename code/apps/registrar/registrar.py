@@ -137,36 +137,38 @@ class Registrar:
     async def get_device_definitions_loop(self):
 
         while True:
-            query = {}
-            results = await self.submit_request(
-                path="device-definition/registry/get", query=query
-            )
-            # results = httpx.get(f"http://{self.datastore_url}/device-definition/registry/get/", parmams=query)
-            self.logger.debug("get_device_definitions_loop", extra={"results": results})
-
-            if "results" in results and results["results"]:
-                def_list = []
-                for device_def in results["results"]:
-                    self.logger.debug("get_device_definitions_loop", extra={"device_def": device_def})
-                    id = device_def.get("device_definition_id", None)
-                    # id = None
-                    if id:
-                        def_list.append(id)
-                reg = {"device-definition-list": def_list}
-                self.current_device_definition_list = def_list
-
-                self.logger.debug("configure", extra={"self.config": self.config})
-                bcast = DAQEvent.create_registry_sync_bcast(
-                    source=f"envds.{self.config.daq_id}.registrar", data=reg
+            try: 
+                query = {}
+                results = await self.submit_request(
+                    path="device-definition/registry/get", query=query
                 )
-                # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                bcast["destpath"] = f"envds/{self.config.daq_id}/registry-sync/bcast"
-                await self.send_event(bcast)
+                # results = httpx.get(f"http://{self.datastore_url}/device-definition/registry/get/", parmams=query)
+                self.logger.debug("get_device_definitions_loop", extra={"results": results})
 
-            # source=f"envds.{self.config.daq_id}.datastore",
+                if "results" in results and results["results"]:
+                    def_list = []
+                    for device_def in results["results"]:
+                        self.logger.debug("get_device_definitions_loop", extra={"device_def": device_def})
+                        id = device_def.get("device_definition_id", None)
+                        # id = None
+                        if id:
+                            def_list.append(id)
+                    reg = {"device-definition-list": def_list}
+                    self.current_device_definition_list = def_list
+
+                    self.logger.debug("configure", extra={"self.config": self.config})
+                    bcast = DAQEvent.create_registry_sync_bcast(
+                        source=f"envds.{self.config.daq_id}.registrar", data=reg
+                    )
+                    # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                    bcast["destpath"] = f"envds/{self.config.daq_id}/registry-sync/bcast"
+                    await self.send_event(bcast)
+
+                # source=f"envds.{self.config.daq_id}.datastore",
+            except Exception as e:
+                self.logger.error("get_device_definitions_loop", extra={"reason": e})
 
             await asyncio.sleep(5)
-        pass
 
     async def get_device_instance(self, devices: list[str]) -> list:
         pass
