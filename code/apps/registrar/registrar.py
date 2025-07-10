@@ -213,36 +213,44 @@ class Registrar:
                     for item in self.current_device_definition_list
                     if item not in bcast_list
                 ]
-                for id in missing_remote:
-                    query = {"device_definition_id": id}
-                    results = await self.submit_request(
-                        path="device-definition/registry/get", query=query
-                    )
-                    if results:
-                        update = DAQEvent.create_registry_sync_update(
-                            source=f"envds.{self.config.daq_id}.registrar",
-                            data={
-                                "device-definition-update": results[0]
-                            },  # just send the dict
+                self.logger.debug("missing_remote", extra={"missing": missing_remote})
+                try:
+                    for id in missing_remote:
+                        query = {"device_definition_id": id}
+                        results = await self.submit_request(
+                            path="device-definition/registry/get", query=query
                         )
-                # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
-                await self.send_event(update)
+                        if results:
+                            update = DAQEvent.create_registry_sync_update(
+                                source=f"envds.{self.config.daq_id}.registrar",
+                                data={
+                                    "device-definition-update": results[0]
+                                },  # just send the dict
+                            )
+                    # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                    update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                    await self.send_event(update)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
 
                 missing_local = [
                     item
                     for item in bcast_list
                     if item not in self.current_device_definition_list
                 ]
-                request = DAQEvent.create_registry_sync_request(
-                    source=f"envds.{self.config.daq_id}.registrar",
-                    data={
-                        "device-definition-request": missing_local
-                    },  # just send the dict
-                )
-                # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
-                await self.send_event(update)
+                self.logger.debug("missing_local", extra={"missing": missing_local})
+                try:
+                    request = DAQEvent.create_registry_sync_request(
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={
+                            "device-definition-request": missing_local
+                        },  # just send the dict
+                    )
+                    # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                    update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+                    await self.send_event(update)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
 
             elif bcast_type == "device-instance-list":
                 pass
