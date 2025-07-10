@@ -161,7 +161,7 @@ class Registrar:
                         source=f"envds.{self.config.daq_id}.registrar", data=reg
                     )
                     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                    bcast["destpath"] = f"envds/{self.config.daq_id}/registry-sync/bcast"
+                    bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
                     await self.send_event(bcast)
 
                 # source=f"envds.{self.config.daq_id}.datastore",
@@ -224,7 +224,7 @@ class Registrar:
                             },  # just send the dict
                         )
                 # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                update["destpath"] = f"envds/{self.config.daq_id}/registry-sync/update"
+                update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
                 await self.send_event(update)
 
                 missing_local = [
@@ -239,7 +239,7 @@ class Registrar:
                     },  # just send the dict
                 )
                 # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                update["destpath"] = f"envds/{self.config.daq_id}/registry-sync/request"
+                update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
                 await self.send_event(update)
 
             elif bcast_type == "device-instance-list":
