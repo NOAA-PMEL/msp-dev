@@ -34,7 +34,7 @@ from envds.util.util import (
 )
 
 from envds.daq.event import DAQEvent
-import envds.daq.types as det
+from envds.daq.types import DAQEventType as det
 
 # import pymongo
 

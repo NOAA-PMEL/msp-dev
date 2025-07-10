@@ -27,7 +27,7 @@ from cloudevents.exceptions import InvalidStructuredJSON
 from datetime import datetime, timezone
 
 from envds.daq.event import DAQEvent
-import envds.daq.types as det
+from envds.daq.types import DAQEventType as det
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
