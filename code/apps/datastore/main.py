@@ -133,8 +133,7 @@ async def device_data_update(request: Request):
     except Exception as e:
         L.error("device_data_update", extra={"reason": e})
         pass
-
-    return "",204
+        return "",204
     
 
 @app.get("/device/data/get")
@@ -191,13 +190,10 @@ async def device_settings_update(request: Request):
     except Exception as e:
         # print(e)
         L.error("send", extra={"reason": e})
-        pass
-    # return "ok", 200
-    # ce = CloudEvent(attributes=attributes, data=response)
-    # return to_json(ce)
-    return {"message": "OK"}
+        return '', 204
+    # return {"message": "OK"}
 
-    return '', 204
+    # return '', 204
     # return "",204
     
 
@@ -228,10 +224,7 @@ async def status_update(request: Request):
         # print(e)
         L.error("status_update", extra={"reason": e})
         pass
-    # return "ok", 200
-    # ce = CloudEvent(attributes=attributes, data=response)
-    # return to_json(ce)
-    return {"message": "OK"}
+        return '', 204
 
 # @app.post("/settings/update")
 # async def settings_update(ce: CloudEvent):
@@ -262,8 +255,7 @@ async def device_registry_update(request: Request):
     except Exception as e:
         # L.error("send", extra={"reason": e})
         pass
-
-    return "",204
+        return "",204
     
 # @app.get("/device/registry/get")
 # async def device_registry_get(query: Annotated[DeviceInstanceRequest, Query()], device_type: str="sensor", ):
@@ -300,8 +292,7 @@ async def device_definition_registry_update(request: Request):
     except Exception as e:
         # L.error("send", extra={"reason": e})
         pass
-
-    return "",204
+        return "",204
     
 @app.get("/device-definition/registry/get/")
 # async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
