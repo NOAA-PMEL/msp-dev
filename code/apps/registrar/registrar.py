@@ -213,7 +213,7 @@ class Registrar:
                     event = DAQEvent.create_device_definition_registry_update(
                         # source="device.mockco-mock1-1234", data=record
                         source=f"envds.{self.config.daq_id}.registrar",
-                        data={"device-definition": self.metadata},
+                        data={"device-definition": update},
                     )
                     destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
                     self.logger.debug(
@@ -230,9 +230,9 @@ class Registrar:
         data = message.data
         for request_type, request_list in data.items():
             if request_type == "device-definition-request":
-                self.logger.debug("registry_send_update", extra={"defintion_id": id})
                 try:
                     for id in request_list:
+                        self.logger.debug("registry_send_update", extra={"defintion_id": id})
                         self.send_device_definition_update(id)
                         # query = {"device_definition_id": id}
                         # results = await self.submit_request(
