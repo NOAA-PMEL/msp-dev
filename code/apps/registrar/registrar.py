@@ -259,7 +259,8 @@ class Registrar:
                 path="device-definition/registry/get", query=query
             )
             self.logger.debug("send_device_definition_update", extra={"results": results, "query": query})
-            if "results" in results and results["results"]:                update = DAQEvent.create_registry_sync_update(
+            if "results" in results and results["results"]:
+                update = DAQEvent.create_registry_sync_update(
                     source=f"envds.{self.config.daq_id}.registrar",
                     data={
                         "device-definition-update": results["results"][0]
