@@ -220,7 +220,7 @@ class Registrar:
                         "register_device_definition", extra={"data": event, "destpath": destpath}
                     )
                     event["destpath"] = destpath
-                    # await self.send_event(event)
+                    await self.send_event(event)
         except Exception as e:
             self.logger.error("register_device_definition", extra={"reason": e})
 
