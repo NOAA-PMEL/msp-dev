@@ -231,7 +231,8 @@ class Device(envdsBase):
                         source=self.get_id_as_source(),
                         data={"device-definition": self.metadata},
                     )
-                    destpath = f"{self.get_id_as_topic()}/registry/update"
+                    # destpath = f"{self.get_id_as_topic()}/registry/update"
+                    destpath = f"envds/{self.core_settings.namespace_prefix}/device-definition/registry/update"
                     self.logger.debug(
                         "register_device_definition", extra={"data": event, "destpath": destpath}
                     )
@@ -263,7 +264,8 @@ class Device(envdsBase):
                     source=self.get_id_as_source(),
                     data={"device-instance": instance_reg},
                 )
-                destpath = f"{self.get_id_as_topic()}/registry/update"
+                # destpath = f"{self.get_id_as_topic()}/registry/update"
+                destpath = f"envds/{self.core_settings.namespace_prefix}/device-instance/registry/update"
                 self.logger.debug(
                     "register_device_definition", extra={"data": event, "destpath": destpath}
                 )
