@@ -60,11 +60,11 @@ class RedisClient(DBClient):
         try:
             # data:device
             schema = (
-                TextField("$.record.device_id", as_name="device_id"),
-                TextField("$.record.make", as_name="make"),
-                TextField("$.record.model", as_name="model"),
-                TextField("$.record.serial_number", as_name="serial_number"),
-                TextField("$.record.version", as_name="version"),
+                TagField("$.record.device_id", as_name="device_id"),
+                TagField("$.record.make", as_name="make"),
+                TagField("$.record.model", as_name="model"),
+                TagField("$.record.serial_number", as_name="serial_number"),
+                TagField("$.record.version", as_name="version"),
                 # TextField("$.record.device_type", as_name="device_type"),
                 NumericField("$.record.timestamp", as_name="timestamp")
             )
@@ -76,10 +76,10 @@ class RedisClient(DBClient):
 
             # registry:device-definition
             schema = (
-                TextField("$.registration.device_definition_id", as_name="device_definition_id"),
-                TextField("$.registration.make", as_name="make"),
-                TextField("$.registration.model", as_name="model"),
-                TextField("$.registration.version", as_name="version"),
+                TagField("$.registration.device_definition_id", as_name="device_definition_id"),
+                TagField("$.registration.make", as_name="make"),
+                TagField("$.registration.model", as_name="model"),
+                TagField("$.registration.version", as_name="version"),
                 TextField("$.registration.device_type", as_name="device_type"),
             )
             definition = IndexDefinition(
@@ -90,10 +90,10 @@ class RedisClient(DBClient):
 
             # registry:device-instance
             schema = (
-                TextField("$.registration.device_id", as_name="device_id"),
-                TextField("$.registration.make", as_name="make"),
-                TextField("$.registration.model", as_name="model"),
-                TextField("$.registration.serial_number", as_name="serial_number"),
+                TagField("$.registration.device_id", as_name="device_id"),
+                TagField("$.registration.make", as_name="make"),
+                TagField("$.registration.model", as_name="model"),
+                TagField("$.registration.serial_number", as_name="serial_number"),
                 TextField("$.registration.device_type", as_name="device_type"),
             )
             definition = IndexDefinition(
