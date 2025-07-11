@@ -132,7 +132,7 @@ class Registrar:
             return results.json()
         except Exception as e:
             self.logger.error("submit_request", extra={"reason": e})
-            return None
+            return {}
 
     async def get_device_definitions_loop(self):
 
@@ -247,8 +247,8 @@ class Registrar:
                         },  # just send the dict
                     )
                     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                    update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
-                    await self.send_event(update)
+                    request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+                    await self.send_event(request)
                 except Exception as e:
                     self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
 
