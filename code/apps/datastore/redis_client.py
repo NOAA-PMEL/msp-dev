@@ -267,7 +267,7 @@ class RedisClient(DBClient):
             if result and ttl > 0:
                 self.client.expire(key, ttl)
 
-            self.logger.debug("device_defintion_registry_update", extra={"check_request": check_request, "result": result})
+            self.logger.debug("device_definition_registry_update", extra={"check_request": check_request, "result": result})
             return result
         
         except Exception as e:
@@ -315,7 +315,7 @@ class RedisClient(DBClient):
 
         query_args = []
         if request.device_definition_id:
-            query_args.append(f"@device_defintion_id:{request.device_definition_id}")
+            query_args.append(f"@device_definition_id:{request.device_definition_id}")
         if request.make:
             query_args.append(f"@make:{request.make}")
         if request.model:
