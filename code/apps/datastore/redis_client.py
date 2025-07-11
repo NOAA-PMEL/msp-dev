@@ -115,6 +115,16 @@ class RedisClient(DBClient):
     #         keys = database.split(":")
     #         self.client.json().set(database, f"$.{keys[-1]}", {collection: []})
 
+    def escape_query(self, query: str) -> str:
+        special = [",",".","<",">","{","}","[","]","'",":",";","!","@","#","$","%","^","&","*","(",")","-","+","=","~"]
+        escaped = ""
+        for ch in query:
+            if ch in special:
+                escaped += "\\"
+            escaped += ch
+
+        return escaped 
+    
     async def device_data_update(
         self,
         # document: dict,
@@ -167,41 +177,41 @@ class RedisClient(DBClient):
             self.logger.error("device_data_update", extra={"reason": e})
             return None
         
-    async def device_data_get(self, query: DataStoreQuery):
-        await super(RedisClient, self).device_data_get(query)
+    # async def device_data_get(self, query: DataStoreQuery):
+    #     await super(RedisClient, self).device_data_get(query)
 
-        query_args = []
-        if query.device_id:
-            query_args.append(f"@device_id:{query.device_id}")
-        if query.make:
-            query_args.append(f"@make:{query.make}")
-        if query.model:
-            query_args.append(f"@model:{query.model}")
-        if query.serial_number:
-            query_args.append(f"@serial_number:{query.serial_number}")
+    #     query_args = []
+    #     if query.device_id:
+    #         query_args.append(f"@device_id:{{{query.device_id}}}")
+    #     if query.make:
+    #         query_args.append(f"@make:{{{query.make}}}")
+    #     if query.model:
+    #         query_args.append(f"@model:{{{query.model}}}")
+    #     if query.serial_number:
+    #         query_args.append(f"@serial_number:{{{query.serial_number}}}")
 
-        if query.version:
-            query_args.append(f"@version:{query.version}")
+    #     if query.version:
+    #         query_args.append(f"@version:{{{query.version}}}")
 
-        if query.start_time:
-            query_args.append(f"@timestamp>={query.start_timestamp}")
+    #     if query.start_time:
+    #         query_args.append(f"@timestamp>={{{query.start_timestamp}}}")
         
-        if query.end_time:
-            query_args.append(f"@timestamp<{query.end_timestamp}")
+    #     if query.end_time:
+    #         query_args.append(f"@timestamp<{{{query.end_timestamp}}}")
 
-        # if query.start_timestamp and query.end_timestamp is None:
-        #     query_args.append(f"@timestamp:[{query.start_timestamp} Inf]")
-        # elif query.start_timestamp is None and query.end_timestamp:
-        #     query_args.append(f"@timestamp:[-Inf {query.end_timestamp}]")
-        # elif query.start_timestamp and query.end_timestamp:
-        #     query_args.append(f"@timestamp:[{query.start_timestamp} {query.end_timestamp}]")
+    #     # if query.start_timestamp and query.end_timestamp is None:
+    #     #     query_args.append(f"@timestamp:[{query.start_timestamp} Inf]")
+    #     # elif query.start_timestamp is None and query.end_timestamp:
+    #     #     query_args.append(f"@timestamp:[-Inf {query.end_timestamp}]")
+    #     # elif query.start_timestamp and query.end_timestamp:
+    #     #     query_args.append(f"@timestamp:[{query.start_timestamp} {query.end_timestamp}]")
 
-        qstring = " ".join(query_args)
-        self.logger.debug("device_data_get", extra={"query_string": qstring})
-        q = Query(qstring).sort_by("timestamp")
-        result = self.client.ft(self.data_device_index_name).search(q).docs
+    #     qstring = " ".join(query_args)
+    #     self.logger.debug("device_data_get", extra={"query_string": qstring})
+    #     q = Query(qstring).sort_by("timestamp")
+    #     result = self.client.ft(self.data_device_index_name).search(q).docs
 
-        return result
+    #     return result
     
     async def device_definition_registry_update(
         self,
@@ -278,12 +288,12 @@ class RedisClient(DBClient):
     async def device_data_get(self, query: DataRequest):
         await super(RedisClient, self).device_data_get(query)
 
-        query_args = [f"@make:{query.make}"]
-        query_args.append(f"@model:{query.model}")
-        query_args.append(f"@serial_number:{query.serial_number}")
+        query_args = [f"@make:{{{self.escape_query(query.make)}}}"]
+        query_args.append(f"@model:{{{self.escape_query(query.model)}}}")
+        query_args.append(f"@serial_number:{{{self.escape_query(query.serial_number)}}}")
 
         if query.version:
-            query_args.append(f"@version:{query.version}")
+            query_args.append(f"@version:{{{self.escape_query(query.version)}}}")
 
         if query.start_timestamp:
             query_args.append(f"@timestamp >= {query.start_timestamp}")
@@ -315,13 +325,13 @@ class RedisClient(DBClient):
 
         query_args = []
         if request.device_definition_id:
-            query_args.append(f"@device_definition_id:{request.device_definition_id}")
+            query_args.append(f"@device_definition_id:{{{self.escape_query(request.device_definition_id)}}}")
         if request.make:
-            query_args.append(f"@make:{request.make}")
+            query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
         if request.model:
-            query_args.append(f"@model:{request.model}")
+            query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
         if request.version:
-            query_args.append(f"@version:{request.version}")
+            query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
 
         # if request.version:
         #     query_args.append(f"@version:{request.version}")
@@ -423,12 +433,14 @@ class RedisClient(DBClient):
         await super(RedisClient, self).device_instance_registry_get(request)
 
         query_args = []
+        if request.device_id:
+            query_args.append(f"@device_definition_id:{{{self.escape_query(request.device_id)}}}")
         if request.make:
-            query_args.append(f"@make:{request.make}")
+            query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
         if request.model:
-            query_args.append(f"@model:{request.model}")
+            query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
         if request.serial_number:
-            query_args.append(f"@serial_number:{request.serial_number}")
+            query_args.append(f"@serial_number:{{{self.escape_query(request.serial_number)}}}")
 
         # if request.version:
         #     query_args.append(f"@version:{request.version}")
