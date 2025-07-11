@@ -258,6 +258,7 @@ class Registrar:
             results = await self.submit_request(
                 path="device-definition/registry/get", query=query
             )
+            self.logger.debug("send_device_definition_update", extra={"results": results})
             if results:
                 update = DAQEvent.create_registry_sync_update(
                     source=f"envds.{self.config.daq_id}.registrar",
