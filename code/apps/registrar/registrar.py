@@ -194,7 +194,7 @@ class Registrar:
                 extra={"ce-type": message["type"], "data": message.data},
             )
             # add to registry if needed
-            self.registry_do_update(message)
+            await self.registry_do_update(message)
         elif message["type"] == det.registry_sync_request():
             self.logger.debug(
                 "handle_registry_sync",
@@ -232,8 +232,8 @@ class Registrar:
             if request_type == "device-definition-request":
                 try:
                     for id in request_list:
-                        self.logger.debug("registry_send_update", extra={"defintion_id": id})
-                        self.send_device_definition_update(id)
+                        self.logger.debug("registry_send_update", extra={"definition_id": id})
+                        await self.send_device_definition_update(id)
                         # query = {"device_definition_id": id}
                         # results = await self.submit_request(
                         #     path="device-definition/registry/get", query=query
@@ -258,7 +258,7 @@ class Registrar:
             results = await self.submit_request(
                 path="device-definition/registry/get", query=query
             )
-            self.logger.debug("send_device_definition_update", extra={"results": results})
+            self.logger.debug("send_device_definition_update", extra={"results": results, "query": query})
             if results:
                 update = DAQEvent.create_registry_sync_update(
                     source=f"envds.{self.config.daq_id}.registrar",
@@ -287,7 +287,7 @@ class Registrar:
                 self.logger.debug("missing_remote", extra={"missing": missing_remote})
                 try:
                     for id in missing_remote:
-                        self.send_device_definition_update(id)
+                        await self.send_device_definition_update(id)
                         # query = {"device_definition_id": id}
                         # results = await self.submit_request(
                         #     path="device-definition/registry/get", query=query
