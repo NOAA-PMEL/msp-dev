@@ -194,12 +194,82 @@ class Registrar:
                 extra={"ce-type": message["type"], "data": message.data},
             )
             # add to registry if needed
+            self.registry_do_update(message)
         elif message["type"] == det.registry_sync_request():
             self.logger.debug(
                 "handle_registry_sync",
                 extra={"ce-type": message["type"], "data": message.data},
             )
             # respond with requested information
+            await self.registry_send_update(message)
+    
+    async def registry_do_update(self, message: CloudEvent):
+        try:
+
+            data = message.data
+            for update_type, update in data.items():
+                if update_type == "device-definition-update":
+
+                    event = DAQEvent.create_device_definition_registry_update(
+                        # source="device.mockco-mock1-1234", data=record
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={"device-definition": self.metadata},
+                    )
+                    destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+                    self.logger.debug(
+                        "register_device_definition", extra={"data": event, "destpath": destpath}
+                    )
+                    event["destpath"] = destpath
+                    # await self.send_event(event)
+        except Exception as e:
+            self.logger.error("register_device_definition", extra={"reason": e})
+
+
+    async def registry_send_update(self, message: CloudEvent):
+
+        data = message.data
+        for request_type, request_list in data.items():
+            if request_type == "device-definition-request":
+                self.logger.debug("registry_send_update", extra={"defintion_id": id})
+                try:
+                    for id in request_list:
+                        self.send_device_definition_update(id)
+                        # query = {"device_definition_id": id}
+                        # results = await self.submit_request(
+                        #     path="device-definition/registry/get", query=query
+                        # )
+                        # if results:
+                        #     update = DAQEvent.create_registry_sync_update(
+                        #         source=f"envds.{self.config.daq_id}.registrar",
+                        #         data={
+                        #             "device-definition-update": results[0]
+                        #         },  # just send the dict
+                        #     )
+                        #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                        #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                        #     await self.send_event(update)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
+
+
+    async def send_device_definition_update(self, device_definition_id: str):
+        try:
+            query = {"device_definition_id": device_definition_id}
+            results = await self.submit_request(
+                path="device-definition/registry/get", query=query
+            )
+            if results:
+                update = DAQEvent.create_registry_sync_update(
+                    source=f"envds.{self.config.daq_id}.registrar",
+                    data={
+                        "device-definition-update": results[0]
+                    },  # just send the dict
+                )
+                # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                await self.send_event(update)
+        except Exception as e:
+            self.logger.error("send_device_definition_update", extra={"reason": e})
 
     async def registry_compare_bcast(self, message: CloudEvent):
 
@@ -216,20 +286,21 @@ class Registrar:
                 self.logger.debug("missing_remote", extra={"missing": missing_remote})
                 try:
                     for id in missing_remote:
-                        query = {"device_definition_id": id}
-                        results = await self.submit_request(
-                            path="device-definition/registry/get", query=query
-                        )
-                        if results:
-                            update = DAQEvent.create_registry_sync_update(
-                                source=f"envds.{self.config.daq_id}.registrar",
-                                data={
-                                    "device-definition-update": results[0]
-                                },  # just send the dict
-                            )
-                    # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                    update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
-                    await self.send_event(update)
+                        self.send_device_definition_update(id)
+                        # query = {"device_definition_id": id}
+                        # results = await self.submit_request(
+                        #     path="device-definition/registry/get", query=query
+                        # )
+                        # if results:
+                        #     update = DAQEvent.create_registry_sync_update(
+                        #         source=f"envds.{self.config.daq_id}.registrar",
+                        #         data={
+                        #             "device-definition-update": results[0]
+                        #         },  # just send the dict
+                        #     )
+                        #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                        #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                        #     await self.send_event(update)
                 except Exception as e:
                     self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
 
