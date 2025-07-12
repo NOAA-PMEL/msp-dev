@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     # )
     # erddap_author: str = "fake_author"
 
-    dry_run: bool = False
+    # dry_run: bool = False
 
     class Config:
         env_prefix = "DASHBOARD_"
@@ -54,6 +54,7 @@ class Settings(BaseSettings):
 
 
 config = Settings()
+print(f"config: {config}")
 
 # TODO: add readOnly user for this connection
 
@@ -319,7 +320,8 @@ def get_layout():
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"ws:/dashboard/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor-registry/main",
-                url=f"ws://mspbase01.pmel.noaa.gov:8080/msp/dashboardtest/ws/sensor-registry/main",
+                # url=f"ws://mspbase01.pmel.noaa.gov:8080/msp/dashboardtest/ws/sensor-registry/main",
+                url=f"ws://{config.ws_hostname}/sp/dashboardtest/ws/sensor-registry/main"
             ),
             ws_send_buffer,
             dcc.Store(id="sensor-defs-changes", data=[]),
