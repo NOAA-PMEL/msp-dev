@@ -231,6 +231,12 @@ ws_send_buffer = html.Div(id="ws-send-buffer", style={"display": "none"})
 
 datastore_url = f"datastore.{config.namespace_prefix}-system"
 
+query = {"device_type": "sensor"}
+url = f"http://{datastore_url}/device-definition/registry/get/"
+print(f"device-definition-get: {url}")
+results = httpx.get(url, params=query)
+print(f"results: {results}")
+
 
 def get_layout():
     # print("here:1")
