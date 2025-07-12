@@ -377,7 +377,7 @@ def update_sensor_definitions(count, table_data):
     new_data = []
     try:
         # db_registry_client.connect()
-        
+
         # db_registry_client = None
         # if db_registry_client:
         #     sensor_def_registry = db_registry_client.get_collection(
@@ -419,9 +419,9 @@ def update_sensor_definitions(count, table_data):
         query = {"device_type": "sensor"}
         url = f"http://{datastore_url}/device-definition/registry/get/"
         print(f"device-definition-get: {url}")
-        results = httpx.get(url, params=query)
-        print(f"results: {results.json()}")
-
+        response = httpx.get(url, params=query)
+        results = response.json()
+        print(f"results: {results}")
         if "results" in results and results["results"]:
             for doc in results["results"].items():
                 if doc is not None:
