@@ -233,11 +233,11 @@ ws_send_buffer = html.Div(id="ws-send-buffer", style={"display": "none"})
 
 datastore_url = f"datastore.{config.daq_id}-system"
 
-query = {"device_type": "sensor"}
-url = f"http://{datastore_url}/device-definition/registry/get/"
-print(f"device-definition-get: {url}")
-results = httpx.get(url, params=query)
-print(f"results: {results}")
+# query = {"device_type": "sensor"}
+# url = f"http://{datastore_url}/device-definition/registry/get/"
+# print(f"device-definition-get: {url}")
+# results = httpx.get(url, params=query)
+# print(f"results: {results}")
 
 
 def get_layout():
@@ -377,15 +377,56 @@ def update_sensor_definitions(count, table_data):
     new_data = []
     try:
         # db_registry_client.connect()
-        db_registry_client = None
-        if db_registry_client:
-            sensor_def_registry = db_registry_client.get_collection(
-                "registry", "sensor_definition"
-            )
-            for doc in sensor_def_registry.find():
+        
+        # db_registry_client = None
+        # if db_registry_client:
+        #     sensor_def_registry = db_registry_client.get_collection(
+        #         "registry", "sensor_definition"
+        #     )
+        #     for doc in sensor_def_registry.find():
+        #         if doc is not None:
+        #             # print(f"doc: {doc}")
+        #             id = doc["_id"]
+        #             make = doc["make"]
+        #             model = doc["model"]
+        #             version = doc["version"]
+
+        #             sensor_def = {
+        #                 "sensor-def-id": id,
+        #                 "make": make,
+        #                 "model": model,
+        #                 "version": version,
+        #             }
+        #             if sensor_def not in table_data:
+        #                 table_data.append(sensor_def)
+        #                 update = True
+        #             new_data.append(sensor_def)
+
+
+        #     remove_data = []
+        #     for index, data in enumerate(table_data):
+        #         if data not in new_data:
+        #             update = True
+        #             remove_data.insert(0, index)
+        #     for index in remove_data:
+        #         table_data.pop(index)
+
+        #     if update:
+        #         return table_data
+        #     else:
+        #         return dash.no_update
+
+        query = {"device_type": "sensor"}
+        url = f"http://{datastore_url}/device-definition/registry/get/"
+        print(f"device-definition-get: {url}")
+        results = httpx.get(url, params=query)
+        print(f"results: {results.json()}")
+
+        if "results" in results and results["results"]:
+            for doc in results["results"].items():
                 if doc is not None:
                     # print(f"doc: {doc}")
-                    id = doc["_id"]
+                    id = doc["device_definition_id"]
                     make = doc["make"]
                     model = doc["model"]
                     version = doc["version"]
@@ -415,11 +456,7 @@ def update_sensor_definitions(count, table_data):
             else:
                 return dash.no_update
 
-        query = {"device_type": "sensor"}
-        url = f"http://{datastore_url}/device-definition/registry/get/"
-        print(f"device-definition-get: {url}")
-        results = httpx.get(url, params=query)
-        print(f"results: {results}")
+
 
     except Exception as e:
         print(f"update_sensor_definitions error: {e}")
