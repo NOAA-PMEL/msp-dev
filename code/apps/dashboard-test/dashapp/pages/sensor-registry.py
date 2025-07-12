@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8787
     debug: bool = False
-    namespace_prefix: str = "default"
+    daq_id: str = "default"
+    ws_hostname: str = "localhost:8080"
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
@@ -229,7 +230,7 @@ config = Settings()
 # )
 ws_send_buffer = html.Div(id="ws-send-buffer", style={"display": "none"})
 
-datastore_url = f"datastore.{config.namespace_prefix}-system"
+datastore_url = f"datastore.{config.daq_id}-system"
 
 query = {"device_type": "sensor"}
 url = f"http://{datastore_url}/device-definition/registry/get/"
