@@ -232,7 +232,7 @@ print(f"config: {config}")
 ws_send_buffer = html.Div(id="ws-send-buffer", style={"display": "none"})
 
 datastore_url = f"datastore.{config.daq_id}-system"
-
+link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 # query = {"device_type": "sensor"}
 # url = f"http://{datastore_url}/device-definition/registry/get/"
 # print(f"device-definition-get: {url}")
@@ -321,7 +321,7 @@ def get_layout():
                 # url=f"ws:/dashboard/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"ws://mspbase01.pmel.noaa.gov:8080/msp/dashboardtest/ws/sensor-registry/main",
-                url=f"ws://{config.ws_hostname}/sp/dashboardtest/ws/sensor-registry/main"
+                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor-registry/main"
             ),
             ws_send_buffer,
             dcc.Store(id="sensor-defs-changes", data=[]),
@@ -524,6 +524,52 @@ def update_active_sensors(count, table_data):
         query = {}
         results = httpx.get(f"http://{datastore_url}/device-instance/registry/get/", params=query)
         print(f"results: {results}")
+
+        query = {"device_type": "sensor"}
+        url = f"http://{datastore_url}/device-definition/registry/get/"
+        print(f"device-definition-get: {url}")
+        response = httpx.get(url, params=query)
+        results = response.json()
+        # print(f"results: {results}")
+        if "results" in results and results["results"]:
+            for doc in results["results"]:
+                make = doc["make"]
+                model = doc["model"]
+                serial_number = doc["serial_number"]
+                version = doc["version"]
+                sensor_id = "::".join([make, model, serial_number])
+                sampling_system_id = "unknown::unknown::unknown"
+
+                sensor = {
+                    # "sensor_id": f"[{sensor_id}](http://uasdaq.pmel.noaa.gov/uasdaq/dashboard/dash/sensor/{sensor_id})",
+                    "sensor_id": f"[{sensor_id}]({link_url_base}/dash/sensor/{sensor_id})",
+                    # "sensor_id": f"[{sensor_id}]({rel_path}/sensor/{sensor_id})",
+                    "make": make,
+                    "model": model,
+                    "serial_number": serial_number,
+                    # "sampling_system_id": f"[{sampling_system_id}](http://uasdaq.pmel.noaa.gov/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
+                    "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
+                    # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
+                }
+                if sensor not in table_data:
+                    table_data.append(sensor)
+                    update = True
+                new_data.append(sensor)
+
+            remove_data = []
+            for index, data in enumerate(table_data):
+                if data not in new_data:
+                    update = True
+                    remove_data.insert(0, index)
+            for index in remove_data:
+                table_data.pop(index)
+
+            if update:
+                return table_data
+            else:
+                return dash.no_update
+
+
     except Exception as e:
         print(f"update_active_sensors error: {e}")
         return dash.no_update
