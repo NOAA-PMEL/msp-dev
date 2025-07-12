@@ -521,12 +521,12 @@ def update_active_sensors(count, table_data):
         #         return dash.no_update
         pass
 
-        query = {}
-        results = httpx.get(f"http://{datastore_url}/device-instance/registry/get/", params=query)
-        print(f"results: {results}")
+        # query = {}
+        # results = httpx.get(f"http://{datastore_url}/device-instance/registry/get/", params=query)
+        # print(f"results: {results}")
 
         query = {"device_type": "sensor"}
-        url = f"http://{datastore_url}/device-definition/registry/get/"
+        url = f"http://{datastore_url}/device-instance/registry/get/"
         print(f"device-definition-get: {url}")
         response = httpx.get(url, params=query)
         results = response.json()
