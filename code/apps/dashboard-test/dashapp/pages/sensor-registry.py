@@ -407,7 +407,9 @@ def update_sensor_definitions(count, table_data):
                 return dash.no_update
 
         query = {"device_type": "sensor"}
-        results = httpx.get(f"http://{datastore_url}/device-definition/registry/get/", params=query)
+        url = f"http://{datastore_url}/device-definition/registry/get/"
+        print(f"device-definition-get: {url}")
+        results = httpx.get(url, params=query)
         print(f"results: {results}")
 
     except Exception as e:
