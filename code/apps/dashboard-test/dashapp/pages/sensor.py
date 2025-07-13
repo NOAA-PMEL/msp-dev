@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import json
+import logging
 import dash
 import plotly.express as px
 import plotly.graph_objs as go
@@ -22,10 +23,16 @@ from pydantic import BaseSettings
 from ulid import ULID
 import dash_ag_grid as dag
 import pandas as pd
+from logfmter import Logfmter
 # import pymongo
 from collections import deque
 import httpx
 
+handler = logging.StreamHandler()
+handler.setFormatter(Logfmter())
+logging.basicConfig(handlers=[handler])
+L = logging.getLogger(__name__)
+L.setLevel(logging.DEBUG)
 
 dash.register_page(
     __name__,
@@ -556,25 +563,31 @@ def build_graphs(layout_options):
 def get_device_data(device_id: str, device_type: str="sensor"):
     query = {"device_type": device_type, "device_id": device_id}
     url = f"http://{datastore_url}/device/data/get/"
-    print(f"device-data-get: {url}")
-    response = httpx.get(url, params=query)
-    results = response.json()
-    # print(f"results: {results}")
-    if "results" in results and results["results"]:
-        return results["results"]
-    
+    print(f"device-data-get: {url}, query: {query}")
+    try:
+        response = httpx.get(url, params=query)
+        results = response.json()
+        # print(f"results: {results}")
+        if "results" in results and results["results"]:
+            return results["results"]
+    except Exception as e:
+        L.error("get_device_data", extra={"reason": e})
     return []
 
 def get_device_instance(device_id: str, device_type: str="sensor"):
 
     query = {"device_type": device_type, "device_id": device_id}
     url = f"http://{datastore_url}/device-instance/registry/get/"
-    print(f"device-instance-get: {url}")
-    response = httpx.get(url, params=query)
-    results = response.json()
-    print(f"device_instance results: {results}")
-    if "results" in results and results["results"]:
-        return results["results"][0]
+    L.debug("get_device_instance", extra={"url": url, "query": query})
+    try:
+        response = httpx.get(url, params=query)
+        results = response.json()
+        # print(f"device_instance results: {results}")
+        L.debug("get_device_instance", extra={"results": results})
+        if "results" in results and results["results"]:
+            return results["results"][0]
+    except Exception as e:
+        L.error("get_device_instance", extra={"reason": e})
     
     return {}
 
@@ -598,16 +611,18 @@ def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"
 
 def get_device_definition(device_definition_id: str, device_type: str="sensor"):
 
-
-        query = {"device_type": device_type, "device_definition_id": device_definition_id}
-        url = f"http://{datastore_url}/device-definition/registry/get/"
-        print(f"device-definition-get: {url}")
+    query = {"device_type": device_type, "device_definition_id": device_definition_id}
+    url = f"http://{datastore_url}/device-definition/registry/get/"
+    print(f"device-definition-get: {url}")
+    try:
         response = httpx.get(url, params=query)
         results = response.json()
         print(f"device_definition results: {results}")
         if "results" in results and results["results"]:
             return results["results"][0]
-
+    except Exception as e:
+        L.error("get_device_definition", extra={"reason": e})
+        
         return {}
 
 def layout(sensor_id=None):
