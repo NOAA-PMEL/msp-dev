@@ -149,7 +149,7 @@ async def device_data_get(
     last_n_seconds: int | None = None,
     variable: List[str] | None = None
 ):
-    
+    L.debug("main:device_data_get", extra={"device_id": device_id})
     query = DataRequest(
         device_id=device_id,
         make=make,
@@ -162,6 +162,7 @@ async def device_data_get(
         last_n_seconds=last_n_seconds,
         variable=variable
     )
+    L.debug("main:device_data_get", extra={"query": query})
     return await datastore.device_data_get(query)
     
 @app.post("/device/settings/update", status_code=status.HTTP_202_ACCEPTED)
