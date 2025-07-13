@@ -314,17 +314,22 @@ class Datastore:
 
         # fill in useful values based on user request
 
-        # if not make,model,serial_number try to build from device_id
-        if not query.make or not query.model or not query.serial_number:
-            if not query.device_id:
-                return {}
-            parts = query.device_id.split("::")
-            query.make = parts[0]
-            query.model = parts[1]
-            query.serial_number = parts[2]
-        else:
-            query.device_id = "::".join([query.make,query.model,query.serial_number])
+        # why do we need to do this?
+        # # if not make,model,serial_number try to build from device_id
+        # self.logger.debug("device_data_get", extra={"query": query})
+        # if not query.make or not query.model or not query.serial_number:
+        #     if not query.device_id:
+        #         self.logger.debug("device_data_get:1", extra={"query": query})
+        #         return {"results": []}
+        #     parts = query.device_id.split("::")
+        #     query.make = parts[0]
+        #     query.model = parts[1]
+        #     query.serial_number = parts[2]
+        #     self.logger.debug("device_data_get:2", extra={"query": query})
+        # else:
+        #     query.device_id = "::".join([query.make,query.model,query.serial_number])
 
+        self.logger.debug("device_data_get:3", extra={"query": query})
         if query.start_time:
             query.start_timestamp = string_to_timestamp(query.start_time)
 
@@ -342,6 +347,7 @@ class Datastore:
 
         # TODO add in logic to get/sync from erddap if available
         if self.db_client:
+            self.logger.debug("device_data_get:4", extra={"query": query})
             return await self.db_client.device_data_get(query)
 
         return {"results": []}
