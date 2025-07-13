@@ -561,10 +561,17 @@ def build_graphs(layout_options):
     return graph_list
 
 def get_device_data(device_id: str, device_type: str="sensor"):
-    query = {"device_type": device_type, "device_id": device_id}
+
+    # query = {"device_type": device_type, "device_id": device_id}
     url = f"http://{datastore_url}/device/data/get/"
     print(f"device-data-get: {url}, query: {query}")
     try:
+        parts = device_id.split("::")
+        query = {
+            "make": parts[0],
+            "model": parts[1],
+            "serial_number": parts[2]
+        }
         response = httpx.get(url, params=query)
         results = response.json()
         # print(f"results: {results}")
@@ -576,10 +583,16 @@ def get_device_data(device_id: str, device_type: str="sensor"):
 
 def get_device_instance(device_id: str, device_type: str="sensor"):
 
-    query = {"device_type": device_type, "device_id": device_id}
+    # query = {"device_type": device_type, "device_id": device_id}
     url = f"http://{datastore_url}/device-instance/registry/get/"
     L.debug("get_device_instance", extra={"url": url, "query": query})
     try:
+        parts = device_id.split("::")
+        query = {
+            "make": parts[0],
+            "model": parts[1],
+            "serial_number": parts[2]
+        }
         response = httpx.get(url, params=query)
         results = response.json()
         # print(f"device_instance results: {results}")
@@ -611,10 +624,16 @@ def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"
 
 def get_device_definition(device_definition_id: str, device_type: str="sensor"):
 
-    query = {"device_type": device_type, "device_definition_id": device_definition_id}
+    # query = {"device_type": device_type, "device_definition_id": device_definition_id}
     url = f"http://{datastore_url}/device-definition/registry/get/"
     print(f"device-definition-get: {url}")
     try:
+        parts = device_definition_id.split("::")
+        query = {
+            "make": parts[0],
+            "model": parts[1],
+            "version": parts[2]
+        }
         response = httpx.get(url, params=query)
         results = response.json()
         print(f"device_definition results: {results}")
