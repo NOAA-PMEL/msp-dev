@@ -334,4 +334,8 @@ async def device_definition_registry_get(
         device_type=device_type
     )
 
-    return await datastore.device_instance_registry_get(query)
+    L.debug("device_definition_registry_get", extra={"query": query})
+    results = await datastore.device_instance_registry_get(query)
+    L.debug("device_definition_registry_get", extra={"results": results})
+    # return await datastore.device_instance_registry_get(query)
+    return results
