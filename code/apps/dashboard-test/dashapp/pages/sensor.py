@@ -38,7 +38,8 @@ class Settings(BaseSettings):
     # host: str = "0.0.0.0"
     # port: int = 8787
     # debug: bool = False
-    namespace_prefix: str = "default"
+    daq_id: str = "default"
+    ws_hostname: str = "localhost:8080"
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
@@ -231,7 +232,8 @@ config = Settings()
 # db_data_client = DBClient(connection=config.mongodb_data_connection)
 # db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 
-datastore_url = f"datastore.{config.namespace_prefix}-system"
+datastore_url = f"datastore.{config.daq_id}-system"
+link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 
 # websocket = WebSocket(
 #     id="ws-sensor", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/main"
@@ -551,6 +553,61 @@ def build_graphs(layout_options):
 
     return graph_list
 
+def get_device_data(device_id: str, device_type: str="sensor"):
+    query = {"device_type": device_type, "device_id": device_id}
+    url = f"http://{datastore_url}/device/data/get/"
+    print(f"device-data-get: {url}")
+    response = httpx.get(url, params=query)
+    results = response.json()
+    # print(f"results: {results}")
+    if "results" in results and results["results"]:
+        return results["results"]
+    
+    return []
+
+def get_device_instance(device_id: str, device_type: str="sensor"):
+
+    query = {"device_type": device_type, "device_id": device_id}
+    url = f"http://{datastore_url}/device-instance/registry/get/"
+    print(f"device-instance-get: {url}")
+    response = httpx.get(url, params=query)
+    results = response.json()
+    # print(f"results: {results}")
+    if "results" in results and results["results"]:
+        return results["results"][0]
+    
+    return {}
+
+def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"):
+
+    device = get_device_instance(device_id=device_id, device_type=device_type)
+    if device:
+        try:
+            device_definition_id = "::".join([
+                device["make"],
+                device["model"],
+                device["version"]
+            ])
+            return get_device_definition(device_definition_id=device_definition_id, device_type=device_type)
+        
+        except Exception as e:
+            print("ERROR: get_device_definition_by_device_id", extra={"reason": e})
+    
+    return {}
+
+def get_device_definition(device_definition_id: str, device_type: str="sensor"):
+
+
+        query = {"device_type": device_type, "device_definition_id": device_definition_id}
+        url = f"http://{datastore_url}/device-definition/registry/get/"
+        print(f"device-definition-get: {url}")
+        response = httpx.get(url, params=query)
+        results = response.json()
+        # print(f"results: {results}")
+        if "results" in results and results["results"]:
+            return results["results"][0]
+
+        return {}
 
 def layout(sensor_id=None):
     print(f"get_layout: {sensor_id}")
@@ -559,39 +616,43 @@ def layout(sensor_id=None):
         parts = sensor_id.split("::")
         # print(f"get_layout: {parts}")
         sensor_meta = {
-            "sensor-id": sensor_id,
+            "device_id": sensor_id,
             "make": parts[0],
             "model": parts[1],
             "serial_number": parts[2],
         }
         # print(f"get_layout: {sensor_meta}")
-        query = {"make": sensor_meta["make"], "model": sensor_meta["model"]}
-        response = httpx.get(f"http://{datastore_url}/device-definition/registry/get", params=query)
-        print(f"response: {response}")
-        # print(f"get_layout: {query}")
+        # query = {"make": sensor_meta["make"], "model": sensor_meta["model"]}
+        # response = httpx.get(f"http://{datastore_url}/device-definition/registry/get", params=query)
+        # print(f"response: {response}")
+        # # print(f"get_layout: {query}")
         
-        # TODO: replace with datastore call
-        results = []
-        # results = db_registry_client.find(
-        #     database="registry", collection="sensor_definition", query=query
-        # )
-        if len(results) > 0:
-            sensor_definition = results[0]
-            if len(results) > 1:
-                for sdef in results[1:]:
-                    try:
-                        if sdef["version"] > sensor_definition["version"]:
-                            sensor_definition = sdef
-                    except KeyError:
-                        pass
-        else:
-            sensor_definition = None
+        # # TODO: replace with datastore call
+        # results = []
+        # # results = db_registry_client.find(
+        # #     database="registry", collection="sensor_definition", query=query
+        # # )
+        # if len(results) > 0:
+        #     sensor_definition = results[0]
+        #     if len(results) > 1:
+        #         for sdef in results[1:]:
+        #             try:
+        #                 if sdef["version"] > sensor_definition["version"]:
+        #                     sensor_definition = sdef
+        #             except KeyError:
+        #                 pass
+
+        sensor_definition = get_device_definition_by_device_id(device_id=sensor_id, device_type="sensor")
+
+        # else:
+        #     sensor_definition = None
+        
         # print(f"sensor def: {sdef}")
     else:
         # sensor_id = "AerosolDynamics::MAGIC250::142"
         # parts = sensor_id.split("::")
         sensor_meta = {}
-        sensor_definition = None
+        sensor_definition = {}
 
     layout_options = {
         "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}}
@@ -682,6 +743,9 @@ def layout(sensor_id=None):
                     print(f"layout: {layout_options}")
 
             for name, var in sensor_definition["variables"].items():
+                # only get the data variables for main
+                if var["attributes"]["variable_type"]["data"] != "main":
+                    continue
                 if name in dimensions:
                     continue
                 if "shape" not in var:
@@ -858,7 +922,9 @@ def layout(sensor_id=None):
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/{sensor_id}",
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/{sensor_id}",
                 # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor/{sensor_id}"
-                url=f"ws://mspbase01:8080/msp/dashboardtest/ws/sensor/{sensor_id}"
+                # url=f"ws://mspbase01:8080/msp/dashboardtest/ws/sensor/{sensor_id}"
+                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor/{sensor_id}"
+
             ),
             ws_send_buffer,
             dcc.Store(id="sensor-definition", data=sensor_definition),
@@ -1037,13 +1103,15 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         x = []
         y = []
         query = {
-            "make": sensor_meta["make"],
-            "model": sensor_meta["model"],
-            "serial_number": sensor_meta["serial_number"],
+            "device_id": sensor_meta["device_id"],
+            # "make": sensor_meta["make"],
+            # "model": sensor_meta["model"],
+            # "serial_number": sensor_meta["serial_number"],
         }
-        sort = {"variables.time.data": 1}
-        results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
-        # results = db_data_client.find("data", "sensor", query, sort)
+        # sort = {"variables.time.data": 1}
+        results = get_device_data(device_id=sensor_meta["device_id"], device_type="sensor")
+        # results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
+        # # results = db_data_client.find("data", "sensor", query, sort)
         print(f"***results: {results}")
         if results is None or len(results) == 0:
             print("results = None")

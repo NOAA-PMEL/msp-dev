@@ -132,7 +132,6 @@ async def device_data_update(request: Request):
         await datastore.device_data_update(ce)
     except Exception as e:
         L.error("device_data_update", extra={"reason": e})
-        pass
         return "",204
     
 
