@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
 # from apis.router import api_router
 
-app = FastAPI()
+app = FastAPI(redirect_slashes=True)
 
 # origins = ["*"]  # dev
 # app.add_middleware(
@@ -244,7 +244,7 @@ async def status_update(request: Request):
 #     # examine and route cloudevent to the proper handler
 #     return 200
 
-@app.post("/device/registry/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/device/registry/update/", status_code=status.HTTP_202_ACCEPTED)
 async def device_registry_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -281,7 +281,7 @@ async def device_registry_update(request: Request):
 #     result = await datastore.registry_instance_device_get(query, device_type=device_type)
 #     return {"result": result}
 
-@app.post("/device-definition/registry/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/device-definition/registry/update/", status_code=status.HTTP_202_ACCEPTED)
 async def device_definition_registry_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
