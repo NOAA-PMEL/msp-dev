@@ -446,7 +446,7 @@ class RedisClient(DBClient):
 
         query_args = []
         if request.device_id:
-            query_args.append(f"@device_definition_id:{{{self.escape_query(request.device_id)}}}")
+            query_args.append(f"@device_id:{{{self.escape_query(request.device_id)}}}")
         if request.make:
             query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
         if request.model:
