@@ -122,7 +122,7 @@ async def root():
 # async def data_request()
 #     pass
 
-@app.post("/device/data/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/device/data/update/", status_code=status.HTTP_202_ACCEPTED)
 async def device_data_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -135,7 +135,7 @@ async def device_data_update(request: Request):
         return "",204
     
 
-@app.get("/device/data/get")
+@app.get("/device/data/get/")
 # async def device_data_get(query: Annotated[DataStoreQuery, Query()]):
 async def device_data_get(
     device_id: str | None = None,
@@ -165,7 +165,7 @@ async def device_data_get(
     L.debug("main:device_data_get", extra={"query": query})
     return await datastore.device_data_get(query)
     
-@app.post("/device/settings/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/device/settings/update/", status_code=status.HTTP_202_ACCEPTED)
 async def device_settings_update(request: Request):
 
     # attributes = {
@@ -197,7 +197,7 @@ async def device_settings_update(request: Request):
     # return "",204
     
 
-@app.post("/status/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/status/update/", status_code=status.HTTP_202_ACCEPTED)
 async def status_update(request: Request):
 
     # attributes = {
