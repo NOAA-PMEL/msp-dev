@@ -285,21 +285,33 @@ class RedisClient(DBClient):
             return False
 
     # async def device_data_get(self, query: DataStoreQuery):
-    async def device_data_get(self, query: DataRequest):
-        await super(RedisClient, self).device_data_get(query)
+    async def device_data_get(self, request: DataRequest):
+        await super(RedisClient, self).device_data_get(request)
 
-        query_args = [f"@make:{{{self.escape_query(query.make)}}}"]
-        query_args.append(f"@model:{{{self.escape_query(query.model)}}}")
-        query_args.append(f"@serial_number:{{{self.escape_query(query.serial_number)}}}")
-
-        if query.version:
-            query_args.append(f"@version:{{{self.escape_query(query.version)}}}")
-
-        if query.start_timestamp:
-            query_args.append(f"@timestamp >= {query.start_timestamp}")
         
-        if query.end_timestamp:
-            query_args.append(f"@timestamp < {query.end_timestamp}")
+        # query_args = [f"@make:{{{self.escape_query(query.make)}}}"]
+        # query_args.append(f"@model:{{{self.escape_query(query.model)}}}")
+        # query_args.append(f"@serial_number:{{{self.escape_query(query.serial_number)}}}")
+
+        query_args = []
+        if request.device_id:
+            query_args.append(f"@device_definition_id:{{{self.escape_query(request.device_id)}}}")
+        if request.make:
+            query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
+        if request.model:
+            query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
+        if request.version:
+            query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
+
+
+        # if request.version:
+        #     query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
+
+        if request.start_timestamp:
+            query_args.append(f"@timestamp >= {request.start_timestamp}")
+        
+        if request.end_timestamp:
+            query_args.append(f"@timestamp < {request.end_timestamp}")
 
         qstring = " ".join(query_args)
         self.logger.debug("device_data_get", extra={"query_string": qstring})
