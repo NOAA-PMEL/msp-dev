@@ -120,7 +120,7 @@ class RedisClient(DBClient):
         escaped = ""
         for ch in query:
             if ch in special:
-                escaped += "\\"
+                escaped += "\\\\"
             escaped += ch
 
         return escaped 
