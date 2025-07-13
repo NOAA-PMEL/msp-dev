@@ -572,7 +572,7 @@ def get_device_instance(device_id: str, device_type: str="sensor"):
     print(f"device-instance-get: {url}")
     response = httpx.get(url, params=query)
     results = response.json()
-    # print(f"results: {results}")
+    print(f"device_instance results: {results}")
     if "results" in results and results["results"]:
         return results["results"][0]
     
@@ -588,6 +588,7 @@ def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"
                 device["model"],
                 device["version"]
             ])
+            print(f"device_definition_id: {device_definition_id}")
             return get_device_definition(device_definition_id=device_definition_id, device_type=device_type)
         
         except Exception as e:
@@ -603,7 +604,7 @@ def get_device_definition(device_definition_id: str, device_type: str="sensor"):
         print(f"device-definition-get: {url}")
         response = httpx.get(url, params=query)
         results = response.json()
-        # print(f"results: {results}")
+        print(f"device_definition results: {results}")
         if "results" in results and results["results"]:
             return results["results"][0]
 
@@ -643,7 +644,7 @@ def layout(sensor_id=None):
         #                 pass
 
         sensor_definition = get_device_definition_by_device_id(device_id=sensor_id, device_type="sensor")
-
+        print(f"sensor_definition: {sensor_definition}")
         # else:
         #     sensor_definition = None
         
