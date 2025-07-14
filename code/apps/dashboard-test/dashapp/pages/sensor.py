@@ -1353,8 +1353,8 @@ def update_graph_1d(sensor_data, y_axis_list, graph_axes, current_figs):
                 ):
                     return dash.no_update
 
-                x = [sensor_data["variables"]["time"]["data"], [0], 600]
-                y = [sensor_data["variables"][y_axis]["data"], [0], 600]
+                x = [sensor_data["variables"]["time"]["data"]]
+                y = [sensor_data["variables"][y_axis]["data"]]
                 print(f"update: {[x]}, {[y]}")
                 figs.append({"x": [x], "y": [y]})
             # return {"x": [x], "y": [y]}
