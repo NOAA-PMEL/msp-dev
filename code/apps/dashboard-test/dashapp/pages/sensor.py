@@ -672,7 +672,8 @@ def layout(sensor_id=None):
         sensor_definition = {}
 
     layout_options = {
-        "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}}
+        "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}},
+        # "layout-settings": {"time": {"table-column-defs": [], "variable-list": []}}
     }
     column_defs_1d = []  # deque([], maxlen=10)
     dropdown_list_1d = []
@@ -1352,8 +1353,8 @@ def update_graph_1d(sensor_data, y_axis_list, graph_axes, current_figs):
                 ):
                     return dash.no_update
 
-                x = [sensor_data["variables"]["time"]["data"]]
-                y = [sensor_data["variables"][y_axis]["data"]]
+                x = [sensor_data["variables"]["time"]["data"], [0], 600]
+                y = [sensor_data["variables"][y_axis]["data"], [0], 600]
                 print(f"update: {[x]}, {[y]}")
                 figs.append({"x": [x], "y": [y]})
             # return {"x": [x], "y": [y]}
