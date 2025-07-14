@@ -290,6 +290,7 @@ class RedisClient(DBClient):
     async def device_data_get(self, request: DataRequest):
         await super(RedisClient, self).device_data_get(request)
 
+        max_results = 10000
         
         # query_args = [f"@make:{{{self.escape_query(query.make)}}}"]
         # query_args.append(f"@model:{{{self.escape_query(query.model)}}}")
@@ -317,7 +318,7 @@ class RedisClient(DBClient):
 
         qstring = " ".join(query_args)
         self.logger.debug("device_data_get", extra={"query_string": qstring})
-        q = Query(qstring).sort_by("timestamp")
+        q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
         docs = self.client.ft(self.data_device_index_name).search(q).docs
         results = []
         for doc in docs:
