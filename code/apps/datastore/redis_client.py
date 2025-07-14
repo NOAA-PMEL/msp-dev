@@ -163,6 +163,8 @@ class RedisClient(DBClient):
             # timestamp = request.request.timestamp
 
             device_id = "::".join([make,model,serial_number])
+            if not document["device_id"]:
+                document["device_id"] = device_id
 
             key = f"{database}:{collection}:{device_id}:{timestamp}"
             self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
