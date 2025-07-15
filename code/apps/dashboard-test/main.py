@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8787
     debug: bool = False
+    daq_id: str = "default"
+    ws_hostname: str = "localhost:8080"
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
@@ -74,6 +76,7 @@ class Settings(BaseSettings):
     class Config:
         env_prefix = "DASHBOARD_"
         case_sensitive = False
+
 
 config = Settings()
 # L.info("config settings", extra={"config_settings": config})
@@ -315,6 +318,38 @@ host_ip = socket.gethostbyname(host_name)
 print(f"name: {host_name}, ip: {host_ip}")
 L.info(f"name: {host_name}, ip: {host_ip}")
 
+async def send_event(ce: CloudEvent):
+    try:
+        L.debug(ce)  # , extra=template)
+        try:
+            timeout = httpx.Timeout(5.0, read=0.1)
+            headers, body = to_structured(ce)
+            # self.logger.debug(
+            #     "send_event",
+            #     extra={
+            #         "broker": self.config.knative_broker,
+            #         "h": headers,
+            #         "b": body,
+            #     },
+            # )
+            # send to knative broker
+            async with httpx.AsyncClient() as client:
+                r = await client.post(
+                    config.knative_broker,
+                    headers=headers,
+                    data=body,
+                    timeout=timeout,
+                )
+                r.raise_for_status()
+        except InvalidStructuredJSON:
+            L.error(f"INVALID MSG: {ce}")
+        except httpx.TimeoutException:
+            pass
+        except httpx.HTTPError as e:
+            L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+    except Exception as e:
+        L.error("send_event", extra={"reason": e})
+    # await asyncio.sleep(0.01)
 
 async def test_task():
     cnt = 0
@@ -346,38 +381,59 @@ async def test_ws_endpoint(
             # The message should include info on true / false and id, and then the shelly driver will publish to appropriate
             # shelly specific topic based on that
             if 'shelly' in data['id']:
+                channel = data['id'][-1]
+                message_to_send = {'device': 'shelly', 'channel': channel, 'message': ''}
                 if data['data'] == "False":
-                    async with Client('mqtt.default', 1883) as client:
-                        channel = data['id'][-1]
-                        message_to_send = {'device': 'shelly', 'channel': channel, 'message': 'off'}
-                        # await web_interface_manager.send_data(message_to_send)
-                        await client.publish("websocket_topic", payload = json.dumps({'device': 'shelly', 'channel': channel, 'message': 'off'}))
-
+                    message_to_send["message": "off"]
                 elif data['data'] == "True":
-                    async with Client('mqtt.default', 1883) as client:
-                        channel = data['id'][-1]
-                        await client.publish("websocket_topic", payload = json.dumps({'device': 'shelly', 'channel': channel, 'message': 'on'}))
+                    message_to_send["message": "on"]
 
-            if 'pdu' in data['id']:
-                if data['data'] == "False":
-                    async with Client('mqtt.default', 1883) as client:
-                        outlet = data['id'][-1]
-                        message_to_send = {'device': 'pdu', 'outlet': outlet, 'message': 'off'}
-                        print('message to send', message_to_send)
-                        message = web_interface_manager.send_data(message_to_send)
-                        destpath = message.destpath
-                        # await client.publish("websocket_topic", payload = json.dumps({'device': 'pdu', 'outlet': outlet, 'message': 'off'}))
-                        await client.publish(destpath, payload = to_json(message.data))
+                try:
+                    event = DAQEvent.create_controller_control_request(
+                        source=f"envds.{config.daq_id}.dashboard",
+                        data=message_to_send
+                    )
+                    # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                    # event["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                    event["destpath"] = "websocket_topic"
+                    await send_event(event)
+                except Exception as e:
+                    L.error("send_device_definition_update", extra={"reason": e})
 
-                elif data['data'] == "True":
-                    async with Client('mqtt.default', 1883) as client:
-                        outlet = data['id'][-1]
-                        message_to_send = {'device': 'pdu', 'outlet': outlet, 'message': 'on'}
-                        # await web_interface_manager.send_data(message_to_send)
-                        message = web_interface_manager.send_data(message_to_send)
-                        destpath = message.destpath
-                        await client.publish(destpath, payload = to_json(message.data))
-                        # await client.publish("websocket_topic", payload = json.dumps({'device': 'pdu', 'outlet': outlet, 'message': 'on'}))
+
+
+            #     if data['data'] == "False":
+            #         async with Client('mqtt.default', 1883) as client:
+            #             channel = data['id'][-1]
+            #             message_to_send = {'device': 'shelly', 'channel': channel, 'message': 'off'}
+            #             # await web_interface_manager.send_data(message_to_send)
+            #             await client.publish("websocket_topic", payload = json.dumps({'device': 'shelly', 'channel': channel, 'message': 'off'}))
+
+            #     elif data['data'] == "True":
+            #         async with Client('mqtt.default', 1883) as client:
+            #             channel = data['id'][-1]
+            #             await client.publish("websocket_topic", payload = json.dumps({'device': 'shelly', 'channel': channel, 'message': 'on'}))
+
+            # if 'pdu' in data['id']:
+            #     if data['data'] == "False":
+            #         async with Client('mqtt.default', 1883) as client:
+            #             outlet = data['id'][-1]
+            #             message_to_send = {'device': 'pdu', 'outlet': outlet, 'message': 'off'}
+            #             print('message to send', message_to_send)
+            #             message = web_interface_manager.send_data(message_to_send)
+            #             destpath = message.destpath
+            #             # await client.publish("websocket_topic", payload = json.dumps({'device': 'pdu', 'outlet': outlet, 'message': 'off'}))
+            #             await client.publish(destpath, payload = to_json(message.data))
+
+            #     elif data['data'] == "True":
+            #         async with Client('mqtt.default', 1883) as client:
+            #             outlet = data['id'][-1]
+            #             message_to_send = {'device': 'pdu', 'outlet': outlet, 'message': 'on'}
+            #             # await web_interface_manager.send_data(message_to_send)
+            #             message = web_interface_manager.send_data(message_to_send)
+            #             destpath = message.destpath
+            #             await client.publish(destpath, payload = to_json(message.data))
+            #             # await client.publish("websocket_topic", payload = json.dumps({'device': 'pdu', 'outlet': outlet, 'message': 'on'}))
 
             # print(f"sensor data: {data}")
             # L.info(f"sensor data: {data}")
