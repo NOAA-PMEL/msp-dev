@@ -114,7 +114,6 @@ class Tx(Interface):
 
         # print("configure:1")
         super(Tx, self).configure()
-
         try:
             # get config from file
             # print("configure:2")
@@ -125,6 +124,8 @@ class Tx(Interface):
                 # print("configure:4")
             except FileNotFoundError:
                 conf = {"uid": "UNKNOWN", "paths": {}}
+
+            self.logger.debug("configure", extra={"conf": conf})
 
             # add hosts to each path if not present
             try:
@@ -146,7 +147,7 @@ class Tx(Interface):
             # print("configure:7")
 
             # override default metadata attributes with config values
-            for name, att in conf["attributes"].items():
+            for name, val in conf["attributes"].items():
                 if name in attrs:
                     attrs[name]["data"] = val
         
