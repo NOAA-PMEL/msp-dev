@@ -30,17 +30,65 @@ class Tx(Interface):
             },
             "tags": {"type": "char", "data": "testing, LabJack, Tx, T4, T7, serial, tcp, ethernet, interface"},
         },
-        "paths": {
-            "port-1": {
+        "path_types": {
+            "voltage_in": {
                 "attributes": {
                     "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
                     "client_class": {"type": "string", "data": "TCPClient"},
                     "host": {"type": "string", "data": "localhost"},
-                    "port": {"type": "int", "data": 4001},
-                },
-                "data": [],
-            }
-        }
+                    "channel": {"type": "string", "data": "FIO0"}
+                }
+            },
+            "voltage_out": {
+                "attributes": {
+                    "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
+                    "client_class": {"type": "string", "data": "TCPClient"},
+                    "host": {"type": "string", "data": "localhost"},
+                    "channel": {"type": "string", "data": "FIO0"}
+                }
+            },
+            "pwm": {
+                "attributes": {
+                    "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
+                    "client_class": {"type": "string", "data": "TCPClient"},
+                    "host": {"type": "string", "data": "localhost"},
+                    "channel": {"type": "string", "data": "FIO0"},
+                    "clock_roll_value": {"type": "int", "data": 3200}
+                }
+            },
+            "counter": {
+                "attributes": {
+                    "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
+                    "client_class": {"type": "string", "data": "TCPClient"},
+                    "host": {"type": "string", "data": "localhost"},
+                    "channel": {"type": "string", "data": "FIO0"}
+                }
+            },
+            "i2c": {
+                "attributes": {
+                    "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
+                    "client_class": {"type": "string", "data": "TCPClient"},
+                    "host": {"type": "string", "data": "localhost"},
+                    "sda_channel": {"type": "int", "data": 2},
+                    "scl_channel": {"type": "int", "data": 3},
+                    "speed_throttle": {"type": "int", "data": 65516}
+                }
+            },
+            "spi": {
+                "attributes": {
+                    "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
+                    "client_class": {"type": "string", "data": "TCPClient"},
+                    "host": {"type": "string", "data": "localhost"},
+                    "cs_channel": {"type": "int", "data": 2},
+                    "clk_channel": {"type": "int", "data": 3},
+                    "miso_channel": {"type": "int", "data": 2},
+                    "mosi_channel": {"type": "int", "data": 3},
+                    "mode": {"type": "int", "data": 1},
+                    "options": {"type": "int", "data": 0},
+                    "speed_throttle": {"type": "int", "data": 65516}
+                }
+            },
+        }    
     }
 
     def __init__(self, config=None, **kwargs):
@@ -79,7 +127,7 @@ class Tx(Interface):
 
             # add hosts to each path if not present
             try:
-                host = conf["host"]
+                host = conf["attributes"]["host"]
             except KeyError as e:
                 self.logger.debug("no host - default to localhost")
                 host = "localhost"
@@ -90,40 +138,69 @@ class Tx(Interface):
             # print("configure:5")
             self.logger.debug("conf", extra={"data": conf})
 
-            atts = Tx.metadata["attributes"]
+            # atts = Tx.metadata["attributes"]
+            attrs = self.metadata["attributes"]
+            path_types = self.metadata["path_types"]
 
             # print("configure:7")
+
+            # override default metadata attributes with config values
+            for name, att in conf["attributes"].items():
+                if name in attrs:
+                    attrs[name]["data"] = val
+        
+
             path_map = dict()
-            for name, val in Tx.metadata["paths"].items():
-                # path_map[name] = InterfacePath(name=name, path=val["data"])
-                # print("configure:8")
+            for name, val in conf["paths"].items():
+                client_config = dict()
+                # skip path if we don't know what type
+                try:
+                    path_defaults = path_types[val["path_type"]]
+                    client_config["attributes"] = path_defaults["attributes"].copy()
+                    
+                    for path_att_name, path_att in val.items:
+                        if path_att_name in client_config["attributes"]:
+                            client_config["attributes"][path_att_name]["data"] = path_att
 
-                if "client_module" not in val["attributes"]:
-                    val["attributes"]["client_module"]["data"] = self.default_client_module
-                if "client_class" not in val["attributes"]:
-                    val["attributes"]["client_class"]["data"] = self.default_client_class
-                # print("configure:9")
+                    if client_config["attributes"][path_att_name]["data"] == "":
+                        client_config["attributes"][path_att_name]["data"] == attrs["host"]
 
-                # set path host from interface attributes
-                if "host" in atts:
-                    val["attributes"]["host"]["data"] = atts["host"]
+                except KeyError as e:
+                    self.logger.error("configuration: unknown or missing path type", extra={"path": name})
+                    continue
 
-                client_config = val
-                # override values from yaml config
-                if "paths" in conf and name in conf["paths"]:
-                    self.logger.debug("yaml conf", extra={"id": name, "conf['paths']": conf['paths'], })
-                    for attname, attval in conf["paths"][name].items():
-                        self.logger.debug("config paths", extra={"id": name, "attname": attname, "attval": attval})
-                        client_config["attributes"][attname]["data"] = attval
-                # print("configure:10")
+
+
+            # for name, val in Tx.metadata["paths"].items():
+            #     # path_map[name] = InterfacePath(name=name, path=val["data"])
+            #     # print("configure:8")
+
+            #     if "client_module" not in val["attributes"]:
+            #         val["attributes"]["client_module"]["data"] = self.default_client_module
+            #     if "client_class" not in val["attributes"]:
+            #         val["attributes"]["client_class"]["data"] = self.default_client_class
+            #     # print("configure:9")
+
+            #     # set path host from interface attributes
+            #     if "host" in attrs:
+            #         val["attributes"]["host"]["data"] = attrs["host"]
+
+            #     client_config = val
+            #     # override values from yaml config
+            #     if "paths" in conf and name in conf["paths"]:
+            #         self.logger.debug("yaml conf", extra={"id": name, "conf['paths']": conf['paths'], })
+            #         for attname, attval in conf["paths"][name].items():
+            #             self.logger.debug("config paths", extra={"id": name, "attname": attname, "attval": attval})
+            #             client_config["attributes"][attname]["data"] = attval
+            #     # print("configure:10")
                 self.logger.debug("config paths", extra={"client_config": client_config})
                     
                 path_map[name] = {
                     "client_id": name,
                     "client": None,
                     "client_config": client_config,
-                    "client_module": val["attributes"]["client_module"]["data"],
-                    "client_class": val["attributes"]["client_class"]["data"],
+                    "client_module": client_config["attributes"]["client_module"]["data"],
+                    "client_class": client_config["attributes"]["client_class"]["data"],
                     # "data_buffer": asyncio.Queue(),
                     "recv_handler": self.recv_data_loop(name),
                     "recv_task": None,
@@ -131,8 +208,8 @@ class Tx(Interface):
             # print("configure:11")
 
             self.config = InterfaceConfig(
-                type=atts["type"]["data"],
-                name=atts["name"]["data"],
+                type=attrs["type"]["data"],
+                name=attrs["name"]["data"],
                 uid=conf["uid"],
                 paths=path_map
             )
@@ -232,7 +309,7 @@ async def main(server_config: ServerConfig = None):
     # task_list.append(asyncio.create_task(iface.run()))
     # await asyncio.sleep(2)
     iface.enable()
-    logger.debug("Starting US Converters Interface")
+    logger.debug("Starting LabJack Tx Interface")
 
     # remove fastapi ----
     # # get config from file

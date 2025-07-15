@@ -20,7 +20,7 @@ RUN pip3 install -r requirements.txt
 # for fastapi/uvicorn
 # COPY . .
 # without fastapi/uvicorn
-COPY ./USCDR301.py .
+COPY ./tx.py .
 
 
 # WORKDIR $APP_HOME/envds
@@ -32,5 +32,5 @@ COPY ./USCDR301.py .
 # For environments with multiple CPU cores, increase the number of workers
 # to be equal to the cores available.
 # CMD ["uvicorn", "envds.main:app", "--host", "0.0.0.0", "--port", "8080"]
-CMD ["python", "USCDR301.py", "--host", "0.0.0.0"]
+CMD ["python", "tx.py", "--host", "0.0.0.0"]
 # CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
