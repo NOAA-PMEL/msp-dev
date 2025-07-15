@@ -27,7 +27,7 @@ class ShellyPro3(Controller):
                 "type": "char",
                 "data": "Shelly Pro 3 Smart Switch",
             },
-            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, sensor"},
+            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, controller"},
         },
         "paths": {
             "port-1": {
