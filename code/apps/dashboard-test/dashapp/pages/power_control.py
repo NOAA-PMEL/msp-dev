@@ -7,6 +7,7 @@ import dash_daq as daq
 # from aiomqtt import Client
 import paho.mqtt.client as mqtt
 import json
+from pydantic import BaseSettings
 
 # dash.register_page(__name__, path='/')
 dash.register_page(__name__, path='/powercontrol', name='Power Control')

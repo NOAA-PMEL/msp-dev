@@ -1,5 +1,6 @@
 # FROM python:3.10-slim
-FROM python:3.12-slim-bullseye
+# FROM python:3.12-slim-bullseye
+FROM ghcr.io/noaa-pmel/msp/envds-base:latest
 
 RUN groupadd  dashboard
 RUN useradd -m -g dashboard -s /bin/bash dashboard
@@ -13,8 +14,8 @@ WORKDIR $APP_HOME
 COPY requirements.txt requirements.txt
 RUN pip3 install -r requirements.txt
 
-COPY lib/. /lib
-RUN pip3 install --no-index --find-links=/lib/envds envds
+# COPY lib/. /lib
+# RUN pip3 install --no-index --find-links=/lib/envds envds
 
 COPY VERSION .
 
