@@ -443,18 +443,18 @@ def update_sensor_definitions(count, table_data):
                     new_data.append(sensor_def)
 
 
-            remove_data = []
-            for index, data in enumerate(table_data):
-                if data not in new_data:
-                    update = True
-                    remove_data.insert(0, index)
-            for index in remove_data:
-                table_data.pop(index)
+        remove_data = []
+        for index, data in enumerate(table_data):
+            if data not in new_data:
+                update = True
+                remove_data.insert(0, index)
+        for index in remove_data:
+            table_data.pop(index)
 
-            if update:
-                return table_data
-            else:
-                return dash.no_update
+        if update:
+            return table_data
+        else:
+            return dash.no_update
 
 
 
@@ -556,18 +556,18 @@ def update_active_sensors(count, table_data):
                     update = True
                 new_data.append(sensor)
 
-            remove_data = []
-            for index, data in enumerate(table_data):
-                if data not in new_data:
-                    update = True
-                    remove_data.insert(0, index)
-            for index in remove_data:
-                table_data.pop(index)
+        remove_data = []
+        for index, data in enumerate(table_data):
+            if data not in new_data:
+                update = True
+                remove_data.insert(0, index)
+        for index in remove_data:
+            table_data.pop(index)
 
-            if update:
-                return table_data
-            else:
-                return dash.no_update
+        if update:
+            return table_data
+        else:
+            return dash.no_update
 
 
     except Exception as e:

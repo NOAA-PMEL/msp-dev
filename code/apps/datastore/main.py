@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
 # from apis.router import api_router
 
-app = FastAPI(redirect_slashes=True)
+app = FastAPI()
 
 # origins = ["*"]  # dev
 # app.add_middleware(

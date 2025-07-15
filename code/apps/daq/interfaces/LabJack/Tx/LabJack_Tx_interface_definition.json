@@ -1,0 +1,186 @@
+{
+    "attributes": {
+        "type": {
+            "type": "char",
+            "data": "LabJack"
+        },
+        "name": {
+            "type": "char",
+            "data": "Tx"
+        },
+        "model": {
+            "type": "char",
+            "data": "T4"
+        },
+        "host": {
+            "type": "char",
+            "data": "localhost"
+        },
+        "description": {
+            "type": "char",
+            "data": "US converters serial to ethernet server"
+        },
+        "tags": {
+            "type": "char",
+            "data": "testing, LabJack, Tx, T4, T7, serial, tcp, ethernet, interface"
+        }
+    },
+    "path_types": {
+        "AtoD": {
+            "attributes": {
+                "client_module": {
+                    "type": "string",
+                    "data": "envds.daq.clients.tcp_client"
+                },
+                "client_class": {
+                    "type": "string",
+                    "data": "TCPClient"
+                },
+                "host": {
+                    "type": "string",
+                    "data": ""
+                },
+                "channel": {
+                    "type": "string",
+                    "data": "FIO0"
+                }
+            }
+        },
+        "DtoA": {
+            "attributes": {
+                "client_module": {
+                    "type": "string",
+                    "data": "envds.daq.clients.tcp_client"
+                },
+                "client_class": {
+                    "type": "string",
+                    "data": "TCPClient"
+                },
+                "host": {
+                    "type": "string",
+                    "data": ""
+                },
+                "channel": {
+                    "type": "string",
+                    "data": "FIO0"
+                }
+            }
+        },
+        "pwm": {
+            "attributes": {
+                "client_module": {
+                    "type": "string",
+                    "data": "envds.daq.clients.tcp_client"
+                },
+                "client_class": {
+                    "type": "string",
+                    "data": "TCPClient"
+                },
+                "host": {
+                    "type": "string",
+                    "data": ""
+                },
+                "channel": {
+                    "type": "string",
+                    "data": "FIO0"
+                },
+                "clock_roll_value": {
+                    "type": "int",
+                    "data": 3200
+                }
+            }
+        },
+        "counter": {
+            "attributes": {
+                "client_module": {
+                    "type": "string",
+                    "data": "envds.daq.clients.tcp_client"
+                },
+                "client_class": {
+                    "type": "string",
+                    "data": "TCPClient"
+                },
+                "host": {
+                    "type": "string",
+                    "data": ""
+                },
+                "channel": {
+                    "type": "string",
+                    "data": "FIO0"
+                }
+            }
+        },
+        "i2c": {
+            "attributes": {
+                "client_module": {
+                    "type": "string",
+                    "data": "envds.daq.clients.tcp_client"
+                },
+                "client_class": {
+                    "type": "string",
+                    "data": "TCPClient"
+                },
+                "host": {
+                    "type": "string",
+                    "data": ""
+                },
+                "sda_channel": {
+                    "type": "int",
+                    "data": 2
+                },
+                "scl_channel": {
+                    "type": "int",
+                    "data": 3
+                },
+                "speed_throttle": {
+                    "type": "int",
+                    "data": 65516
+                }
+            }
+        },
+        "spi": {
+            "attributes": {
+                "client_module": {
+                    "type": "string",
+                    "data": "envds.daq.clients.tcp_client"
+                },
+                "client_class": {
+                    "type": "string",
+                    "data": "TCPClient"
+                },
+                "host": {
+                    "type": "string",
+                    "data": ""
+                },
+                "cs_channel": {
+                    "type": "int",
+                    "data": 2
+                },
+                "clk_channel": {
+                    "type": "int",
+                    "data": 3
+                },
+                "miso_channel": {
+                    "type": "int",
+                    "data": 2
+                },
+                "mosi_channel": {
+                    "type": "int",
+                    "data": 3
+                },
+                "mode": {
+                    "type": "int",
+                    "data": 1
+                },
+                "options": {
+                    "type": "int",
+                    "data": 0
+                },
+                "speed_throttle": {
+                    "type": "int",
+                    "data": 65516
+                }
+            }
+        }
+    }
+}
