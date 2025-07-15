@@ -20,6 +20,7 @@ RUN pip3 install -r requirements.txt
 # for fastapi/uvicorn
 # COPY . .
 # without fastapi/uvicorn
+COPY ./LabJack_Tx_interface_definition.json .
 COPY ./tx.py .
 
 
