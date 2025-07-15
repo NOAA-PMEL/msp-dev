@@ -144,6 +144,7 @@ class Tx(Interface):
             attrs = self.metadata["attributes"]
             path_types = self.metadata["path_types"]
 
+            self.logger.debug("configure", extra={"attrs": attrs, "path_types": path_types})
             # print("configure:7")
 
             # override default metadata attributes with config values
@@ -151,22 +152,25 @@ class Tx(Interface):
                 if name in attrs:
                     attrs[name]["data"] = val
         
-
+            print("here:1")
             path_map = dict()
             for name, val in conf["paths"].items():
                 client_config = dict()
                 # skip path if we don't know what type
+                print("here:2")
                 try:
                     path_defaults = path_types[val["path_type"]]
                     client_config["attributes"] = path_defaults["attributes"].copy()
-                    
+                    print("here:3")
+
                     for path_att_name, path_att in val.items:
                         if path_att_name in client_config["attributes"]:
                             client_config["attributes"][path_att_name]["data"] = path_att
+                    print("here:4")
 
                     if client_config["attributes"][path_att_name]["data"] == "":
                         client_config["attributes"][path_att_name]["data"] == attrs["host"]
-
+                    print("here:5")
                 except KeyError as e:
                     self.logger.error("configuration: unknown or missing path type", extra={"path": name})
                     continue
