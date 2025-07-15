@@ -294,7 +294,7 @@ class Sensor(envdsBase):
     def add_interface(self, name: str, interface: dict, update: bool = True):
 
 
-        # destpath = f"/envds/{iface_envds_env_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+        # destpath = f"envds/{iface_envds_env_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
         print(f"name:1 {name}, iface: {interface}")
         if name and interface:
 
@@ -322,7 +322,7 @@ class Sensor(envdsBase):
 
                 print(f"name:5 {name}, iface: {interface}")
                 self.set_route(
-                    subscription=f"/envds/{env_id}/interface/{id}/{path}/status/update",
+                    subscription=f"envds/{env_id}/interface/{id}/{path}/status/update",
                     route_key=det.interface_status_update(),
                     route=self.handle_interface_status
                 )
@@ -450,7 +450,7 @@ class Sensor(envdsBase):
                     source=self.get_id_as_source(),
                     data={"settings": self.settings.get_settings()},
                 )
-                destpath = f"/{self.get_id_as_topic()}/settings/update"
+                destpath = f"{self.get_id_as_topic()}/settings/update"
                 self.logger.debug(
                     "settings_monitor", extra={"data": event, "destpath": destpath}
                 )
@@ -478,7 +478,7 @@ class Sensor(envdsBase):
             except KeyError:
                 iface_envds_id = self.id.app_env_id
 
-            destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/send"
+            destpath = f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/send"
             extra_header = {"path_id": iface["interface"]["path"]}
             # event = DAQEvent.create_interface_connect_request(
             event = DAQEvent.create_interface_data_send(
@@ -527,8 +527,8 @@ class Sensor(envdsBase):
                             break
 
                         self.logger.debug("client_config_monitor", extra={"id": name, "data": config_data})
-                        # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
-                        destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/config/request"
+                        # destpath = f"envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+                        destpath = f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/config/request"
                         extra_header = {"path_id": iface["interface"]["path"]}
                         # event = DAQEvent.create_interface_connect_request(
                         event = DAQEvent.create_interface_config_request(
@@ -729,8 +729,8 @@ class Sensor(envdsBase):
                                 except KeyError:
                                     iface_envds_id = self.id.app_env_id
 
-                                # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
-                                destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
+                                # destpath = f"envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+                                destpath = f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
                                 extra_header = {"path_id": iface["interface"]["path"]}
                                 # event = DAQEvent.create_interface_connect_request(
                                 event = DAQEvent.create_interface_status_request(
@@ -747,7 +747,7 @@ class Sensor(envdsBase):
 
                                 # set the route to recv data
                                 self.set_route(
-                                    subscription=f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
+                                    subscription=f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
                                     route_key=det.interface_data_recv(),
                                     # route=iface["recv_task"]
                                     route=self.handle_interface_data
@@ -761,8 +761,8 @@ class Sensor(envdsBase):
                             except KeyError:
                                 iface_envds_id = self.id.app_env_id
 
-                            # destpath = f"/envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
-                            destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
+                            # destpath = f"envds/{iface_envds_id}/interface/{iface['interface_id']}/{iface['path']}/connect/request"
+                            destpath = f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/status/request"
                             extra_header = {"path_id": iface['interface']["path"]}
                             # event = DAQEvent.create_interface_connect_request(
                             event = DAQEvent.create_interface_status_request(
@@ -778,7 +778,7 @@ class Sensor(envdsBase):
 
                             # remove route
                             self.set_route(
-                                subscription=f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
+                                subscription=f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/data/update",
                                 route_key=det.interface_data_recv(),
                                 # route=iface["recv_task"],
                                 route=self.handle_interface_data,
@@ -793,7 +793,7 @@ class Sensor(envdsBase):
                         except KeyError:
                             iface_envds_id = self.id.app_env_id
 
-                        destpath = f"/envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/keepalive/request"
+                        destpath = f"envds/{iface_envds_id}/interface/{iface['interface']['interface_id']}/{iface['interface']['path']}/keepalive/request"
                         extra_header = {"path_id": iface["interface"]["path"]}
                         event = DAQEvent.create_interface_keepalive_request(
                             # source="envds.core", data={"test": "one", "test2": 2}
@@ -842,7 +842,7 @@ class Sensor(envdsBase):
         # update sensor instance on db/redis
         # send registry_update message
 
-        destpath = f"/envds/{self.id.app_env_id}/sensor/registry/update"
+        destpath = f"envds/{self.id.app_env_id}/sensor/registry/update"
         event = DAQEvent.create_sensor_registry_update(
             # source="envds.core", data={"test": "one", "test2": 2}
             source=self.get_id_as_source(),

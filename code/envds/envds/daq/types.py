@@ -7,6 +7,7 @@ class DAQEventType(BaseEventType):
 
     TYPE_DEVICE = "device"
     TYPE_SENSOR = "sensor"
+    TYPE_DEVICE_DEFINITION = "device-definition"
     TYPE_SETTINGS = "settings"
     TYPE_INTERFACE = "interface"
     TYPE_CONTROLLER = "controller"
@@ -65,6 +66,26 @@ class DAQEventType(BaseEventType):
     @staticmethod
     def sensor_registry_request():
         return ".".join([BaseEventType.get_type(DAQEventType.TYPE_SENSOR), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def device_registry_update():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_DEVICE), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def device_registry_request():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_DEVICE), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def device_definition_registry_update():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_DEVICE_DEFINITION), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def device_definition_registry_request():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_DEVICE_DEFINITION), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def device_definition_registry_ack():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_DEVICE_DEFINITION), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_ACK])
 
     @staticmethod
     def interface_registry_update():

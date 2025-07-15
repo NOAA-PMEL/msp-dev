@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: labjack-tx-config
+  # namespace: msp
+  labels:
+    app: labjack-tx
+data:
+  interface.conf: |
+    uid: lj207
+    attributes:
+      host: 10.55.169.207
+      model: T7
+    paths:
+      i2c:
+        path_type: i2c
+        sda_channel: 2
+        scl_channel: 3
+        speed_throttle: 65516

@@ -8,7 +8,9 @@ from pydantic import BaseSettings
 from ulid import ULID
 import dash_ag_grid as dag
 import pandas as pd
-import pymongo
+# import pymongo
+
+import httpx 
 
 dash.register_page(
     __name__,
@@ -21,19 +23,21 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8787
     debug: bool = False
+    daq_id: str = "default"
+    ws_hostname: str = "localhost:8080"
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
-    mongodb_data_user_name: str = ""
-    mongodb_data_user_password: str = ""
-    mongodb_registry_user_name: str = ""
-    mongodb_registry_user_password: str = ""
-    mongodb_data_connection: str = (
-        "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/data?replicaSet=uasdaq-mongodb&ssl=false"
-    )
-    mongodb_registry_connection: str = (
-        "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/registry?replicaSet=uasdaq-mongodb&ssl=false"
-    )
+    # mongodb_data_user_name: str = ""
+    # mongodb_data_user_password: str = ""
+    # mongodb_registry_user_name: str = ""
+    # mongodb_registry_user_password: str = ""
+    # mongodb_data_connection: str = (
+    #     "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/data?replicaSet=uasdaq-mongodb&ssl=false"
+    # )
+    # mongodb_registry_connection: str = (
+    #     "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/registry?replicaSet=uasdaq-mongodb&ssl=false"
+    # )
     # erddap_http_connection: str = (
     #     "http://uasdaq.pmel.noaa.gov/uasdaq/dataserver/erddap"
     # )
@@ -42,7 +46,7 @@ class Settings(BaseSettings):
     # )
     # erddap_author: str = "fake_author"
 
-    dry_run: bool = False
+    # dry_run: bool = False
 
     class Config:
         env_prefix = "DASHBOARD_"
@@ -50,33 +54,34 @@ class Settings(BaseSettings):
 
 
 config = Settings()
+print(f"config: {config}")
 
 # TODO: add readOnly user for this connection
 
-# combine secrets to get complete connection string
-if "<username>" in config.mongodb_data_connection:
-    mongodb_data_conn = config.mongodb_data_connection.replace(
-        "<username>", config.mongodb_data_user_name
-    )
-    config = config.copy(update={"mongodb_data_connection": mongodb_data_conn})
+# # combine secrets to get complete connection string
+# if "<username>" in config.mongodb_data_connection:
+#     mongodb_data_conn = config.mongodb_data_connection.replace(
+#         "<username>", config.mongodb_data_user_name
+#     )
+#     config = config.copy(update={"mongodb_data_connection": mongodb_data_conn})
 
-if "<password>" in config.mongodb_data_connection:
-    mongodb_data_conn = config.mongodb_data_connection.replace(
-        "<password>", config.mongodb_data_user_password
-    )
-    config = config.copy(update={"mongodb_data_connection": mongodb_data_conn})
+# if "<password>" in config.mongodb_data_connection:
+#     mongodb_data_conn = config.mongodb_data_connection.replace(
+#         "<password>", config.mongodb_data_user_password
+#     )
+#     config = config.copy(update={"mongodb_data_connection": mongodb_data_conn})
 
-if "<username>" in config.mongodb_registry_connection:
-    mongodb_registry_conn = config.mongodb_registry_connection.replace(
-        "<username>", config.mongodb_registry_user_name
-    )
-    config = config.copy(update={"mongodb_registry_connection": mongodb_registry_conn})
+# if "<username>" in config.mongodb_registry_connection:
+#     mongodb_registry_conn = config.mongodb_registry_connection.replace(
+#         "<username>", config.mongodb_registry_user_name
+#     )
+#     config = config.copy(update={"mongodb_registry_connection": mongodb_registry_conn})
 
-if "<password>" in config.mongodb_registry_connection:
-    mongodb_registry_conn = config.mongodb_registry_connection.replace(
-        "<password>", config.mongodb_registry_user_password
-    )
-    config = config.copy(update={"mongodb_registry_connection": mongodb_registry_conn})
+# if "<password>" in config.mongodb_registry_connection:
+#     mongodb_registry_conn = config.mongodb_registry_connection.replace(
+#         "<password>", config.mongodb_registry_user_password
+#     )
+#     config = config.copy(update={"mongodb_registry_connection": mongodb_registry_conn})
 
 # db_client = pymongo.MongoClient(
 # # self.client = AsyncIOMotorClient(
@@ -88,98 +93,98 @@ if "<password>" in config.mongodb_registry_connection:
 # print(db_client)
 
 
-class DBClient:
-    def __init__(self, connection: str, db_type: str = "mongodb") -> None:
-        self.db_type = db_type
-        self.client = None
-        self.connection = connection
+# class DBClient:
+#     def __init__(self, connection: str, db_type: str = "mongodb") -> None:
+#         self.db_type = db_type
+#         self.client = None
+#         self.connection = connection
 
-    def connect(self):
-        if self.db_type == "mongodb":
-            self.connect_mongo()
-        # return self.client
+#     def connect(self):
+#         if self.db_type == "mongodb":
+#             self.connect_mongo()
+#         # return self.client
 
-    def connect_mongo(self):
-        if not self.client:
-            try:
-                self.client = pymongo.MongoClient(
-                    # self.client = AsyncIOMotorClient(
-                    self.connection,
-                    # connect=True,
-                    # tls=True,
-                    # tlsAllowInvalidCertificates=True
-                )
-            except pymongo.errors.ConnectionError:
-                self.client = None
-            # L.info("mongo client", extra={"connection": self.connection, "client": self.client})
-            # L.info(await self.client.server_info())
-        # return self.client
+#     def connect_mongo(self):
+#         if not self.client:
+#             try:
+#                 self.client = pymongo.MongoClient(
+#                     # self.client = AsyncIOMotorClient(
+#                     self.connection,
+#                     # connect=True,
+#                     # tls=True,
+#                     # tlsAllowInvalidCertificates=True
+#                 )
+#             except pymongo.errors.ConnectionError:
+#                 self.client = None
+#             # L.info("mongo client", extra={"connection": self.connection, "client": self.client})
+#             # L.info(await self.client.server_info())
+#         # return self.client
 
-    def get_db(self, database: str):
-        self.connect()
-        if self.client:
-            return self.client[database]
-        return None
+#     def get_db(self, database: str):
+#         self.connect()
+#         if self.client:
+#             return self.client[database]
+#         return None
 
-    def get_collection(self, database: str, collection: str):
-        # L.info("get_collection")
-        db = self.get_db(database)
-        # L.info(f"get_collection:db = {db}")
-        if db is not None:
-            try:
-                db_coll = db[collection]
-                # L.info(f"get_collection:db:collection = {db_coll}")
-                return db_coll
-            except Exception as e:
-                print(f"get_collection error: {e}")
-        return None
+#     def get_collection(self, database: str, collection: str):
+#         # L.info("get_collection")
+#         db = self.get_db(database)
+#         # L.info(f"get_collection:db = {db}")
+#         if db is not None:
+#             try:
+#                 db_coll = db[collection]
+#                 # L.info(f"get_collection:db:collection = {db_coll}")
+#                 return db_coll
+#             except Exception as e:
+#                 print(f"get_collection error: {e}")
+#         return None
 
-    def find_one(self, database: str, collection: str, query: dict):
-        self.connect()
-        if self.client:
-            db = self.client[database]
-            db_collection = db[collection]
-            result = db_collection.find_one(query)
-            if result:
-                update = {"last_update": datetime.now(tz=timezone.utc)}
-                db_data_client.update_one(database, collection, result, update)
-            return result
-        return None
+#     def find_one(self, database: str, collection: str, query: dict):
+#         self.connect()
+#         if self.client:
+#             db = self.client[database]
+#             db_collection = db[collection]
+#             result = db_collection.find_one(query)
+#             if result:
+#                 update = {"last_update": datetime.now(tz=timezone.utc)}
+#                 db_data_client.update_one(database, collection, result, update)
+#             return result
+#         return None
 
-    def insert_one(self, database: str, collection: str, document: dict):
-        self.connect()
-        if self.client:
-            db = self.client[database]
-            sensor_defs = db[collection]
-            result = sensor_defs.insert_one(document)
-            return result
-        return None
+#     def insert_one(self, database: str, collection: str, document: dict):
+#         self.connect()
+#         if self.client:
+#             db = self.client[database]
+#             sensor_defs = db[collection]
+#             result = sensor_defs.insert_one(document)
+#             return result
+#         return None
 
-    def update_one(
-        self,
-        database: str,
-        collection: str,
-        document: dict,
-        update: dict,
-        filter: dict = None,
-        upsert=False,
-    ):
-        self.connect()
-        if self.client:
-            db = self.client[database]
-            sensor = db[collection]
-            if filter is None:
-                filter = document
-            set_update = {"$set": update}
-            if upsert:
-                set_update["$setOnInsert"] = document
-            result = sensor.update_one(filter=filter, update=set_update, upsert=upsert)
-            return result
-        return None
+#     def update_one(
+#         self,
+#         database: str,
+#         collection: str,
+#         document: dict,
+#         update: dict,
+#         filter: dict = None,
+#         upsert=False,
+#     ):
+#         self.connect()
+#         if self.client:
+#             db = self.client[database]
+#             sensor = db[collection]
+#             if filter is None:
+#                 filter = document
+#             set_update = {"$set": update}
+#             if upsert:
+#                 set_update["$setOnInsert"] = document
+#             result = sensor.update_one(filter=filter, update=set_update, upsert=upsert)
+#             return result
+#         return None
 
 
-db_data_client = DBClient(connection=config.mongodb_data_connection)
-db_registry_client = DBClient(connection=config.mongodb_registry_connection)
+# db_data_client = DBClient(connection=config.mongodb_data_connection)
+# db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 
 # sensor_def_data = []
 # sensor_defs_table = dag.AgGrid(
@@ -225,6 +230,14 @@ db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 #     id="ws-sensor", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/main"
 # )
 ws_send_buffer = html.Div(id="ws-send-buffer", style={"display": "none"})
+
+datastore_url = f"datastore.{config.daq_id}-system"
+link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
+# query = {"device_type": "sensor"}
+# url = f"http://{datastore_url}/device-definition/registry/get/"
+# print(f"device-definition-get: {url}")
+# results = httpx.get(url, params=query)
+# print(f"results: {results}")
 
 
 def get_layout():
@@ -306,7 +319,9 @@ def get_layout():
                 id="ws-sensor-registry",
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"ws:/dashboard/uasdaq/dashboard/ws/sensor-registry/main",
-                url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor-registry/main",
+                # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor-registry/main",
+                # url=f"ws://mspbase01.pmel.noaa.gov:8080/msp/dashboardtest/ws/sensor-registry/main",
+                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor-registry/main"
             ),
             ws_send_buffer,
             dcc.Store(id="sensor-defs-changes", data=[]),
@@ -361,15 +376,57 @@ def update_sensor_definitions(count, table_data):
     update = False
     new_data = []
     try:
-        db_registry_client.connect()
-        if db_registry_client:
-            sensor_def_registry = db_registry_client.get_collection(
-                "registry", "sensor_definition"
-            )
-            for doc in sensor_def_registry.find():
+        # db_registry_client.connect()
+
+        # db_registry_client = None
+        # if db_registry_client:
+        #     sensor_def_registry = db_registry_client.get_collection(
+        #         "registry", "sensor_definition"
+        #     )
+        #     for doc in sensor_def_registry.find():
+        #         if doc is not None:
+        #             # print(f"doc: {doc}")
+        #             id = doc["_id"]
+        #             make = doc["make"]
+        #             model = doc["model"]
+        #             version = doc["version"]
+
+        #             sensor_def = {
+        #                 "sensor-def-id": id,
+        #                 "make": make,
+        #                 "model": model,
+        #                 "version": version,
+        #             }
+        #             if sensor_def not in table_data:
+        #                 table_data.append(sensor_def)
+        #                 update = True
+        #             new_data.append(sensor_def)
+
+
+        #     remove_data = []
+        #     for index, data in enumerate(table_data):
+        #         if data not in new_data:
+        #             update = True
+        #             remove_data.insert(0, index)
+        #     for index in remove_data:
+        #         table_data.pop(index)
+
+        #     if update:
+        #         return table_data
+        #     else:
+        #         return dash.no_update
+
+        query = {"device_type": "sensor"}
+        url = f"http://{datastore_url}/device-definition/registry/get/"
+        print(f"device-definition-get: {url}")
+        response = httpx.get(url, params=query)
+        results = response.json()
+        # print(f"results: {results}")
+        if "results" in results and results["results"]:
+            for doc in results["results"]:
                 if doc is not None:
                     # print(f"doc: {doc}")
-                    id = doc["_id"]
+                    id = doc["device_definition_id"]
                     make = doc["make"]
                     model = doc["model"]
                     version = doc["version"]
@@ -385,18 +442,21 @@ def update_sensor_definitions(count, table_data):
                         update = True
                     new_data.append(sensor_def)
 
-            remove_data = []
-            for index, data in enumerate(table_data):
-                if data not in new_data:
-                    update = True
-                    remove_data.insert(0, index)
-            for index in remove_data:
-                table_data.pop(index)
 
-            if update:
-                return table_data
-            else:
-                return dash.no_update
+        remove_data = []
+        for index, data in enumerate(table_data):
+            if data not in new_data:
+                update = True
+                remove_data.insert(0, index)
+        for index in remove_data:
+            table_data.pop(index)
+
+        if update:
+            return table_data
+        else:
+            return dash.no_update
+
+
 
     except Exception as e:
         print(f"update_sensor_definitions error: {e}")
@@ -416,49 +476,99 @@ def update_active_sensors(count, table_data):
     rel_path = dash.get_relative_path("/")
     print(f"*** rel_path: {rel_path}")
     try:
-        db_registry_client.connect()
-        if db_registry_client:
-            # print(db_registry_client)
-            sensor_registry = db_registry_client.get_collection("registry", "sensor")
-            # print(sensor_registry)
-            for doc in sensor_registry.find():
-                if doc is not None:
-                    # print(f"doc: {doc}")
-                    make = doc["make"]
-                    model = doc["model"]
-                    serial_number = doc["serial_number"]
-                    version = doc["version"]
-                    sensor_id = "::".join([make, model, serial_number])
-                    sampling_system_id = "unknown::unknown::unknown"
+        # db_registry_client.connect()
+        # if db_registry_client:
+        #     # print(db_registry_client)
+        #     sensor_registry = db_registry_client.get_collection("registry", "sensor")
+        #     # print(sensor_registry)
+        #     for doc in sensor_registry.find():
+        #         if doc is not None:
+        #             # print(f"doc: {doc}")
+        #             make = doc["make"]
+        #             model = doc["model"]
+        #             serial_number = doc["serial_number"]
+        #             version = doc["version"]
+        #             sensor_id = "::".join([make, model, serial_number])
+        #             sampling_system_id = "unknown::unknown::unknown"
 
-                    sensor = {
-                        # "sensor_id": f"[{sensor_id}](http://uasdaq.pmel.noaa.gov/uasdaq/dashboard/dash/sensor/{sensor_id})",
-                        "sensor_id": f"[{sensor_id}](https://k8s.pmel-dev.oarcloud.noaa.gov/uasdaq/dashboard/dash/sensor/{sensor_id})",
-                        # "sensor_id": f"[{sensor_id}]({rel_path}/sensor/{sensor_id})",
-                        "make": make,
-                        "model": model,
-                        "serial_number": serial_number,
-                        # "sampling_system_id": f"[{sampling_system_id}](http://uasdaq.pmel.noaa.gov/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
-                        "sampling_system_id": f"[{sampling_system_id}]https://k8s.pmel-dev.oarcloud.noaa.gov/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
-                        # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
-                    }
-                    if sensor not in table_data:
-                        table_data.append(sensor)
-                        update = True
-                    new_data.append(sensor)
+        #             sensor = {
+        #                 # "sensor_id": f"[{sensor_id}](http://uasdaq.pmel.noaa.gov/uasdaq/dashboard/dash/sensor/{sensor_id})",
+        #                 "sensor_id": f"[{sensor_id}](https://k8s.pmel-dev.oarcloud.noaa.gov/uasdaq/dashboard/dash/sensor/{sensor_id})",
+        #                 # "sensor_id": f"[{sensor_id}]({rel_path}/sensor/{sensor_id})",
+        #                 "make": make,
+        #                 "model": model,
+        #                 "serial_number": serial_number,
+        #                 # "sampling_system_id": f"[{sampling_system_id}](http://uasdaq.pmel.noaa.gov/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
+        #                 "sampling_system_id": f"[{sampling_system_id}]https://k8s.pmel-dev.oarcloud.noaa.gov/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
+        #                 # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
+        #             }
+        #             if sensor not in table_data:
+        #                 table_data.append(sensor)
+        #                 update = True
+        #             new_data.append(sensor)
 
-            remove_data = []
-            for index, data in enumerate(table_data):
-                if data not in new_data:
+        #     remove_data = []
+        #     for index, data in enumerate(table_data):
+        #         if data not in new_data:
+        #             update = True
+        #             remove_data.insert(0, index)
+        #     for index in remove_data:
+        #         table_data.pop(index)
+
+        #     if update:
+        #         return table_data
+        #     else:
+        #         return dash.no_update
+        pass
+
+        # query = {}
+        # results = httpx.get(f"http://{datastore_url}/device-instance/registry/get/", params=query)
+        # print(f"results: {results}")
+
+        query = {"device_type": "sensor"}
+        url = f"http://{datastore_url}/device-instance/registry/get/"
+        print(f"device-definition-get: {url}")
+        response = httpx.get(url, params=query)
+        results = response.json()
+        # print(f"results: {results}")
+        if "results" in results and results["results"]:
+            for doc in results["results"]:
+                make = doc["make"]
+                model = doc["model"]
+                serial_number = doc["serial_number"]
+                version = doc["version"]
+                sensor_id = "::".join([make, model, serial_number])
+                sampling_system_id = "unknown::unknown::unknown"
+
+                sensor = {
+                    # "sensor_id": f"[{sensor_id}](http://uasdaq.pmel.noaa.gov/uasdaq/dashboard/dash/sensor/{sensor_id})",
+                    "sensor_id": f"[{sensor_id}]({link_url_base}/dash/sensor/{sensor_id})",
+                    # "sensor_id": f"[{sensor_id}]({rel_path}/sensor/{sensor_id})",
+                    "make": make,
+                    "model": model,
+                    "serial_number": serial_number,
+                    # "sampling_system_id": f"[{sampling_system_id}](http://uasdaq.pmel.noaa.gov/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
+                    "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
+                    # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
+                }
+                if sensor not in table_data:
+                    table_data.append(sensor)
                     update = True
-                    remove_data.insert(0, index)
-            for index in remove_data:
-                table_data.pop(index)
+                new_data.append(sensor)
 
-            if update:
-                return table_data
-            else:
-                return dash.no_update
+        remove_data = []
+        for index, data in enumerate(table_data):
+            if data not in new_data:
+                update = True
+                remove_data.insert(0, index)
+        for index in remove_data:
+            table_data.pop(index)
+
+        if update:
+            return table_data
+        else:
+            return dash.no_update
+
 
     except Exception as e:
         print(f"update_active_sensors error: {e}")

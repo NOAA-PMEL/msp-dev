@@ -102,7 +102,7 @@ class KNMQTTAdapterSettings(BaseSettings):
 #         try:
 #             timeout = httpx.Timeout(5.0, read=0.1)
 #             # ce["datacontenttype"] = "application/json"
-#             ce["destpath"] = "/test/path"
+#             ce["destpath"] = "test/path"
 #             headers, body = to_structured(ce)
 #             # L.debug("send_to_knbroker", extra={"broker": config.knative_broker, "h": headers, "b": body})
 #             # send to knative kafkabroker
@@ -140,49 +140,56 @@ class KNMQTTClient():
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.send_to_knbroker_loop())
 
+        self.client = None
+
+
     async def send_to_mqtt(self, ce: CloudEvent):
         await self.to_mqtt_buffer.put(ce)
 
     async def send_to_mqtt_loop(self):
 
-        reconnect = 3
+        reconnect = 5
         while True:
             try:
-                L.debug("listen", extra={"config": self.config})
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
-                    while True:
-                        ce = await self.to_mqtt_buffer.get()
-                        L.debug("ce", extra={"ce": ce})
-                        try:
-                            destpath = ce["destpath"]
-                            L.debug(destpath)
-                            await client.publish(destpath, payload=to_json(ce))
-                        except Exception as e:
-                            L.error("send_to_mqtt", extra={"reason": e})    
+                # L.debug("listen", extra={"config": self.config})
+                # async with Client(self.conwfig.mqtt_broker, port=self.config.mqtt_port) as self.client:
+                while True:
+                    ce = await self.to_mqtt_buffer.get()
+                    L.debug("ce", extra={"ce": ce})
+                    while not self.client:
+                        L.info("waiting for mqtt client")
+                        await asyncio.sleep(reconnect)
+                    try:
+                        destpath = ce["destpath"]
+                        L.debug(destpath)
+                        await self.client.publish(destpath, payload=to_json(ce))
+                    except Exception as e:
+                        L.error("send_to_mqtt", extra={"reason": e})    
             except MqttError as error:
                 L.error(
                     f'{error}. Trying again in {reconnect} seconds',
                     extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
                 )
-            finally:
                 await asyncio.sleep(reconnect)
+            # finally:
+            #     await asyncio.sleep(reconnect)
 
     async def get_from_mqtt_loop(self):
-        reconnect = 3
+        reconnect = 10
         while True:
             try:
                 L.debug("listen", extra={"config": self.config})
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as self.client:
                     for topic in self.config.mqtt_topic_subscriptions.split("\n"):
                         # print(f"run - topic: {topic.strip()}")
                         # L.debug("run", extra={"topic": topic})
                         if topic.strip():
                             L.debug("subscribe", extra={"topic": topic.strip()})
-                            await client.subscribe(topic.strip())
+                            await self.client.subscribe(topic.strip())
 
                         # await client.subscribe(config.mqtt_topic_subscription, qos=2)
                     # async with client.messages() as messages:
-                    async for message in client.messages: #() as messages:
+                    async for message in self.client.messages: #() as messages:
 
                         ce = from_json(message.payload)
                         topic = message.topic.value
@@ -196,7 +203,7 @@ class KNMQTTClient():
             except MqttError as error:
                 L.error(
                     f'{error}. Trying again in {reconnect} seconds',
-                    extra={ k: v for k, v in config.dict().items() if k.lower().startswith('mqtt_') }
+                    extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
                 )
             finally:
                 await asyncio.sleep(reconnect)
@@ -234,7 +241,7 @@ class KNMQTTClient():
                     if "sourcepath" in ce:
                         attrs["sourcepath"] = ce["sourcepath"]
                     ce = CloudEvent(attributes=attrs, data=ce.data)
-                    # ce["destpath"] = "/test/path"
+                    # ce["destpath"] = "test/path"
                     headers, body = to_structured(ce)
                     L.debug("send_to_knbroker", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
                     # send to knative kafkabroker

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 import math
 import json
@@ -16,7 +16,7 @@ def get_datetime_format(fraction=True):
     return isofmt
 
 def get_datetime():
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 def get_datetime_string(fraction: bool=True):
     return datetime_to_string(get_datetime(), fraction=fraction)
@@ -32,8 +32,20 @@ def string_to_datetime(dt_string: str, fraction: bool=True):
             return datetime.strptime(dt_string, get_datetime_format())
         except ValueError:
             return None
+        
+def timestamp_to_string(ts: float, fraction: bool=True) -> str:
+    try:
+        dt = datetime.fromtimestamp(ts)
+        return datetime_to_string(dt=dt, fraction=fraction)
+    except TypeError:
+        return None
+    
+def string_to_timestamp(dt_string: str, fraction: bool=True) -> float:
+    if dt := string_to_datetime(dt_string=dt_string, fraction=fraction):
+        return dt.timestamp()
+    return None
 
-def get_datetime_with_delta(dt:datetime, delta: timedelta):
+def get_datetime_with_delta(delta: timedelta, dt: datetime=datetime.now(timezone.utc)):
     if timedelta < 0:
         return dt - timedelta(seconds=abs(delta))
     else:

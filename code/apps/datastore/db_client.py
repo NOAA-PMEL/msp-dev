@@ -20,16 +20,25 @@ from cloudevents.conversion import to_structured  # , from_http
 from cloudevents.exceptions import InvalidStructuredJSON
 
 from datetime import datetime, timezone
-from datastore_query import DataStoreQuery
+from datastore_requests import (
+    DataStoreQuery,
+    DataUpdate,
+    DataRequest,
+    DeviceDefinitionUpdate,
+    DeviceDefinitionRequest,
+    DeviceInstanceUpdate,
+    DeviceInstanceRequest,
+    DatastoreRequest
+)
 
 class DBClientConfig(BaseModel):
     type: str | None = "redis"
     # config: dict | None = {"hostname": "localhost", "port": 1883}
     config: dict | None = {
-        "hostname": "mosquitto.default", 
-        "port": 1883,
-        "username": "unknown",
-        "password": "unknown"
+        "hostname": "", 
+        "port": None,
+        "username": "",
+        "password": ""
     }
 
 
@@ -45,13 +54,13 @@ class DBClientManager:
             config = DBClientConfig()
 
         if config.type == "redis":
-            # return mqtt client
+
             client_mod = "redis_client"
             client_class = "redis_class"
             mod_ = importlib.import_module("redis_client")
             # print(f"mod_: {"redis_client"}")
             client = getattr(mod_, "RedisClient")(config)
-            print(f"client: {client}")
+            print(f"client: {client}, {config}")
             return client
             # return RedisClient(config)
             # pass
@@ -68,11 +77,14 @@ class DBClientManager:
 class DBClient:
     def __init__(self, config: DBClientConfig) -> None:
         # self.db_type = db_type
-        self.config = config
+        # self.config = config
         if config is None:
-            self.config = DBClientConfig()
+            config = DBClientConfig()
+        self.config = config.config
         self.client = None
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.debug(config, self.config)
         # self.connection = connection
 
     def connect(self):
@@ -110,16 +122,17 @@ class DBClient:
         self.connect()
         if self.client:
             db = self.client[database]
-            sensor_defs = db[collection]
-            result = sensor_defs.insert_one(document)
+            device_defs = db[collection]
+            result = device_defs.insert_one(document)
             return result
         return None
 
-    async def data_sensor_update(
+    async def device_data_update(
         self,
-        # database: str,
-        # collection: str,
-        document: dict,
+        database: str,
+        collection: str,
+        # document: dict,
+        request: DataUpdate,
         # update: dict,
         # filter: dict = None,
         # upsert=False,
@@ -127,29 +140,36 @@ class DBClient:
     ):
         return None
 
-    async def data_sensor_get(self, query: DataStoreQuery):
+    async def device_data_get(self, query: DataRequest):
         return None
 
-    # def update_one(
-    #     self,
-    #     database: str,
-    #     collection: str,
-    #     document: dict,
-    #     # update: dict,
-    #     filter: dict = None,
-    #     # upsert=False,
-    #     ttl: int = 300
-    # ):
-    #     pass
-    #     # self.connect()
-    #     # if self.client:
-    #     #     db = self.client[database]
-    #     #     sensor = db[collection]
-    #     #     if filter is None:
-    #     #         filter = document
-    #     #     set_update = {"$set": update}
-    #     #     if upsert:
-    #     #         set_update["$setOnInsert"] = document
-    #     #     result = sensor.update_one(filter=filter, update=set_update, upsert=upsert)
-    #     #     return result
-    #     return None
+    async def device_definition_registry_update(
+        self,
+        database: str,
+        collection: str,
+        request: DeviceDefinitionUpdate,
+        ttl: int = 0
+    ) -> bool:
+        return False
+
+    async def device_definition_registry_get(
+            self,
+            request: DeviceDefinitionRequest
+    ) -> dict:
+        return {"results": []}
+
+    async def device_instance_registry_update(
+        self,
+        database: str,
+        collection: str,
+        request: DeviceInstanceUpdate,
+        ttl: int = 0
+    ) -> bool:
+        return False
+
+    async def device_instance_registry_get(
+        self,
+        request: DeviceInstanceRequest
+    ) -> dict:
+        return {"results": []}
+

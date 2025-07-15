@@ -1,0 +1,30 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: dashboardtest-stripprefix
+  # namespace: mspbase01-system
+  # annotations:
+  #   kubernetes.io/ingress.class: traefik
+spec:
+  stripPrefix:
+    prefixes:
+      - /msp/dashboardtest
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: dashboard-test
+  # namespace: mspbase01-system
+
+spec:
+  entryPoints:
+    - web
+  routes:
+  - match: PathPrefix(`/msp/dashboardtest`)
+    kind: Rule
+    services:
+    - name: dashboard-test
+      port: 80
+    middlewares:
+    - name: dashboardtest-stripprefix
+      # namespace: mspbase01-system

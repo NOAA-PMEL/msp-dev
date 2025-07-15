@@ -530,7 +530,7 @@ class WXT536(Sensor):
                         source=self.get_id_as_source(),
                         data=record,
                     )
-                    destpath = f"/{self.get_id_as_topic()}/data/update"
+                    destpath = f"{self.get_id_as_topic()}/data/update"
                     event["destpath"] = destpath
                     self.logger.debug(
                         "default_data_loop",

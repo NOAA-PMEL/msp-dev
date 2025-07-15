@@ -14,6 +14,10 @@ class BaseEventType(object):
     ACTION_REQUEST = "request"
     ACTION_UPDATE = "update"
     ACTION_BCAST = "broadcast"
+    ACTION_ACK = "ack"
+    ACTION_SYNC_REQUEST = "sync-request"
+    ACTION_SYNC_UPDATE = "sync-update"
+    ACTION_SYNC_BCAST = "sync-broadcast"
 
     def __init__(self):
         super(BaseEventType, self).__init__()
@@ -42,6 +46,18 @@ class BaseEventType(object):
     def registry_request():
         return ".".join([BaseEventType.get_type(BaseEventType.TYPE_REGISTRY), BaseEventType.ACTION_REQUEST])
     
+    @staticmethod
+    def registry_sync_bcast():
+        return ".".join([BaseEventType.get_type(BaseEventType.TYPE_REGISTRY), BaseEventType.ACTION_SYNC_BCAST])
+
+    @staticmethod
+    def registry_sync_request():
+        return ".".join([BaseEventType.get_type(BaseEventType.TYPE_REGISTRY), BaseEventType.ACTION_SYNC_REQUEST])
+
+    @staticmethod
+    def registry_sync_update():
+        return ".".join([BaseEventType.get_type(BaseEventType.TYPE_REGISTRY), BaseEventType.ACTION_SYNC_UPDATE])
+
     @staticmethod
     def control_request():
         return ".".join([BaseEventType.get_type(BaseEventType.TYPE_CONTROL), BaseEventType.ACTION_REQUEST])

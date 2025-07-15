@@ -10,6 +10,7 @@ from fastapi import (
     Request,
     WebSocket,
     WebSocketDisconnect,
+    status
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.wsgi import WSGIMiddleware
@@ -288,7 +289,7 @@ class WebInterfaceManager():
     def send_data(self, data):
         # syn11
         try:
-            destpath = "/webinterface/control/request"
+            destpath = "webinterface/control/request"
             event = DAQEvent.create_controller_control_request(
                 source=data['device'],
                 data=data
@@ -656,12 +657,13 @@ async def chat_ws_endpoint(
 #     # event = from_http(ce.headers, ce.get_data)
 #     # print(event)
 
-@app.post("/sensor/data/update")
+@app.post("/sensor/data/update", status_code=status.HTTP_202_ACCEPTED)
 async def sensor_data_update(request: Request):
     L.info("sensor/data/update")
     data = await request.body()
-    L.info(f"data: {data}")
-    headers = dict(request.headers)
+    L.info(f"headers: {request.headers}, data: {data}")
+    headers = request.headers
+    # headers = dict(request.headers)
 
     try:
         ce = from_http(headers=headers, data=data)
@@ -685,6 +687,8 @@ async def sensor_data_update(request: Request):
 
         make = attributes["make"]["data"]
         model = attributes["model"]["data"]
+        # # TODO fix serial number in magic data record, tmp workaround for now
+        # serial_number = attributes["serial_number"]
         serial_number = attributes["serial_number"]["data"]
         # format_version = attributes["format_version"]["data"]
         # parts = format_version.split(".")
@@ -698,5 +702,5 @@ async def sensor_data_update(request: Request):
 
     await manager.broadcast(json.dumps(ce.data), "sensor", sensor_id)
 
-
-    return "ok", 200
+    return {"message": "OK"}
+    # return "ok", 200

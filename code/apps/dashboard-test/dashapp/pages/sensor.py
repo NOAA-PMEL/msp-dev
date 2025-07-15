@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import json
+import logging
 import dash
 import plotly.express as px
 import plotly.graph_objs as go
@@ -22,33 +23,43 @@ from pydantic import BaseSettings
 from ulid import ULID
 import dash_ag_grid as dag
 import pandas as pd
-import pymongo
+from logfmter import Logfmter
+# import pymongo
 from collections import deque
+import httpx
+
+handler = logging.StreamHandler()
+handler.setFormatter(Logfmter())
+logging.basicConfig(handlers=[handler])
+L = logging.getLogger(__name__)
+L.setLevel(logging.DEBUG)
 
 dash.register_page(
     __name__,
     path_template="/sensor/<sensor_id>",
-    title="UAS-DAQ Sensors",  # , prevent_initial_callbacks=True
+    title="Sensors",  # , prevent_initial_callbacks=True
 )
 
 
 class Settings(BaseSettings):
-    host: str = "0.0.0.0"
-    port: int = 8787
-    debug: bool = False
+    # host: str = "0.0.0.0"
+    # port: int = 8787
+    # debug: bool = False
+    daq_id: str = "default"
+    ws_hostname: str = "localhost:8080"
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
-    mongodb_data_user_name: str = ""
-    mongodb_data_user_password: str = ""
-    mongodb_registry_user_name: str = ""
-    mongodb_registry_user_password: str = ""
-    mongodb_data_connection: str = (
-        "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/data?replicaSet=uasdaq-mongodb&ssl=false"
-    )
-    mongodb_registry_connection: str = (
-        "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/registry?replicaSet=uasdaq-mongodb&ssl=false"
-    )
+    # mongodb_data_user_name: str = ""
+    # mongodb_data_user_password: str = ""
+    # mongodb_registry_user_name: str = ""
+    # mongodb_registry_user_password: str = ""
+    # mongodb_data_connection: str = (
+    #     "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/data?replicaSet=uasdaq-mongodb&ssl=false"
+    # )
+    # mongodb_registry_connection: str = (
+    #     "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/registry?replicaSet=uasdaq-mongodb&ssl=false"
+    # )
     # erddap_http_connection: str = (
     #     "http://uasdaq.pmel.noaa.gov/uasdaq/dataserver/erddap"
     # )
@@ -69,29 +80,29 @@ config = Settings()
 # TODO: add readOnly user for this connection
 
 # combine secrets to get complete connection string
-if "<username>" in config.mongodb_data_connection:
-    mongodb_data_conn = config.mongodb_data_connection.replace(
-        "<username>", config.mongodb_data_user_name
-    )
-    config = config.copy(update={"mongodb_data_connection": mongodb_data_conn})
+# if "<username>" in config.mongodb_data_connection:
+#     mongodb_data_conn = config.mongodb_data_connection.replace(
+#         "<username>", config.mongodb_data_user_name
+#     )
+#     config = config.copy(update={"mongodb_data_connection": mongodb_data_conn})
 
-if "<password>" in config.mongodb_data_connection:
-    mongodb_data_conn = config.mongodb_data_connection.replace(
-        "<password>", config.mongodb_data_user_password
-    )
-    config = config.copy(update={"mongodb_data_connection": mongodb_data_conn})
+# if "<password>" in config.mongodb_data_connection:
+#     mongodb_data_conn = config.mongodb_data_connection.replace(
+#         "<password>", config.mongodb_data_user_password
+#     )
+#     config = config.copy(update={"mongodb_data_connection": mongodb_data_conn})
 
-if "<username>" in config.mongodb_registry_connection:
-    mongodb_registry_conn = config.mongodb_registry_connection.replace(
-        "<username>", config.mongodb_registry_user_name
-    )
-    config = config.copy(update={"mongodb_registry_connection": mongodb_registry_conn})
+# if "<username>" in config.mongodb_registry_connection:
+#     mongodb_registry_conn = config.mongodb_registry_connection.replace(
+#         "<username>", config.mongodb_registry_user_name
+#     )
+#     config = config.copy(update={"mongodb_registry_connection": mongodb_registry_conn})
 
-if "<password>" in config.mongodb_registry_connection:
-    mongodb_registry_conn = config.mongodb_registry_connection.replace(
-        "<password>", config.mongodb_registry_user_password
-    )
-    config = config.copy(update={"mongodb_registry_connection": mongodb_registry_conn})
+# if "<password>" in config.mongodb_registry_connection:
+#     mongodb_registry_conn = config.mongodb_registry_connection.replace(
+#         "<password>", config.mongodb_registry_user_password
+#     )
+#     config = config.copy(update={"mongodb_registry_connection": mongodb_registry_conn})
 
 # db_client = pymongo.MongoClient(
 # # self.client = AsyncIOMotorClient(
@@ -103,131 +114,133 @@ if "<password>" in config.mongodb_registry_connection:
 # print(db_client)
 
 
-class DBClient:
-    def __init__(self, connection: str, db_type: str = "mongodb") -> None:
-        self.db_type = db_type
-        self.client = None
-        self.connection = connection
+# class DBClient:
+#     def __init__(self, connection: str, db_type: str = "mongodb") -> None:
+#         self.db_type = db_type
+#         self.client = None
+#         self.connection = connection
 
-    def connect(self):
-        if self.db_type == "mongodb":
-            self.connect_mongo()
-        # return self.client
+#     def connect(self):
+#         if self.db_type == "mongodb":
+#             self.connect_mongo()
+#         # return self.client
 
-    def connect_mongo(self):
-        if not self.client:
-            try:
-                self.client = pymongo.MongoClient(
-                    # self.client = AsyncIOMotorClient(
-                    self.connection,
-                    # connect=True,
-                    # tls=True,
-                    # tlsAllowInvalidCertificates=True
-                )
-            except pymongo.errors.ConnectionError:
-                self.client = None
-            # L.info("mongo client", extra={"connection": self.connection, "client": self.client})
-            # L.info(await self.client.server_info())
-        # return self.client
+#     def connect_mongo(self):
+#         if not self.client:
+#             try:
+#                 self.client = pymongo.MongoClient(
+#                     # self.client = AsyncIOMotorClient(
+#                     self.connection,
+#                     # connect=True,
+#                     # tls=True,
+#                     # tlsAllowInvalidCertificates=True
+#                 )
+#             except pymongo.errors.ConnectionError:
+#                 self.client = None
+#             # L.info("mongo client", extra={"connection": self.connection, "client": self.client})
+#             # L.info(await self.client.server_info())
+#         # return self.client
 
-    def get_db(self, database: str):
-        self.connect()
-        if self.client:
-            return self.client[database]
-        return None
+#     def get_db(self, database: str):
+#         self.connect()
+#         if self.client:
+#             return self.client[database]
+#         return None
 
-    def get_collection(self, database: str, collection: str):
-        # L.info("get_collection")
-        db = self.get_db(database)
-        # L.info(f"get_collection:db = {db}")
-        if db is not None:
-            try:
-                db_coll = db[collection]
-                # L.info(f"get_collection:db:collection = {db_coll}")
-                return db_coll
-            except Exception as e:
-                print(f"get_collection error: {e}")
-        return None
+#     def get_collection(self, database: str, collection: str):
+#         # L.info("get_collection")
+#         db = self.get_db(database)
+#         # L.info(f"get_collection:db = {db}")
+#         if db is not None:
+#             try:
+#                 db_coll = db[collection]
+#                 # L.info(f"get_collection:db:collection = {db_coll}")
+#                 return db_coll
+#             except Exception as e:
+#                 print(f"get_collection error: {e}")
+#         return None
 
-    def find_one(self, database: str, collection: str, query: dict):
-        self.connect()
-        if self.client:
-            # db = self.client[database]
-            # db_collection = db[collection]
-            db_collection = self.get_collection(
-                database=database, collection=collection
-            )
-            result = db_collection.find_one(query)
-            if result:
-                update = {"last_update": datetime.now(tz=timezone.utc)}
-                self.client.update_one(database, collection, result, update)
-            return result
-        return None
+#     def find_one(self, database: str, collection: str, query: dict):
+#         self.connect()
+#         if self.client:
+#             # db = self.client[database]
+#             # db_collection = db[collection]
+#             db_collection = self.get_collection(
+#                 database=database, collection=collection
+#             )
+#             result = db_collection.find_one(query)
+#             if result:
+#                 update = {"last_update": datetime.now(tz=timezone.utc)}
+#                 self.client.update_one(database, collection, result, update)
+#             return result
+#         return None
 
-    def find(
-        self, database: str, collection: str, query: dict, sort=None, refresh=True
-    ):
-        self.connect()
-        if self.client:
-            # db = self.client[database]
-            # db_collection = db[collection]
-            db_collection = self.get_collection(
-                database=database, collection=collection
-            )
-            if sort:
-                find_result = db_collection.find(query).sort(sort)
-            else:
-                find_result = db_collection.find(query)
-            # print(f"find result: {result}")
-            result = []
-            for r in find_result:
-                result.append(r)
-                # print(f"r: {r}")
+#     def find(
+#         self, database: str, collection: str, query: dict, sort=None, refresh=True
+#     ):
+#         self.connect()
+#         if self.client:
+#             # db = self.client[database]
+#             # db_collection = db[collection]
+#             db_collection = self.get_collection(
+#                 database=database, collection=collection
+#             )
+#             if sort:
+#                 find_result = db_collection.find(query).sort(sort)
+#             else:
+#                 find_result = db_collection.find(query)
+#             # print(f"find result: {result}")
+#             result = []
+#             for r in find_result:
+#                 result.append(r)
+#                 # print(f"r: {r}")
 
-            if result and refresh:
-                for r in result:
-                    # print(f"r: {r}")
-                    update = {"last_update": datetime.now(tz=timezone.utc)}
-                    self.update_one(database, collection, r, update)
+#             if result and refresh:
+#                 for r in result:
+#                     # print(f"r: {r}")
+#                     update = {"last_update": datetime.now(tz=timezone.utc)}
+#                     self.update_one(database, collection, r, update)
 
-            return result
-        return None
+#             return result
+#         return None
 
-    def insert_one(self, database: str, collection: str, document: dict):
-        self.connect()
-        if self.client:
-            db = self.client[database]
-            sensor_defs = db[collection]
-            result = sensor_defs.insert_one(document)
-            return result
-        return None
+#     def insert_one(self, database: str, collection: str, document: dict):
+#         self.connect()
+#         if self.client:
+#             db = self.client[database]
+#             sensor_defs = db[collection]
+#             result = sensor_defs.insert_one(document)
+#             return result
+#         return None
 
-    def update_one(
-        self,
-        database: str,
-        collection: str,
-        document: dict,
-        update: dict,
-        filter: dict = None,
-        upsert=False,
-    ):
-        self.connect()
-        if self.client:
-            db = self.client[database]
-            sensor = db[collection]
-            if filter is None:
-                filter = document
-            set_update = {"$set": update}
-            if upsert:
-                set_update["$setOnInsert"] = document
-            result = sensor.update_one(filter=filter, update=set_update, upsert=upsert)
-            return result
-        return None
+#     def update_one(
+#         self,
+#         database: str,
+#         collection: str,
+#         document: dict,
+#         update: dict,
+#         filter: dict = None,
+#         upsert=False,
+#     ):
+#         self.connect()
+#         if self.client:
+#             db = self.client[database]
+#             sensor = db[collection]
+#             if filter is None:
+#                 filter = document
+#             set_update = {"$set": update}
+#             if upsert:
+#                 set_update["$setOnInsert"] = document
+#             result = sensor.update_one(filter=filter, update=set_update, upsert=upsert)
+#             return result
+#         return None
 
 
-db_data_client = DBClient(connection=config.mongodb_data_connection)
-db_registry_client = DBClient(connection=config.mongodb_registry_connection)
+# db_data_client = DBClient(connection=config.mongodb_data_connection)
+# db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 
+datastore_url = f"datastore.{config.daq_id}-system"
+link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 
 # websocket = WebSocket(
 #     id="ws-sensor", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/main"
@@ -547,6 +560,71 @@ def build_graphs(layout_options):
 
     return graph_list
 
+def get_device_data(device_id: str, device_type: str="sensor"):
+    
+    query = {"device_type": device_type, "device_id": device_id}
+    url = f"http://{datastore_url}/device/data/get/"
+    print(f"device-data-get: {url}, query: {query}")
+    try:
+        response = httpx.get(url, params=query)
+        results = response.json()
+        # print(f"results: {results}")
+        if "results" in results and results["results"]:
+            return results["results"]
+    except Exception as e:
+        L.error("get_device_data", extra={"reason": e})
+    return []
+
+def get_device_instance(device_id: str, device_type: str="sensor"):
+
+    query = {"device_type": device_type, "device_id": device_id}
+    url = f"http://{datastore_url}/device-instance/registry/get/"
+    L.debug("get_device_instance", extra={"url": url, "query": query})
+    try:
+        response = httpx.get(url, params=query)
+        results = response.json()
+        # print(f"device_instance results: {results}")
+        L.debug("get_device_instance", extra={"results": results})
+        if "results" in results and results["results"]:
+            return results["results"][0]
+    except Exception as e:
+        L.error("get_device_instance", extra={"reason": e})
+    
+    return {}
+
+def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"):
+
+    device = get_device_instance(device_id=device_id, device_type=device_type)
+    if device:
+        try:
+            device_definition_id = "::".join([
+                device["make"],
+                device["model"],
+                device["version"]
+            ])
+            print(f"device_definition_id: {device_definition_id}")
+            return get_device_definition(device_definition_id=device_definition_id, device_type=device_type)
+        
+        except Exception as e:
+            print("ERROR: get_device_definition_by_device_id", extra={"reason": e})
+    
+    return {}
+
+def get_device_definition(device_definition_id: str, device_type: str="sensor"):
+
+    query = {"device_type": device_type, "device_definition_id": device_definition_id}
+    url = f"http://{datastore_url}/device-definition/registry/get/"
+    print(f"device-definition-get: {url}")
+    try:
+        response = httpx.get(url, params=query)
+        results = response.json()
+        print(f"device_definition results: {results}")
+        if "results" in results and results["results"]:
+            return results["results"][0]
+    except Exception as e:
+        L.error("get_device_definition", extra={"reason": e})
+        
+        return {}
 
 def layout(sensor_id=None):
     print(f"get_layout: {sensor_id}")
@@ -555,37 +633,47 @@ def layout(sensor_id=None):
         parts = sensor_id.split("::")
         # print(f"get_layout: {parts}")
         sensor_meta = {
-            "sensor-id": sensor_id,
+            "device_id": sensor_id,
             "make": parts[0],
             "model": parts[1],
             "serial_number": parts[2],
         }
         # print(f"get_layout: {sensor_meta}")
-        query = {"make": sensor_meta["make"], "model": sensor_meta["model"]}
-        # print(f"get_layout: {query}")
-        results = db_registry_client.find(
-            database="registry", collection="sensor_definition", query=query
-        )
-        if len(results) > 0:
-            sensor_definition = results[0]
-            if len(results) > 1:
-                for sdef in results[1:]:
-                    try:
-                        if sdef["version"] > sensor_definition["version"]:
-                            sensor_definition = sdef
-                    except KeyError:
-                        pass
-        else:
-            sensor_definition = None
+        # query = {"make": sensor_meta["make"], "model": sensor_meta["model"]}
+        # response = httpx.get(f"http://{datastore_url}/device-definition/registry/get", params=query)
+        # print(f"response: {response}")
+        # # print(f"get_layout: {query}")
+        
+        # # TODO: replace with datastore call
+        # results = []
+        # # results = db_registry_client.find(
+        # #     database="registry", collection="sensor_definition", query=query
+        # # )
+        # if len(results) > 0:
+        #     sensor_definition = results[0]
+        #     if len(results) > 1:
+        #         for sdef in results[1:]:
+        #             try:
+        #                 if sdef["version"] > sensor_definition["version"]:
+        #                     sensor_definition = sdef
+        #             except KeyError:
+        #                 pass
+
+        sensor_definition = get_device_definition_by_device_id(device_id=sensor_id, device_type="sensor")
+        print(f"sensor_definition: {sensor_definition}")
+        # else:
+        #     sensor_definition = None
+        
         # print(f"sensor def: {sdef}")
     else:
         # sensor_id = "AerosolDynamics::MAGIC250::142"
         # parts = sensor_id.split("::")
         sensor_meta = {}
-        sensor_definition = None
+        sensor_definition = {}
 
     layout_options = {
-        "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}}
+        "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}},
+        # "layout-settings": {"time": {"table-column-defs": [], "variable-list": []}}
     }
     column_defs_1d = []  # deque([], maxlen=10)
     dropdown_list_1d = []
@@ -673,6 +761,9 @@ def layout(sensor_id=None):
                     print(f"layout: {layout_options}")
 
             for name, var in sensor_definition["variables"].items():
+                # only get the data variables for main
+                if var["attributes"]["variable_type"]["data"] != "main":
+                    continue
                 if name in dimensions:
                     continue
                 if "shape" not in var:
@@ -848,7 +939,10 @@ def layout(sensor_id=None):
                 id="ws-sensor-instance",
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/{sensor_id}",
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/{sensor_id}",
-                url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor/{sensor_id}"
+                # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor/{sensor_id}"
+                # url=f"ws://mspbase01:8080/msp/dashboardtest/ws/sensor/{sensor_id}"
+                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor/{sensor_id}"
+
             ),
             ws_send_buffer,
             dcc.Store(id="sensor-definition", data=sensor_definition),
@@ -1027,12 +1121,15 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         x = []
         y = []
         query = {
-            "make": sensor_meta["make"],
-            "model": sensor_meta["model"],
-            "serial_number": sensor_meta["serial_number"],
+            "device_id": sensor_meta["device_id"],
+            # "make": sensor_meta["make"],
+            # "model": sensor_meta["model"],
+            # "serial_number": sensor_meta["serial_number"],
         }
-        sort = {"variables.time.data": 1}
-        results = db_data_client.find("data", "sensor", query, sort)
+        # sort = {"variables.time.data": 1}
+        results = get_device_data(device_id=sensor_meta["device_id"], device_type="sensor")
+        # results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
+        # # results = db_data_client.find("data", "sensor", query, sort)
         print(f"***results: {results}")
         if results is None or len(results) == 0:
             print("results = None")
@@ -1126,7 +1223,8 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
             "serial_number": sensor_meta["serial_number"],
         }
         sort = {"variables.time.data": 1}
-        results = db_data_client.find("data", "sensor", query, sort, refresh=False)
+        results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
+        # results = db_data_client.find("data", "sensor", query, sort, refresh=False)
         print(f"2d results: {results}")
         if results is None or len(results) == 0:
             print("results = None")
@@ -1218,6 +1316,7 @@ def update_sensor_data_buffer(e):
     if e is not None and "data" in e:
         try:
             msg = json.loads(e["data"])
+            print(f"update_sensor_data: {msg}")
             if msg:
                 return msg
         except Exception as e:
