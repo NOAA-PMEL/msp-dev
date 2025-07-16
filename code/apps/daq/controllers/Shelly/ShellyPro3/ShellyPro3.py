@@ -27,7 +27,7 @@ class ShellyPro3(Controller):
                 "type": "char",
                 "data": "Shelly Pro 3 Smart Switch",
             },
-            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, sensor"},
+            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, controller"},
         },
         "paths": {
             "port-1": {
@@ -50,6 +50,8 @@ class ShellyPro3(Controller):
 
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
+        # self.default_client_module = "envds.daq.clients.tcp_client"
+        # self.default_client_class = "TCPClient"
 
         self.data_loop_task = None
         # self.enable_task_list.append(self.deal_with_data())
