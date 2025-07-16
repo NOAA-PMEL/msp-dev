@@ -27,19 +27,125 @@ class ShellyPro3(Controller):
                 "type": "char",
                 "data": "Shelly Pro 3 Smart Switch",
             },
-            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, controller"},
+            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, sensor"},
+            "format_version": {
+                "type": "char",
+                "data": "1.0.0"
+            },
+            "variable_types": {
+                "type": "string",
+                "data": "setting"
+            },
+            "serial_number": {
+                "type": "string",
+                "data": ""
+            },
+            "client_module": {"type": "string", "data": "envds.daq.clients.mqtt_client"},
+            "client_class": {"type": "string", "data": "MQTT_Client"},
+            "client_host": {"type": "string", "data": 'mqtt.default'},
+            "client_port": {"type": "int", "data": 1883},
+            "subscriptions": {"type": "string", "data": None}
         },
-        "paths": {
-            "port-1": {
+        "variables": {
+            "channel_1_power": {
+                "type": "int",
                 "attributes": {
-                    "client_module": {"type": "string", "data": "envds.daq.clients.mqtt_client"},
-                    "client_class": {"type": "string", "data": "MQTT_Client"},
-                    "host": {"type": "string", "data": 'mqtt.default'},
-                    "port": {"type": "int", "data": 1883},
-                    "subscriptions": {"type": "string", "data": None}
-                },
-                "data": [],
-            }
+                    "variable_type": {
+                        "type": "string", 
+                        "data": "setting"
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 1 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
+            "channel_2_power": {
+                "type": "int",
+                "attributes": {
+                    "variable_type": {
+                        "type": "string", 
+                        "data": "setting"
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 2 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
+            "channel_3_power": {
+                "type": "int",
+                "attributes": {
+                    "variable_type": {
+                        "type": "string", 
+                        "data": "setting"
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 3 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
         }
     }
 
@@ -50,8 +156,6 @@ class ShellyPro3(Controller):
 
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
-        # self.default_client_module = "envds.daq.clients.tcp_client"
-        # self.default_client_class = "TCPClient"
 
         self.data_loop_task = None
         # self.enable_task_list.append(self.deal_with_data())
