@@ -7,9 +7,47 @@ import dash_daq as daq
 # from aiomqtt import Client
 import paho.mqtt.client as mqtt
 import json
+from pydantic import BaseSettings
 
 # dash.register_page(__name__, path='/')
 dash.register_page(__name__, path='/powercontrol', name='Power Control')
+
+class Settings(BaseSettings):
+    host: str = "0.0.0.0"
+    port: int = 8787
+    debug: bool = False
+    daq_id: str = "default"
+    ws_hostname: str = "localhost:8080"
+    knative_broker: str = (
+        "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
+    )
+    # mongodb_data_user_name: str = ""
+    # mongodb_data_user_password: str = ""
+    # mongodb_registry_user_name: str = ""
+    # mongodb_registry_user_password: str = ""
+    # mongodb_data_connection: str = (
+    #     "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/data?replicaSet=uasdaq-mongodb&ssl=false"
+    # )
+    # mongodb_registry_connection: str = (
+    #     "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/registry?replicaSet=uasdaq-mongodb&ssl=false"
+    # )
+    # erddap_http_connection: str = (
+    #     "http://uasdaq.pmel.noaa.gov/uasdaq/dataserver/erddap"
+    # )
+    # erddap_https_connection: str = (
+    #     "https://uasdaq.pmel.noaa.gov/uasdaq/dataserver/erddap"
+    # )
+    # erddap_author: str = "fake_author"
+
+    # dry_run: bool = False
+
+    class Config:
+        env_prefix = "DASHBOARD_"
+        case_sensitive = False
+
+config = Settings()
+print(f"config: {config}")
+
 
 
 CONTENT_STYLE = {
@@ -49,6 +87,8 @@ pdu_outlets = dbc.Row([
 #                 dbc.Col(html.Div([html.Button("Outlet 5", id='pdu_power-button-5', n_clicks=0)])),
 #                  ])
 
+datastore_url = f"datastore.{config.daq_id}-system"
+link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 
 # print("here:1")
 def get_layout():
@@ -85,8 +125,10 @@ def get_layout():
         #     ], gap=3)
         # ]),
         # WebSocket(id="ws", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/wwss/sensor/main")
-        WebSocket(id="ws", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/testhome"),
-        WebSocket(id="ws_pb", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/pb")
+        WebSocket(id="ws", url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/test/testhome"),
+        # WebSocket(id="ws_pb", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/pb")
+        # url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor-registry/main"
+        WebSocket(id="ws_pb", url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/test/pb")
     # ], style=CONTENT_STYLE)
     ])
     # try:
