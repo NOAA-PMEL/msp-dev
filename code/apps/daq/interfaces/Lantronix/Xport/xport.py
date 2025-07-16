@@ -14,20 +14,20 @@ from pydantic import BaseModel
 
 task_list = []
 
-class USCDR301(Interface):
+class XPort(Interface):
     """docstring for USCDR301."""
 
 
     metadata = {
         "attributes": {
-            "type": {"type": "char", "data": "USconverters"},
-            "name": {"type": "char", "data": "USCDR301"},
+            "type": {"type": "char", "data": "Lantrnonix"},
+            "name": {"type": "char", "data": "XPort"},
             "host": {"type": "char", "data": "localhost"},
             "description": {
                 "type": "char",
-                "data": "US converters serial to ethernet server",
+                "data": "Lantronix serial to ethernet server",
             },
-            "tags": {"type": "char", "data": "testing, USconverters, USCDR301, serial, tcp, ethernet, sensor"},
+            "tags": {"type": "char", "data": "testing, Lantronix, XPort, serial, tcp, ethernet, sensor"},
         },
         "paths": {
             "port-1": {
@@ -35,7 +35,7 @@ class USCDR301(Interface):
                     "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
                     "client_class": {"type": "string", "data": "TCPClient"},
                     "host": {"type": "string", "data": "localhost"},
-                    "port": {"type": "int", "data": 4001},
+                    "port": {"type": "int", "data": 10001},
                 },
                 "data": [],
             }
@@ -43,7 +43,7 @@ class USCDR301(Interface):
     }
 
     def __init__(self, config=None, **kwargs):
-        super(USCDR301, self).__init__(config=config, **kwargs)
+        super(XPort, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
 
@@ -55,7 +55,7 @@ class USCDR301(Interface):
     def configure(self):
 
         # print("configure:1")
-        super(USCDR301, self).configure()
+        super(XPort, self).configure()
 
         try:
             # get config from file
@@ -81,11 +81,11 @@ class USCDR301(Interface):
             # print("configure:5")
             self.logger.debug("conf", extra={"data": conf})
 
-            atts = USCDR301.metadata["attributes"]
+            atts = XPort.metadata["attributes"]
 
             # print("configure:7")
             path_map = dict()
-            for name, val in USCDR301.metadata["paths"].items():
+            for name, val in XPort.metadata["paths"].items():
                 # path_map[name] = InterfacePath(name=name, path=val["data"])
                 # print("configure:8")
 
@@ -213,17 +213,17 @@ async def main(server_config: ServerConfig = None):
     # task_list.append(asyncio.create_task(test_task()))
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger("interface::USCDR301")
+    logger = logging.getLogger("interface::XPort")
 
     # test = envdsBase()
     # task_list.append(asyncio.create_task(test_task()))
 
-    iface = USCDR301()
+    iface = XPort()
     iface.run()
     # task_list.append(asyncio.create_task(iface.run()))
     # await asyncio.sleep(2)
     iface.enable()
-    logger.debug("Starting US Converters Interface")
+    logger.debug("Starting Lantronix Interface")
 
     # remove fastapi ----
     # # get config from file
@@ -267,7 +267,7 @@ async def main(server_config: ServerConfig = None):
     event_loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
 
     while do_run:
-        logger.debug("USCDR301.run", extra={"do_run": do_run})
+        logger.debug("XPort.run", extra={"do_run": do_run})
         await asyncio.sleep(1)
 
 

@@ -672,7 +672,8 @@ def layout(sensor_id=None):
         sensor_definition = {}
 
     layout_options = {
-        "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}}
+        "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}},
+        # "layout-settings": {"time": {"table-column-defs": [], "variable-list": []}}
     }
     column_defs_1d = []  # deque([], maxlen=10)
     dropdown_list_1d = []

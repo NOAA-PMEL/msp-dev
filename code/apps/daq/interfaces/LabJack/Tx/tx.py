@@ -114,7 +114,6 @@ class Tx(Interface):
 
         # print("configure:1")
         super(Tx, self).configure()
-
         try:
             # get config from file
             # print("configure:2")
@@ -125,6 +124,8 @@ class Tx(Interface):
                 # print("configure:4")
             except FileNotFoundError:
                 conf = {"uid": "UNKNOWN", "paths": {}}
+
+            self.logger.debug("configure", extra={"conf": conf})
 
             # add hosts to each path if not present
             try:
@@ -143,29 +144,33 @@ class Tx(Interface):
             attrs = self.metadata["attributes"]
             path_types = self.metadata["path_types"]
 
+            self.logger.debug("configure", extra={"attrs": attrs, "path_types": path_types})
             # print("configure:7")
 
             # override default metadata attributes with config values
-            for name, att in conf["attributes"].items():
+            for name, val in conf["attributes"].items():
                 if name in attrs:
                     attrs[name]["data"] = val
         
-
+            print("here:1")
             path_map = dict()
             for name, val in conf["paths"].items():
                 client_config = dict()
                 # skip path if we don't know what type
+                print("here:2")
                 try:
                     path_defaults = path_types[val["path_type"]]
                     client_config["attributes"] = path_defaults["attributes"].copy()
-                    
-                    for path_att_name, path_att in val.items:
+                    print("here:3")
+
+                    for path_att_name, path_att in val.items():
                         if path_att_name in client_config["attributes"]:
                             client_config["attributes"][path_att_name]["data"] = path_att
+                    print("here:4")
 
                     if client_config["attributes"][path_att_name]["data"] == "":
                         client_config["attributes"][path_att_name]["data"] == attrs["host"]
-
+                    print("here:5")
                 except KeyError as e:
                     self.logger.error("configuration: unknown or missing path type", extra={"path": name})
                     continue
