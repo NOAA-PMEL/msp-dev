@@ -12,6 +12,7 @@ from envds.daq.event import DAQEvent
 
 from pydantic import BaseModel
 
+from labjack import ljm
 
 task_list = []
 
