@@ -9,6 +9,21 @@ ENV PYTHONUNBUFFERED True
 ENV APP_HOME /app
 WORKDIR $APP_HOME
 
+
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        echo "Building for ARM64" && \
+        # ARM64 specific commands
+        ADD https://files.labjack.com/installers/LJM/Linux/AArch64/release/LabJack-LJM_2025-05-07.zip \
+    elif [ "$TARGETARCH" = "amd64" ]; then \
+        echo "Building for AMD64" && \
+        # AMD64 specific commands
+        ADD https://files.labjack.com/installers/LJM/Linux/x64/release/LabJack-LJM_2024-05-16.zip \
+    fi
+
+# ADD https://files.labjack.com/installers/LJM/Linux/x64/release/LabJack-LJM_2024-06-10.zip
+RUN unzip LabJack-LJM_2025-05-07.zip
+RUN ./labjack_ljm_installer.run -- --without-kipling --no-restart-device-rules
+
 COPY requirements.txt requirements.txt
 RUN pip3 install -r requirements.txt
 # COPY lib/. /lib
