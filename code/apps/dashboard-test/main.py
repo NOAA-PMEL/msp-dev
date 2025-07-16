@@ -384,9 +384,9 @@ async def test_ws_endpoint(
                 channel = data['id'][-1]
                 message_to_send = {'device': 'shelly', 'channel': channel, 'message': ''}
                 if data['data'] == "False":
-                    message_to_send["message": "off"]
+                    message_to_send["message"] = "off"
                 elif data['data'] == "True":
-                    message_to_send["message": "on"]
+                    message_to_send["message"] = "on"
 
                 try:
                     event = DAQEvent.create_controller_control_request(

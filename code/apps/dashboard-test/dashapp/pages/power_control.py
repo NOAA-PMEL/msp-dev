@@ -87,6 +87,8 @@ pdu_outlets = dbc.Row([
 #                 dbc.Col(html.Div([html.Button("Outlet 5", id='pdu_power-button-5', n_clicks=0)])),
 #                  ])
 
+datastore_url = f"datastore.{config.daq_id}-system"
+link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 
 # print("here:1")
 def get_layout():
@@ -123,7 +125,7 @@ def get_layout():
         #     ], gap=3)
         # ]),
         # WebSocket(id="ws", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/wwss/sensor/main")
-        WebSocket(id="ws", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/testhome"),
+        WebSocket(id="ws", url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/test/testhome"),
         # WebSocket(id="ws_pb", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/pb")
         # url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor-registry/main"
         WebSocket(id="ws_pb", url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/test/pb")
