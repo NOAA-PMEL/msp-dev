@@ -5,7 +5,8 @@ import asyncio
 
 from logfmter import Logfmter
 
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
+from typing import Any
 
 from envds.core import envdsBase, envdsStatus
 from envds.message.message import Message
@@ -72,7 +73,7 @@ class ControllerPath(object):
     #     pass
 
 
-class ControllerConfig(BaseModel):
+class ControllerConfig_old(BaseModel):
     """docstring for SensorConfig."""
 
     type: str
@@ -80,6 +81,102 @@ class ControllerConfig(BaseModel):
     uid: str
     paths: dict | None = {}
 
+class ControllerAttribute(BaseModel):
+    # name: str
+    type: str | None = "str"
+    data: Any
+
+    @validator("data")
+    def data_check(cls, v, values):
+        if "type" in values:
+            data_type = values["type"]
+            if data_type == "char" or data_type == "string":
+                data_type = "str"
+
+            if "type" in values and not isinstance(v, eval(data_type)):
+                raise ValueError("attribute data is wrong type")
+        return v
+
+
+class ControllerVariable(BaseModel):
+    """docstring for DeviceVariable."""
+
+    # name: str
+    type: str | None = "str"
+    # shape: list[str] | None = ["time"]
+    attributes: dict[str, ControllerAttribute]
+    # attributes: dict | None = dict()
+    # modes: list[str] | None = ["default"]
+
+
+class DeviceSetting(BaseModel):
+    """docstring for DeviceSetting."""
+
+    # name: str
+    type: str | None = "str"
+    # shape: list[str] | None = ["time"]
+    attributes: dict[str, ControllerAttribute]
+    # attributes: dict | None = dict()
+    # modes: list[str] | None = ["default"]
+
+class ControllerMetadata(BaseModel):
+    """docstring for DeviceMetadata."""
+
+    attributes: dict[str, ControllerAttribute]
+    # dimensions: dict[str, int | None]
+    variables: dict[str, ControllerVariable]
+    settings: dict[str, DeviceSetting]
+
+
+class ControllerConfig(BaseModel):
+    """docstring for DeviceConfig."""
+
+    make: str
+    model: str
+    serial_number: str
+    metadata: ControllerMetadata
+    # # variables: list | None = []
+    # attributes: dict[str, DeviceAttribute]
+    # variables: dict[str, DeviceVariable]
+    # # # variables: dict | None = {}
+    # settings: dict[str, DeviceSetting]
+    # interfaces: dict | None = {}
+    daq: str | None = "default"
+
+
+class RuntimeSettings(object):
+    """docstring for RuntimeSettings."""
+
+    def __init__(self, settings: dict = None):
+
+        if settings is None:
+            self.settings = dict()
+
+    def set_setting(self, name: str, requested, actual=None):
+        if name not in self.settings:
+            self.settings[name] = dict()
+
+        self.settings[name]["requested"] = requested
+        self.settings[name]["actual"] = actual
+
+    def get_setting(self, name: str):
+        if name in self.settings:
+            return self.settings[name]
+        return None
+
+    def get_settings(self):
+        return self.settings
+
+    def get_health_setting(self, name: str) -> bool:
+        if (setting := self.get_setting(name)) is not None:
+            return setting["requested"] == setting["actual"]
+        return False
+
+    def get_health(self) -> bool:
+        for name in self.settings.keys():
+            if not self.get_health_setting(name):
+                return False
+        return True
 
 class Controller(envdsBase):
     """docstring for Controller."""
@@ -95,7 +192,8 @@ class Controller(envdsBase):
 
         self.update_id("app_group", "controller")
         self.update_id("app_ns", "envds")
-        self.update_id("app_uid", f"controller-id-{ULID()}")
+        # self.update_id("app_uid", f"controller-id-{ULID()}")
+        self.update_id("app_uid", f"make-model-{ULID()}")
         self.logger.debug("controller id", extra={"self.id": self.id})
 
         self.status.set_id_AppID(self.id)
@@ -104,27 +202,96 @@ class Controller(envdsBase):
         self.client_map = {}
         self.multistep_data = []
 
-        self.run_task_list.append(self.client_monitor())
-        self.run_task_list.append(self.client_registry_monitor())
+        # self.run_task_list.append(self.client_monitor())
+        # self.run_task_list.append(self.client_registry_monitor())
+        self.run_task_list.append(self.register_controller_definition())
+        self.run_task_list.append(self.register_controller_instance())
+
+        self.controller_definition_registered = False
+        self.controller_definition_send_time = 5 # start with every 5 seconds and change once ack
+        self.controller_registered = False
 
     def configure(self):
         super(Controller, self).configure()
         self.logger.debug("configure()")
 
+    # can be overridden if metadata in another place
+    def get_metadata(self):
+        return self.metadata
+
     def run_setup(self):
         super().run_setup()
 
-        for name, path in self.config.paths.items():
-            if name not in self.client_map:
-                self.client_map[name] = {
-                    "client_id": name,
-                    "client": None,
-                    "recv_handler": self.config.paths[name]["recv_handler"],
-                    "recv_task": None,
-                }
+        self.logger = logging.getLogger(self.build_app_uid())
+        self.update_id("app_uid", self.build_app_uid())
+
+
+        # for name, path in self.config.paths.items():
+        #     if name not in self.client_map:
+        #         self.client_map[name] = {
+        #             "client_id": name,
+        #             "client": None,
+        #             "recv_handler": self.config.paths[name]["recv_handler"],
+        #             "recv_task": None,
+        #         }
 
         self.logger.debug("run_setup", extra={"client_map": self.client_map})
         # self.update_id("app_uid", self.build_app_uid())
+
+    async def register_controller_definition(self):
+        while True:
+        
+            try:
+                event = DAQEvent.create_device_definition_registry_update(
+                    # source="device.mockco-mock1-1234", data=record
+                    source=self.get_id_as_source(),
+                    data={"device-definition": self.metadata},
+                )
+                # destpath = f"{self.get_id_as_topic()}/registry/update"
+                destpath = f"envds/{self.core_settings.namespace_prefix}/device-definition/registry/update"
+                self.logger.debug(
+                    "register_device_definition", extra={"data": event, "destpath": destpath}
+                )
+                event["destpath"] = destpath
+                # message = Message(data=event, destpath=destpath)
+                message = event
+                # self.logger.debug("default_data_loop", extra={"m": message})
+                await self.send_message(message)
+            except Exception as e:
+                self.logger.error("register_device_definition", extra={"reason": e})
+            await asyncio.sleep(self.device_definition_send_time)
+
+    async def register_controller_instance(self):
+        while True:
+        
+            # if self.enabled and not self.device_registered:
+            if not self.device_registered:
+                
+                instance_reg = {
+                    "make": self.config.make,
+                    "model": self.config.model,
+                    "serial_number": self.config.serial_number,
+                    "format_version": self.metadata["attributes"]["format_version"]["data"],
+                    "attributes": self.metadata["attributes"]
+                }
+
+                event = DAQEvent.create_device_registry_update(
+                    # source="device.mockco-mock1-1234", data=record
+                    source=self.get_id_as_source(),
+                    data={"device-instance": instance_reg},
+                )
+                # destpath = f"{self.get_id_as_topic()}/registry/update"
+                destpath = f"envds/{self.core_settings.namespace_prefix}/device-instance/registry/update"
+                self.logger.debug(
+                    "register_device_definition", extra={"data": event, "destpath": destpath}
+                )
+                event["destpath"] = destpath
+                # message = Message(data=event, destpath=destpath)
+                message = event
+                # self.logger.debug("default_data_loop", extra={"m": message})
+                await self.send_message(message)
+        
+            await asyncio.sleep(5)
 
     def disable(self):
         # remove all subscribers to each client to force disable
