@@ -171,20 +171,24 @@ class ShellyPro3(Controller):
             except FileNotFoundError:
                 conf = {"uid": "UNKNOWN", "paths": {}}
 
-            # add hosts to each path if not present
-            try:
-                host = conf["host"]
-            except KeyError as e:
-                self.logger.debug("no host - default to localhost")
-                host = "localhost"
-            print('paths', conf["paths"].items())
-            for name, path in conf["paths"].items():
-                if "host" not in path:
-                    path["host"] = host
+            self.logger.debug("configure", extra={"conf": conf})
+
+            # TODO 
+
+            # # add hosts to each path if not present
+            # try:
+            #     host = conf["host"]
+            # except KeyError as e:
+            #     self.logger.debug("no host - default to localhost")
+            #     host = "localhost"
+            # print('paths', conf["paths"].items())
+            # for name, path in conf["paths"].items():
+            #     if "host" not in path:
+            #         path["host"] = host
 
             self.logger.debug("conf", extra={"data": conf})
 
-            atts = ShellyPro3.metadata["attributes"]
+            attrs = ShellyPro3.metadata["attributes"]
 
             path_map = dict()
             for name, val in ShellyPro3.metadata["paths"].items():
@@ -196,8 +200,8 @@ class ShellyPro3(Controller):
                     val["attributes"]["client_class"]["data"] = self.default_client_class
 
                 # set path host from controller attributes
-                if "host" in atts:
-                    val["attributes"]["host"]["data"] = atts["host"]
+                if "host" in attrs:
+                    val["attributes"]["host"]["data"] = attrs["host"]
 
                 client_config = val
                 # override values from yaml config
@@ -220,8 +224,8 @@ class ShellyPro3(Controller):
                 }
 
             self.config = ControllerConfig(
-                type=atts["type"]["data"],
-                name=atts["name"]["data"],
+                type=attrs["type"]["data"],
+                name=attrs["name"]["data"],
                 uid=conf["uid"],
                 paths=path_map
             )
