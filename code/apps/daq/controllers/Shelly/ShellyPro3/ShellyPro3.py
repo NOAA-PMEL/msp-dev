@@ -7,7 +7,7 @@ import logging.config
 import yaml
 import traceback
 from envds.core import envdsLogger
-from envds.daq.controller import Controller, ControllerConfig #, InterfacePath
+from envds.daq.controller import Controller, ControllerMetadata, ControllerConfig #, InterfacePath
 from envds.daq.event import DAQEvent
 from aiomqtt import Client
 from pydantic import BaseModel
@@ -27,19 +27,125 @@ class ShellyPro3(Controller):
                 "type": "char",
                 "data": "Shelly Pro 3 Smart Switch",
             },
-            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, controller"},
+            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, sensor"},
+            "format_version": {
+                "type": "char",
+                "data": "1.0.0"
+            },
+            "variable_types": {
+                "type": "string",
+                "data": "setting"
+            },
+            "serial_number": {
+                "type": "string",
+                "data": ""
+            },
+            "client_module": {"type": "string", "data": "envds.daq.clients.mqtt_client"},
+            "client_class": {"type": "string", "data": "MQTT_Client"},
+            "client_host": {"type": "string", "data": 'mqtt.default'},
+            "client_port": {"type": "int", "data": 1883},
+            "subscriptions": {"type": "string", "data": None}
         },
-        "paths": {
-            "port-1": {
+        "variables": {
+            "channel_1_power": {
+                "type": "int",
                 "attributes": {
-                    "client_module": {"type": "string", "data": "envds.daq.clients.mqtt_client"},
-                    "client_class": {"type": "string", "data": "MQTT_Client"},
-                    "host": {"type": "string", "data": 'mqtt.default'},
-                    "port": {"type": "int", "data": 1883},
-                    "subscriptions": {"type": "string", "data": None}
-                },
-                "data": [],
-            }
+                    "variable_type": {
+                        "type": "string", 
+                        "data": "setting"
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 1 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
+            "channel_2_power": {
+                "type": "int",
+                "attributes": {
+                    "variable_type": {
+                        "type": "string", 
+                        "data": "setting"
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 2 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
+            "channel_3_power": {
+                "type": "int",
+                "attributes": {
+                    "variable_type": {
+                        "type": "string", 
+                        "data": "setting"
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 3 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
         }
     }
 
@@ -50,11 +156,12 @@ class ShellyPro3(Controller):
 
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
-        # self.default_client_module = "envds.daq.clients.tcp_client"
-        # self.default_client_class = "TCPClient"
 
         self.data_loop_task = None
         # self.enable_task_list.append(self.deal_with_data())
+
+        # TODO change to external json definition - this is placeholder
+        self.metadata = ShellyPro3.metadata
 
     def configure(self):
 
@@ -67,60 +174,95 @@ class ShellyPro3(Controller):
             except FileNotFoundError:
                 conf = {"uid": "UNKNOWN", "paths": {}}
 
-            # add hosts to each path if not present
-            try:
-                host = conf["host"]
-            except KeyError as e:
-                self.logger.debug("no host - default to localhost")
-                host = "localhost"
-            print('paths', conf["paths"].items())
-            for name, path in conf["paths"].items():
-                if "host" not in path:
-                    path["host"] = host
+            self.logger.debug("configure", extra={"conf": conf})
+
+            # TODO 
+
+            # # add hosts to each path if not present
+            # try:
+            #     host = conf["host"]
+            # except KeyError as e:
+            #     self.logger.debug("no host - default to localhost")
+            #     host = "localhost"
+            # print('paths', conf["paths"].items())
+            # for name, path in conf["paths"].items():
+            #     if "host" not in path:
+            #         path["host"] = host
 
             self.logger.debug("conf", extra={"data": conf})
 
-            atts = ShellyPro3.metadata["attributes"]
+            attrs = ShellyPro3.metadata["attributes"]
 
-            path_map = dict()
-            for name, val in ShellyPro3.metadata["paths"].items():
+            # path_map = dict()
+            # for name, val in ShellyPro3.metadata["paths"].items():
 
 
-                if "client_module" not in val["attributes"]:
-                    val["attributes"]["client_module"]["data"] = self.default_client_module
-                if "client_class" not in val["attributes"]:
-                    val["attributes"]["client_class"]["data"] = self.default_client_class
+            #     if "client_module" not in val["attributes"]:
+            #         val["attributes"]["client_module"]["data"] = self.default_client_module
+            #     if "client_class" not in val["attributes"]:
+            #         val["attributes"]["client_class"]["data"] = self.default_client_class
 
-                # set path host from controller attributes
-                if "host" in atts:
-                    val["attributes"]["host"]["data"] = atts["host"]
+            #     # set path host from controller attributes
+            #     if "host" in attrs:
+            #         val["attributes"]["host"]["data"] = attrs["host"]
 
-                client_config = val
-                # override values from yaml config
-                if "paths" in conf and name in conf["paths"]:
-                    self.logger.debug("yaml conf", extra={"id": name, "conf['paths']": conf['paths'], })
-                    for attname, attval in conf["paths"][name].items():
-                        self.logger.debug("config paths", extra={"id": name, "attname": attname, "attval": attval})
-                        client_config["attributes"][attname]["data"] = attval
-                self.logger.debug("config paths", extra={"client_config": client_config})
+            #     client_config = val
+            #     # override values from yaml config
+            #     if "paths" in conf and name in conf["paths"]:
+            #         self.logger.debug("yaml conf", extra={"id": name, "conf['paths']": conf['paths'], })
+            #         for attname, attval in conf["paths"][name].items():
+            #             self.logger.debug("config paths", extra={"id": name, "attname": attname, "attval": attval})
+            #             client_config["attributes"][attname]["data"] = attval
+            #     self.logger.debug("config paths", extra={"client_config": client_config})
                     
-                path_map[name] = {
-                    "client_id": name,
-                    "client": None,
-                    "client_config": client_config,
-                    "client_module": val["attributes"]["client_module"]["data"],
-                    "client_class": val["attributes"]["client_class"]["data"],
-                    # "data_buffer": asyncio.Queue(),
-                    "recv_handler": self.recv_data_loop(name),
-                    "recv_task": None,
-                }
+            #     path_map[name] = {
+            #         "client_id": name,
+            #         "client": None,
+            #         "client_config": client_config,
+            #         "client_module": val["attributes"]["client_module"]["data"],
+            #         "client_class": val["attributes"]["client_class"]["data"],
+            #         # "data_buffer": asyncio.Queue(),
+            #         "recv_handler": self.recv_data_loop(name),
+            #         "recv_task": None,
+            #     }
+
+            # self.config = ControllerConfig(
+            #     type=attrs["type"]["data"],
+            #     name=attrs["name"]["data"],
+            #     uid=conf["uid"],
+            #     paths=path_map
+            # )
+
+            settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+            # for name, setting in self.metadata["settings"].items():
+            for name, setting in settings_def["variables"].items():
+            
+                requested = setting["attributes"]["default_value"]["data"]
+                if "settings" in config and name in config["settings"]:
+                    requested = config["settings"][name]
+
+                self.settings.set_setting(name, requested=requested)
+
+            meta = ControllerMetadata(
+                attributes=self.metadata["attributes"],
+                # dimensions=self.metadata["dimensions"],
+                variables=self.metadata["variables"],
+                # settings=self.metadata["settings"],
+                settings=settings_def["variables"]
+            )
 
             self.config = ControllerConfig(
-                type=atts["type"]["data"],
-                name=atts["name"]["data"],
-                uid=conf["uid"],
-                paths=path_map
+                make=self.metadata["attributes"]["make"]["data"],
+                model=self.metadata["attributes"]["model"]["data"],
+                serial_number=conf["serial_number"],
+                metadata=meta,
+                # interfaces=conf["interfaces"],
+                daq_id=conf["daq_id"],
             )
+
+            self.client_config = 
+
+            print(f"self.config: {self.config}")
 
             self.logger.debug(
                 "configure",
