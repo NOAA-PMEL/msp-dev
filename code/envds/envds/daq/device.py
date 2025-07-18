@@ -267,7 +267,7 @@ class Device(envdsBase):
                 # destpath = f"{self.get_id_as_topic()}/registry/update"
                 destpath = f"envds/{self.core_settings.namespace_prefix}/device-instance/registry/update"
                 self.logger.debug(
-                    "register_device_definition", extra={"data": event, "destpath": destpath}
+                    "register_device_instance", extra={"data": event, "destpath": destpath}
                 )
                 event["destpath"] = destpath
                 # message = Message(data=event, destpath=destpath)

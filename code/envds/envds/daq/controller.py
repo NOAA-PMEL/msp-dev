@@ -3,6 +3,7 @@ import importlib
 from ulid import ULID
 import asyncio
 
+import logging
 from logfmter import Logfmter
 
 from pydantic import BaseModel, validator
@@ -240,26 +241,26 @@ class Controller(envdsBase):
 
     async def register_controller_definition(self):
         while True:
-        
-            try:
-                event = DAQEvent.create_device_definition_registry_update(
-                    # source="device.mockco-mock1-1234", data=record
-                    source=self.get_id_as_source(),
-                    data={"device-definition": self.metadata},
-                )
-                # destpath = f"{self.get_id_as_topic()}/registry/update"
-                destpath = f"envds/{self.core_settings.namespace_prefix}/device-definition/registry/update"
-                self.logger.debug(
-                    "register_device_definition", extra={"data": event, "destpath": destpath}
-                )
-                event["destpath"] = destpath
-                # message = Message(data=event, destpath=destpath)
-                message = event
-                # self.logger.debug("default_data_loop", extra={"m": message})
-                await self.send_message(message)
-            except Exception as e:
-                self.logger.error("register_device_definition", extra={"reason": e})
-            await asyncio.sleep(self.device_definition_send_time)
+            if not self.controller_definition_registered:
+                try:
+                    event = DAQEvent.create_controller_definition_registry_update(
+                        # source="device.mockco-mock1-1234", data=record
+                        source=self.get_id_as_source(),
+                        data={"device-definition": self.metadata},
+                    )
+                    # destpath = f"{self.get_id_as_topic()}/registry/update"
+                    destpath = f"envds/{self.core_settings.namespace_prefix}/controller-definition/registry/update"
+                    self.logger.debug(
+                        "register_controller_definition", extra={"data": event, "destpath": destpath}
+                    )
+                    event["destpath"] = destpath
+                    # message = Message(data=event, destpath=destpath)
+                    message = event
+                    # self.logger.debug("default_data_loop", extra={"m": message})
+                    await self.send_message(message)
+                except Exception as e:
+                    self.logger.error("register_controller_definition", extra={"reason": e})
+            await asyncio.sleep(self.controller_definition_send_time)
 
     async def register_controller_instance(self):
         while True:
@@ -275,15 +276,15 @@ class Controller(envdsBase):
                     "attributes": self.metadata["attributes"]
                 }
 
-                event = DAQEvent.create_device_registry_update(
+                event = DAQEvent.create_controller_registry_update(
                     # source="device.mockco-mock1-1234", data=record
                     source=self.get_id_as_source(),
-                    data={"device-instance": instance_reg},
+                    data={"controller-instance": instance_reg},
                 )
                 # destpath = f"{self.get_id_as_topic()}/registry/update"
-                destpath = f"envds/{self.core_settings.namespace_prefix}/device-instance/registry/update"
+                destpath = f"envds/{self.core_settings.namespace_prefix}/controller-instance/registry/update"
                 self.logger.debug(
-                    "register_device_definition", extra={"data": event, "destpath": destpath}
+                    "register_controller_instance", extra={"data": event, "destpath": destpath}
                 )
                 event["destpath"] = destpath
                 # message = Message(data=event, destpath=destpath)
@@ -294,61 +295,93 @@ class Controller(envdsBase):
             await asyncio.sleep(5)
 
     def disable(self):
+
+        # TODO set all settings to default?
+
         # remove all subscribers to each client to force disable
-        for id, client in self.client_registry.items():
-            if self.client_map[id]["client"]:
-                self.client_map[id]["client"].disable()
-                if self.client_map[id]["recv_task"]:
-                    # TODO: these should go in disable logic
-                    self.client_map[id]["recv_task"].cancel()
-                    self.client_map[id]["recv_task"] = None
-                    self.client_map[id]["recv_handler"] = None
+        # for id, client in self.client_registry.items():
+        #     if self.client_map[id]["client"]:
+        #         self.client_map[id]["client"].disable()
+        #         if self.client_map[id]["recv_task"]:
+        #             # TODO: these should go in disable logic
+        #             self.client_map[id]["recv_task"].cancel()
+        #             self.client_map[id]["recv_task"] = None
+        #             self.client_map[id]["recv_handler"] = None
             # if client:
             #     client = dict()
 
         super().disable()
 
-    def build_app_uid(self):
-            parts = [self.config.type, self.config.name, self.config.uid]
-            return (Controller.ID_DELIM).join(parts)
+    def get_make(self):
+        return self.config.make
 
-    def set_core_routes(self, enable: bool = True):
+    def get_model(self):
+        return self.config.model
+
+    def get_serial_number(self):
+        return self.config.serial_number
+
+    def build_app_uid(self):
+        parts = [self.get_make(), self.get_model(), self.get_serial_number()]
+        return (self.ID_DELIM).join(parts)
+
+    # def build_app_uid(self):
+    #         parts = [self.config.type, self.config.name, self.config.uid]
+    #         return (Controller.ID_DELIM).join(parts)
+
+    def set_routes(self, enable: bool = True):
         print(f"set_core_routes:1")
-        super(Controller, self).set_core_routes()
+        super(Controller, self).set_routes()
         print(f"set_core_routes:2")
 
         topic_base = self.get_id_as_topic()
         self.logger.debug("set_core_routes:controller", extra={"topic_base": topic_base})
 
+        # self.set_route(
+        #     subscription=f"{topic_base}/+/status/request",
+        #     route_key=det.controller_status_request(),
+        #     route=self.handle_status,
+        #     enable=enable,
+        # )
+
+        # self.logger.debug(
+        #     "set_config_request", extra={"sub": f"/{topic_base}/+/config/request"}
+        # )
+        # self.set_route(
+        #     subscription=f"{topic_base}/+/config/request",
+        #     route_key=det.controller_config_request(),
+        #     route=self.handle_config,
+        #     enable=enable,
+        # )
+
+        # self.set_route(
+        #     subscription=f"{topic_base}/+/keepalive/request",
+        #     route_key=det.controller_keepalive_request(),
+        #     route=self.handle_keepalive,
+        #     enable=enable,
+        # )
+
+        # self.set_route(
+        #     subscription=f"{topic_base}/+/data/send",
+        #     route_key=det.controller_data_send(),
+        #     route=self.handle_data,
+        #     enable=enable,
+        # )
+
         self.set_route(
-            subscription=f"{topic_base}/+/status/request",
-            route_key=det.controller_status_request(),
-            route=self.handle_status,
+            subscription=f"{topic_base}/settings/request",
+            route_key=det.sensor_settings_request(),
+            route=self.handle_settings,
             enable=enable,
         )
 
-        self.logger.debug(
-            "set_config_request", extra={"sub": f"/{topic_base}/+/config/request"}
-        )
+        topic = f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
         self.set_route(
-            subscription=f"{topic_base}/+/config/request",
-            route_key=det.controller_config_request(),
-            route=self.handle_config,
-            enable=enable,
-        )
-
-        self.set_route(
-            subscription=f"{topic_base}/+/keepalive/request",
-            route_key=det.controller_keepalive_request(),
-            route=self.handle_keepalive,
-            enable=enable,
-        )
-
-        self.set_route(
-            subscription=f"{topic_base}/+/data/send",
-            route_key=det.controller_data_send(),
-            route=self.handle_data,
-            enable=enable,
+            # subscription=f"{topic_base}/registry/ack",
+            subscription = topic,
+            route_key=det.device_definition_registry_ack(),
+            route=self.handle_registry,
+            enable=enable
         )
 
         self.set_route(
@@ -452,6 +485,54 @@ class Controller(envdsBase):
             except Exception as e:
                 self.logger.error("client_registry_monitor", extra={"reg_error": e})
             await asyncio.sleep(2)
+
+    async def handle_registry(self, message: CloudEvent):
+
+        self.logger.debug("handle_registry", extra={"ce-type": message["type"]})
+        # if message.data["type"] == det.sensor_registry_update():
+        if message["type"] == det.controller_definition_registry_request():
+            controller_id = message.data.get("controller-definition", None)
+            if controller_id:
+                if controller_id["make"] == self.make and controller_id["model"] == self.model:
+                    self.device_definition_registered = False
+
+        elif message["type"] == det.controller_definition_registry_ack():
+            controller_id = message.data.get("controller-definition", None)
+            if controller_id:
+                self.logger.debug("handle_registry", extra={"make": self.config.make, "model": self.config.model})
+                if controller_id["make"] == self.config.make and controller_id["model"] == self.config.model:
+                    # self.device_definition_registered = True
+                    self.device_definition_send_time = 60 # increase time between sends but don't actually stop
+            self.logger.debug(
+                "handle_registry",
+                extra={
+                    "controller_id": controller_id,
+                    "registered": self.device_definition_registered,
+                },
+            )
+
+    async def handle_settings(self, message: CloudEvent):
+        # if message.data["type"] == det.sensor_settings_request():
+        if message["type"] == det.controller_settings_request():
+            try:
+                # src = message.data["source"]
+                # setting = message.data.data.get("settings", None)
+                # requested = message.data.data.get("requested", None)
+                src = message["source"]
+                setting = message.data.get("settings", None)
+                requested = message.data.get("requested", None)
+                self.logger.debug(
+                    "handle_settings", extra={"source": src, "setting": setting}
+                )
+                if setting and requested:
+                    # name = setting["settings"]
+                    current = self.settings.get_setting(setting)
+                    self.settings.set_setting(
+                        name=setting, requested=requested, actual=current["actual"]
+                    )
+
+            except (KeyError, Exception) as e:
+                self.logger.error("databuffer save error", extra={"error": e})
 
     # async def handle_config(self, message: Message):
     async def handle_config(self, message: CloudEvent):
