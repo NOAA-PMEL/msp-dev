@@ -7,7 +7,7 @@ import logging.config
 import yaml
 import traceback
 from envds.core import envdsLogger
-from envds.daq.controller import Controller, ControllerConfig #, InterfacePath
+from envds.daq.controller import Controller, ControllerMetadata, ControllerConfig #, InterfacePath
 from envds.daq.event import DAQEvent
 from aiomqtt import Client
 from pydantic import BaseModel
@@ -160,6 +160,9 @@ class ShellyPro3(Controller):
         self.data_loop_task = None
         # self.enable_task_list.append(self.deal_with_data())
 
+        # TODO change to external json definition - this is placeholder
+        self.metadata = ShellyPro3.metadata
+
     def configure(self):
 
         super(ShellyPro3, self).configure()
@@ -190,45 +193,76 @@ class ShellyPro3(Controller):
 
             attrs = ShellyPro3.metadata["attributes"]
 
-            path_map = dict()
-            for name, val in ShellyPro3.metadata["paths"].items():
+            # path_map = dict()
+            # for name, val in ShellyPro3.metadata["paths"].items():
 
 
-                if "client_module" not in val["attributes"]:
-                    val["attributes"]["client_module"]["data"] = self.default_client_module
-                if "client_class" not in val["attributes"]:
-                    val["attributes"]["client_class"]["data"] = self.default_client_class
+            #     if "client_module" not in val["attributes"]:
+            #         val["attributes"]["client_module"]["data"] = self.default_client_module
+            #     if "client_class" not in val["attributes"]:
+            #         val["attributes"]["client_class"]["data"] = self.default_client_class
 
-                # set path host from controller attributes
-                if "host" in attrs:
-                    val["attributes"]["host"]["data"] = attrs["host"]
+            #     # set path host from controller attributes
+            #     if "host" in attrs:
+            #         val["attributes"]["host"]["data"] = attrs["host"]
 
-                client_config = val
-                # override values from yaml config
-                if "paths" in conf and name in conf["paths"]:
-                    self.logger.debug("yaml conf", extra={"id": name, "conf['paths']": conf['paths'], })
-                    for attname, attval in conf["paths"][name].items():
-                        self.logger.debug("config paths", extra={"id": name, "attname": attname, "attval": attval})
-                        client_config["attributes"][attname]["data"] = attval
-                self.logger.debug("config paths", extra={"client_config": client_config})
+            #     client_config = val
+            #     # override values from yaml config
+            #     if "paths" in conf and name in conf["paths"]:
+            #         self.logger.debug("yaml conf", extra={"id": name, "conf['paths']": conf['paths'], })
+            #         for attname, attval in conf["paths"][name].items():
+            #             self.logger.debug("config paths", extra={"id": name, "attname": attname, "attval": attval})
+            #             client_config["attributes"][attname]["data"] = attval
+            #     self.logger.debug("config paths", extra={"client_config": client_config})
                     
-                path_map[name] = {
-                    "client_id": name,
-                    "client": None,
-                    "client_config": client_config,
-                    "client_module": val["attributes"]["client_module"]["data"],
-                    "client_class": val["attributes"]["client_class"]["data"],
-                    # "data_buffer": asyncio.Queue(),
-                    "recv_handler": self.recv_data_loop(name),
-                    "recv_task": None,
-                }
+            #     path_map[name] = {
+            #         "client_id": name,
+            #         "client": None,
+            #         "client_config": client_config,
+            #         "client_module": val["attributes"]["client_module"]["data"],
+            #         "client_class": val["attributes"]["client_class"]["data"],
+            #         # "data_buffer": asyncio.Queue(),
+            #         "recv_handler": self.recv_data_loop(name),
+            #         "recv_task": None,
+            #     }
+
+            # self.config = ControllerConfig(
+            #     type=attrs["type"]["data"],
+            #     name=attrs["name"]["data"],
+            #     uid=conf["uid"],
+            #     paths=path_map
+            # )
+
+            settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+            # for name, setting in self.metadata["settings"].items():
+            for name, setting in settings_def["variables"].items():
+            
+                requested = setting["attributes"]["default_value"]["data"]
+                if "settings" in config and name in config["settings"]:
+                    requested = config["settings"][name]
+
+                self.settings.set_setting(name, requested=requested)
+
+            meta = ControllerMetadata(
+                attributes=self.metadata["attributes"],
+                # dimensions=self.metadata["dimensions"],
+                variables=self.metadata["variables"],
+                # settings=self.metadata["settings"],
+                settings=settings_def["variables"]
+            )
 
             self.config = ControllerConfig(
-                type=attrs["type"]["data"],
-                name=attrs["name"]["data"],
-                uid=conf["uid"],
-                paths=path_map
+                make=self.metadata["attributes"]["make"]["data"],
+                model=self.metadata["attributes"]["model"]["data"],
+                serial_number=conf["serial_number"],
+                metadata=meta,
+                # interfaces=conf["interfaces"],
+                daq_id=conf["daq_id"],
             )
+
+            self.client_config = 
+
+            print(f"self.config: {self.config}")
 
             self.logger.debug(
                 "configure",

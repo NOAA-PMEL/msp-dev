@@ -13,7 +13,9 @@ data:
     attributes:
       serial_number: shel209
       host: 10.55.169.209
-      client_host: mqtt.mspbase01-system
+      client: 
+        host: mqtt.mspbase01-system
+        port: 1883
     # variables:
     #   channel_2_power:
     #     default_value: "0"

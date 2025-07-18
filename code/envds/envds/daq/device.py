@@ -403,7 +403,7 @@ class Device(envdsBase):
         if message["type"] == det.device_definition_registry_request():
             dev_id = message.data.get("device-definition", None)
             if dev_id:
-                if dev_id["make"] == self.make and dev_id["model"] == self.model:
+                if dev_id["make"] == self.config.make and dev_id["model"] == self.config.model:
                     self.device_definition_registered = False
 
         elif message["type"] == det.device_definition_registry_ack():

@@ -18,6 +18,12 @@ from envds.daq.client import DAQClientConfig
 from envds.util.util import get_datetime, seconds_elapsed
 from cloudevents.http import CloudEvent
 
+from envds.util.util import (
+    get_datetime_format,
+    time_to_next,
+    get_datetime,
+    get_datetime_string,
+)
 
 class ControllerClientConfig(BaseModel):
     controller: dict
@@ -110,7 +116,7 @@ class ControllerVariable(BaseModel):
     # modes: list[str] | None = ["default"]
 
 
-class DeviceSetting(BaseModel):
+class ControllerSetting(BaseModel):
     """docstring for DeviceSetting."""
 
     # name: str
@@ -126,7 +132,7 @@ class ControllerMetadata(BaseModel):
     attributes: dict[str, ControllerAttribute]
     # dimensions: dict[str, int | None]
     variables: dict[str, ControllerVariable]
-    settings: dict[str, DeviceSetting]
+    settings: dict[str, ControllerSetting]
 
 
 class ControllerConfig(BaseModel):
@@ -142,7 +148,7 @@ class ControllerConfig(BaseModel):
     # # # variables: dict | None = {}
     # settings: dict[str, DeviceSetting]
     # interfaces: dict | None = {}
-    daq: str | None = "default"
+    daq_id: str | None = "default"
 
 
 class RuntimeSettings(object):
@@ -203,10 +209,14 @@ class Controller(envdsBase):
         self.client_map = {}
         self.multistep_data = []
 
+        self.client_recv_buffer = asyncio.Queue()
+        self.client_send_buffer = asyncio.Queue()
+        self.client = None
         # self.run_task_list.append(self.client_monitor())
         # self.run_task_list.append(self.client_registry_monitor())
         self.run_task_list.append(self.register_controller_definition())
         self.run_task_list.append(self.register_controller_instance())
+        self.run_task_list.append(self.client_recv_loop())
 
         self.controller_definition_registered = False
         self.controller_definition_send_time = 5 # start with every 5 seconds and change once ack
@@ -238,6 +248,9 @@ class Controller(envdsBase):
 
         self.logger.debug("run_setup", extra={"client_map": self.client_map})
         # self.update_id("app_uid", self.build_app_uid())
+
+    async def client_recv_loop(self):
+        while True:
 
     async def register_controller_definition(self):
         while True:
@@ -393,98 +406,98 @@ class Controller(envdsBase):
         )
 
 
-    def update_client_registry(
-        self,
-        client_id: str,
-        source: str,
-        keepalive: bool = False,
-        deregister: bool = False,
-    ):
-        self.logger.debug(
-            "update_client_registry",
-            extra={"client_id": client_id, "source": source, "keepalive": keepalive},
-        )
-        try:
-            if deregister:
-                del self.client_registry[client_id][source]
-            elif keepalive:
-                self.client_registry[client_id][source]["last_update"] = get_datetime()
-            else:
-                if client_id not in self.client_registry:
-                    self.client_registry[client_id] = dict()
-                if source not in self.client_registry[client_id]:
-                    self.client_registry[client_id][source] = dict()
-                self.client_registry[client_id][source]["last_update"] = get_datetime()
-                # self.logger.debug(
-                #     "client_registry", extra={"reg": self.client_registry}
-                # )
-        except KeyError:
-            pass
+    # def update_client_registry(
+    #     self,
+    #     client_id: str,
+    #     source: str,
+    #     keepalive: bool = False,
+    #     deregister: bool = False,
+    # ):
+    #     self.logger.debug(
+    #         "update_client_registry",
+    #         extra={"client_id": client_id, "source": source, "keepalive": keepalive},
+    #     )
+    #     try:
+    #         if deregister:
+    #             del self.client_registry[client_id][source]
+    #         elif keepalive:
+    #             self.client_registry[client_id][source]["last_update"] = get_datetime()
+    #         else:
+    #             if client_id not in self.client_registry:
+    #                 self.client_registry[client_id] = dict()
+    #             if source not in self.client_registry[client_id]:
+    #                 self.client_registry[client_id][source] = dict()
+    #             self.client_registry[client_id][source]["last_update"] = get_datetime()
+    #             # self.logger.debug(
+    #             #     "client_registry", extra={"reg": self.client_registry}
+    #             # )
+    #     except KeyError:
+    #         pass
 
-    async def client_registry_monitor(self):
+    # async def client_registry_monitor(self):
 
-        registry_expiration = 60  # if no activity in 5 minutes, expire the connection
-        while True:
-            try:
-                for id, client in self.client_registry.items():
-                    # self.logger.debug(
-                    #     "registry_monitor", extra={"client_id": id, "client": client}
-                    # )
-                    for key in list(client.keys()):
-                        # if time_expired, del client[key]
-                        # self.logger.debug("reg monitor", extra={"key": key})
-                        if (
-                            seconds_elapsed(client[key]["last_update"])
-                            > registry_expiration
-                        ):
-                            del client[key]
-                    self.logger.debug(
-                        "client_registry_monitor",
-                        extra={"id": id, "connections": len(client)},
-                    )
-                    if (
-                        len(client) == 0
-                    ):  # and self.client_map[client_id].client.connected():
-                        self.logger.debug("registry_monitor:2")
-                        self.client_map[id]["client"].disable()
-                        # if self.client_map[id]["recv_task"]:
-                        #     # TODO: these should go in disable logic
-                        #     self.client_map[id]["recv_task"].cancel()
-                        #     self.client_map[id]["recv_task"] = None
-                    else:
-                        self.logger.debug("registry_monitor:3", extra={"client_map": self.client_map})
-                        # enable client if needed
-                        if not self.client_map[id]["client"].enabled():
-                            self.client_map[id]["client"].enable()
+    #     registry_expiration = 60  # if no activity in 5 minutes, expire the connection
+    #     while True:
+    #         try:
+    #             for id, client in self.client_registry.items():
+    #                 # self.logger.debug(
+    #                 #     "registry_monitor", extra={"client_id": id, "client": client}
+    #                 # )
+    #                 for key in list(client.keys()):
+    #                     # if time_expired, del client[key]
+    #                     # self.logger.debug("reg monitor", extra={"key": key})
+    #                     if (
+    #                         seconds_elapsed(client[key]["last_update"])
+    #                         > registry_expiration
+    #                     ):
+    #                         del client[key]
+    #                 self.logger.debug(
+    #                     "client_registry_monitor",
+    #                     extra={"id": id, "connections": len(client)},
+    #                 )
+    #                 if (
+    #                     len(client) == 0
+    #                 ):  # and self.client_map[client_id].client.connected():
+    #                     self.logger.debug("registry_monitor:2")
+    #                     self.client_map[id]["client"].disable()
+    #                     # if self.client_map[id]["recv_task"]:
+    #                     #     # TODO: these should go in disable logic
+    #                     #     self.client_map[id]["recv_task"].cancel()
+    #                     #     self.client_map[id]["recv_task"] = None
+    #                 else:
+    #                     self.logger.debug("registry_monitor:3", extra={"client_map": self.client_map})
+    #                     # enable client if needed
+    #                     if not self.client_map[id]["client"].enabled():
+    #                         self.client_map[id]["client"].enable()
 
-                        self.logger.debug("registry_monitor:4")
-                        # if self.client_map[id]["recv_task"] is None:
-                        #     self.client_map[id]["recv_task"] = asyncio.create_task(
-                        #         self.client_map[id]["recv_handler"]
-                        #     )
-                        #     self.logger.debug(
-                        #         "create recv_task",
-                        #         extra={"handler": self.client_map[id]["recv_handler"]},
-                        #     )
-                        self.logger.debug("registry_monitor:5")
+    #                     self.logger.debug("registry_monitor:4")
+    #                     # if self.client_map[id]["recv_task"] is None:
+    #                     #     self.client_map[id]["recv_task"] = asyncio.create_task(
+    #                     #         self.client_map[id]["recv_handler"]
+    #                     #     )
+    #                     #     self.logger.debug(
+    #                     #         "create recv_task",
+    #                     #         extra={"handler": self.client_map[id]["recv_handler"]},
+    #                     #     )
+    #                     self.logger.debug("registry_monitor:5")
 
-                        # send client status update
-                        destpath = f"{self.get_id_as_topic()}/{id}/status/update"
-                        extra_header = {"path_id": id}
-                        event = DAQEvent.create_status_update(
-                            # source="envds.core", data={"test": "one", "test2": 2}
-                            source=self.get_id_as_source(),
-                            data=self.status.get_status(),
-                            extra_header=extra_header,
-                        )
-                        event["destpath"] = destpath
-                        self.logger.debug("status update", extra={"event": event})
-                        # message = Message(data=event, destpath=destpath)
-                        message = event
-                        await self.send_message(message)
-            except Exception as e:
-                self.logger.error("client_registry_monitor", extra={"reg_error": e})
-            await asyncio.sleep(2)
+    #                     # send client status update
+    #                     destpath = f"{self.get_id_as_topic()}/{id}/status/update"
+    #                     extra_header = {"path_id": id}
+    #                     event = DAQEvent.create_status_update(
+    #                         # source="envds.core", data={"test": "one", "test2": 2}
+    #                         source=self.get_id_as_source(),
+    #                         data=self.status.get_status(),
+    #                         extra_header=extra_header,
+    #                     )
+    #                     event["destpath"] = destpath
+    #                     self.logger.debug("status update", extra={"event": event})
+    #                     # message = Message(data=event, destpath=destpath)
+    #                     message = event
+    #                     await self.send_message(message)
+    #         except Exception as e:
+    #             self.logger.error("client_registry_monitor", extra={"reg_error": e})
+    #         await asyncio.sleep(2)
 
     async def handle_registry(self, message: CloudEvent):
 
@@ -493,7 +506,7 @@ class Controller(envdsBase):
         if message["type"] == det.controller_definition_registry_request():
             controller_id = message.data.get("controller-definition", None)
             if controller_id:
-                if controller_id["make"] == self.make and controller_id["model"] == self.model:
+                if controller_id["make"] == self.config.make and controller_id["model"] == self.config.model:
                     self.device_definition_registered = False
 
         elif message["type"] == det.controller_definition_registry_ack():
@@ -819,7 +832,75 @@ class Controller(envdsBase):
                 self.logger.error("client_monitor", extra={"error": e})
             await asyncio.sleep(5)
 
+    def get_definition_by_variable_type(
+        self, device_def: dict, variable_type: str = "main"
+    ) -> dict:
 
+        result = dict()
+        if device_def:
+            result["attributes"] = device_def["attributes"]
+            result["attributes"]["variable_types"] = {
+                "type": "string",
+                "data": variable_type,
+            }
+            result["dimensions"] = device_def["dimensions"]
+            result["variables"] = dict()
+            for name, variable in device_def["variables"].items():
+                var_type = variable["attributes"].get(
+                    "variable_type", {"type": "string", "data": "main"}
+                )
+                if var_type["data"] == variable_type:
+                    result["variables"][name] = variable
+        return result
 
+    def build_settings_record(self, meta: bool = False, mode: str = "default") -> dict:
+        # TODO: change data_format -> format_version
+
+        record = {
+            # "time": get_datetime_string(),
+            "timestamp": get_datetime_string(),
+            # "instance": {
+            #     "serial_number": self.config.serial_number,
+            #     "sampling_mode": mode,
+            # }
+        }
+        # print(record)
+        if meta:
+            record["attributes"] = self.config.metadata.dict()["attributes"]
+            # print(record)
+            record["attributes"]["serial_number"] = {
+                "type": "char",
+            }
+            record["attributes"]["mode"] = {
+                "type": "char",
+            }
+        else:
+            record["attributes"] = {
+                "make": {"data": self.config.make},
+                "model": {"data": self.config.model},
+                # "serial_number": self.config.serial_number,
+                # "sampling_mode": mode,
+                "format_version": {"data": self.device_format_version},
+            }
+        record["attributes"]["serial_number"] = {"data": self.config.serial_number}
+        record["attributes"]["mode"] = {"data": mode}
+
+        # print(record)
+
+        #     "variables": {},
+        # }
+
+        # record["variables"] = dict()
+        if meta:
+            record["settings"] = self.config.metadata.dict()["settings"]
+            # print(record)
+            for name, _ in record["settings"].items():
+                record["settings"][name]["data"] = None
+            # print(record)
+        else:
+            record["settings"] = dict()
+            for name, _ in self.config.metadata.variables.items():
+                record["settings"][name] = {"data": None}
+        return record
 
 
