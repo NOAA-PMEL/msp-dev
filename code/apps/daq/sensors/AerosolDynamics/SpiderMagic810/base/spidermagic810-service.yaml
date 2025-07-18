@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aerosoldynamics-spidermagic810
+  # namespace: msp
+  labels:
+    app: aerosoldynamics-spidermagic810
+spec:
+  selector:
+    app: aerosoldynamics-spidermagic810
+  ports:
+  - name: http
+    protocol: TCP
+    port: 9080
+    targetPort: 9080
+  # - name: https
+  #   port: 8883
+  #   targetPort: 8883
+  # type: LoadBalancer
+  type: ClusterIP
