@@ -216,6 +216,7 @@ class Controller(envdsBase):
         # self.run_task_list.append(self.client_registry_monitor())
         self.run_task_list.append(self.register_controller_definition())
         self.run_task_list.append(self.register_controller_instance())
+        self.run_task_list.append(self.settings_monitor())
         self.run_task_list.append(self.client_recv_loop())
 
         self.controller_definition_registered = False
@@ -914,4 +915,36 @@ class Controller(envdsBase):
                 record["settings"][name] = {"data": None}
         return record
 
+    async def settings_monitor(self):
+
+        send_settings = True
+        while True:
+            try:
+                await self.settings_check()
+            except Exception as e:
+                self.logger.error("settings_monitor", extra={"error": e})
+
+            if self.enabled() and send_settings:
+                # send settings every other second
+                event = DAQEvent.create_sensor_settings_update(
+                    # source="device.mockco-mock1-1234", data=record
+                    source=self.get_id_as_source(),
+                    data={"settings": self.settings.get_settings()},
+                )
+                destpath = f"{self.get_id_as_topic()}/settings/update"
+                self.logger.debug(
+                    "settings_monitor", extra={"data": event, "destpath": destpath}
+                )
+                event["destpath"] = destpath
+                # message = Message(data=event, destpath=destpath)
+                message = event
+                # self.logger.debug("default_data_loop", extra={"m": message})
+                await self.send_message(message)
+
+            send_settings = not send_settings
+            await asyncio.sleep(1)
+
+    # each device should handle this as required
+    async def settings_check(self):
+        pass
 

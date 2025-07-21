@@ -80,6 +80,10 @@ class ShellyPro3(Controller):
                         "type": "string", 
                         "data": "setting"
                     },
+                    "channel": {
+                        "type": "int",
+                        "data": 1
+                    },
                     "long_name": {
                         "type": "char",
                         "data": "Channel 1 Power"
@@ -116,6 +120,10 @@ class ShellyPro3(Controller):
                         "type": "string", 
                         "data": "setting"
                     },
+                    "channel": {
+                        "type": "int",
+                        "data": 2
+                    },
                     "long_name": {
                         "type": "char",
                         "data": "Channel 2 Power"
@@ -151,6 +159,10 @@ class ShellyPro3(Controller):
                     "variable_type": {
                         "type": "string", 
                         "data": "setting"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 3
                     },
                     "long_name": {
                         "type": "char",
