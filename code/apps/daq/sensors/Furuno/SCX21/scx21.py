@@ -101,7 +101,7 @@ class SCX21(Sensor):
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Yaw ()"},
+                    "long_name": {"type": "char", "data": "Yaw"},
                     "description": {
                         "type": "char",
                         "data": "NMEA 0183 ID: GPatt",
@@ -195,6 +195,9 @@ class SCX21(Sensor):
         self.data_task = None
         self.data_rate = 1
         # self.configure()
+        self.first_record = 'HDT'
+        self.last_record = 'CHANGE'
+        self.array_buffer = []
 
         self.default_data_buffer = asyncio.Queue()
 
@@ -227,7 +230,7 @@ class SCX21(Sensor):
 
         # self.sampling_task_list.append(self.data_loop())
         self.enable_task_list.append(self.default_data_loop())
-        self.enable_task_list.append(self.sampling_monitor())
+        # self.enable_task_list.append(self.sampling_monitor())
         # self.enable_task_list.append(self.register_sensor())
         # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
@@ -408,17 +411,6 @@ class SCX21(Sensor):
 
         while True:
             try:
-                # self.logger.debug("sampling_monitor", extra={"self.collecting": self.collecting})
-                # while self.sampling():
-                #     # self.logger.debug("sampling_monitor:1", extra={"self.collecting": self.collecting})
-                #     if not self.collecting:
-                #         # await self.start_command()
-                #         self.logger.debug("sampling_monitor:2", extra={"self.collecting": self.collecting})
-                #         await self.interface_send_data(data={"data": start_command})
-                #         await asyncio.sleep(1)
-                #         # self.logger.debug("sampling_monitor:3", extra={"self.collecting": self.collecting})
-                #         self.collecting = True
-                #         # self.logger.debug("sampling_monitor:4", extra={"self.collecting": self.collecting})
 
                 if self.sampling():
 
@@ -451,42 +443,48 @@ class SCX21(Sensor):
 
                 await asyncio.sleep(0.1)
 
-                # if self.collecting:
-                #     # await self.stop_command()
-                #     self.logger.debug("sampling_monitor:5", extra={"self.collecting": self.collecting})
-                #     await self.interface_send_data(data={"data": stop_command})
-                #     # self.logger.debug("sampling_monitor:6", extra={"self.collecting": self.collecting})
-                #     self.collecting = False
-                #     # self.logger.debug("sampling_monitor:7", extra={"self.collecting": self.collecting})
             except Exception as e:
                 print(f"sampling monitor error: {e}")
 
             await asyncio.sleep(0.1)
 
-    # async def start_command(self):
-    #     pass # Log,{sampling interval}
-
-    # async def stop_command(self):
-    #     pass # Log,0
-
-    # def stop(self):
-    #     asyncio.create_task(self.stop_sampling())
-    #     super().start()
 
     async def default_data_loop(self):
 
         while True:
             try:
                 data = await self.default_data_buffer.get()
-                # self.collecting = True
-                self.logger.debug("default_data_loop", extra={"data": data})
-                # continue
+                if data:
+                    self.collecting = True
+
+                if self.first_record in data.data['data']:
+                    record1 = self.default_parse(data)
+                    self.record_counter += 1
+                    continue
+
+                elif self.last_record in data.data['data']:
+                    record2 = self.default_parse(data)
+                    for var in record2["variables"]:
+                        if var != 'time':
+                            if record2["variables"][var]["data"]:
+                                record1["variables"][var]["data"] = record2["variables"][var]["data"]
+
+                else:
+                    record2 = self.default_parse(data)
+                    if not record2:
+                        continue
+                    else:
+                        for var in record2["variables"]:
+                            if var != 'time':
+                                if record2["variables"][var]["data"]:
+                                    record1["variables"][var]["data"] = record2["variables"][var]["data"]
+                        continue
+                record = record1
                 record = self.default_parse(data)
                 if record:
                     self.collecting = True
 
-                # print(record)
-                # print(self.sampling())
+
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
@@ -504,37 +502,49 @@ class SCX21(Sensor):
                     # self.logger.debug("default_data_loop", extra={"m": message})
                     await self.send_message(message)
 
-                # self.logger.debug("default_data_loop", extra={"record": record})
+                self.logger.debug("default_data_loop", extra={"record": record})
             except Exception as e:
                 print(f"default_data_loop error: {e}")
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.0001)
+
+
+    def check_array_buffer(self, data, array_cond = False):
+        self.array_buffer.append(data)
+        if array_cond:
+            return self.array_buffer
+        else:
+            return
+
 
     def default_parse(self, data):
         if data:
             print("DATA HERE", data)
             try:
-                # variables = [
-                #     "time",
-                #     "temperature",
-                #     "rh",
-                #     "pressure",
-                #     "wind_speed",
-                #     "wind_direction",
-                # ]
-                # variables = list(self.config.variables.keys())
                 variables = list(self.config.metadata.variables.keys())
                 # print(f"variables: \n{variables}\n{variables2}")
                 variables.remove("time")
                 # variables2.remove("time")
                 print(f"variables: \n{variables}")
 
-                print(f"include metadata: {self.include_metadata}")
+                # print(f"include metadata: {self.include_metadata}")
                 record = self.build_data_record(meta=self.include_metadata)
-                print(f"default_parse: data: {data}, record: {record}")
+                # print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
                 try:
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
+                    parts = data.data["data"].split(",")
+
+                    if 'HDT' in data.data["data"]:
+                        parts = parts[1:]
+                    elif 'att' in data.data["data"]:
+                        parts = parts[1:]
+                    elif 'hve' in data.data["data"]:
+                        parts = parts[1:]
+                    elif 'ZDA' in data.data["data"]:
+                        parts = parts[1:]
+
+
                     parts = data.data["data"].split(",")
                     # print(f"parts: {parts}, {variables}")
                     if len(parts) < 10:
