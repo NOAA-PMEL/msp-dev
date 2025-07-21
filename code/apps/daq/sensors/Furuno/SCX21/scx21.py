@@ -80,7 +80,11 @@ class SCX21(Sensor):
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Timestamp (UTC)"}
+                    "long_name": {"type": "string", "data": "Internal Timestamp (UTC)"},
+                    "description": {
+                        "type": "char",
+                        "data": "NMEA 0183 ID: ZDA",
+                    }
                 },
             },
             "heading": {
@@ -156,9 +160,22 @@ class SCX21(Sensor):
                     "long_name": {"type": "char", "data": "Latitude"},
                     "description": {
                         "type": "char",
-                        "data": "NMEA 0183 ID: ",
+                        "data": "NMEA 0183 ID: GNS",
                     },
                     "units": {"type": "char", "data": "degrees"},
+                },
+            },
+            "lat_dir": {
+                "type": "char",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Direction of Latitude"},
+                    "description": {
+                        "type": "char",
+                        "data": "NMEA 0183 ID: GNS",
+                    },
+                    "units": {"type": "char", "data": "unitless"},
                 },
             },
             "lon": {
@@ -169,9 +186,48 @@ class SCX21(Sensor):
                     "long_name": {"type": "char", "data": "Longitude"},
                     "description": {
                         "type": "char",
-                        "data": "NMEA 0183 ID: ",
+                        "data": "NMEA 0183 ID: GNS",
                     },
                     "units": {"type": "char", "data": "degrees"},
+                },
+            },
+            "lon_dir": {
+                "type": "char",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Direction of Longitude"},
+                    "description": {
+                        "type": "char",
+                        "data": "NMEA 0183 ID: GNS",
+                    },
+                    "units": {"type": "char", "data": "unitless"},
+                },
+            },
+            "mode": {
+                "type": "char",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Mode Indicator"},
+                    "description": {
+                        "type": "char",
+                        "data": "NMEA 0183 ID: GNS",
+                    },
+                    "units": {"type": "char", "data": "unitless"},
+                },
+            },
+            "sv_num": {
+                "type": "int",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Number of SVs in Use"},
+                    "description": {
+                        "type": "char",
+                        "data": "NMEA 0183 ID: GNS",
+                    },
+                    "units": {"type": "char", "data": "count"},
                 },
             },
             "speed": {
@@ -182,7 +238,7 @@ class SCX21(Sensor):
                     "long_name": {"type": "char", "data": "Speed Over Ground"},
                     "description": {
                         "type": "char",
-                        "data": "NMEA 0183 ID: ",
+                        "data": "NMEA 0183 ID: VTG",
                     },
                     "units": {"type": "char", "data": "kilometers/hour"},
                 },
@@ -480,7 +536,7 @@ class SCX21(Sensor):
                                     record1["variables"][var]["data"] = record2["variables"][var]["data"]
                         continue
                 record = record1
-                record = self.default_parse(data)
+                # record = self.default_parse(data)
                 if record:
                     self.collecting = True
 
@@ -535,34 +591,38 @@ class SCX21(Sensor):
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
 
-                    if 'HDT' in data.data["data"]:
-                        parts = parts[1:]
-                    elif 'att' in data.data["data"]:
-                        parts = parts[1:]
-                    elif 'hve' in data.data["data"]:
-                        parts = parts[1:]
-                    elif 'ZDA' in data.data["data"]:
-                        parts = parts[1:]
+                    if datavar := 'HDT' in data.data["data"]:
+                        parts = parts[1:2]
+                    elif datavar := 'GPatt' in data.data["data"]:
+                        parts = parts[2:5]
+                        parts = [x.split("*")[0] for x in parts]
+                    elif datavar := 'GPhve' in data.data["data"]:
+                        parts = parts[2:3]
+                    elif datavar := 'ZDA' in data.data["data"]:
+                        parts = parts[1:2]
+                    elif datavar := 'VTG' in data.data["data"]:
+                        parts = parts[7:8]
+                    elif datavar := 'GNS' in data.data["data"]:
+                        parts = parts[2:8]
+                    
+                    self.var_name = [key for key, value in self.config.metadata.variables.items() if datavar in value.attributes.description["data"]]
 
-
-                    parts = data.data["data"].split(",")
-                    # print(f"parts: {parts}, {variables}")
-                    if len(parts) < 10:
-                        return None
-                    for index, name in enumerate(variables):
+                    for index, name in enumerate(self.var_name):
                         if name in record["variables"]:
-                            # instvar = self.config.variables[name]
                             instvar = self.config.metadata.variables[name]
-                            vartype = instvar.type
-                            if instvar.type == "string":
-                                vartype = "str"
                             try:
-                                # print(f"default_parse: {record['variables'][name]} - {parts[index].strip()}")
-                                record["variables"][name]["data"] = eval(vartype)(
-                                    parts[index].strip()
-                                )
+                                if len(self.var_name) == 1:
+                                    record["variables"][name]["data"] = parts
+                                else:
+                                    if instvar.type == "int":
+                                        record["variables"][name]["data"] = int(parts[index])
+                                    elif instvar.type == "float":
+                                        record["variables"][name]["data"] = float(parts[index])
+                                    else:
+                                        record["variables"][name]["data"] = parts[index]
+
                             except ValueError:
-                                if vartype == "str" or vartype == "char":
+                                if instvar.vartype == "str" or instvar.vartype == "char":
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
