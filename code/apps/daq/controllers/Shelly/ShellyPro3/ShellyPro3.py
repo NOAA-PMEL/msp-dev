@@ -1,4 +1,5 @@
 import asyncio
+import json
 import signal
 import sys
 import os
@@ -20,8 +21,8 @@ class ShellyPro3(Controller):
 
     metadata = {
         "attributes": {
-            "type": {"type": "char", "data": "Shelly"},
-            "name": {"type": "char", "data": "ShellyPro3"},
+            "make": {"type": "char", "data": "Shelly"},
+            "model": {"type": "char", "data": "ShellyPro3"},
             "host": {"type": "char", "data": "localhost"},
             "description": {
                 "type": "char",
@@ -200,7 +201,7 @@ class ShellyPro3(Controller):
 
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
-
+        
         self.data_loop_task = None
         # self.enable_task_list.append(self.deal_with_data())
 
@@ -236,6 +237,11 @@ class ShellyPro3(Controller):
             self.logger.debug("conf", extra={"data": conf})
 
             attrs = ShellyPro3.metadata["attributes"]
+
+            # override default metadata attributes with config values
+            for name, val in conf["attributes"].items():
+                if name in attrs:
+                    attrs[name]["data"] = val
 
             # path_map = dict()
             # for name, val in ShellyPro3.metadata["paths"].items():
@@ -305,7 +311,15 @@ class ShellyPro3(Controller):
             )
 
             # TODO build client config 
-            self.client_config = 
+            self.client_config = {
+                "client_module": self.metadata["attributes"]["client_module"]["data"],
+                "client_class": self.metadata["attributes"]["client_class"]["data"],
+                "properties": {
+                    "host": self.metadata["attributes"]["client_host"]["data"],
+                    "port": self.metadata["attributes"]["client_host"]["data"],
+                    "subscriptions": self.metadata["attributes"]["subscriptions"]["data"],
+                }
+            }
 
             print(f"self.config: {self.config}")
 
@@ -320,6 +334,17 @@ class ShellyPro3(Controller):
     async def get_status_loop(self):
         #TODO get status for each channel every N seconds and update settings based on response
         pass
+
+        while True:
+            for ch in range(0,3):
+
+                data = {
+                    "path": f"{self.get_id}/command/switch:{ch}",
+                    "message": "status_update"
+                }
+
+                self.send_data(data)
+            await asyncio.sleep(5)
 
     async def deal_with_data(self, client, data):
         if data['data']['device'] == 'shelly':
@@ -338,14 +363,40 @@ class ShellyPro3(Controller):
     async def recv_data_loop(self, client_id: str):
         while True:
             try:
-                client = self.client_map[client_id]["client"]
-                print("Client ID in recv_data_loop:", client_id)
-                if client:
-                    self.logger.debug("recv_data_loop", extra={"client": client})
-                    data = await client.recv()
-                    self.logger.debug("recv_data", extra={"client_id": client_id, "data": data}) 
-                    await self.update_recv_data(client_id=client_id, data=data)
-                    await self.deal_with_data(client, data)
+                data = await self.client_recv_buffer.get()
+                status = json.loads(data)
+
+                # the only data coming from Shelly should be status
+                if "id" in status:
+                    channel = status["id"]
+                    output = status["output"]
+                    if channel == 0:
+                        temperature = status["temperature"]["tC"]
+                        record = self.build_data_record(meta=False)
+
+                        # channel 0 temperature data record
+                        if record:
+                            event = DAQEvent.create_data_update(
+                                # source="sensor.mockco-mock1-1234", data=record
+                                source=self.get_id_as_source(),
+                                data=record,
+                            )
+                            destpath = f"{self.get_id_as_topic()}/data/update"
+                            event["destpath"] = destpath
+                            self.logger.debug(
+                                "default_data_loop",
+                                extra={"data": event, "destpath": destpath},
+                            )
+                            # message = Message(data=event, destpath=destpath)
+                            message = event
+                            # self.logger.debug("default_data_loop", extra={"m": message})
+                            await self.send_message(message)
+
+
+                    # update actual state of channel output
+                    name = f"channel_{channel}_power"
+                    self.settings.update_setting(name=name, actual=int(output))
+                await asyncio.sleep(0.01)
 
             except (KeyError, Exception) as e:
                 self.logger.error("recv_data_loop", extra={"error": e})
@@ -365,10 +416,11 @@ class ShellyPro3(Controller):
     #             await client.send(data)
     #         except KeyError:
     #             pass
-    async def send_data(self, client, data):
+    async def send_data(self, data):
             try:
-                await client.send(data)
-            except KeyError:
+                if self.client:
+                    await self.client.send_to_client(data)
+            except Exception:
                 pass
 
 
