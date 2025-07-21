@@ -317,6 +317,10 @@ class ShellyPro3(Controller):
             self.logger.debug("ShellyPro3:configure", extra={"error": e})
             print(traceback.format_exc())
 
+    async def get_status_loop(self):
+        #TODO get status for each channel every N seconds and update settings based on response
+        pass
+
     async def deal_with_data(self, client, data):
         if data['data']['device'] == 'shelly':
             toggle_topic = 'shellypro3/command/switch:'

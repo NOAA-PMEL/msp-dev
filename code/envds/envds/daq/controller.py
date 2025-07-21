@@ -162,10 +162,20 @@ class RuntimeSettings(object):
     def set_setting(self, name: str, requested, actual=None):
         if name not in self.settings:
             self.settings[name] = dict()
-
+        
         self.settings[name]["requested"] = requested
         self.settings[name]["actual"] = actual
 
+    def update_setting(self, name: str, requested=None, actual=None) -> bool:
+        if name not in self.settings:
+            return False
+        
+        if requested:
+            self.settings[name]["requested"] = requested
+        if actual:
+            self.settings[name]["actual"] = actual
+        return True
+    
     def get_setting(self, name: str):
         if name in self.settings:
             return self.settings[name]
@@ -217,7 +227,11 @@ class Controller(envdsBase):
         self.run_task_list.append(self.register_controller_definition())
         self.run_task_list.append(self.register_controller_instance())
         self.run_task_list.append(self.settings_monitor())
+<<<<<<< Updated upstream
         self.run_task_list.append(self.client_recv_loop())
+=======
+        # self.run_task_list.append(self.client_recv_loop())
+>>>>>>> Stashed changes
 
         self.controller_definition_registered = False
         self.controller_definition_send_time = 5 # start with every 5 seconds and change once ack
@@ -250,6 +264,7 @@ class Controller(envdsBase):
         self.logger.debug("run_setup", extra={"client_map": self.client_map})
         # self.update_id("app_uid", self.build_app_uid())
 
+<<<<<<< Updated upstream
     async def client_recv_loop(self):
         while True:
             if self.client:
@@ -263,6 +278,10 @@ class Controller(envdsBase):
                 data = await self.client_send_buffer.get()
                 self.client.send_to_client(data)
             await asyncio.sleep(.01)
+=======
+    # async def client_recv_loop(self):
+    #     while True:
+>>>>>>> Stashed changes
 
     async def register_controller_definition(self):
         while True:
@@ -416,6 +435,61 @@ class Controller(envdsBase):
             route=self.handle_controls,
             enable=enable,
         )
+
+    async def handle_client_data(self, message: CloudEvent):
+        await super(MAGIC250, self).handle_interface_data(message)
+
+        # self.logger.debug("interface_recv_data", extra={"data": message})
+        # if message.data["type"] == det.interface_data_recv():
+        if message["type"] == det.interface_data_recv():
+            try:
+                # path_id = message.data["path_id"]
+                path_id = message["path_id"]
+                iface_path = self.config.interfaces["default"]["path"]
+                # if path_id == "default":
+                if path_id == iface_path:
+                    self.logger.debug(
+                        # "interface_recv_data", extra={"data": message.data.data}
+                        "interface_recv_data", extra={"data": message.data}
+                    )
+                    # await self.default_data_buffer.put(message.data)
+                    await self.default_data_buffer.put(message)
+            except KeyError:
+                pass
+
+    async def settings_monitor(self):
+
+        send_settings = True
+        while True:
+            try:
+                await self.settings_check()
+            except Exception as e:
+                self.logger.error("settings_monitor", extra={"error": e})
+
+            if self.enabled() and send_settings:
+                # send settings every other second
+                event = DAQEvent.create_sensor_settings_update(
+                    # source="device.mockco-mock1-1234", data=record
+                    source=self.get_id_as_source(),
+                    data={"settings": self.settings.get_settings()},
+                )
+                destpath = f"{self.get_id_as_topic()}/settings/update"
+                self.logger.debug(
+                    "settings_monitor", extra={"data": event, "destpath": destpath}
+                )
+                event["destpath"] = destpath
+                # message = Message(data=event, destpath=destpath)
+                message = event
+                # self.logger.debug("default_data_loop", extra={"m": message})
+                await self.send_message(message)
+
+            send_settings = not send_settings
+            await asyncio.sleep(1)
+
+    # each device should handle this as required
+    async def settings_check(self):
+        pass
+
 
 
     # def update_client_registry(
