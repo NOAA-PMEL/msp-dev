@@ -110,7 +110,7 @@ class ControllerVariable(BaseModel):
 
     # name: str
     type: str | None = "str"
-    # shape: list[str] | None = ["time"]
+    shape: list[str] | None = ["time"]
     attributes: dict[str, ControllerAttribute]
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
@@ -121,7 +121,7 @@ class ControllerSetting(BaseModel):
 
     # name: str
     type: str | None = "str"
-    # shape: list[str] | None = ["time"]
+    shape: list[str] | None = ["time"]
     attributes: dict[str, ControllerAttribute]
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
@@ -130,7 +130,7 @@ class ControllerMetadata(BaseModel):
     """docstring for DeviceMetadata."""
 
     attributes: dict[str, ControllerAttribute]
-    # dimensions: dict[str, int | None]
+    dimensions: dict[str, int | None]
     variables: dict[str, ControllerVariable]
     settings: dict[str, ControllerSetting]
 
@@ -251,6 +251,17 @@ class Controller(envdsBase):
 
     async def client_recv_loop(self):
         while True:
+            if self.client:
+                data = await self.client.recv_from_client()
+                await self.client_recv_buffer.put(data)
+            await asyncio.sleep(.01)
+
+    async def client_send_loop(self):
+        while True:
+            if self.client:
+                data = await self.client_send_buffer.get()
+                self.client.send_to_client(data)
+            await asyncio.sleep(.01)
 
     async def register_controller_definition(self):
         while True:

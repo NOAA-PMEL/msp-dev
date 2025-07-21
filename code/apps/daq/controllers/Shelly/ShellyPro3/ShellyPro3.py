@@ -34,7 +34,7 @@ class ShellyPro3(Controller):
             },
             "variable_types": {
                 "type": "string",
-                "data": "setting"
+                "data": "main, setting"
             },
             "serial_number": {
                 "type": "string",
@@ -46,9 +46,35 @@ class ShellyPro3(Controller):
             "client_port": {"type": "int", "data": 1883},
             "subscriptions": {"type": "string", "data": None}
         },
+        "dimensions": {
+            "time": 0
+        },
         "variables": {
+            "temperature": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Temperature"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "degree_C"
+                    }
+                }
+            },
             "channel_1_power": {
                 "type": "int",
+                "shape": [
+                    "time"
+                ],
                 "attributes": {
                     "variable_type": {
                         "type": "string", 
@@ -82,6 +108,9 @@ class ShellyPro3(Controller):
             },
             "channel_2_power": {
                 "type": "int",
+                "shape": [
+                    "time"
+                ],
                 "attributes": {
                     "variable_type": {
                         "type": "string", 
@@ -115,6 +144,9 @@ class ShellyPro3(Controller):
             },
             "channel_3_power": {
                 "type": "int",
+                "shape": [
+                    "time"
+                ],
                 "attributes": {
                     "variable_type": {
                         "type": "string", 
@@ -245,7 +277,7 @@ class ShellyPro3(Controller):
 
             meta = ControllerMetadata(
                 attributes=self.metadata["attributes"],
-                # dimensions=self.metadata["dimensions"],
+                dimensions=self.metadata["dimensions"],
                 variables=self.metadata["variables"],
                 # settings=self.metadata["settings"],
                 settings=settings_def["variables"]
@@ -260,6 +292,7 @@ class ShellyPro3(Controller):
                 daq_id=conf["daq_id"],
             )
 
+            # TODO build client config 
             self.client_config = 
 
             print(f"self.config: {self.config}")
