@@ -201,6 +201,11 @@ class ShellyPro3(Controller):
 
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
+        self.default_client_host = "mqtt.default"
+        self.default_client_port = 1883
+
+        self.controller_id_prefix = "shellypro3"
+
         self.data_loop_task = None
         # self.enable_task_list.append(self.deal_with_data())
 
@@ -240,6 +245,24 @@ class ShellyPro3(Controller):
             # for name, path in conf["paths"].items():
             #     if "host" not in path:
             #         path["host"] = host
+
+            host = conf.get("host", "localhost")
+            port = conf.get("port", 80)
+            client_module = conf.get("client_module", self.default_client_module)
+            client_class = conf.get("client_class", self.default_client_class)
+            client_host = conf.get("client_class", self.default_client_host)
+            client_port = conf.get("client_class", self.default_client_port)
+            self.controller_id_prefix = conf.get("controller_id_prefix", "shellypro3")
+            client_subscriptions_list = conf.get("client_subscriptions", "")
+            if client_subscriptions_list == "":
+                client_subscriptions = []
+            else:
+                client_subscriptions = client_subscriptions_list.split(",")
+
+            status_sub = f"{self.controller_id_prefix}/status/#"
+            if status_sub not in client_subscriptions:
+                client_subscriptions.append(status_sub)
+
 
             self.logger.debug("conf", extra={"data": conf})
 
@@ -311,8 +334,10 @@ class ShellyPro3(Controller):
             self.config = ControllerConfig(
                 make=self.metadata["attributes"]["make"]["data"],
                 model=self.metadata["attributes"]["model"]["data"],
-                serial_number=conf["attributes"]["serial_number"],
+                serial_number=self.metadata["attributes"]["serial_number"]["data"],
                 metadata=meta,
+                host=host,
+                port=port,
                 # interfaces=conf["interfaces"],
                 # daq_id=conf["daq_id"],
                 daq_id=self.core_settings.namespace_prefix # this is a hack for now
@@ -320,12 +345,12 @@ class ShellyPro3(Controller):
 
             # TODO build client config 
             self.client_config = {
-                "client_module": self.metadata["attributes"]["client_module"]["data"],
-                "client_class": self.metadata["attributes"]["client_class"]["data"],
+                "client_module": client_module,
+                "client_class": client_class,
                 "properties": {
-                    "host": self.metadata["attributes"]["client_host"]["data"],
-                    "port": self.metadata["attributes"]["client_host"]["data"],
-                    "subscriptions": self.metadata["attributes"]["subscriptions"]["data"],
+                    "host": client_host,
+                    "port": client_port,
+                    "subscriptions": client_subscriptions,
                 }
             }
 
@@ -347,7 +372,7 @@ class ShellyPro3(Controller):
             for channel in range(0,3):
 
                 data = {
-                    "path": f"{self.get_id}/command/switch:{channel}",
+                    "path": f"{self.controller_id_prefix}/command/switch:{channel}",
                     "message": "status_update"
                 }
 
@@ -366,7 +391,7 @@ class ShellyPro3(Controller):
         else:
             cmd = "off"
         data = {
-            "path": f"{self.get_id}/command/switch:{channel}",
+            "path": f"{self.controller_id_prefix}/command/switch:{channel}",
             "message": cmd
         }
         await self.send_data(data)
