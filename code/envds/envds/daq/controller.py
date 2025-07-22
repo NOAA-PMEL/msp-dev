@@ -221,6 +221,8 @@ class Controller(envdsBase):
 
         self.status.set_id_AppID(self.id)
 
+        self.settings = RuntimeSettings()
+
         self.client_registry = {}
         self.client_map = {}
         self.multistep_data = []
