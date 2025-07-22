@@ -314,7 +314,8 @@ class ShellyPro3(Controller):
                 serial_number=conf["attributes"]["serial_number"],
                 metadata=meta,
                 # interfaces=conf["interfaces"],
-                daq_id=conf["daq_id"],
+                # daq_id=conf["daq_id"],
+                daq_id=self.core_settings.namespace_prefix # this is a hack for now
             )
 
             # TODO build client config 
