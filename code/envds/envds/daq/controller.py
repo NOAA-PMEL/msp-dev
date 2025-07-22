@@ -816,7 +816,7 @@ class Controller(envdsBase):
                         client_module = self.client_config["client_module"]
                         client_class = self.client_config["client_class"]
 
-                        client_id = f"{self.client_config["properties"]["host"]}::{self.get_id()}"
+                        client_id = f'{self.client_config["properties"]["host"]}::{self.get_id()}'
                         client_config = DAQClientConfig(
                             uid=client_id,
                             properties=self.client_config["properties"].copy(),

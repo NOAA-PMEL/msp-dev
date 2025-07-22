@@ -32,7 +32,7 @@ patches:
     patch: |-
       - op: replace 
         path: /spec/template/spec/volumes/0/configMap/name
-        value: shelly-shellypro3-config-154
+        value: shelly-shellypro3-config-shel209
       - op: replace 
         path: /spec/template/spec/volumes/1/configMap/name
-        value: controller-definition-154
+        value: controller-definition-shel209
