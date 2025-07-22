@@ -308,50 +308,6 @@ class SpiderMagic810(Sensor):
                     # "valid_max": {"type": "float", "data": 5.0},
                 },
             },
-            "corr_live_time": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Corrected Live Time"},
-                    "description": {
-                        "type": "char",
-                        "data": "Live Time as a fraction of interval, x10000, corrected for coincidence",
-                    },
-                    "units": {"type": "char", "data": "count"},
-                    # "valid_min": {"type": "float", "data": 0.0},
-                    # "valid_max": {"type": "float", "data": 360.0},
-                },
-            },
-            "meas_dead_time": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Measured Dead Time"},
-                    "description": {
-                        "type": "char",
-                        "data": "Dead Time as a fraction of interval, x10000, raw measurement",
-                    },
-                    "units": {"type": "char", "data": "count"},
-                    # "valid_min": {"type": "float", "data": 0.0},
-                    # "valid_max": {"type": "float", "data": 360.0},
-                },
-            },
-            "raw_counts": {
-                "type": "int",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Raw Counts during logging interval",
-                    },
-                    "units": {"type": "char", "data": "count"},
-                    # "valid_min": {"type": "float", "data": 0.0},
-                    # "valid_max": {"type": "float", "data": 360.0},
-                },
-            },
             "pHt2.%": {
                 "type": "float",
                 "shape": ["time"],
@@ -361,30 +317,6 @@ class SpiderMagic810(Sensor):
                     "description": {
                         "type": "char",
                         "data": "Two pieces of information. The number before the decimal is the upper threshold in mV. The number after the decimal represents the percentage of light-scattering pulses that were large enough to exceed the upper threshold. Under default settings dhtr2 represents the median pulse height.",
-                    },
-                },
-            },
-            "pHt3.%": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "pht3 Threshold"},
-                    "description": {
-                        "type": "char",
-                        "data": "Threshold of mV where percentage of pulses set by 'pht3' is above. Default is 16%.",
-                    },
-                },
-            },
-            "pHt4.%": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "pht4 Threshold"},
-                    "description": {
-                        "type": "char",
-                        "data": "Threshold of mV where percentage of pulses set by 'pht4' is above. Default is 84%.",
                     },
                 },
             },
@@ -492,7 +424,7 @@ class SpiderMagic810(Sensor):
                 },
             },
             "raw_counts": {
-                "type": "float",
+                "type": "int",
                 "shape": ["time", "diameter"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
@@ -500,46 +432,31 @@ class SpiderMagic810(Sensor):
                     "units": {"type": "char", "data": "counts"},
                 },
             },
-            "pump_state": {
+            "dead_counts": {
                 "type": "int",
-                "shape": ["time"],
+                "shape": ["time", "diameter"],
                 "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "long_name": {"type": "char", "data": "Pump State"},
-                    "units": {"type": "char", "data": "count"},
-                    "valid_min": {"type": "int", "data": 0},
-                    "valid_max": {"type": "int", "data": 1},
-                    "step_increment": {"type": "int", "data": 1},
-                    "default_value": {"type": "int", "data": 1},
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Dead Counts"},
+                    "units": {"type": "char", "data": "counts"},
                 },
             },
-            "q_target": {
+            "sh_flow": {
                 "type": "int",
-                "shape": ["time"],
+                "shape": ["time", "diameter"],
                 "attributes": {
-                    "variable_type": {"type": "string", "data": "setting"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Target Volumetric Flow Rate",
-                    },
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Sheath Flow"},
                     "units": {"type": "char", "data": "cm3 min-1"},
-                    "valid_min": {"type": "int", "data": 240},
-                    "valid_max": {"type": "int", "data": 360},
-                    "step_increment": {"type": "int", "data": 10},
-                    "default_value": {"type": "int", "data": 300},
                 },
             },
-            "qfc": {
+            "aer_flow": {
                 "type": "int",
-                "shape": ["time"],
+                "shape": ["time", "diameter"],
                 "attributes": {
-                    "variable_type": {"type": "string", "data": "calibration"},
-                    "long_name": {"type": "char", "data": "Flow Calibration Factor"},
-                    "units": {"type": "char", "data": "count"},
-                    "valid_min": {"type": "int", "data": 1},
-                    "valid_max": {"type": "int", "data": 255},
-                    "step_increment": {"type": "int", "data": 1},
-                    "default_value": {"type": "int", "data": 1},
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Aerosol Flow"},
+                    "units": {"type": "char", "data": "cm3 min-1"},
                 },
             },
         },
@@ -750,8 +667,8 @@ class SpiderMagic810(Sensor):
     async def sampling_monitor(self):
 
         # start_command = f"Log,{self.sampling_interval}\n"
-        start_command = "Log,1\n"
-        stop_command = "Log,0\n"
+        start_command = "hvgo\n"
+        stop_command = "stop\n"
 
         need_start = True
         start_requested = False
@@ -890,7 +807,7 @@ class SpiderMagic810(Sensor):
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
 
-                    if datavar := 'HDT' in data.data["data"]:
+                    if datavar := 'v1' in data.data["data"]:
                         parts = parts[1:2]
                     elif datavar := 'GPatt' in data.data["data"]:
                         parts = parts[2:5]
