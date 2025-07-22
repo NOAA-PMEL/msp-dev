@@ -170,10 +170,10 @@ class RuntimeSettings(object):
         self.settings[name]["actual"] = actual
 
     def set_requested(self, name: str, requested) -> bool:
-        return self.update_setting(requested=requested)
+        return self.update_setting(name=name, requested=requested)
     
     def set_actual(self, name: str, actual) -> bool:
-        return self.update_setting(actual=actual)
+        return self.update_setting(name=name, actual=actual)
 
     def update_setting(self, name: str, requested=None, actual=None) -> bool:
         if name not in self.settings:
