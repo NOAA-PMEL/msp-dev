@@ -814,6 +814,7 @@ class Controller(envdsBase):
 
         while True:
             try:
+                self.logger.debug("client_monitor:out", extra={"client": self.client})
                 if self.client is None:
                     try:
 
@@ -835,6 +836,7 @@ class Controller(envdsBase):
                         # TODO: where to start "run"?
                         await asyncio.sleep(1)
                         self.client.run()
+                        self.logger.debug("client_monitor:in", extra={"client": self.client})
 
                     except (KeyError, ModuleNotFoundError, AttributeError) as e:
                         self.logger.error(
