@@ -201,7 +201,7 @@ class ShellyPro3(Controller):
 
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
-        
+
         self.data_loop_task = None
         # self.enable_task_list.append(self.deal_with_data())
 
@@ -312,7 +312,7 @@ class ShellyPro3(Controller):
             self.config = ControllerConfig(
                 make=self.metadata["attributes"]["make"]["data"],
                 model=self.metadata["attributes"]["model"]["data"],
-                serial_number=conf["serial_number"],
+                serial_number=conf["attributes"]["serial_number"],
                 metadata=meta,
                 # interfaces=conf["interfaces"],
                 daq_id=conf["daq_id"],

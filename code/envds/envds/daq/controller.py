@@ -237,7 +237,7 @@ class Controller(envdsBase):
         self.run_task_list.append(self.register_controller_definition())
         self.run_task_list.append(self.register_controller_instance())
         self.run_task_list.append(self.settings_monitor())
-        self.run_task_list.append(self.client_recv_loop())
+        # self.run_task_list.append(self.client_recv_loop())
         self.run_task_list.append(self.client_monitor())
         self.run_task_list.append(self.client_recv_loop())
 
