@@ -291,7 +291,7 @@ class ShellyPro3(Controller):
                 if "settings" in config and name in config["settings"]:
                     requested = config["settings"][name]
 
-                self.settings.set_setting(name, requested=requested)
+                self.settings.add_setting(name, requested=requested)
 
             meta = ControllerMetadata(
                 attributes=self.metadata["attributes"],
@@ -336,15 +336,33 @@ class ShellyPro3(Controller):
         pass
 
         while True:
-            for ch in range(0,3):
+            for channel in range(0,3):
 
                 data = {
-                    "path": f"{self.get_id}/command/switch:{ch}",
+                    "path": f"{self.get_id}/command/switch:{channel}",
                     "message": "status_update"
                 }
 
-                self.send_data(data)
+                await self.send_data(data)
             await asyncio.sleep(5)
+
+    async def set_channel_power(self, channel, state):
+        if isinstance(state, str):
+            if state.lower() in ["on", "yes"]:
+                state = 1
+            else:
+                state = 0 
+        
+        if state:
+            cmd = "on"
+        else:
+            cmd = "off"
+        data = {
+            "path": f"{self.get_id}/command/switch:{channel}",
+            "message": cmd
+        }
+        await self.send_data(data)
+        
 
     async def deal_with_data(self, client, data):
         if data['data']['device'] == 'shelly':
@@ -395,7 +413,7 @@ class ShellyPro3(Controller):
 
                     # update actual state of channel output
                     name = f"channel_{channel}_power"
-                    self.settings.update_setting(name=name, actual=int(output))
+                    self.settings.set_actual(name=name, actual=int(output))
                 await asyncio.sleep(0.01)
 
             except (KeyError, Exception) as e:
@@ -422,6 +440,28 @@ class ShellyPro3(Controller):
                     await self.client.send_to_client(data)
             except Exception:
                 pass
+
+    async def settings_check(self):
+        await super().settings_check()
+
+        if not self.settings.get_health():  # something has changed
+            for name in self.settings.get_settings().keys():
+                if not self.settings.get_health_setting(name):
+                    
+                    # set channel power
+                    if setting := self.settings.get_setting(name):
+                        if name in ["channel_1_power", "channel_2_power", "channel_3_power"]:
+                            ch = self.metadata[name]["attributes"]["channel"]["data"]
+                            self.set_channel_power(ch, setting["requested"])
+
+
+                    self.logger.debug(
+                        "settings_check - set setting",
+                        extra={
+                            "setting-name": name,
+                            "setting": self.settings.get_setting(name),
+                        },
+                    )
 
 
 class ServerConfig(BaseModel):

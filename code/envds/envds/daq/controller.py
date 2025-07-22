@@ -159,12 +159,18 @@ class RuntimeSettings(object):
         if settings is None:
             self.settings = dict()
 
-    def set_setting(self, name: str, requested, actual=None):
+    def add_setting(self, name: str, requested, actual=None):
         if name not in self.settings:
             self.settings[name] = dict()
         
         self.settings[name]["requested"] = requested
         self.settings[name]["actual"] = actual
+
+    def set_requested(self, requested) -> bool:
+        return self.update_setting(requested=requested)
+    
+    def set_actual(self, actual) -> bool:
+        return self.update_setting(actual=actual)
 
     def update_setting(self, name: str, requested=None, actual=None) -> bool:
         if name not in self.settings:
@@ -604,9 +610,12 @@ class Controller(envdsBase):
                 )
                 if setting and requested:
                     # name = setting["settings"]
-                    current = self.settings.get_setting(setting)
-                    self.settings.set_setting(
-                        name=setting, requested=requested, actual=current["actual"]
+                    # current = self.settings.get_setting(setting)
+                    # self.settings.set_setting(
+                    #     name=setting, requested=requested, actual=current["actual"]
+                    # )
+                    self.settings.set_requested(
+                        name=setting, requested=requested
                     )
 
             except (KeyError, Exception) as e:
