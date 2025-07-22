@@ -142,6 +142,8 @@ class ControllerConfig(BaseModel):
     model: str
     serial_number: str
     metadata: ControllerMetadata
+    host: str
+    port: int
     # # variables: list | None = []
     # attributes: dict[str, DeviceAttribute]
     # variables: dict[str, DeviceVariable]
