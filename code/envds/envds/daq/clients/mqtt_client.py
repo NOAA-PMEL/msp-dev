@@ -72,11 +72,15 @@ class _MQTT_Client(_BaseClient):
     
     async def publish(self, data):
         try:
-            topic = data['topic']
+            topic = data['path']
+            if topic[0] == "/":
+                topic = topic[1:]
+
             message = data['message']
+            self.logger.debug("MQTTClient publish", extra={"topic": topic, "payload": message})
             await self.mqttclient.publish(topic, payload=message)
         except Exception as e:
-                self.logger.error("mqtt client publish error", extra={"error": e})
+            self.logger.error("mqtt client publish error", extra={"error": e})
 
 
     async def do_enable(self):
@@ -121,6 +125,7 @@ class MQTT_Client(DAQClient):
 
     async def send_to_client(self, data):
         try:
+            self.logger.debug("MQTT_Client:send_to_client", extra={"payload": data})
             await self.client.publish(data)
 
         except Exception as e:
