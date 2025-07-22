@@ -419,7 +419,8 @@ class ShellyPro3(Controller):
             try:
                 data = await self.client_recv_buffer.get()
                 self.logger.debug("recv_data_loop", extra={"json_data": data})
-                status = json.loads(data)
+                # status = json.loads(data)
+                status = data
                 self.logger.debug("recv_data_loop", extra={"st": data})
 
                 # the only data coming from Shelly should be status
