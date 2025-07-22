@@ -205,6 +205,7 @@ class ShellyPro3(Controller):
         self.default_client_port = 1883
 
         self.controller_id_prefix = "shellypro3"
+        
 
         self.data_loop_task = None
         # self.enable_task_list.append(self.deal_with_data())
