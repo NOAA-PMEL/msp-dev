@@ -175,7 +175,6 @@ class SCX21(Sensor):
                         "type": "char",
                         "data": "NMEA 0183 ID: GNS",
                     },
-                    "units": {"type": "char", "data": "unitless"},
                 },
             },
             "lon": {
@@ -256,7 +255,6 @@ class SCX21(Sensor):
         self.array_buffer = []
 
         self.default_data_buffer = asyncio.Queue()
-
 
         self.sensor_definition_file = "Furuno_SCX21_sensor_definition.json"
 

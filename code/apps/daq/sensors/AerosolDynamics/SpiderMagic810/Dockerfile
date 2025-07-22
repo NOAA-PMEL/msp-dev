@@ -33,5 +33,5 @@ COPY ./scx21.py .
 # For environments with multiple CPU cores, increase the number of workers
 # to be equal to the cores available.
 # CMD ["uvicorn", "envds.main:app", "--host", "0.0.0.0", "--port", "8080"]
-CMD ["python", "scx21.py", "--host", "0.0.0.0"]
+CMD ["python", "spidermagic810.py", "--host", "0.0.0.0"]
 # CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
