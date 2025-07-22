@@ -1,4 +1,5 @@
 import asyncio
+import json
 import signal
 import sys
 import os
@@ -20,8 +21,8 @@ class ShellyPro3(Controller):
 
     metadata = {
         "attributes": {
-            "type": {"type": "char", "data": "Shelly"},
-            "name": {"type": "char", "data": "ShellyPro3"},
+            "make": {"type": "char", "data": "Shelly"},
+            "model": {"type": "char", "data": "ShellyPro3"},
             "host": {"type": "char", "data": "localhost"},
             "description": {
                 "type": "char",
@@ -34,7 +35,7 @@ class ShellyPro3(Controller):
             },
             "variable_types": {
                 "type": "string",
-                "data": "setting"
+                "data": "main, setting"
             },
             "serial_number": {
                 "type": "string",
@@ -46,13 +47,43 @@ class ShellyPro3(Controller):
             "client_port": {"type": "int", "data": 1883},
             "subscriptions": {"type": "string", "data": None}
         },
+        "dimensions": {
+            "time": 0
+        },
         "variables": {
+            "temperature": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Temperature"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "degree_C"
+                    }
+                }
+            },
             "channel_1_power": {
                 "type": "int",
+                "shape": [
+                    "time"
+                ],
                 "attributes": {
                     "variable_type": {
                         "type": "string", 
                         "data": "setting"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 1
                     },
                     "long_name": {
                         "type": "char",
@@ -82,10 +113,17 @@ class ShellyPro3(Controller):
             },
             "channel_2_power": {
                 "type": "int",
+                "shape": [
+                    "time"
+                ],
                 "attributes": {
                     "variable_type": {
                         "type": "string", 
                         "data": "setting"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 2
                     },
                     "long_name": {
                         "type": "char",
@@ -115,10 +153,17 @@ class ShellyPro3(Controller):
             },
             "channel_3_power": {
                 "type": "int",
+                "shape": [
+                    "time"
+                ],
                 "attributes": {
                     "variable_type": {
                         "type": "string", 
                         "data": "setting"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 3
                     },
                     "long_name": {
                         "type": "char",
@@ -156,7 +201,7 @@ class ShellyPro3(Controller):
 
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
-
+        
         self.data_loop_task = None
         # self.enable_task_list.append(self.deal_with_data())
 
@@ -192,6 +237,11 @@ class ShellyPro3(Controller):
             self.logger.debug("conf", extra={"data": conf})
 
             attrs = ShellyPro3.metadata["attributes"]
+
+            # override default metadata attributes with config values
+            for name, val in conf["attributes"].items():
+                if name in attrs:
+                    attrs[name]["data"] = val
 
             # path_map = dict()
             # for name, val in ShellyPro3.metadata["paths"].items():
@@ -241,11 +291,11 @@ class ShellyPro3(Controller):
                 if "settings" in config and name in config["settings"]:
                     requested = config["settings"][name]
 
-                self.settings.set_setting(name, requested=requested)
+                self.settings.add_setting(name, requested=requested)
 
             meta = ControllerMetadata(
                 attributes=self.metadata["attributes"],
-                # dimensions=self.metadata["dimensions"],
+                dimensions=self.metadata["dimensions"],
                 variables=self.metadata["variables"],
                 # settings=self.metadata["settings"],
                 settings=settings_def["variables"]
@@ -260,7 +310,16 @@ class ShellyPro3(Controller):
                 daq_id=conf["daq_id"],
             )
 
-            self.client_config = 
+            # TODO build client config 
+            self.client_config = {
+                "client_module": self.metadata["attributes"]["client_module"]["data"],
+                "client_class": self.metadata["attributes"]["client_class"]["data"],
+                "properties": {
+                    "host": self.metadata["attributes"]["client_host"]["data"],
+                    "port": self.metadata["attributes"]["client_host"]["data"],
+                    "subscriptions": self.metadata["attributes"]["subscriptions"]["data"],
+                }
+            }
 
             print(f"self.config: {self.config}")
 
@@ -271,6 +330,39 @@ class ShellyPro3(Controller):
         except Exception as e:
             self.logger.debug("ShellyPro3:configure", extra={"error": e})
             print(traceback.format_exc())
+
+    async def get_status_loop(self):
+        #TODO get status for each channel every N seconds and update settings based on response
+        pass
+
+        while True:
+            for channel in range(0,3):
+
+                data = {
+                    "path": f"{self.get_id}/command/switch:{channel}",
+                    "message": "status_update"
+                }
+
+                await self.send_data(data)
+            await asyncio.sleep(5)
+
+    async def set_channel_power(self, channel, state):
+        if isinstance(state, str):
+            if state.lower() in ["on", "yes"]:
+                state = 1
+            else:
+                state = 0 
+        
+        if state:
+            cmd = "on"
+        else:
+            cmd = "off"
+        data = {
+            "path": f"{self.get_id}/command/switch:{channel}",
+            "message": cmd
+        }
+        await self.send_data(data)
+        
 
     async def deal_with_data(self, client, data):
         if data['data']['device'] == 'shelly':
@@ -289,14 +381,40 @@ class ShellyPro3(Controller):
     async def recv_data_loop(self, client_id: str):
         while True:
             try:
-                client = self.client_map[client_id]["client"]
-                print("Client ID in recv_data_loop:", client_id)
-                if client:
-                    self.logger.debug("recv_data_loop", extra={"client": client})
-                    data = await client.recv()
-                    self.logger.debug("recv_data", extra={"client_id": client_id, "data": data}) 
-                    await self.update_recv_data(client_id=client_id, data=data)
-                    await self.deal_with_data(client, data)
+                data = await self.client_recv_buffer.get()
+                status = json.loads(data)
+
+                # the only data coming from Shelly should be status
+                if "id" in status:
+                    channel = status["id"]
+                    output = status["output"]
+                    if channel == 0:
+                        temperature = status["temperature"]["tC"]
+                        record = self.build_data_record(meta=False)
+
+                        # channel 0 temperature data record
+                        if record:
+                            event = DAQEvent.create_data_update(
+                                # source="sensor.mockco-mock1-1234", data=record
+                                source=self.get_id_as_source(),
+                                data=record,
+                            )
+                            destpath = f"{self.get_id_as_topic()}/data/update"
+                            event["destpath"] = destpath
+                            self.logger.debug(
+                                "default_data_loop",
+                                extra={"data": event, "destpath": destpath},
+                            )
+                            # message = Message(data=event, destpath=destpath)
+                            message = event
+                            # self.logger.debug("default_data_loop", extra={"m": message})
+                            await self.send_message(message)
+
+
+                    # update actual state of channel output
+                    name = f"channel_{channel}_power"
+                    self.settings.set_actual(name=name, actual=int(output))
+                await asyncio.sleep(0.01)
 
             except (KeyError, Exception) as e:
                 self.logger.error("recv_data_loop", extra={"error": e})
@@ -316,11 +434,34 @@ class ShellyPro3(Controller):
     #             await client.send(data)
     #         except KeyError:
     #             pass
-    async def send_data(self, client, data):
+    async def send_data(self, data):
             try:
-                await client.send(data)
-            except KeyError:
+                if self.client:
+                    await self.client.send_to_client(data)
+            except Exception:
                 pass
+
+    async def settings_check(self):
+        await super().settings_check()
+
+        if not self.settings.get_health():  # something has changed
+            for name in self.settings.get_settings().keys():
+                if not self.settings.get_health_setting(name):
+                    
+                    # set channel power
+                    if setting := self.settings.get_setting(name):
+                        if name in ["channel_1_power", "channel_2_power", "channel_3_power"]:
+                            ch = self.metadata[name]["attributes"]["channel"]["data"]
+                            self.set_channel_power(ch, setting["requested"])
+
+
+                    self.logger.debug(
+                        "settings_check - set setting",
+                        extra={
+                            "setting-name": name,
+                            "setting": self.settings.get_setting(name),
+                        },
+                    )
 
 
 class ServerConfig(BaseModel):

@@ -110,7 +110,7 @@ class ControllerVariable(BaseModel):
 
     # name: str
     type: str | None = "str"
-    # shape: list[str] | None = ["time"]
+    shape: list[str] | None = ["time"]
     attributes: dict[str, ControllerAttribute]
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
@@ -121,7 +121,7 @@ class ControllerSetting(BaseModel):
 
     # name: str
     type: str | None = "str"
-    # shape: list[str] | None = ["time"]
+    shape: list[str] | None = ["time"]
     attributes: dict[str, ControllerAttribute]
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
@@ -130,7 +130,7 @@ class ControllerMetadata(BaseModel):
     """docstring for DeviceMetadata."""
 
     attributes: dict[str, ControllerAttribute]
-    # dimensions: dict[str, int | None]
+    dimensions: dict[str, int | None]
     variables: dict[str, ControllerVariable]
     settings: dict[str, ControllerSetting]
 
@@ -159,13 +159,29 @@ class RuntimeSettings(object):
         if settings is None:
             self.settings = dict()
 
-    def set_setting(self, name: str, requested, actual=None):
+    def add_setting(self, name: str, requested, actual=None):
         if name not in self.settings:
             self.settings[name] = dict()
-
+        
         self.settings[name]["requested"] = requested
         self.settings[name]["actual"] = actual
 
+    def set_requested(self, requested) -> bool:
+        return self.update_setting(requested=requested)
+    
+    def set_actual(self, actual) -> bool:
+        return self.update_setting(actual=actual)
+
+    def update_setting(self, name: str, requested=None, actual=None) -> bool:
+        if name not in self.settings:
+            return False
+        
+        if requested:
+            self.settings[name]["requested"] = requested
+        if actual:
+            self.settings[name]["actual"] = actual
+        return True
+    
     def get_setting(self, name: str):
         if name in self.settings:
             return self.settings[name]
@@ -212,10 +228,15 @@ class Controller(envdsBase):
         self.client_recv_buffer = asyncio.Queue()
         self.client_send_buffer = asyncio.Queue()
         self.client = None
+        self.client_config = dict()
+
         # self.run_task_list.append(self.client_monitor())
         # self.run_task_list.append(self.client_registry_monitor())
         self.run_task_list.append(self.register_controller_definition())
         self.run_task_list.append(self.register_controller_instance())
+        self.run_task_list.append(self.settings_monitor())
+        self.run_task_list.append(self.client_recv_loop())
+        self.run_task_list.append(self.client_monitor())
         self.run_task_list.append(self.client_recv_loop())
 
         self.controller_definition_registered = False
@@ -251,6 +272,19 @@ class Controller(envdsBase):
 
     async def client_recv_loop(self):
         while True:
+            if self.client:
+                data = await self.client.recv_from_client()
+                await self.client_recv_buffer.put(data)
+            await asyncio.sleep(.01)
+
+    # async def client_send_loop(self):
+    #     while True:
+    #         if self.client:
+    #             data = await self.client_send_buffer.get()
+    #             self.client.send_to_client(data)
+    #         await asyncio.sleep(.01)
+    # async def client_recv_loop(self):
+    #     while True:
 
     async def register_controller_definition(self):
         while True:
@@ -334,8 +368,11 @@ class Controller(envdsBase):
     def get_serial_number(self):
         return self.config.serial_number
 
+    def get_host(self):
+        return self.config.host
+
     def build_app_uid(self):
-        parts = [self.get_make(), self.get_model(), self.get_serial_number()]
+        parts = [self.get_make(), self.get_model(), self.get_host()]
         return (self.ID_DELIM).join(parts)
 
     # def build_app_uid(self):
@@ -404,6 +441,40 @@ class Controller(envdsBase):
             route=self.handle_controls,
             enable=enable,
         )
+
+    async def settings_monitor(self):
+
+        send_settings = True
+        while True:
+            try:
+                await self.settings_check()
+            except Exception as e:
+                self.logger.error("settings_monitor", extra={"error": e})
+
+            if self.enabled() and send_settings:
+                # send settings every other second
+                event = DAQEvent.create_sensor_settings_update(
+                    # source="device.mockco-mock1-1234", data=record
+                    source=self.get_id_as_source(),
+                    data={"settings": self.settings.get_settings()},
+                )
+                destpath = f"{self.get_id_as_topic()}/settings/update"
+                self.logger.debug(
+                    "settings_monitor", extra={"data": event, "destpath": destpath}
+                )
+                event["destpath"] = destpath
+                # message = Message(data=event, destpath=destpath)
+                message = event
+                # self.logger.debug("default_data_loop", extra={"m": message})
+                await self.send_message(message)
+
+            send_settings = not send_settings
+            await asyncio.sleep(1)
+
+    # each device should handle this as required
+    async def settings_check(self):
+        pass
+
 
 
     # def update_client_registry(
@@ -539,9 +610,12 @@ class Controller(envdsBase):
                 )
                 if setting and requested:
                     # name = setting["settings"]
-                    current = self.settings.get_setting(setting)
-                    self.settings.set_setting(
-                        name=setting, requested=requested, actual=current["actual"]
+                    # current = self.settings.get_setting(setting)
+                    # self.settings.set_setting(
+                    #     name=setting, requested=requested, actual=current["actual"]
+                    # )
+                    self.settings.set_requested(
+                        name=setting, requested=requested
                     )
 
             except (KeyError, Exception) as e:
@@ -736,101 +810,126 @@ class Controller(envdsBase):
 
         while True:
             try:
-                for id, path in self.config.paths.items():
-                    # if path["client"] is None:
-                    # if id not in self.client_map:
-                    #     self.client_map = {
-                    #         self
-                    #     }
-                    # self.logger.debug(
-                    #     "client_monitor",
-                    #     extra={
-                    #         "client_id": id,
-                    #         "path": path,
-                    #         "client_map": self.client_map,
-                    #     },
-                    # )
-                    if self.client_map[id]["client"] is None:
+                if self.client is None:
+                    try:
 
-                        self.logger.debug(
-                            "client_monitor",
-                            extra={
-                                "client_id": id,
-                                "path": path,
-                                "client_map": self.client_map,
-                            },
+                        client_module = self.client_config["client_module"]
+                        client_class = self.client_config["client_class"]
+
+                        client_id = f"{self.client_config["properties"]["host"]}::{self.get_id()}"
+                        client_config = DAQClientConfig(
+                            uid=client_id,
+                            properties=self.client_config["properties"].copy(),
                         )
+                        mod_ = importlib.import_module(client_module)
+                        # print(f"here:5 {client_module}, {client_class}, {mod_}")
+                        # path["client"] = getattr(mod_, client_class)(config=client_config)
+                        cls_ = getattr(mod_, client_class)
+                        # print(f"here:5.5 {cls_}")
+                        self.client = cls_(config=client_config)
 
-                        try:
-                            client_module = path["client_config"]["attributes"][
-                                "client_module"
-                            ]["data"]
-                            client_class = path["client_config"]["attributes"][
-                                "client_class"
-                            ]["data"]
-                            client_config = DAQClientConfig(
-                                uid=id,
-                                properties=path["client_config"]["attributes"].copy(),
-                            )
-                            mod_ = importlib.import_module(client_module)
-                            # print(f"here:5 {client_module}, {client_class}, {mod_}")
-                            # path["client"] = getattr(mod_, client_class)(config=client_config)
-                            cls_ = getattr(mod_, client_class)
-                            # print(f"here:5.5 {cls_}")
-                            self.client_map[id]["client"] = cls_(config=client_config)
+                        # TODO: where to start "run"?
+                        await asyncio.sleep(1)
+                        self.client.run()
 
-                            # TODO: where to start "run"?
-                            await asyncio.sleep(1)
-                            self.client_map[id]["client"].run()
-                            # self.client_map[id]["client"] = getattr(mod_, client_class)(
-                            #     config=client_config
-                            # )
-                            # print(f"here:6 {self.client_map[id]['client']}")
-
-                            if self.client_map[id]["recv_task"] is not None:
-                                self.client_map[id]["recv_task"].cancel()
-
-                            self.client_map[id]["recv_task"] = asyncio.create_task(
-                                self.client_map[id]["recv_handler"]
-                            )
-                            self.logger.debug(
-                                "create recv_task",
-                                extra={"handler": self.client_map[id]["recv_handler"]},
-                            )
-
-                        except (KeyError, ModuleNotFoundError, AttributeError) as e:
-                            self.logger.error(
-                                "client_monitor: could not create client",
-                                extra={"error": e},
-                            )
-                            self.client_map[id]["client"] = None
+                    except (KeyError, ModuleNotFoundError, AttributeError) as e:
+                        self.logger.error(
+                            "client_monitor: could not create client",
+                            extra={"error": e},
+                        )
+                        self.client = None
                     #     self.logger.debug(
                     #         "client_monitor", extra={"client_map": self.client_map}
                     #     )
                     # self.logger.debug("client monitor", extra={"id": id, "path": path})
 
-                    # update status
-                    if (client := self.client_map[id]["client"]):
-
-                        topic_base = self.get_id_as_topic()
-                        destpath = f"{topic_base}/{id}/status/update"
-                        extra_header = {"path_id": id, "destpath": destpath}
-                        event = DAQEvent.create_controller_status_update(
-                            # source="envds.core", data={"test": "one", "test2": 2}
-                            source=self.get_id_as_source(),
-                            data=self.status.get_status(),
-                            extra_header=extra_header
-                        )
-                        self.logger.debug("send_controller_status_update", extra={"event": event})
-                        # message = Message(data=event, destpath="/envds/status/update")
-                        # message = Message(data=event, destpath=destpath)
-                        message = event
-                        await self.send_message(message)
-                        # self.logger.debug("heartbeat", extra={"msg": message})
-
             except Exception as e:
                 self.logger.error("client_monitor", extra={"error": e})
             await asyncio.sleep(5)
+
+    def build_data_record(
+        self, meta: bool = False, variable_types: list[str] = ["main"]
+    ) -> dict:
+        # TODO: change data_format -> format_version
+        # TODO: create record for any number of variable_types
+        record = {
+            # "time": get_datetime_string(),
+            "timestamp": get_datetime_string(),
+            # "instance": {
+            #     "serial_number": self.config.serial_number,
+            #     "sampling_mode": mode,
+            # }
+        }
+        # print(record)
+        if meta:
+            record["attributes"] = self.config.metadata.dict()["attributes"]
+            # print(record)
+            record["attributes"]["serial_number"] = {
+                "type": "char",
+                "data": self.config.serial_number,
+            }
+            record["attributes"]["mode"] = {"type": "char", "data": "default"}
+            record["attributes"]["variable_types"] = {
+                "type": "string",
+                "data": ",".join(variable_types),
+            }
+        else:
+            record["attributes"] = {
+                "make": {"data": self.config.make},
+                "model": {"data": self.config.model},
+                "serial_number": {"data": self.config.serial_number},
+                "mode": {"data": "default"},
+                "format_version": {"data": self.device_format_version},
+                "variable_types": {"data": ",".join(variable_types)},
+            }
+        # record["attributes"]["serial_number"] = {"data": self.config.serial_number}
+        # record["attributes"]["mode"] = {"data": "default"}
+        # record["attributes"]["variable_types"] = {"data": ",".join(variable_type)}
+
+        # print(record)
+
+        #     "variables": {},
+        # }
+
+        record["dimensions"] = {"time": 1}
+        record["variables"] = dict()
+
+        # record["variables"] = dict()
+        if meta:
+            for name, variable in self.config.metadata.dict()["variables"].items():
+                variable_type = variable["attributes"].get(
+                    "variable_type", {"type": "string", "data": "main"}
+                )
+                if variable_type["data"] in variable_types:
+                    record["variables"][name] = self.config.metadata.dict()[
+                        "variables"
+                    ][name]
+
+            # record["variables"] = self.config.metadata.dict()["variables"]
+
+            # print(1, record)
+            for name, _ in record["variables"].items():
+                record["variables"][name]["data"] = None
+            # print(2, record)
+        else:
+            for name, variable in self.config.metadata.dict()["variables"].items():
+                variable_type = variable["attributes"].get(
+                    "variable_type", {"type": "string", "data": "main"}
+                )
+                # print(f"variable_type: {variable_type}, {variable_types}")
+                if variable_type["data"] in variable_types:
+                    # print(f"name: {name}")
+                    record["variables"][name] = {
+                        "attributes": {"variable_type": {"data": variable_type}},
+                        "data": None,
+                    }
+            # print(3, record)
+
+            # record["variables"] = dict()
+            # for name,_ in self.config.metadata.variables.items():
+            #     record["variables"][name] = {"data": None}
+
+        return record
 
     def get_definition_by_variable_type(
         self, device_def: dict, variable_type: str = "main"
@@ -903,4 +1002,36 @@ class Controller(envdsBase):
                 record["settings"][name] = {"data": None}
         return record
 
+    async def settings_monitor(self):
+
+        send_settings = True
+        while True:
+            try:
+                await self.settings_check()
+            except Exception as e:
+                self.logger.error("settings_monitor", extra={"error": e})
+
+            if self.enabled() and send_settings:
+                # send settings every other second
+                event = DAQEvent.create_sensor_settings_update(
+                    # source="device.mockco-mock1-1234", data=record
+                    source=self.get_id_as_source(),
+                    data={"settings": self.settings.get_settings()},
+                )
+                destpath = f"{self.get_id_as_topic()}/settings/update"
+                self.logger.debug(
+                    "settings_monitor", extra={"data": event, "destpath": destpath}
+                )
+                event["destpath"] = destpath
+                # message = Message(data=event, destpath=destpath)
+                message = event
+                # self.logger.debug("default_data_loop", extra={"m": message})
+                await self.send_message(message)
+
+            send_settings = not send_settings
+            await asyncio.sleep(1)
+
+    # each device should handle this as required
+    async def settings_check(self):
+        pass
 
