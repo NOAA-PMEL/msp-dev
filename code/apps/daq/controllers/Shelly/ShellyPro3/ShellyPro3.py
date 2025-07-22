@@ -418,47 +418,50 @@ class ShellyPro3(Controller):
         while True:
             try:
                 data = await self.client_recv_buffer.get()
-                self.logger.debug("recv_data_loop", extra={"json_data": data})
-                # status = json.loads(data)
-                status = data
-                self.logger.debug("recv_data_loop", extra={"st": data})
+                self.logger.debug("recv_data_loop", extra={"recv_data": data})
 
                 # the only data coming from Shelly should be status
-                if "id" in status:
-                    channel = status["id"]
-                    output = status["output"]
-                    if channel == 0:
-                        temperature = status["temperature"]["tC"]
-                        record = self.build_data_record(meta=False)
+                if data and "id" in data:
+                    try:
+                        channel = data["id"]
+                        output = data["output"]
+                        self.logger.debug("recv_data_loop", extra={"channel": channel, "output": output})
+                        if channel == 0:
+                            temperature = data["temperature"]["tC"]
+                            record = self.build_data_record(meta=False)
+                            record["variables"]["temperature"]["data"] = temperature
+                            # channel 0 temperature data record
+                            if record:
+                                event = DAQEvent.create_data_update(
+                                    # source="sensor.mockco-mock1-1234", data=record
+                                    source=self.get_id_as_source(),
+                                    data=record,
+                                )
+                                destpath = f"{self.get_id_as_topic()}/data/update"
+                                event["destpath"] = destpath
+                                self.logger.debug(
+                                    "recv_data_loop",
+                                    extra={"data": event, "destpath": destpath},
+                                )
+                                # message = Message(data=event, destpath=destpath)
+                                message = event
+                                # self.logger.debug("default_data_loop", extra={"m": message})
+                                await self.send_message(message)
 
-                        # channel 0 temperature data record
-                        if record:
-                            event = DAQEvent.create_data_update(
-                                # source="sensor.mockco-mock1-1234", data=record
-                                source=self.get_id_as_source(),
-                                data=record,
-                            )
-                            destpath = f"{self.get_id_as_topic()}/data/update"
-                            event["destpath"] = destpath
-                            self.logger.debug(
-                                "recv_data_loop",
-                                extra={"data": event, "destpath": destpath},
-                            )
-                            # message = Message(data=event, destpath=destpath)
-                            message = event
-                            # self.logger.debug("default_data_loop", extra={"m": message})
-                            await self.send_message(message)
 
+                        # update actual state of channel output
+                        name = f"channel_{channel}_power"
+                        self.settings.set_actual(name=name, actual=int(output))
+                        self.logger.debug("recv_data_loop", actual={"settings": self.settings.get_settings()})
+                    except KeyError as e:
+                        self.logger.error("unknown response", extra={"reason": e})
+                        pass
 
-                    # update actual state of channel output
-                    name = f"channel_{channel}_power"
-                    self.settings.set_actual(name=name, actual=int(output))
-                    self.logger.debug("recv_data_loop", actual={"settings": self.settings.get_settings()})
                 await asyncio.sleep(0.01)
 
             except (KeyError, Exception) as e:
                 self.logger.error("recv_data_loop", extra={"error": e})
-                await asyncio.sleep(1)           
+                await asyncio.sleep(.1)           
 
     async def wait_for_ok(self, timeout=0):
         pass
