@@ -817,27 +817,35 @@ class Controller(envdsBase):
                 self.logger.debug("client_monitor:out", extra={"client": self.client})
                 if self.client is None:
                     try:
-
+                        self.logger.debug("client_monitor: 1")
                         client_module = self.client_config["client_module"]
+                        self.logger.debug("client_monitor: 2")
                         client_class = self.client_config["client_class"]
+                        self.logger.debug("client_monitor: 3")
 
                         client_id = f'{self.client_config["properties"]["host"]}::{self.get_id_string()}'
+                        self.logger.debug("client_monitor: 4")
                         client_config = DAQClientConfig(
                             uid=client_id,
                             properties=self.client_config["properties"].copy(),
                         )
+                        self.logger.debug("client_monitor: 5")
                         mod_ = importlib.import_module(client_module)
                         # print(f"here:5 {client_module}, {client_class}, {mod_}")
                         # path["client"] = getattr(mod_, client_class)(config=client_config)
+                        self.logger.debug("client_monitor: 6")
                         cls_ = getattr(mod_, client_class)
                         # print(f"here:5.5 {cls_}")
+                        self.logger.debug("client_monitor: 7")
                         self.client = cls_(config=client_config)
+                        self.logger.debug("client_monitor: 8")
 
                         # TODO: where to start "run"?
                         await asyncio.sleep(1)
                         self.client.run()
                         self.logger.debug("client_monitor:in", extra={"client": self.client})
 
+                        self.logger.debug("client_monitor: 9")
                     except (KeyError, ModuleNotFoundError, AttributeError) as e:
                         self.logger.error(
                             "client_monitor: could not create client",
