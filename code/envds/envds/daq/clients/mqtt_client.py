@@ -71,6 +71,7 @@ class _MQTT_Client(_BaseClient):
         return await self.recv_buffer_local.get()
     
     async def publish(self, data):
+        self.logger.debug("MQTTClient publish", extra={"incoming": data})
         try:
             topic = data['path']
             if topic[0] == "/":
