@@ -278,6 +278,7 @@ class Controller(envdsBase):
         while True:
             if self.client:
                 data = await self.client.recv_from_client()
+                self.logger.debug("client_recv_loop", extra={"recv": data})
                 await self.client_recv_buffer.put(data)
             await asyncio.sleep(.01)
 
