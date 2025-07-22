@@ -207,6 +207,7 @@ class ShellyPro3(Controller):
         self.controller_id_prefix = "shellypro3"
 
         self.data_loop_task = None
+        self.enable_task_list.append(self.recv_data_loop())
         # self.enable_task_list.append(self.deal_with_data())
 
         # TODO change to external json definition - this is placeholder
@@ -375,7 +376,7 @@ class ShellyPro3(Controller):
                     "path": f"{self.controller_id_prefix}/command/switch:{channel}",
                     "message": "status_update"
                 }
-
+                self.logger.debug("get_status_loop", extra={"payload": data})
                 await self.send_data(data)
             await asyncio.sleep(5)
 
@@ -394,6 +395,7 @@ class ShellyPro3(Controller):
             "path": f"{self.controller_id_prefix}/command/switch:{channel}",
             "message": cmd
         }
+        self.logger.debug("set_channel_power", extra={"payload": data})
         await self.send_data(data)
         
 
@@ -411,11 +413,13 @@ class ShellyPro3(Controller):
         else:
             pass
 
-    async def recv_data_loop(self, client_id: str):
+    async def recv_data_loop(self):
         while True:
             try:
                 data = await self.client_recv_buffer.get()
+                self.logger.debug("recv_data_loop", extra={"json_data": data})
                 status = json.loads(data)
+                self.logger.debug("recv_data_loop", extra={"st": data})
 
                 # the only data coming from Shelly should be status
                 if "id" in status:
@@ -435,7 +439,7 @@ class ShellyPro3(Controller):
                             destpath = f"{self.get_id_as_topic()}/data/update"
                             event["destpath"] = destpath
                             self.logger.debug(
-                                "default_data_loop",
+                                "recv_data_loop",
                                 extra={"data": event, "destpath": destpath},
                             )
                             # message = Message(data=event, destpath=destpath)
@@ -447,6 +451,7 @@ class ShellyPro3(Controller):
                     # update actual state of channel output
                     name = f"channel_{channel}_power"
                     self.settings.set_actual(name=name, actual=int(output))
+                    self.logger.debug("recv_data_loop", actual={"settings": self.settings.get_settings()})
                 await asyncio.sleep(0.01)
 
             except (KeyError, Exception) as e:
@@ -469,7 +474,9 @@ class ShellyPro3(Controller):
     #             pass
     async def send_data(self, data):
             try:
+                self.logger.debug("send_data", extra={"payload": data})
                 if self.client:
+                    self.logger.debug("send_data", extra={"payload": data})
                     await self.client.send_to_client(data)
             except Exception:
                 pass
