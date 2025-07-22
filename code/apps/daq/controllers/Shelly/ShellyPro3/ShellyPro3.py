@@ -206,7 +206,15 @@ class ShellyPro3(Controller):
         # self.enable_task_list.append(self.deal_with_data())
 
         # TODO change to external json definition - this is placeholder
-        self.metadata = ShellyPro3.metadata
+        # self.metadata = ShellyPro3.metadata
+        self.controller_definition_file = "Shelly_ShellyPro3_controller_definition.json"
+
+        try:            
+            with open(self.controller_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("controller_definition not found. Exiting")            
+            sys.exit(1)
 
     def configure(self):
 

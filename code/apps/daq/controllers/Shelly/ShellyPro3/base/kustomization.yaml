@@ -12,3 +12,8 @@ resources:
 #- USCDR301-configmap.yaml
 - ShellyPro3-deployment.yaml
 - ShellyPro3-service.yaml
+
+configMapGenerator:
+  - name: controller-definition
+    files:
+      - Shelly_ShellyPro3_controller_definition.json
