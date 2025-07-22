@@ -337,6 +337,7 @@ class ShellyPro3(Controller):
                 make=self.metadata["attributes"]["make"]["data"],
                 model=self.metadata["attributes"]["model"]["data"],
                 serial_number=self.metadata["attributes"]["serial_number"]["data"],
+                format_version=self.metadata["attributes"]["format_version"]["data"],
                 metadata=meta,
                 host=host,
                 port=port,
