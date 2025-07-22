@@ -21,21 +21,21 @@ class _MQTT_Client(_BaseClient):
         self.recv_buffer_local = asyncio.Queue()
         # self.topics = []
         if "host" in self.config.properties:
-            self.host = self.config.properties["host"]["data"]
+            self.host = self.config.properties["host"]
         if "port" in self.config.properties:
-            self.port = self.config.properties["port"]["data"]
+            self.port = self.config.properties["port"]
         if "subscriptions" in self.config.properties:
-            self.topics = self.config.properties["subscriptions"]["data"]
+            self.topics = self.config.properties["subscriptions"]
     
     def configure(self):
         super().configure()
         self.logger.debug("_MQTT_Client: configure", extra={"config": self.config.properties})
         if "host" in self.config.properties:
-            self.host = self.config.properties["host"]["data"]
+            self.host = self.config.properties["host"]
         if "port" in self.config.properties:
-            self.port = self.config.properties["port"]["data"]
+            self.port = self.config.properties["port"]
         if "subscriptions" in self.config.properties:
-            self.subscriptions = self.config.properties["subscriptions"]["data"]
+            self.subscriptions = self.config.properties["subscriptions"]
         asyncio.create_task(self.connection_monitor())
 
     async def connection_monitor(self):
@@ -102,11 +102,11 @@ class MQTT_Client(DAQClient):
         self.config = config
         self.logger.debug("MQTT_Client.init", extra={'config': self.config})
         if "host" in self.config.properties:
-            self.host = self.config.properties["host"]["data"]
+            self.host = self.config.properties["host"]
         if "port" in self.config.properties:
-            self.port = self.config.properties["port"]["data"]
+            self.port = self.config.properties["port"]
         if "subscriptions" in self.config.properties:
-            self.subscriptions = self.config.properties["subscriptions"]["data"]
+            self.subscriptions = self.config.properties["subscriptions"]
     
     async def recv_from_client(self):
         if True:
