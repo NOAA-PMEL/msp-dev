@@ -203,7 +203,7 @@ class ShellyPro3(Controller):
         self.default_client_class = "MQTT_Client"
         self.default_client_host = "mqtt.default"
         self.default_client_port = 1883
-        
+
 
         self.controller_id_prefix = "shellypro3"
 
@@ -454,7 +454,7 @@ class ShellyPro3(Controller):
                         # update actual state of channel output
                         name = f"channel_{channel}_power"
                         self.settings.set_actual(name=name, actual=int(output))
-                        self.logger.debug("recv_data_loop", actual={"settings": self.settings.get_settings()})
+                        self.logger.debug("recv_data_loop", extra={"settings": self.settings.get_settings()})
                     except KeyError as e:
                         self.logger.error("unknown response", extra={"reason": e})
                         pass
