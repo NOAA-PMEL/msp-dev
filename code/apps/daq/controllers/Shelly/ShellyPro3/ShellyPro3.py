@@ -201,7 +201,6 @@ class ShellyPro3(Controller):
 
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
-
         self.data_loop_task = None
         # self.enable_task_list.append(self.deal_with_data())
 
