@@ -250,8 +250,8 @@ class ShellyPro3(Controller):
             port = conf.get("port", 80)
             client_module = conf.get("client_module", self.default_client_module)
             client_class = conf.get("client_class", self.default_client_class)
-            client_host = conf.get("client_class", self.default_client_host)
-            client_port = conf.get("client_class", self.default_client_port)
+            client_host = conf.get("client_host", self.default_client_host)
+            client_port = conf.get("client_port", self.default_client_port)
             self.controller_id_prefix = conf.get("controller_id_prefix", "shellypro3")
             client_subscriptions_list = conf.get("client_subscriptions", "")
             if client_subscriptions_list == "":
