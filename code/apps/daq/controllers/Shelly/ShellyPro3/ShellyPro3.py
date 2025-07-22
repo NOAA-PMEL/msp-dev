@@ -208,6 +208,7 @@ class ShellyPro3(Controller):
 
         self.data_loop_task = None
         self.enable_task_list.append(self.recv_data_loop())
+        self.enable_task_list.append(self.get_status_loop())
         # self.enable_task_list.append(self.deal_with_data())
 
         # TODO change to external json definition - this is placeholder
