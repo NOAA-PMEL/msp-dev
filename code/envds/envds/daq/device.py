@@ -81,6 +81,7 @@ class DeviceMetadata(BaseModel):
     settings: dict[str, DeviceSetting]
 
 
+# TODO: add format_version to Config
 class DeviceConfig(BaseModel):
     """docstring for DeviceConfig."""
 

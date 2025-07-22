@@ -141,6 +141,7 @@ class ControllerConfig(BaseModel):
     make: str
     model: str
     serial_number: str
+    format_version: str
     metadata: ControllerMetadata
     host: str
     port: int
@@ -168,10 +169,10 @@ class RuntimeSettings(object):
         self.settings[name]["requested"] = requested
         self.settings[name]["actual"] = actual
 
-    def set_requested(self, requested) -> bool:
+    def set_requested(self, name: str, requested) -> bool:
         return self.update_setting(requested=requested)
     
-    def set_actual(self, actual) -> bool:
+    def set_actual(self, name: str, actual) -> bool:
         return self.update_setting(actual=actual)
 
     def update_setting(self, name: str, requested=None, actual=None) -> bool:
@@ -894,7 +895,7 @@ class Controller(envdsBase):
                 "model": {"data": self.config.model},
                 "serial_number": {"data": self.config.serial_number},
                 "mode": {"data": "default"},
-                "format_version": {"data": self.device_format_version},
+                "format_version": {"data": self.config.format_version},
                 "variable_types": {"data": ",".join(variable_types)},
             }
         # record["attributes"]["serial_number"] = {"data": self.config.serial_number}
@@ -994,7 +995,7 @@ class Controller(envdsBase):
                 "model": {"data": self.config.model},
                 # "serial_number": self.config.serial_number,
                 # "sampling_mode": mode,
-                "format_version": {"data": self.device_format_version},
+                "format_version": {"data": self.config.format_ersion},
             }
         record["attributes"]["serial_number"] = {"data": self.config.serial_number}
         record["attributes"]["mode"] = {"data": mode}
