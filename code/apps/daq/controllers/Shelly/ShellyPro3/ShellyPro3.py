@@ -484,7 +484,7 @@ class ShellyPro3(Controller):
                     # set channel power
                     if setting := self.settings.get_setting(name):
                         if name in ["channel_1_power", "channel_2_power", "channel_3_power"]:
-                            ch = self.metadata[name]["attributes"]["channel"]["data"]
+                            ch = self.metadata["variables"][name]["attributes"]["channel"]["data"]
                             self.set_channel_power(ch, setting["requested"])
 
 
