@@ -1048,7 +1048,8 @@ class Controller(envdsBase):
                     source=self.get_id_as_source(),
                     data={"settings": self.settings.get_settings()},
                 )
-                destpath = f"{self.get_id_as_topic()}/settings/update"
+                # destpath = f"{self.get_id_as_topic()}/settings/update"
+                destpath = f"envds/{self.core_settings.namespace_prefix}/controller/settings/update"
                 self.logger.debug(
                     "settings_monitor", extra={"data": event, "destpath": destpath}
                 )
