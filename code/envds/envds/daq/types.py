@@ -159,3 +159,7 @@ class DAQEventType(BaseEventType):
     @staticmethod
     def controller_definition_registry_ack():
         return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER_DEFINITION), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_ACK])
+
+    @staticmethod
+    def controller_data_update():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), BaseEventType.TYPE_DATA, DAQEventType.ACTION_UPDATE])
