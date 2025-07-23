@@ -384,16 +384,19 @@ class ShellyPro3(Controller):
             await asyncio.sleep(5)
 
     async def set_channel_power(self, channel, state):
+        self.logger.debug("set_channel_power1", extra={"channeL": channel, "st": state})
         if isinstance(state, str):
             if state.lower() in ["on", "yes"]:
                 state = 1
             else:
                 state = 0 
         
+        self.logger.debug("set_channel_power2", extra={"channeL": channel, "st": state})
         if state:
             cmd = "on"
         else:
             cmd = "off"
+        self.logger.debug("set_channel_power2", extra={"channeL": channel, "cmd": cmd})
         data = {
             "path": f"{self.controller_id_prefix}/command/switch:{channel}",
             "message": cmd
@@ -501,10 +504,11 @@ class ShellyPro3(Controller):
                 if not self.settings.get_health_setting(name):
                     
                     # set channel power
-                    if (setting := self.settings.get_setting(name)):
-                        if name in ["channel_0_power", "channel_1_power", "channel_2_power"]:
-                            ch = self.metadata["variables"][name]["attributes"]["channel"]["data"]
-                            self.set_channel_power(ch, setting["requested"])
+                    setting = self.settings.get_setting(name):
+                    # TODO: debug here
+                    if name in ["channel_0_power", "channel_1_power", "channel_2_power"]:
+                        ch = self.metadata["variables"][name]["attributes"]["channel"]["data"]
+                        self.set_channel_power(ch, setting["requested"])
 
 
                     self.logger.debug(
