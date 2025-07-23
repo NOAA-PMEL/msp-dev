@@ -410,7 +410,7 @@ class Controller(envdsBase):
         # extra_header = {"path_id": client_id}
         extra_header = {"path_id": client_id, "destpath": destpath}
         # event = DAQEvent.create_data_update(
-        event = DAQEvent.create_controller_data_recv(
+        event = DAQEvent.create_controller_data_update(
             # source="envds.core", data={"test": "one", "test2": 2}
             source=self.get_id_as_source(),
             data=data,
