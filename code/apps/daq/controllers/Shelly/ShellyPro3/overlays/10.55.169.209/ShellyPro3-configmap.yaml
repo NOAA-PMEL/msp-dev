@@ -6,15 +6,32 @@ metadata:
   labels:
     app: shelly-shellypro3
 data:
+  namespace_prefix: mspbase01
+  envds_env_id: mspbase01
   controller.conf: |
     uid: shel209
+    host: 10.55.169.209
+    client_host: mqtt.mspbase01-system
+    client_port: 1883
+    controller_id_prefix: ShellyPro3-shel209
+
+    # override definition values
+    attributes:
+      serial_number: shel209
+    # variables:
+    #   channel_2_power:
+    #     default_value: "0"
+    
+    
+    
+    
     # serial_number: "1234"
     # daq_id: clearsky
     # host: 10.55.169.209
-    host: 'mqtt.default'
-    paths:
-      port-1:
-          # host: 10.55.169.52
-          # host: 192.168.86.46 # can override interface host if needed?
-          port: 1883 # if omitted, default is used
-          subscriptions: ['websocket_topic'] # mqtt topic to listen on for web interface commands
+    # host: 'mqtt.default'
+    # paths:
+    #   port-1:
+    #       # host: 10.55.169.52
+    #       # host: 192.168.86.46 # can override interface host if needed?
+    #       port: 1883 # if omitted, default is used
+    #       subscriptions: ['websocket_topic'] # mqtt topic to listen on for web interface commands

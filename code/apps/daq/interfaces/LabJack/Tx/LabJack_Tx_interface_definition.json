@@ -23,6 +23,10 @@
         "tags": {
             "type": "char",
             "data": "testing, LabJack, Tx, T4, T7, serial, tcp, ethernet, interface"
+        },
+        "format_version": {
+            "type": "char",
+            "data": "1.0.0"
         }
     },
     "path_types": {
@@ -182,5 +186,6 @@
                 }
             }
         }
-    }
+    },
+    "paths": {}
 }
