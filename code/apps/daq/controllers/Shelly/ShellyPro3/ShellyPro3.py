@@ -459,7 +459,7 @@ class ShellyPro3(Controller):
                         name = f"channel_{channel}_power"
                         actual = int(output)
                         self.settings.set_actual(name=name, actual=actual)
-                        self.logger.debug("recv_data_loop", extra={"name": name, "actual": actual, "settings": self.settings.get_settings()})
+                        self.logger.debug("recv_data_loop", extra={"setting_name": name, "actual": actual, "settings": self.settings.get_settings()})
                     except KeyError as e:
                         self.logger.error("unknown response", extra={"reason": e})
                         pass
