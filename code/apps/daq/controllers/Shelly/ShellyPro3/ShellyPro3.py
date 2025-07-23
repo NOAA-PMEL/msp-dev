@@ -384,19 +384,19 @@ class ShellyPro3(Controller):
             await asyncio.sleep(5)
 
     async def set_channel_power(self, channel, state):
-        self.logger.debug("set_channel_power1", extra={"channeL": channel, "st": state})
+        # self.logger.debug("set_channel_power1", extra={"channeL": channel, "st": state})
         if isinstance(state, str):
             if state.lower() in ["on", "yes"]:
                 state = 1
             else:
                 state = 0 
         
-        self.logger.debug("set_channel_power2", extra={"channeL": channel, "st": state})
+        # self.logger.debug("set_channel_power2", extra={"channeL": channel, "st": state})
         if state:
             cmd = "on"
         else:
             cmd = "off"
-        self.logger.debug("set_channel_power2", extra={"channeL": channel, "cmd": cmd})
+        # self.logger.debug("set_channel_power2", extra={"channeL": channel, "cmd": cmd})
         data = {
             "path": f"{self.controller_id_prefix}/command/switch:{channel}",
             "message": cmd
@@ -423,7 +423,7 @@ class ShellyPro3(Controller):
         while True:
             try:
                 data = await self.client_recv_buffer.get()
-                self.logger.debug("recv_data_loop", extra={"recv_data": data})
+                # self.logger.debug("recv_data_loop", extra={"recv_data": data})
 
                 # the only data coming from Shelly should be status
                 if data and "id" in data:
@@ -434,7 +434,7 @@ class ShellyPro3(Controller):
                         #     output = 1
                         # elif output.lower() == "false":
                         #     output = 0 
-                        self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
+                        # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
                         if channel == 0:
                             temperature = data["temperature"]["tC"]
                             record = self.build_data_record(meta=False)
@@ -503,22 +503,26 @@ class ShellyPro3(Controller):
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
                     
-                    # set channel power
-                    setting = self.settings.get_setting(name):
-                    # TODO: debug here
-                    if name in ["channel_0_power", "channel_1_power", "channel_2_power"]:
-                        ch = self.metadata["variables"][name]["attributes"]["channel"]["data"]
-                        self.set_channel_power(ch, setting["requested"])
+                    try:
+                        # set channel power
+                        setting = self.settings.get_setting(name)
+                        # TODO: debug here
+                        # self.logger.debug("settings_check", extra={"setting": setting, "setting_name": name})
+                        if name in ["channel_0_power", "channel_1_power", "channel_2_power"]:
+                            ch = self.metadata["variables"][name]["attributes"]["channel"]["data"]
+                            # self.logger.debug("settings_check:set_channel_power", extra={"ch": ch, "requested": setting["requested"]})
+                            await self.set_channel_power(ch, setting["requested"])
 
 
-                    self.logger.debug(
-                        "settings_check - set setting",
-                        extra={
-                            "setting-name": name,
-                            "setting": self.settings.get_setting(name),
-                        },
-                    )
-
+                        self.logger.debug(
+                            "settings_check - set setting",
+                            extra={
+                                "setting-name": name,
+                                "setting": self.settings.get_setting(name),
+                            },
+                        )
+                    except Exception as e:
+                        self.logger.error("settings_check", extra={"reason": e})
 
 class ServerConfig(BaseModel):
     host: str = "localhost"
