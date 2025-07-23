@@ -181,11 +181,11 @@ class RuntimeSettings(object):
             return False
         
         print(f"update_setting2: {name}, {requested}, {actual}, {self.settings}")
-        if requested:
+        if requested is not None:
             print(f"update_setting3: {name}, {requested}, {actual}, {self.settings}")
             self.settings[name]["requested"] = requested
             print(f"update_setting4: {name}, {requested}, {actual}, {self.settings}")
-        if actual:
+        if actual is not None:
             print(f"update_setting5: {name}, {requested}, {actual}, {self.settings}")
             self.settings[name]["actual"] = actual
             print(f"update_setting6: {name}, {requested}, {actual}, {self.settings}")
