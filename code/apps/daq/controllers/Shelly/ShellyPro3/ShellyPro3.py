@@ -203,7 +203,7 @@ class ShellyPro3(Controller):
         self.default_client_class = "MQTT_Client"
         self.default_client_host = "mqtt.default"
         self.default_client_port = 1883
-        
+
 
         self.controller_id_prefix = "shellypro3"
 
@@ -501,8 +501,8 @@ class ShellyPro3(Controller):
                 if not self.settings.get_health_setting(name):
                     
                     # set channel power
-                    if setting := self.settings.get_setting(name):
-                        if name in ["channel_1_power", "channel_2_power", "channel_3_power"]:
+                    if (setting := self.settings.get_setting(name)):
+                        if name in ["channel_0_power", "channel_1_power", "channel_2_power"]:
                             ch = self.metadata["variables"][name]["attributes"]["channel"]["data"]
                             self.set_channel_power(ch, setting["requested"])
 
