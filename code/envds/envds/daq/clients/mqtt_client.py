@@ -21,21 +21,21 @@ class _MQTT_Client(_BaseClient):
         self.recv_buffer_local = asyncio.Queue()
         # self.topics = []
         if "host" in self.config.properties:
-            self.host = self.config.properties["host"]["data"]
+            self.host = self.config.properties["host"]
         if "port" in self.config.properties:
-            self.port = self.config.properties["port"]["data"]
+            self.port = self.config.properties["port"]
         if "subscriptions" in self.config.properties:
-            self.topics = self.config.properties["subscriptions"]["data"]
+            self.topics = self.config.properties["subscriptions"]
     
     def configure(self):
         super().configure()
         self.logger.debug("_MQTT_Client: configure", extra={"config": self.config.properties})
         if "host" in self.config.properties:
-            self.host = self.config.properties["host"]["data"]
+            self.host = self.config.properties["host"]
         if "port" in self.config.properties:
-            self.port = self.config.properties["port"]["data"]
+            self.port = self.config.properties["port"]
         if "subscriptions" in self.config.properties:
-            self.subscriptions = self.config.properties["subscriptions"]["data"]
+            self.subscriptions = self.config.properties["subscriptions"]
         asyncio.create_task(self.connection_monitor())
 
     async def connection_monitor(self):
@@ -71,12 +71,17 @@ class _MQTT_Client(_BaseClient):
         return await self.recv_buffer_local.get()
     
     async def publish(self, data):
+        self.logger.debug("MQTTClient publish", extra={"incoming": data})
         try:
-            topic = data['topic']
+            topic = data['path']
+            if topic[0] == "/":
+                topic = topic[1:]
+
             message = data['message']
+            self.logger.debug("MQTTClient publish", extra={"topic": topic, "payload": message})
             await self.mqttclient.publish(topic, payload=message)
         except Exception as e:
-                self.logger.error("mqtt client publish error", extra={"error": e})
+            self.logger.error("mqtt client publish error", extra={"error": e})
 
 
     async def do_enable(self):
@@ -102,11 +107,11 @@ class MQTT_Client(DAQClient):
         self.config = config
         self.logger.debug("MQTT_Client.init", extra={'config': self.config})
         if "host" in self.config.properties:
-            self.host = self.config.properties["host"]["data"]
+            self.host = self.config.properties["host"]
         if "port" in self.config.properties:
-            self.port = self.config.properties["port"]["data"]
+            self.port = self.config.properties["port"]
         if "subscriptions" in self.config.properties:
-            self.subscriptions = self.config.properties["subscriptions"]["data"]
+            self.subscriptions = self.config.properties["subscriptions"]
     
     async def recv_from_client(self):
         if True:
@@ -121,6 +126,7 @@ class MQTT_Client(DAQClient):
 
     async def send_to_client(self, data):
         try:
+            self.logger.debug("MQTT_Client:send_to_client", extra={"payload": data})
             await self.client.publish(data)
 
         except Exception as e:

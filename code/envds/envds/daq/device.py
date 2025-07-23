@@ -81,6 +81,7 @@ class DeviceMetadata(BaseModel):
     settings: dict[str, DeviceSetting]
 
 
+# TODO: add format_version to Config
 class DeviceConfig(BaseModel):
     """docstring for DeviceConfig."""
 
@@ -108,9 +109,19 @@ class RuntimeSettings(object):
     def set_setting(self, name: str, requested, actual=None):
         if name not in self.settings:
             self.settings[name] = dict()
-
+        
         self.settings[name]["requested"] = requested
         self.settings[name]["actual"] = actual
+
+    def update_setting(self, name: str, requested=None, actual=None) -> bool:
+        if name not in self.settings:
+            return False
+        
+        if requested:
+            self.settings[name]["requested"] = requested
+        if actual:
+            self.settings[name]["actual"] = actual
+        return True
 
     def get_setting(self, name: str):
         if name in self.settings:

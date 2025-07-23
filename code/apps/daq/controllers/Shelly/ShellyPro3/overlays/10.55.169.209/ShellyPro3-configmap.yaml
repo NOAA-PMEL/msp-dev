@@ -10,12 +10,14 @@ data:
   envds_env_id: mspbase01
   controller.conf: |
     uid: shel209
+    host: 10.55.169.209
+    client_host: mqtt.mspbase01-system
+    client_port: 1883
+    controller_id_prefix: ShellyPro3-shel209
+
+    # override definition values
     attributes:
       serial_number: shel209
-      host: 10.55.169.209
-      client: 
-        host: mqtt.mspbase01-system
-        port: 1883
     # variables:
     #   channel_2_power:
     #     default_value: "0"

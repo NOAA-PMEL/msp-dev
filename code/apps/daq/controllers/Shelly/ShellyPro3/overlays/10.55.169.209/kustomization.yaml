@@ -23,3 +23,16 @@ resources:
 nameSuffix: -shel209
 # patchesStrategicMerge:
 #   - deployment.yaml
+
+patches:
+  # change configmap names to account for s/n suffix
+  - target:
+      kind: Deployment
+      name: shelly-shellypro3
+    patch: |-
+      - op: replace 
+        path: /spec/template/spec/volumes/0/configMap/name
+        value: shelly-shellypro3-config-shel209
+      - op: replace 
+        path: /spec/template/spec/volumes/1/configMap/name
+        value: controller-definition-shel209
