@@ -37,6 +37,7 @@ from envds.message.message import Message
 # from cloudevents.conversion import to_json, to_structured
 
 from pydantic import BaseModel
+import json
 
 # from envds.daq.db import init_sensor_type_registration, register_sensor_type
 
@@ -60,7 +61,8 @@ class HYT271(Sensor):
                 "data": "met, temperature, rh, sensor",
             },
             "format_version": {"type": "char", "data": "1.0.0"},
-            "variable_types": {"type": "string", "data": "main, setting, calibration"}
+            "variable_types": {"type": "string", "data": "main, setting, calibration"},
+            "serial_number": {"type": "string", "data": ""},
         },
         "variables": {
             "time": {
@@ -100,6 +102,15 @@ class HYT271(Sensor):
         # self.configure()
 
         self.default_data_buffer = asyncio.Queue()
+
+        self.sensor_definition_file = "IST_HYT271_sensor_definition.json"
+
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
@@ -164,14 +175,14 @@ class HYT271(Sensor):
             )
 
         meta = SensorMetadata(
-            attributes=HYT271.metadata["attributes"],
-            variables=HYT271.metadata["variables"],
-            settings=HYT271.metadata["settings"],
+            attributes=self.metadata["attributes"],
+            variables=self.metadata["variables"],
+            settings=self.metadata["settings"],
         )
 
         self.config = SensorConfig(
-            make=HYT271.metadata["attributes"]["make"]["data"],
-            model=HYT271.metadata["attributes"]["model"]["data"],
+            make=self.metadata["attributes"]["make"]["data"],
+            model=self.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
             metadata=meta,
             interfaces=conf["interfaces"],

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import signal
 import sys
 import os
@@ -7,7 +8,7 @@ import logging.config
 import yaml
 import traceback
 from envds.core import envdsLogger
-from envds.daq.controller import Controller, ControllerConfig #, InterfacePath
+from envds.daq.controller import Controller, ControllerMetadata, ControllerConfig #, InterfacePath
 from envds.daq.event import DAQEvent
 from aiomqtt import Client
 from pydantic import BaseModel
@@ -20,26 +21,176 @@ class ShellyPro3(Controller):
 
     metadata = {
         "attributes": {
-            "type": {"type": "char", "data": "Shelly"},
-            "name": {"type": "char", "data": "ShellyPro3"},
+            "make": {"type": "char", "data": "Shelly"},
+            "model": {"type": "char", "data": "ShellyPro3"},
             "host": {"type": "char", "data": "localhost"},
             "description": {
                 "type": "char",
                 "data": "Shelly Pro 3 Smart Switch",
             },
-            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, controller"},
+            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, sensor"},
+            "format_version": {
+                "type": "char",
+                "data": "1.0.0"
+            },
+            "variable_types": {
+                "type": "string",
+                "data": "main, setting"
+            },
+            "serial_number": {
+                "type": "string",
+                "data": ""
+            },
+            "client_module": {"type": "string", "data": "envds.daq.clients.mqtt_client"},
+            "client_class": {"type": "string", "data": "MQTT_Client"},
+            "client_host": {"type": "string", "data": 'mqtt.default'},
+            "client_port": {"type": "int", "data": 1883},
+            "subscriptions": {"type": "string", "data": None}
         },
-        "paths": {
-            "port-1": {
+        "dimensions": {
+            "time": 0
+        },
+        "variables": {
+            "temperature": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
                 "attributes": {
-                    "client_module": {"type": "string", "data": "envds.daq.clients.mqtt_client"},
-                    "client_class": {"type": "string", "data": "MQTT_Client"},
-                    "host": {"type": "string", "data": 'mqtt.default'},
-                    "port": {"type": "int", "data": 1883},
-                    "subscriptions": {"type": "string", "data": None}
-                },
-                "data": [],
-            }
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Temperature"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "degree_C"
+                    }
+                }
+            },
+            "channel_1_power": {
+                "type": "int",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string", 
+                        "data": "setting"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 1 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
+            "channel_2_power": {
+                "type": "int",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string", 
+                        "data": "setting"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 2
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 2 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
+            "channel_3_power": {
+                "type": "int",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string", 
+                        "data": "setting"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 3
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 3 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
         }
     }
 
@@ -50,11 +201,27 @@ class ShellyPro3(Controller):
 
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
-        # self.default_client_module = "envds.daq.clients.tcp_client"
-        # self.default_client_class = "TCPClient"
+        self.default_client_host = "mqtt.default"
+        self.default_client_port = 1883
+
+
+        self.controller_id_prefix = "shellypro3"
 
         self.data_loop_task = None
+        self.enable_task_list.append(self.recv_data_loop())
+        self.enable_task_list.append(self.get_status_loop())
         # self.enable_task_list.append(self.deal_with_data())
+
+        # TODO change to external json definition - this is placeholder
+        # self.metadata = ShellyPro3.metadata
+        self.controller_definition_file = "Shelly_ShellyPro3_controller_definition.json"
+
+        try:            
+            with open(self.controller_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("controller_definition not found. Exiting")            
+            sys.exit(1)
 
     def configure(self):
 
@@ -67,60 +234,131 @@ class ShellyPro3(Controller):
             except FileNotFoundError:
                 conf = {"uid": "UNKNOWN", "paths": {}}
 
-            # add hosts to each path if not present
-            try:
-                host = conf["host"]
-            except KeyError as e:
-                self.logger.debug("no host - default to localhost")
-                host = "localhost"
-            print('paths', conf["paths"].items())
-            for name, path in conf["paths"].items():
-                if "host" not in path:
-                    path["host"] = host
+            self.logger.debug("configure", extra={"conf": conf})
+
+            # TODO 
+
+            # # add hosts to each path if not present
+            # try:
+            #     host = conf["host"]
+            # except KeyError as e:
+            #     self.logger.debug("no host - default to localhost")
+            #     host = "localhost"
+            # print('paths', conf["paths"].items())
+            # for name, path in conf["paths"].items():
+            #     if "host" not in path:
+            #         path["host"] = host
+
+            host = conf.get("host", "localhost")
+            port = conf.get("port", 80)
+            client_module = conf.get("client_module", self.default_client_module)
+            client_class = conf.get("client_class", self.default_client_class)
+            client_host = conf.get("client_host", self.default_client_host)
+            client_port = conf.get("client_port", self.default_client_port)
+            self.controller_id_prefix = conf.get("controller_id_prefix", "shellypro3")
+            client_subscriptions_list = conf.get("client_subscriptions", "")
+            if client_subscriptions_list == "":
+                client_subscriptions = []
+            else:
+                client_subscriptions = client_subscriptions_list.split(",")
+
+            status_sub = f"{self.controller_id_prefix}/status/#"
+            if status_sub not in client_subscriptions:
+                client_subscriptions.append(status_sub)
+
 
             self.logger.debug("conf", extra={"data": conf})
 
-            atts = ShellyPro3.metadata["attributes"]
+            attrs = ShellyPro3.metadata["attributes"]
 
-            path_map = dict()
-            for name, val in ShellyPro3.metadata["paths"].items():
+            # override default metadata attributes with config values
+            for name, val in conf["attributes"].items():
+                if name in attrs:
+                    attrs[name]["data"] = val
+
+            # path_map = dict()
+            # for name, val in ShellyPro3.metadata["paths"].items():
 
 
-                if "client_module" not in val["attributes"]:
-                    val["attributes"]["client_module"]["data"] = self.default_client_module
-                if "client_class" not in val["attributes"]:
-                    val["attributes"]["client_class"]["data"] = self.default_client_class
+            #     if "client_module" not in val["attributes"]:
+            #         val["attributes"]["client_module"]["data"] = self.default_client_module
+            #     if "client_class" not in val["attributes"]:
+            #         val["attributes"]["client_class"]["data"] = self.default_client_class
 
-                # set path host from controller attributes
-                if "host" in atts:
-                    val["attributes"]["host"]["data"] = atts["host"]
+            #     # set path host from controller attributes
+            #     if "host" in attrs:
+            #         val["attributes"]["host"]["data"] = attrs["host"]
 
-                client_config = val
-                # override values from yaml config
-                if "paths" in conf and name in conf["paths"]:
-                    self.logger.debug("yaml conf", extra={"id": name, "conf['paths']": conf['paths'], })
-                    for attname, attval in conf["paths"][name].items():
-                        self.logger.debug("config paths", extra={"id": name, "attname": attname, "attval": attval})
-                        client_config["attributes"][attname]["data"] = attval
-                self.logger.debug("config paths", extra={"client_config": client_config})
+            #     client_config = val
+            #     # override values from yaml config
+            #     if "paths" in conf and name in conf["paths"]:
+            #         self.logger.debug("yaml conf", extra={"id": name, "conf['paths']": conf['paths'], })
+            #         for attname, attval in conf["paths"][name].items():
+            #             self.logger.debug("config paths", extra={"id": name, "attname": attname, "attval": attval})
+            #             client_config["attributes"][attname]["data"] = attval
+            #     self.logger.debug("config paths", extra={"client_config": client_config})
                     
-                path_map[name] = {
-                    "client_id": name,
-                    "client": None,
-                    "client_config": client_config,
-                    "client_module": val["attributes"]["client_module"]["data"],
-                    "client_class": val["attributes"]["client_class"]["data"],
-                    # "data_buffer": asyncio.Queue(),
-                    "recv_handler": self.recv_data_loop(name),
-                    "recv_task": None,
-                }
+            #     path_map[name] = {
+            #         "client_id": name,
+            #         "client": None,
+            #         "client_config": client_config,
+            #         "client_module": val["attributes"]["client_module"]["data"],
+            #         "client_class": val["attributes"]["client_class"]["data"],
+            #         # "data_buffer": asyncio.Queue(),
+            #         "recv_handler": self.recv_data_loop(name),
+            #         "recv_task": None,
+            #     }
+
+            # self.config = ControllerConfig(
+            #     type=attrs["type"]["data"],
+            #     name=attrs["name"]["data"],
+            #     uid=conf["uid"],
+            #     paths=path_map
+            # )
+
+            settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+            # for name, setting in self.metadata["settings"].items():
+            for name, setting in settings_def["variables"].items():
+            
+                requested = setting["attributes"]["default_value"]["data"]
+                if "settings" in config and name in config["settings"]:
+                    requested = config["settings"][name]
+
+                self.settings.add_setting(name, requested=requested)
+
+            meta = ControllerMetadata(
+                attributes=self.metadata["attributes"],
+                dimensions=self.metadata["dimensions"],
+                variables=self.metadata["variables"],
+                # settings=self.metadata["settings"],
+                settings=settings_def["variables"]
+            )
 
             self.config = ControllerConfig(
-                type=atts["type"]["data"],
-                name=atts["name"]["data"],
-                uid=conf["uid"],
-                paths=path_map
+                make=self.metadata["attributes"]["make"]["data"],
+                model=self.metadata["attributes"]["model"]["data"],
+                serial_number=self.metadata["attributes"]["serial_number"]["data"],
+                format_version=self.metadata["attributes"]["format_version"]["data"],
+                metadata=meta,
+                host=host,
+                port=port,
+                # interfaces=conf["interfaces"],
+                # daq_id=conf["daq_id"],
+                daq_id=self.core_settings.namespace_prefix # this is a hack for now
             )
+
+            # TODO build client config 
+            self.client_config = {
+                "client_module": client_module,
+                "client_class": client_class,
+                "properties": {
+                    "host": client_host,
+                    "port": client_port,
+                    "subscriptions": client_subscriptions,
+                }
+            }
+
+            print(f"self.config: {self.config}")
 
             self.logger.debug(
                 "configure",
@@ -129,6 +367,43 @@ class ShellyPro3(Controller):
         except Exception as e:
             self.logger.debug("ShellyPro3:configure", extra={"error": e})
             print(traceback.format_exc())
+
+    async def get_status_loop(self):
+        #TODO get status for each channel every N seconds and update settings based on response
+        pass
+
+        while True:
+            for channel in range(0,3):
+
+                data = {
+                    "path": f"{self.controller_id_prefix}/command/switch:{channel}",
+                    "message": "status_update"
+                }
+                self.logger.debug("get_status_loop", extra={"payload": data})
+                await self.send_data(data)
+            await asyncio.sleep(5)
+
+    async def set_channel_power(self, channel, state):
+        # self.logger.debug("set_channel_power1", extra={"channeL": channel, "st": state})
+        if isinstance(state, str):
+            if state.lower() in ["on", "yes"]:
+                state = 1
+            else:
+                state = 0 
+        
+        # self.logger.debug("set_channel_power2", extra={"channeL": channel, "st": state})
+        if state:
+            cmd = "on"
+        else:
+            cmd = "off"
+        # self.logger.debug("set_channel_power2", extra={"channeL": channel, "cmd": cmd})
+        data = {
+            "path": f"{self.controller_id_prefix}/command/switch:{channel}",
+            "message": cmd
+        }
+        self.logger.debug("set_channel_power", extra={"payload": data})
+        await self.send_data(data)
+        
 
     async def deal_with_data(self, client, data):
         if data['data']['device'] == 'shelly':
@@ -144,21 +419,59 @@ class ShellyPro3(Controller):
         else:
             pass
 
-    async def recv_data_loop(self, client_id: str):
+    async def recv_data_loop(self):
         while True:
             try:
-                client = self.client_map[client_id]["client"]
-                print("Client ID in recv_data_loop:", client_id)
-                if client:
-                    self.logger.debug("recv_data_loop", extra={"client": client})
-                    data = await client.recv()
-                    self.logger.debug("recv_data", extra={"client_id": client_id, "data": data}) 
-                    await self.update_recv_data(client_id=client_id, data=data)
-                    await self.deal_with_data(client, data)
+                data = await self.client_recv_buffer.get()
+                # self.logger.debug("recv_data_loop", extra={"recv_data": data})
+
+                # the only data coming from Shelly should be status
+                if data and "id" in data:
+                    try:
+                        channel = data["id"]
+                        output = data["output"]
+                        # if output.lower() == "true":
+                        #     output = 1
+                        # elif output.lower() == "false":
+                        #     output = 0 
+                        # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
+                        if channel == 0:
+                            temperature = data["temperature"]["tC"]
+                            record = self.build_data_record(meta=False)
+                            record["variables"]["temperature"]["data"] = temperature
+                            # channel 0 temperature data record
+                            if record:
+                                event = DAQEvent.create_data_update(
+                                    # source="sensor.mockco-mock1-1234", data=record
+                                    source=self.get_id_as_source(),
+                                    data=record,
+                                )
+                                destpath = f"{self.get_id_as_topic()}/data/update"
+                                event["destpath"] = destpath
+                                self.logger.debug(
+                                    "recv_data_loop",
+                                    extra={"data": event, "destpath": destpath},
+                                )
+                                # message = Message(data=event, destpath=destpath)
+                                message = event
+                                # self.logger.debug("default_data_loop", extra={"m": message})
+                                await self.send_message(message)
+
+
+                        # update actual state of channel output
+                        name = f"channel_{channel}_power"
+                        actual = int(output)
+                        self.settings.set_actual(name=name, actual=actual)
+                        self.logger.debug("recv_data_loop", extra={"setting_name": name, "actual": actual, "settings": self.settings.get_settings()})
+                    except KeyError as e:
+                        self.logger.error("unknown response", extra={"reason": e})
+                        pass
+
+                await asyncio.sleep(0.01)
 
             except (KeyError, Exception) as e:
                 self.logger.error("recv_data_loop", extra={"error": e})
-                await asyncio.sleep(1)           
+                await asyncio.sleep(.1)           
 
     async def wait_for_ok(self, timeout=0):
         pass
@@ -174,12 +487,42 @@ class ShellyPro3(Controller):
     #             await client.send(data)
     #         except KeyError:
     #             pass
-    async def send_data(self, client, data):
+    async def send_data(self, data):
             try:
-                await client.send(data)
-            except KeyError:
+                self.logger.debug("send_data", extra={"payload": data})
+                if self.client:
+                    self.logger.debug("send_data", extra={"payload": data})
+                    await self.client.send_to_client(data)
+            except Exception:
                 pass
 
+    async def settings_check(self):
+        await super().settings_check()
+
+        if not self.settings.get_health():  # something has changed
+            for name in self.settings.get_settings().keys():
+                if not self.settings.get_health_setting(name):
+                    
+                    try:
+                        # set channel power
+                        setting = self.settings.get_setting(name)
+                        # TODO: debug here
+                        # self.logger.debug("settings_check", extra={"setting": setting, "setting_name": name})
+                        if name in ["channel_0_power", "channel_1_power", "channel_2_power"]:
+                            ch = self.metadata["variables"][name]["attributes"]["channel"]["data"]
+                            # self.logger.debug("settings_check:set_channel_power", extra={"ch": ch, "requested": setting["requested"]})
+                            await self.set_channel_power(ch, setting["requested"])
+
+
+                        self.logger.debug(
+                            "settings_check - set setting",
+                            extra={
+                                "setting-name": name,
+                                "setting": self.settings.get_setting(name),
+                            },
+                        )
+                    except Exception as e:
+                        self.logger.error("settings_check", extra={"reason": e})
 
 class ServerConfig(BaseModel):
     host: str = "localhost"

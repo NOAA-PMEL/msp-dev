@@ -81,6 +81,7 @@ class DeviceMetadata(BaseModel):
     settings: dict[str, DeviceSetting]
 
 
+# TODO: add format_version to Config
 class DeviceConfig(BaseModel):
     """docstring for DeviceConfig."""
 
@@ -108,9 +109,19 @@ class RuntimeSettings(object):
     def set_setting(self, name: str, requested, actual=None):
         if name not in self.settings:
             self.settings[name] = dict()
-
+        
         self.settings[name]["requested"] = requested
         self.settings[name]["actual"] = actual
+
+    def update_setting(self, name: str, requested=None, actual=None) -> bool:
+        if name not in self.settings:
+            return False
+        
+        if requested:
+            self.settings[name]["requested"] = requested
+        if actual:
+            self.settings[name]["actual"] = actual
+        return True
 
     def get_setting(self, name: str):
         if name in self.settings:
@@ -267,7 +278,7 @@ class Device(envdsBase):
                 # destpath = f"{self.get_id_as_topic()}/registry/update"
                 destpath = f"envds/{self.core_settings.namespace_prefix}/device-instance/registry/update"
                 self.logger.debug(
-                    "register_device_definition", extra={"data": event, "destpath": destpath}
+                    "register_device_instance", extra={"data": event, "destpath": destpath}
                 )
                 event["destpath"] = destpath
                 # message = Message(data=event, destpath=destpath)
@@ -403,7 +414,7 @@ class Device(envdsBase):
         if message["type"] == det.device_definition_registry_request():
             dev_id = message.data.get("device-definition", None)
             if dev_id:
-                if dev_id["make"] == self.make and dev_id["model"] == self.model:
+                if dev_id["make"] == self.config.make and dev_id["model"] == self.config.model:
                     self.device_definition_registered = False
 
         elif message["type"] == det.device_definition_registry_ack():
