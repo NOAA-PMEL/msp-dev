@@ -86,10 +86,13 @@ class Registrar:
         self.task_list = []
         self.task_list.append(self.get_device_definitions_loop())
         self.task_list.append(self.get_device_instances_loop())
+        self.task_list.append(self.get_controller_definitions_loop())
+        self.task_list.append(self.get_controller_instances_loop())
         for task in self.task_list:
             asyncio.create_task(task)
 
         self.current_device_definition_list = []
+        self.current_controller_definition_list = []
 
     async def send_event(self, ce):
         try:
@@ -178,6 +181,51 @@ class Registrar:
 
             await asyncio.sleep(5)
 
+    async def get_controller_definitions_loop(self):
+
+        while True:
+            try: 
+                query = {}
+                results = await self.submit_request(
+                    path="controller-definition/registry/get", query=query
+                )
+                # results = httpx.get(f"http://{self.datastore_url}/controller-definition/registry/get/", parmams=query)
+                self.logger.debug("get_controller_definitions_loop", extra={"results": results})
+
+                if "results" in results and results["results"]:
+                    def_list = []
+                    for controller_def in results["results"]:
+                        self.logger.debug("get_controller_definitions_loop", extra={"controller_def": controller_def})
+                        id = controller_def.get("controller_definition_id", None)
+                        # id = None
+                        if id:
+                            def_list.append(id)
+                    reg = {"controller-definition-list": def_list}
+                    self.current_controller_definition_list = def_list
+
+                    self.logger.debug("configure", extra={"self.config": self.config})
+                    bcast = DAQEvent.create_registry_sync_bcast(
+                        source=f"envds.{self.config.daq_id}.registrar", data=reg
+                    )
+                    # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+                    bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    await self.send_event(bcast)
+
+                # source=f"envds.{self.config.daq_id}.datastore",
+            except Exception as e:
+                self.logger.error("get_controller_definitions_loop", extra={"reason": e})
+
+            await asyncio.sleep(5)
+
+    async def get_controller_instance(self, controllers: list[str]) -> list:
+        pass
+
+    async def get_controller_instances_loop(self):
+        while True:
+
+            await asyncio.sleep(5)
+
+
     async def handle_registry_sync(self, message: CloudEvent):
 
         if message["type"] == det.registry_sync_bcast():
@@ -221,6 +269,19 @@ class Registrar:
                     )
                     event["destpath"] = destpath
                     await self.send_event(event)
+                elif update_type == "controller-definition-update":
+
+                    event = DAQEvent.create_controller_definition_registry_update(
+                        # source="device.mockco-mock1-1234", data=record
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={"controller-definition": update},
+                    )
+                    destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+                    self.logger.debug(
+                        "register_device_definition", extra={"data": event, "destpath": destpath}
+                    )
+                    event["destpath"] = destpath
+                    await self.send_event(event)
         except Exception as e:
             self.logger.error("register_device_definition", extra={"reason": e})
 
@@ -234,6 +295,27 @@ class Registrar:
                     for id in request_list:
                         self.logger.debug("registry_send_update", extra={"definition_id": id})
                         await self.send_device_definition_update(id)
+                        # query = {"device_definition_id": id}
+                        # results = await self.submit_request(
+                        #     path="device-definition/registry/get", query=query
+                        # )
+                        # if results:
+                        #     update = DAQEvent.create_registry_sync_update(
+                        #         source=f"envds.{self.config.daq_id}.registrar",
+                        #         data={
+                        #             "device-definition-update": results[0]
+                        #         },  # just send the dict
+                        #     )
+                        #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                        #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                        #     await self.send_event(update)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
+            elif request_type == "controller-definition-request":
+                try:
+                    for id in request_list:
+                        self.logger.debug("registry_send_update", extra={"definition_id": id})
+                        await self.send_controller_definition_update(id)
                         # query = {"device_definition_id": id}
                         # results = await self.submit_request(
                         #     path="device-definition/registry/get", query=query
@@ -271,6 +353,26 @@ class Registrar:
                 await self.send_event(update)
         except Exception as e:
             self.logger.error("send_device_definition_update", extra={"reason": e})
+
+    async def send_controller_definition_update(self, controller_definition_id: str):
+        try:
+            query = {"controller_definition_id": controller_definition_id}
+            results = await self.submit_request(
+                path="controller-definition/registry/get", query=query
+            )
+            self.logger.debug("send_controller_definition_update", extra={"results": results, "query": query})
+            if "results" in results and results["results"]:
+                update = DAQEvent.create_registry_sync_update(
+                    source=f"envds.{self.config.daq_id}.registrar",
+                    data={
+                        "controller-definition-update": results["results"][0]
+                    },  # just send the dict
+                )
+                # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+                update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                await self.send_event(update)
+        except Exception as e:
+            self.logger.error("send_controller_definition_update", extra={"reason": e})
 
     async def registry_compare_bcast(self, message: CloudEvent):
 
@@ -327,6 +429,56 @@ class Registrar:
             elif bcast_type == "device-instance-list":
                 pass
 
+            elif bcast_type == "controller-definition-list":
+
+                # send updates for items remote is missing
+                missing_remote = [
+                    item
+                    for item in self.current_controller_definition_list
+                    if item not in bcast_list
+                ]
+                self.logger.debug("missing_remote", extra={"missing": missing_remote})
+                try:
+                    for id in missing_remote:
+                        await self.send_controller_definition_update(id)
+                        # query = {"controller_definition_id": id}
+                        # results = await self.submit_request(
+                        #     path="controller-definition/registry/get", query=query
+                        # )
+                        # if results:
+                        #     update = DAQEvent.create_registry_sync_update(
+                        #         source=f"envds.{self.config.daq_id}.registrar",
+                        #         data={
+                        #             "controller-definition-update": results[0]
+                        #         },  # just send the dict
+                        #     )
+                        #     # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+                        #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                        #     await self.send_event(update)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
+
+                missing_local = [
+                    item
+                    for item in bcast_list
+                    if item not in self.current_controller_definition_list
+                ]
+                self.logger.debug("missing_local", extra={"missing": missing_local})
+                try:
+                    request = DAQEvent.create_registry_sync_request(
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={
+                            "controller-definition-request": missing_local
+                        },  # just send the dict
+                    )
+                    # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+                    request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+                    await self.send_event(request)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
+            
+            elif bcast_type == "controller-instance-list":
+                pass
 
 # def build_sensor_registry_document(sensor_def: dict):
 #     L.debug("build_sensor_registry_document", extra={"sd": sensor_def})
