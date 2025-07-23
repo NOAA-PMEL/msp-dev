@@ -12,7 +12,7 @@ resources:
 - spidermagic810-deployment.yaml
 - spidermagic810-service.yaml
 
-configMapGenerator:
-  - name: sensor-definition
-    files:
-      - AerosolDynamics_SPIDERMAGIC810_sensor_definition.json
+# configMapGenerator:
+#   - name: sensor-definition
+#     files:
+#       - AerosolDynamics_SPIDERMAGIC810_sensor_definition.json

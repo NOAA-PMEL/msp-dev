@@ -22,7 +22,7 @@ RUN pip3 install -r requirements.txt
 # COPY . .s
 # without fastapi/uvicorn
 # COPY ./AerosolDynamics_MAGIC250_sensor_definition.json .
-COPY ./scx21.py .
+COPY ./spidermagic810.py .
 
 # WORKDIR $APP_HOME/envds
 # COPY ./apis ./apis

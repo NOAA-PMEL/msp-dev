@@ -471,6 +471,8 @@ class SpiderMagic810(Sensor):
         self.first_record = 'HDT'
         self.last_record = 'CHANGE'
         self.array_buffer = []
+        self.sequence_start = False
+        self.sequence_end = False
 
         self.default_data_buffer = asyncio.Queue()
 
@@ -729,17 +731,13 @@ class SpiderMagic810(Sensor):
                 if data:
                     self.collecting = True
 
-                if self.first_record in data.data['data']:
+                if "v1" in data.data['data']:
                     record1 = self.default_parse(data)
                     self.record_counter += 1
                     continue
 
-                elif self.last_record in data.data['data']:
-                    record2 = self.default_parse(data)
-                    for var in record2["variables"]:
-                        if var != 'time':
-                            if record2["variables"][var]["data"]:
-                                record1["variables"][var]["data"] = record2["variables"][var]["data"]
+                elif self.sequence_end:
+                    self.sequence_end = False
 
                 else:
                     record2 = self.default_parse(data)
@@ -806,22 +804,30 @@ class SpiderMagic810(Sensor):
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
+                    parts = [item.strip('\r\n') for item in parts]
 
                     if datavar := 'v1' in data.data["data"]:
-                        parts = parts[1:2]
-                    elif datavar := 'GPatt' in data.data["data"]:
-                        parts = parts[2:5]
-                        parts = [x.split("*")[0] for x in parts]
-                    elif datavar := 'GPhve' in data.data["data"]:
-                        parts = parts[2:3]
-                    elif datavar := 'ZDA' in data.data["data"]:
-                        parts = parts[1:2]
-                    elif datavar := 'VTG' in data.data["data"]:
-                        parts = parts[7:8]
-                    elif datavar := 'GNS' in data.data["data"]:
-                        parts = parts[2:8]
+                        parts = parts[2:3] + parts[4:8]
+                        self.var_name = variables[0:5]
+                    elif datavar := 'STARTING' in data.data["data"]:
+                        parts = parts[1:25]
+                        self.var_name = variables[5:29]
+                    elif datavar := 'Vi' in data.data["data"]:
+                        parts = parts[0:4]
+                        self.var_name = variables[29:33]
+                    elif datavar := 'START SEQ' in data.data["data"]:
+                        self.sequence_start = True
+                        return None
+                    elif self.sequence_start:
+                        self.var_name = variables[33:41]
+                        pass
+                    elif datavar := 'END SEQ' in data.data["data"]:
+                        self.sequence_end = True
+                        return None
+                    else:
+                        return None
                     
-                    self.var_name = [key for key, value in self.config.metadata.variables.items() if datavar in value.attributes.description["data"]]
+                    # self.var_name = [key for key, value in self.config.metadata.variables.items() if datavar in value.attributes.description["data"]]
 
                     for index, name in enumerate(self.var_name):
                         if name in record["variables"]:
