@@ -175,3 +175,23 @@ class DAQEvent(envdsEvent):
     def create_controller_control_update(source: str, data: dict = {}, extra_header: dict = None):
         return DAQEvent.create(type=et.controller_control_update(), source=source, data=data, extra_header=extra_header)
     
+    @staticmethod
+    def create_controller_definition_registry_update(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.controller_definition_registry_update(), source=source, data=data, extra_header=extra_header
+        )
+
+    @staticmethod
+    def create_controller_definition_registry_request(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.controller_definition_registry_request(),
+            source=source,
+            data=data,
+            extra_header=extra_header,
+        )
+
+    @staticmethod
+    def create_controller_definition_registry_ack(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.controller_definition_registry_ack(), source=source, data=data, extra_header=extra_header
+        )

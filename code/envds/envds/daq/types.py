@@ -11,6 +11,7 @@ class DAQEventType(BaseEventType):
     TYPE_SETTINGS = "settings"
     TYPE_INTERFACE = "interface"
     TYPE_CONTROLLER = "controller"
+    TYPE_CONTROLLER_DEFINITION = "controller-definition"
     TYPE_CONNECT = "connect"
     TYPE_CONFIG = "config"
     
@@ -147,3 +148,14 @@ class DAQEventType(BaseEventType):
     def controller_control_update():
         return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER), DAQEventType.TYPE_CONTROL, DAQEventType.ACTION_UPDATE])
 
+    @staticmethod
+    def controller_definition_registry_update():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER_DEFINITION), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def controller_definition_registry_request():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER_DEFINITION), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def controller_definition_registry_ack():
+        return ".".join([BaseEventType.get_type(DAQEventType.TYPE_CONTROLLER_DEFINITION), DAQEventType.TYPE_REGISTRY, DAQEventType.ACTION_ACK])
