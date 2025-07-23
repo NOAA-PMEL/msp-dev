@@ -427,6 +427,10 @@ class ShellyPro3(Controller):
                     try:
                         channel = data["id"]
                         output = data["output"]
+                        if output.lower() == "true":
+                            output = 1
+                        elif output.lower() == "false":
+                            output = 0 
                         self.logger.debug("recv_data_loop", extra={"channel": channel, "output": output})
                         if channel == 0:
                             temperature = data["temperature"]["tC"]
