@@ -3,7 +3,7 @@ kind: Kustomization
 metadata:
   name: usconverters-uscdr301
 
-# namespace: mspbase01-hardware
+namespace: mspbase01-hardware
 
 # Example configuration for the webserver
 # at https://github.com/monopole/hello

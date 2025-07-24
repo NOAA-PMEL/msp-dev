@@ -25,7 +25,10 @@ spec:
                   name: brechtel-tap2901-config
                   key: namespace_prefix
           - name: ENVDS_ENV_ID
-            value: mspbase01
+            valueFrom:
+              configMapKeyRef:
+                name: brechtel-tap2901-config
+                key: envds_env_id
           - name: REDIS_OM_URL
             value: redis://redis.default
           - name: LOG_LEVEL
