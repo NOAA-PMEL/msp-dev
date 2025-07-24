@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 metadata:
-  name: usconverters-uscdr301
+  name: brechtel-tap2901
 
 namespace: mspbase01-hardware
 
@@ -20,8 +20,8 @@ namespace: mspbase01-hardware
 
 resources:
 - ../../base
-- USCDR301-configmap.yaml
+- tap2901-configmap.yaml
 
-nameSuffix: -usc206
+nameSuffix: "-052"
 # patchesStrategicMerge:
 #   - deployment.yaml

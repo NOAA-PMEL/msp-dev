@@ -2,7 +2,8 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: usconverters-uscdr301-config
-  namespace: msp
+  # namespace: msp
+  namespace: mspbase01-hardware
   labels:
     app: usconverters-uscdr301
 data:

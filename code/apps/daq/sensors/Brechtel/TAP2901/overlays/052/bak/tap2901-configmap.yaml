@@ -1,23 +1,23 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: aerosoldynamics-spidermagic810-config
-  # namespace: mspbase01-hardware
+  name: brechtel-tap2901-config
+  # namespace: msp
   labels:
-    app: aerosoldynamics-spidermagic810
+    app: brechtel-tap2901
     app-group: envds-sensor-mspbase
 data:
   namespace_prefix: mspbase01
   envds_env_id: mspbase01
   sensor.conf: |
-    serial_number: "11"
+    serial_number: "052"
+    # daq_id: msp
     daq_id: mspbase01
     interfaces:
       # default: serial
       default:
-        # interface_env_id: mspbase01 # if omitted, defaults to envds_id of sensor
-        interface_env_id: msp
-        interface_id: USconverters::USCDR301::usc14
+        # interface_env_id: msp # if omitted, defaults to envds_id of sensor
+        interface_id: USconverters::USCDR301::usc206
         path: port-1
       #   connection-properties:
       #     baudrate: 115200
