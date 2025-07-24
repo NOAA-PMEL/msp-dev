@@ -632,6 +632,99 @@ async def sensor_registry_ws_endpoint(
         await asyncio.sleep(.1)
         # await manager.broadcast(f"Client left the chat")
 
+@app.websocket("/ws/controller/{client_id}")
+# @app.websocket("/ws/{client_id}")
+async def controller_ws_endpoint(
+    websocket: WebSocket,
+    client_id: str
+):
+    await manager.connect(websocket, client_type="controller", client_id=client_id)
+    print(f"websocket_endpoint: {websocket}")
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            print(f"controller data: {data}")
+            message = json.loads(data)
+            if "client-request" in message:
+                # await manager.broadcast(json.dumps(message), "sensor", client_id)
+                if message['client-request'] == "start-updates":
+
+                    # start task to watch registry.sensor_definition collection for changes
+                    # L.info(f"task_map: {task_map}")
+                    # if "sensor-definition" in task_map:
+                    #     if task_map["sensor-definition"].done():
+                    #         task_map.pop("sensor-definition")
+                    # if "sensor-definition" not in task_map:
+                    #     # task_map["sensor-definition"].cancel()
+                    #     L.info("sensor_definition create_task")
+                    #     # task_map["sensor-definition"] = asyncio.create_task(test_task())
+                    #     task_map["sensor-definition"] = asyncio.create_task(
+                    #         watch_registry_collection(
+                    #             db_client=db_registry_client,
+                    #             # database="registry",
+                    #             collection="sensor_definition",
+                    #             ws_manager=manager,
+                    #             ws_client_type="sensor-registry",
+                    #             ws_client_id=client_id
+                    #         )
+                    #     )
+
+                    # start task to watch registry.sensor collection for changes
+                    # L.info(f"task_map: {task_map}")
+                    # if "active-sensor" in task_map:
+                    #     if task_map["active-sensor"].done():
+                    #         task_map.pop("active-sensor")
+                    # if "active-sensor" not in task_map:
+                    #     # task_map["sensor-definition"].cancel()
+                    #     L.info("active-sensor create_task")
+                    #     # task_map["sensor-definition"] = asyncio.create_task(test_task())
+                    #     task_map["active-sensor"] = asyncio.create_task(
+                    #         watch_registry_collection(
+                    #             db_client=db_registry_client,
+                    #             # database="registry",
+                    #             collection="sensor",
+                    #             ws_manager=manager,
+                    #             ws_client_type="sensor-registry",
+                    #             ws_client_id=client_id
+                    #         )
+                    #     )
+                    # L.info(f"task_map: {task_map}")
+
+
+                    # send request to update sensor-definitions in the db
+                    # L.info("register_request", extra={"arg_type": type(reg_request)})
+                    msg_type = "controller.registry.request"
+
+                    attributes = {
+                            "type": msg_type,
+                            "source": "uasdaq.dashboard",
+                            "id": str(ULID()),
+                            "datacontenttype": "application/json; charset=utf-8",
+                        }
+                    reg_request = {"register-sensor-request": "update-sensor-definition-all"}
+                    ce = CloudEvent(attributes=attributes, data=reg_request)
+
+                    try:
+                        headers, body = to_structured(ce)
+                        # send to knative kafkabroker
+                        with httpx.Client() as client:
+                            r = client.post(
+                                config.knative_broker, headers=headers, data=body
+                                # config.knative_broker, headers=headers, data=body.decode()
+                            )
+                            L.info("register-request send", extra={"register-request": r.request.content})
+                            # r.raise_for_status()
+                    except InvalidStructuredJSON:
+                        L.error(f"INVALID MSG: {ce}")
+                    except httpx.HTTPError as e:
+                        L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+    except WebSocketDisconnect:
+        L.info(f"websocket disconnect: {websocket}")
+        await manager.disconnect(websocket)
+        await asyncio.sleep(.1)
+        # await manager.broadcast(f"Client left the chat")
+
 @app.websocket("/ws/chat/{client_id}")
 # @app.websocket("/ws/{client_id}")
 async def chat_ws_endpoint(
@@ -715,6 +808,7 @@ async def chat_ws_endpoint(
 
 @app.post("/sensor/data/update", status_code=status.HTTP_202_ACCEPTED)
 async def sensor_data_update(request: Request):
+
     L.info("sensor/data/update")
     data = await request.body()
     L.info(f"headers: {request.headers}, data: {data}")
@@ -760,3 +854,102 @@ async def sensor_data_update(request: Request):
 
     return {"message": "OK"}
     # return "ok", 200
+
+@app.post("/controller/data/update", status_code=status.HTTP_202_ACCEPTED)
+async def controller_data_update(request: Request):
+
+    L.info("controller/data/update")
+    data = await request.body()
+    L.info(f"headers: {request.headers}, data: {data}")
+    headers = request.headers
+    # headers = dict(request.headers)
+
+    try:
+        ce = from_http(headers=headers, data=data)
+        # to support local testing...
+        if isinstance(ce.data, str):
+            ce.data = json.loads(ce.data)
+    except InvalidStructuredJSON:
+        L.error("not a valid cloudevent")
+        return "not a valid cloudevent", 400
+
+    # parts = Path(ce["source"]).parts
+    L.info(
+        "dashboard controller data update",
+        extra={"ce-source": ce["source"], "ce-type": ce["type"], "ce-data": ce.data},
+    )
+
+    try:
+        attributes = ce.data["attributes"]
+        # dimensions = ce.data["dimensions"]
+        # variables = ce.data["variables"]
+
+        make = attributes["make"]["data"]
+        model = attributes["model"]["data"]
+        # # TODO fix serial number in magic data record, tmp workaround for now
+        # serial_number = attributes["serial_number"]
+        serial_number = attributes["serial_number"]["data"]
+        # format_version = attributes["format_version"]["data"]
+        # parts = format_version.split(".")
+        # erddap_version = f"v{parts[0]}"
+        controller_id = "::".join([make, model, serial_number])
+        # timestamp = ce.data["timestamp"]
+
+    except KeyError:
+        L.error("dashboard sensor update error", extra={"sensor": ce.data})
+        return "bad sensor data", 400
+
+    await manager.broadcast(json.dumps(ce.data), "controller", controller_id)
+
+    return {"message": "OK"}
+    # return "ok", 200
+
+@app.post("/controller/settings/update", status_code=status.HTTP_202_ACCEPTED)
+async def controller_settings_update(request: Request):
+
+    L.info("controller/settings/update")
+    data = await request.body()
+    L.info(f"headers: {request.headers}, data: {data}")
+    headers = request.headers
+    # headers = dict(request.headers)
+
+    try:
+        ce = from_http(headers=headers, data=data)
+        # to support local testing...
+        if isinstance(ce.data, str):
+            ce.data = json.loads(ce.data)
+    except InvalidStructuredJSON:
+        L.error("not a valid cloudevent")
+        return "not a valid cloudevent", 400
+
+    # parts = Path(ce["source"]).parts
+    L.info(
+        "dashboard controller settings update",
+        extra={"ce-source": ce["source"], "ce-type": ce["type"], "ce-data": ce.data},
+    )
+
+    try:
+        attributes = ce.data["attributes"]
+        # dimensions = ce.data["dimensions"]
+        # variables = ce.data["variables"]
+
+        make = attributes["make"]["data"]
+        model = attributes["model"]["data"]
+        # # TODO fix serial number in magic data record, tmp workaround for now
+        # serial_number = attributes["serial_number"]
+        serial_number = attributes["serial_number"]["data"]
+        # format_version = attributes["format_version"]["data"]
+        # parts = format_version.split(".")
+        # erddap_version = f"v{parts[0]}"
+        controller_id = "::".join([make, model, serial_number])
+        # timestamp = ce.data["timestamp"]
+
+    except KeyError:
+        L.error("dashboard sensor update error", extra={"sensor": ce.data})
+        return "bad sensor data", 400
+
+    await manager.broadcast(json.dumps(ce.data), "sensor", controller_id)
+
+    return {"message": "OK"}
+    # return "ok", 200
+

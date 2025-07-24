@@ -28,7 +28,13 @@ from datastore_requests import (
     DeviceDefinitionRequest,
     DeviceInstanceUpdate,
     DeviceInstanceRequest,
-    DatastoreRequest
+    DatastoreRequest,
+    ControllerDefinitionUpdate,
+    ControllerDefinitionRequest,
+    ControllerDataRequest,
+    ControllerDataUpdate,
+    ControllerInstanceRequest,
+    ControllerInstanceUpdate
 )
 
 class DBClientConfig(BaseModel):
@@ -170,6 +176,52 @@ class DBClient:
     async def device_instance_registry_get(
         self,
         request: DeviceInstanceRequest
+    ) -> dict:
+        return {"results": []}
+
+    async def controller_data_update(
+        self,
+        database: str,
+        collection: str,
+        # document: dict,
+        request: DataUpdate,
+        # update: dict,
+        # filter: dict = None,
+        # upsert=False,
+        ttl: int = 300
+    ):
+        return None
+
+    async def controller_data_get(self, query: DataRequest):
+        return None
+
+    async def controller_definition_registry_update(
+        self,
+        database: str,
+        collection: str,
+        request: ControllerDefinitionUpdate,
+        ttl: int = 0
+    ) -> bool:
+        return False
+
+    async def controller_definition_registry_get(
+            self,
+            request: ControllerDefinitionRequest
+    ) -> dict:
+        return {"results": []}
+
+    async def controller_instance_registry_update(
+        self,
+        database: str,
+        collection: str,
+        request: ControllerInstanceUpdate,
+        ttl: int = 0
+    ) -> bool:
+        return False
+
+    async def controller_instance_registry_get(
+        self,
+        request: ControllerInstanceRequest
     ) -> dict:
         return {"results": []}
 
