@@ -3,6 +3,7 @@ kind: Service
 metadata:
   name: usconverters-uscdr301
   namespace: msp
+  # namespace: mspbase01-hardware
   labels:
     app: usconverters-uscdr301
 spec:
