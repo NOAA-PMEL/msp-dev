@@ -6,6 +6,7 @@ import signal
 import sys
 import os
 import logging
+import traceback
 
 # from logfmter import Logfmter
 import logging.config
@@ -732,14 +733,17 @@ class SpiderMagic810(Sensor):
                     self.collecting = True
 
                 if "v1" in data.data['data']:
+                    print('here 1')
                     record1 = self.default_parse(data)
                     self.record_counter += 1
                     continue
 
                 elif self.sequence_end:
+                    print('here 2')
                     self.sequence_end = False
 
                 else:
+                    print('here 3')
                     record2 = self.default_parse(data)
                     if not record2:
                         continue
@@ -747,8 +751,10 @@ class SpiderMagic810(Sensor):
                         for var in record2["variables"]:
                             if var != 'time':
                                 if record2["variables"][var]["data"]:
-                                    record1["variables"][var]["data"] = record2["variables"][var]["data"]
+                                    if record1["variables"][var]["data"]:
+                                        record1["variables"][var]["data"] = record2["variables"][var]["data"]
                         continue
+                print('here 4')
                 record = record1
                 # record = self.default_parse(data)
                 if record:
@@ -775,6 +781,7 @@ class SpiderMagic810(Sensor):
                 self.logger.debug("default_data_loop", extra={"record": record})
             except Exception as e:
                 print(f"default_data_loop error: {e}")
+                print(traceback.format_exc())
             await asyncio.sleep(0.0001)
 
 
@@ -798,6 +805,7 @@ class SpiderMagic810(Sensor):
 
                 # print(f"include metadata: {self.include_metadata}")
                 record = self.build_data_record(meta=self.include_metadata)
+                print("RECORD", record)
                 # print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
                 try:
@@ -805,28 +813,28 @@ class SpiderMagic810(Sensor):
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
                     parts = [item.strip('\r\n') for item in parts]
+                    print('PARTS', parts)
 
-                    if datavar := 'v1' in data.data["data"]:
+                    if (datavar := 'v1') in data.data["data"]:
                         parts = parts[2:3] + parts[4:8]
                         self.var_name = variables[0:5]
-                    elif datavar := 'STARTING' in data.data["data"]:
+                    elif (datavar := 'STARTING') in data.data["data"]:
                         parts = parts[1:25]
                         self.var_name = variables[5:29]
-                    elif datavar := 'Vi' in data.data["data"]:
+                    elif (datavar := 'Vi') in data.data["data"]:
                         parts = parts[0:4]
                         self.var_name = variables[29:33]
-                    elif datavar := 'START SEQ' in data.data["data"]:
+                    elif (datavar := 'START SEQ') in data.data["data"]:
                         self.sequence_start = True
                         return None
                     elif self.sequence_start:
                         self.var_name = variables[33:41]
                         pass
-                    elif datavar := 'END SEQ' in data.data["data"]:
+                    elif (datavar := 'END SEQ') in data.data["data"]:
                         self.sequence_end = True
                         return None
                     else:
                         return None
-                    
                     # self.var_name = [key for key, value in self.config.metadata.variables.items() if datavar in value.attributes.description["data"]]
 
                     for index, name in enumerate(self.var_name):

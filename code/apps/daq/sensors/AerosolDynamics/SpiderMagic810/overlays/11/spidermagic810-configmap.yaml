@@ -5,7 +5,7 @@ metadata:
   # namespace: mspbase01-hardware
   labels:
     app: aerosoldynamics-spidermagic810
-    app-group: envds-sensor-mspbase
+    app-group: envds-sensor-mspbase01
 data:
   namespace_prefix: mspbase01
   envds_env_id: mspbase01
@@ -16,8 +16,8 @@ data:
       # default: serial
       default:
         # interface_env_id: mspbase01 # if omitted, defaults to envds_id of sensor
-        interface_env_id: msp
-        interface_id: USconverters::USCDR301::usc14
+        interface_env_id: mspbase01-hardware
+        interface_id: USconverters::USCDR301::usc218
         path: port-1
       #   connection-properties:
       #     baudrate: 115200

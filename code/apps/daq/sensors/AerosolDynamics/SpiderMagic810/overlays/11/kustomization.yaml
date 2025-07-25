@@ -29,15 +29,15 @@ nameSuffix: "-11"
 # patchesStrategicMerge:
 #   - deployment.yaml
 
-# patches:
+patches:
 #   # change configmap names to account for s/n suffix
-#   - target:
-#       kind: Deployment
-#       name: aerosoldynamics-spidermagic810
-#     patch: |-
-#       - op: replace 
-#         path: /spec/template/spec/volumes/0/configMap/name
-#         value: aerosoldynamics-spidermagic810-config-11
+  - target:
+      kind: Deployment
+      name: aerosoldynamics-spidermagic810
+    patch: |-
+      - op: replace 
+        path: /spec/template/spec/volumes/0/configMap/name
+        value: aerosoldynamics-spidermagic810-config-11
 #       - op: replace 
 #         path: /spec/template/spec/volumes/1/configMap/name
 #         value: sensor-definition-11
