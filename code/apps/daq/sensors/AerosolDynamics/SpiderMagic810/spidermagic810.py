@@ -41,6 +41,7 @@ from cloudevents.http import CloudEvent
 
 from pydantic import BaseModel
 import json
+import numpy as np
 
 # from envds.daq.db import init_sensor_type_registration, register_sensor_type
 
@@ -67,7 +68,7 @@ class SpiderMagic810(Sensor):
             "variable_types": {"type": "string", "data": "main, setting, calibration"},
             "serial_number": {"type": "string", "data": ""},
         },
-        "dimensions": {"time": 0},
+        "dimensions": {"time": 0, "aerodynamic diameter": 53},
         "variables": {
             "time": {
                 "type": "str",
@@ -134,15 +135,15 @@ class SpiderMagic810(Sensor):
                     "long_name": {"type": "string", "data": "Internal Timestamp"}
                 },
             },
-            "concentration": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Concentration"},
-                    "units": {"type": "char", "data": "cm-3"},
-                },
-            },
+            # "concentration": {
+            #     "type": "float",
+            #     "shape": ["time"],
+            #     "attributes": {
+            #         "variable_type": {"type": "string", "data": "main"},
+            #         "long_name": {"type": "char", "data": "Concentration"},
+            #         "units": {"type": "char", "data": "cm-3"},
+            #     },
+            # },
             "dew_point": {
                 "type": "float",
                 "shape": ["time"],
@@ -255,7 +256,7 @@ class SpiderMagic810(Sensor):
                 },
             },
             "wadc": {
-                "type": "float",
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
@@ -278,7 +279,7 @@ class SpiderMagic810(Sensor):
                 },
             },
             "Qsh": {
-                "type": "float",
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
@@ -290,7 +291,7 @@ class SpiderMagic810(Sensor):
                 },
             },
             "abs_pressure": {
-                "type": "float",
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
@@ -299,7 +300,7 @@ class SpiderMagic810(Sensor):
                 },
             },
             "flow": {
-                "type": "float",
+                "type": "int",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
@@ -322,7 +323,7 @@ class SpiderMagic810(Sensor):
                 },
             },
             "status_hex": {
-                "type": "string",
+                "type": "str",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
@@ -333,7 +334,7 @@ class SpiderMagic810(Sensor):
                 },
             },
             "status_ascii": {
-                "type": "string",
+                "type": "str",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
@@ -344,7 +345,7 @@ class SpiderMagic810(Sensor):
                 },
             },
             "spidermagic_serial_number": {
-                "type": "string",
+                "type": "str",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
@@ -474,6 +475,7 @@ class SpiderMagic810(Sensor):
         self.array_buffer = []
         self.sequence_start = False
         self.sequence_end = False
+        self.seq_counter = 0
 
         self.default_data_buffer = asyncio.Queue()
 
@@ -733,33 +735,37 @@ class SpiderMagic810(Sensor):
                     self.collecting = True
 
                 if "v1" in data.data['data']:
-                    print('here 1')
-                    record1 = self.default_parse(data)
-                    self.record_counter += 1
+                    record_heading = self.default_parse(data)
                     continue
 
                 elif self.sequence_end:
-                    print('here 2')
                     self.sequence_end = False
+                    for var in record_heading["variables"]:
+                        if record_heading["variables"][var]["data"]:
+                            ongoing_record["variables"][var]["data"] = record_heading["variables"][var]["data"]
+                
+                elif "STARTING" in data.data['data']:
+                    ongoing_record = self.default_parse(data)
+                    continue
 
                 else:
-                    print('here 3')
                     record2 = self.default_parse(data)
                     if not record2:
                         continue
                     else:
                         for var in record2["variables"]:
                             if var != 'time':
-                                if record2["variables"][var]["data"]:
-                                    if record1["variables"][var]["data"]:
-                                        record1["variables"][var]["data"] = record2["variables"][var]["data"]
+                                try:
+                                    if record2["variables"][var]["data"].any():
+                                        ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
+                                except Exception:
+                                    if record2["variables"][var]["data"]:
+                                        ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
                         continue
-                print('here 4')
-                record = record1
-                # record = self.default_parse(data)
+                record = ongoing_record
+                print('FINAL RECORD', record)
                 if record:
                     self.collecting = True
-
 
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(
@@ -795,64 +801,84 @@ class SpiderMagic810(Sensor):
 
     def default_parse(self, data):
         if data:
-            print("DATA HERE", data)
             try:
                 variables = list(self.config.metadata.variables.keys())
-                # print(f"variables: \n{variables}\n{variables2}")
                 variables.remove("time")
-                # variables2.remove("time")
-                print(f"variables: \n{variables}")
 
-                # print(f"include metadata: {self.include_metadata}")
                 record = self.build_data_record(meta=self.include_metadata)
-                print("RECORD", record)
-                # print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
                 try:
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
-                    parts = [item.strip('\r\n') for item in parts]
-                    print('PARTS', parts)
+                    parts = [item.replace('\r\n', '').strip() for item in parts]
 
                     if (datavar := 'v1') in data.data["data"]:
                         parts = parts[2:3] + parts[4:8]
+                        parts = [item.replace('Hz', '').replace('tau=', '') for item in parts]
                         self.var_name = variables[0:5]
+
                     elif (datavar := 'STARTING') in data.data["data"]:
-                        parts = parts[1:25]
-                        self.var_name = variables[5:29]
+                        parts = parts[1:3] + parts[4:25]
+                        parts = [item.replace('V', '') for item in parts]
+                        self.var_name = variables[5:28]
+
                     elif (datavar := 'Vi') in data.data["data"]:
                         parts = parts[0:4]
-                        self.var_name = variables[29:33]
+                        parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '') for item in parts]
+                        self.var_name = variables[28:32]
+
                     elif (datavar := 'START SEQ') in data.data["data"]:
                         self.sequence_start = True
+                        self.seq_counter = 0
                         return None
-                    elif self.sequence_start:
-                        self.var_name = variables[33:41]
-                        pass
+                    
                     elif (datavar := 'END SEQ') in data.data["data"]:
                         self.sequence_end = True
+                        self.sequence_start = False
                         return None
+                    
+                    elif self.sequence_start:
+                        self.var_name = variables[32:40]
+
+                        if self.seq_counter < 52:
+                            self.check_array_buffer(parts, array_cond=False)
+                            self.seq_counter += 1
+                            return
+                        
+                        else:
+                            parts = self.check_array_buffer(parts, array_cond=True)
+                            self.seq_counter = 0
+                            parts = np.array(list(parts), dtype=object)
+                            transposed = np.transpose(parts)
+                            parts = transposed.tolist()
+                            self.array_buffer = []
+                        pass
+
                     else:
                         return None
-                    # self.var_name = [key for key, value in self.config.metadata.variables.items() if datavar in value.attributes.description["data"]]
 
                     for index, name in enumerate(self.var_name):
                         if name in record["variables"]:
                             instvar = self.config.metadata.variables[name]
                             try:
-                                if len(self.var_name) == 1:
-                                    record["variables"][name]["data"] = parts
-                                else:
-                                    if instvar.type == "int":
-                                        record["variables"][name]["data"] = int(parts[index])
-                                    elif instvar.type == "float":
-                                        record["variables"][name]["data"] = float(parts[index])
+                                if instvar.type == "int":
+                                    if isinstance(parts[index], list):
+                                        record["variables"][name]["data"] = [int(item) for item in parts[index]]
                                     else:
-                                        record["variables"][name]["data"] = parts[index]
+                                        record["variables"][name]["data"] = int(parts[index])
+
+                                elif instvar.type == "float":
+                                    if isinstance(parts[index], list):
+                                        record["variables"][name]["data"] = [float(item) for item in parts[index]]
+                                    else:
+                                        record["variables"][name]["data"] = float(parts[index])
+                                        
+                                else:
+                                    record["variables"][name]["data"] = parts[index]
 
                             except ValueError:
-                                if instvar.vartype == "str" or instvar.vartype == "char":
+                                if instvar.type == "str" or instvar.type == "char":
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None

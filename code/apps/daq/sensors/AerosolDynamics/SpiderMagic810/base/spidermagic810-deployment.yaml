@@ -14,12 +14,12 @@ spec:
       labels:
         app: aerosoldynamics-spidermagic810
     spec:
-      # imagePullSecrets:
-      # - name: ghcr-ro-secret
+      imagePullSecrets:
+      - name: ghcr-ro-secret
       containers:
       - name: aerosoldynamics-spidermagic810
-        # image: ghcr.io/noaa-pmel/msp/aerosoldynamics-spidermagic810:0.1.0
-        image: registry-msp:5000/msp/sensor/aerosoldynamics-spidermagic810:0.1.0
+        image: ghcr.io/noaa-pmel/msp/aerosoldynamics-spidermagic810:0.1.0
+        # image: registry-msp:5000/msp/sensor/aerosoldynamics-spidermagic810:0.1.0
         imagePullPolicy: "Always"
         env:
           - name: ENVDS_CORE_NAMESPACE_PREFIX

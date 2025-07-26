@@ -10,7 +10,7 @@ data:
   namespace_prefix: mspbase01
   envds_env_id: mspbase01
   sensor.conf: |
-    serial_number: "11"
+    serial_number: "011"
     daq_id: mspbase01
     interfaces:
       # default: serial

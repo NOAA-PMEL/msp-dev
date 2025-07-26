@@ -24,7 +24,7 @@ resources:
 - ../../base
 - spidermagic810-configmap.yaml
 
-nameSuffix: "-11"
+nameSuffix: "-011"
 
 # patchesStrategicMerge:
 #   - deployment.yaml
@@ -37,7 +37,7 @@ patches:
     patch: |-
       - op: replace 
         path: /spec/template/spec/volumes/0/configMap/name
-        value: aerosoldynamics-spidermagic810-config-11
+        value: aerosoldynamics-spidermagic810-config-011
 #       - op: replace 
 #         path: /spec/template/spec/volumes/1/configMap/name
-#         value: sensor-definition-11
+#         value: sensor-definition-011
