@@ -17,7 +17,8 @@ data:
       default:
         # interface_env_id: mspbase01 # if omitted, defaults to envds_id of sensor
         interface_env_id: mspbase01-hardware
-        interface_id: USconverters::USCDR301::usc218
+        # interface_id: USconverters::USCDR301::usc218
+        interface_id: USconverters::USCDR301::usc221
         path: port-1
       #   connection-properties:
       #     baudrate: 115200

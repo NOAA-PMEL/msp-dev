@@ -390,6 +390,15 @@ class SpiderMagic810(Sensor):
                     "long_name": {"type": "char", "data": "Time Constant"},
                 },
             },
+            "elap_time": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Elapsed Time during Scan"},
+                    "units": {"type": "char", "data": "seconds"},
+                },
+            },
             "scan_status": {
                 "type": "char",
                 "shape": ["time", "diameter"],
@@ -826,7 +835,9 @@ class SpiderMagic810(Sensor):
                     elif (datavar := 'Vi') in data.data["data"]:
                         parts = parts[0:4]
                         parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '') for item in parts]
-                        self.var_name = variables[28:32]
+                        elapsed_time = abs(round((np.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
+                        parts.append(elapsed_time)
+                        self.var_name = variables[28:33]
 
                     elif (datavar := 'START SEQ') in data.data["data"]:
                         self.sequence_start = True
@@ -839,7 +850,7 @@ class SpiderMagic810(Sensor):
                         return None
                     
                     elif self.sequence_start:
-                        self.var_name = variables[32:40]
+                        self.var_name = variables[33:41]
 
                         if self.seq_counter < 52:
                             self.check_array_buffer(parts, array_cond=False)
