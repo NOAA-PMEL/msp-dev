@@ -12,7 +12,7 @@ resources:
 - scx21-deployment.yaml
 - scx21-service.yaml
 
-configMapGenerator:
-  - name: sensor-definition
-    files:
-      - Furuno_SCX21_sensor_definition.json
+# configMapGenerator:
+#   - name: sensor-definition
+#     files:
+#       - Furuno_SCX21_sensor_definition.json
