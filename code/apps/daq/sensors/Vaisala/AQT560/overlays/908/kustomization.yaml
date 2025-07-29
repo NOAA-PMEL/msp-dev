@@ -3,6 +3,8 @@ kind: Kustomization
 metadata:
   name: vaisala-aqt560
 
+namespace: mspbase02-hardware
+
 # Example configuration for the webserver
 # at https://github.com/monopole/hello
 # commonLabels:
@@ -23,3 +25,16 @@ resources:
 nameSuffix: "-908"
 # patchesStrategicMerge:
 #   - deployment.yaml
+
+patches:
+#   # change configmap names to account for s/n suffix
+  - target:
+      kind: Deployment
+      name: vaisala-aqt560
+    patch: |-
+      - op: replace 
+        path: /spec/template/spec/volumes/0/configMap/name
+        value: vaisala-aqt560-config-908
+#       - op: replace 
+#         path: /spec/template/spec/volumes/1/configMap/name
+#         value: sensor-definition-011

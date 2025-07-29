@@ -10,10 +10,10 @@ data:
   namespace_prefix: mspbase02
   envds_env_id: mspbase02
   interface.conf: |
-    uid: usc218
+    uid: usc219
     # serial_number: "1234"
     # daq_id: clearsky
-    host: 10.55.169.218
+    host: 10.55.169.219
     paths:
       port-1:
           # host: 10.55.169.52

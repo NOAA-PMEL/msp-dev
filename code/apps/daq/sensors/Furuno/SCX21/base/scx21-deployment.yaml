@@ -19,7 +19,7 @@ spec:
       containers:
       - name: furuno-scx21
         # image: registry-msp:5000/msp/sensor/furuno-scx21:0.1.0
-        image: ghcr.io/noaa-pmel/msp/furuno-scx21:0.1.4
+        image: ghcr.io/noaa-pmel/msp/furuno-scx21:0.1.0
         imagePullPolicy: "Always"
         env:
           - name: ENVDS_CORE_NAMESPACE_PREFIX
@@ -51,13 +51,13 @@ spec:
             - name: furuno-scx21-config
               mountPath: /app/config/sensor.conf
               subPath: sensor.conf
-            - name: sensor-definition
-              mountPath: /app/Furuno_SCX21_sensor_definition.json
-              subPath: Furuno_SCX21_sensor_definition.json
+            # - name: sensor-definition
+            #   mountPath: /app/Furuno_SCX21_sensor_definition.json
+            #   subPath: Furuno_SCX21_sensor_definition.json
       volumes:
         - name: furuno-scx21-config
           configMap:
             name: furuno-scx21-config
-        - name: sensor-definition
-          configMap:
-            name: sensor-definition
+        # - name: sensor-definition
+        #   configMap:
+        #     name: sensor-definition

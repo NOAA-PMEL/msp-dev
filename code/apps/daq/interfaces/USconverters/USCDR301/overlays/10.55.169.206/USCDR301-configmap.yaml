@@ -3,12 +3,12 @@ kind: ConfigMap
 metadata:
   name: usconverters-uscdr301-config
   # namespace: msp
-  namespace: mspbase01-hardware
+  namespace: mspbase02-hardware
   labels:
     app: usconverters-uscdr301
 data:
-  namespace_prefix: mspbase01
-  envds_ev_id: mspbase01
+  namespace_prefix: mspbase02
+  envds_env_id: mspbase02
   interface.conf: |
     uid: usc206
     # serial_number: "1234"

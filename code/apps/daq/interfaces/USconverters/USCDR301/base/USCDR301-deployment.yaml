@@ -14,9 +14,12 @@ spec:
       labels:
         app: usconverters-uscdr301
     spec:
+      imagePullSecrets:
+        - name: ghcr-ro-secret
       containers:
       - name: usconverters-uscdr301
-        image: registry-msp:5000/msp/interface/usconverters-uscdr301:0.1.0
+        # image: registry-msp:5000/msp/interface/usconverters-uscdr301:0.1.0
+        image: ghcr.io/noaa-pmel/msp/usconverters-uscdr301:0.1.1
         imagePullPolicy: "Always"
         env:
           - name: ENVDS_CORE_NAMESPACE_PREFIX
@@ -25,7 +28,10 @@ spec:
                 name: usconverters-uscdr301-config
                 key: namespace_prefix
           - name: ENVDS_ENV_ID
-            value: mspbase01
+            valueFrom:
+              configMapKeyRef:
+                name: usconverters-uscdr301-config
+                key: envds_env_id
           - name: REDIS_OM_URL
             value: redis://redis.default
           - name: LOG_LEVEL

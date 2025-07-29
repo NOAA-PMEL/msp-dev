@@ -1,22 +1,22 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: vaisala-wxt536-config
+  name: furuno-scx21-config
   # namespace: msp
   labels:
-    app: vaisala-wxt536
+    app: furuno-scx21
     app-group: envds-sensor-mspbase02
 data:
   namespace_prefix: mspbase02
   envds_env_id: mspbase02
   sensor.conf: |
-    serial_number: "925"
+    serial_number: "315"
     daq_id: mspbase02
     interfaces:
       # default: serial
       default:
         interface_env_id: mspbase02-hardware # if omitted, defaults to envds_id of sensor
-        interface_id: USconverters::USCDR301::usc218
+        interface_id: USconverters::USCDR301::usc219
         path: port-1
       #   connection-properties:
       #     baudrate: 115200
