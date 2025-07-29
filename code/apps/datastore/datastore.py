@@ -49,6 +49,12 @@ from datastore_requests import (
     DeviceInstanceUpdate,
     DeviceInstanceRequest,
     DatastoreRequest,
+    ControllerInstanceUpdate,
+    ControllerInstanceRequest,
+    ControllerDataRequest,
+    ControllerDataUpdate,
+    ControllerDefinitionRequest,
+    ControllerDefinitionUpdate
 )
 from db_client import DBClientManager, DBClientConfig
 
@@ -509,6 +515,208 @@ class Datastore:
         # TODO add in logic to get/sync from erddap if available?
         if self.db_client:
             return await self.db_client.device_instance_registry_get(query)
+        
+        return {"results": []}
+
+    async def controller_data_get(self, query: DataRequest):
+
+        # fill in useful values based on user request
+
+        # why do we need to do this?
+        # # if not make,model,serial_number try to build from controller_id
+        # self.logger.debug("controller_data_get", extra={"query": query})
+        # if not query.make or not query.model or not query.serial_number:
+        #     if not query.controller_id:
+        #         self.logger.debug("controller_data_get:1", extra={"query": query})
+        #         return {"results": []}
+        #     parts = query.controller_id.split("::")
+        #     query.make = parts[0]
+        #     query.model = parts[1]
+        #     query.serial_number = parts[2]
+        #     self.logger.debug("controller_data_get:2", extra={"query": query})
+        # else:
+        #     query.controller_id = "::".join([query.make,query.model,query.serial_number])
+
+        self.logger.debug("controller_data_get:3", extra={"query": query})
+        if query.start_time:
+            query.start_timestamp = string_to_timestamp(query.start_time)
+
+        if query.end_time:
+            query.end_timestamp = string_to_timestamp(query.end_time)
+
+
+        if query.last_n_seconds:
+            # this overrides explicit start,end times
+            start_dt = get_datetime_with_delta(-(query.last_n_seconds))
+            # current_time = get_datetime()
+            # start_dt = current_time - timedelta(seconds=query.last_n_seconds)
+            query.start_timestamp = start_dt.timestamp()
+            query.end_timestamp = None
+
+        # TODO add in logic to get/sync from erddap if available
+        if self.db_client:
+            self.logger.debug("controller_data_get:4", extra={"query": query})
+            return await self.db_client.controller_data_get(query)
+
+        return {"results": []}
+
+    async def controller_definition_registry_update(self, ce: CloudEvent):
+
+        try:
+            for definition_type, controller_def in ce.data.items():
+                make = controller_def["attributes"]["make"]["data"]
+                model = controller_def["attributes"]["model"]["data"]
+                format_version = controller_def["attributes"]["format_version"]["data"]
+                parts = format_version.split(".")
+                version = f"v{parts[0]}"
+                valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
+
+                if definition_type == "controller-definition":
+                    database = "registry"
+                    collection = "controller-definition"
+                    attributes = controller_def["attributes"]
+                    dimensions = controller_def["dimensions"]
+                    variables = controller_def["variables"]
+
+                    # if "controller_type" in controller_def["attributes"]:
+                    #     controller_type = controller_def["attributes"]["controller_type"]["data"]
+                    # else:
+                    #     # default for backward compatibility
+                    #     controller_def["attributes"]["controller_type"] = {
+                    #         "type": "string",
+                    #         "data": "sensor"
+                    #     }
+                    #     controller_type = "sensor"
+
+                    controller_definition_id = "::".join([make,model,format_version])
+                    request = ControllerDefinitionUpdate(
+                        controller_definition_id=controller_definition_id,
+                        make=make,
+                        model=model,
+                        version=format_version,
+                        # controller_type=controller_type,
+                        valid_time=valid_time,
+                        attributes=attributes,
+                        dimensions=dimensions,
+                        variables=variables,
+                    )
+
+                    # request = DatastoreRequest(
+                    #     database="registry",
+                    #     collection="controller-definition",
+                    #     request=update
+                    # )
+
+            self.logger.debug(
+                "controller_definition_registry_update", extra={"request": request}
+            )
+            if self.db_client:
+                result = await self.db_client.controller_definition_registry_update(
+                    database=database,
+                    collection=collection,
+                    request=request,
+                    ttl=self.config.db_reg_controller_definition_ttl,
+                )
+                if result:
+                    self.logger.debug("configure", extra={"self.config": self.config})
+                    ack = DAQEvent.create_controller_definition_registry_ack(
+                        source=f"envds.{self.config.daq_id}.datastore",
+                        data={"controller-definition": {"make": make, "model":model, "version": format_version}}
+
+                    )
+                    # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+                    ack["destpath"] = f"envds/{self.config.daq_id}/controller/registry/ack"
+                    await self.send_event(ack)
+
+        except Exception as e:
+            self.logger.error("controller_definition_registry_update", extra={"reason": e})
+        pass
+
+    async def controller_definition_registry_get(self, query: ControllerDefinitionRequest) -> dict:
+        
+        # TODO add in logic to get/sync from erddap if available
+        if self.db_client:
+            return await self.db_client.controller_definition_registry_get(query)
+        
+        return {"results": []}
+
+    async def controller_instance_registry_update(self, ce: CloudEvent):
+
+        try:
+            self.logger.debug("controller_instance_registry_update", extra={"ce": ce})
+            for instance_type, instance_reg in ce.data.items():
+                request = None
+                self.logger.debug("controller_instance_registry_update", extra={"instance_type": instance_type, "instance_reg": instance_reg})
+                try:
+                    # controller_id = instance_reg.get("controller_id", None)
+                    make = instance_reg["make"]
+                    model = instance_reg["model"]
+                    serial_number = instance_reg["serial_number"]
+                    format_version = instance_reg["format_version"]
+                    parts = format_version.split(".")
+                    version = f"v{parts[0]}"
+
+                    if make is None or model is None or serial_number is None:
+                        # if "controller_id" in instance_reg and instance_reg["controller_id"] is not None:
+                            # parts = instance_reg["controller_id"].split("::")
+                            # make = parts[0]
+                            # model = parts[1]
+                            # serial_number = parts[2]
+                        self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
+                        return
+                    
+                    # if controller_id is None:
+                    controller_id = "::".join([make, model, serial_number])
+
+                    if instance_type == "controller-instance":
+                        database = "registry"
+                        collection = "controller-instance"
+                        attributes = instance_reg["attributes"]
+
+                        # if "controller_type" in instance_reg["attributes"]:
+                        #     controller_type = instance_reg["attributes"]["controller_type"]["data"]
+                        # else:
+                        #     # default for backward compatibility
+                        #     controller_type = "sensor"
+
+                        request = ControllerInstanceUpdate(
+                            controller_id=controller_id,
+                            make=make,
+                            model=model,
+                            serial_number=serial_number,
+                            version=format_version,
+                            # controller_type=controller_type,
+                            attributes=attributes,
+                        )
+
+                except (KeyError, IndexError) as e:
+                        self.logger.error("datastore:controller_instance_registry_update", extra={"reason": e})
+                        continue
+
+                    # request = DatastoreRequest(
+                    #     database="registry",
+                    #     collection="controller-instance",
+                    #     request=update,
+                    # )
+
+                self.logger.debug("datastore:controller_instance_registry_update", extra={"request": request, "db_client": self.db_client})
+                if self.db_client and request:
+                    await self.db_client.controller_instance_registry_update(
+                        database=database,
+                        collection=collection,
+                        request=request,
+                        ttl=self.config.db_reg_controller_instance_ttl,
+                    )
+
+        except Exception as e:
+            L.error("controller_instance_registry_update", extra={"reason": e})
+        pass
+
+    async def controller_instance_registry_get(self, query: ControllerInstanceRequest) -> dict:
+        
+        # TODO add in logic to get/sync from erddap if available?
+        if self.db_client:
+            return await self.db_client.controller_instance_registry_get(query)
         
         return {"results": []}
 

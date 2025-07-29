@@ -438,6 +438,13 @@ class Controller(envdsBase):
             enable=enable,
         )
 
+        self.set_route(
+            subscription=f"envds/controller/settings/request",
+            route_key=det.sensor_settings_request(),
+            route=self.handle_settings,
+            enable=enable,
+        )
+
         topic = f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
         self.set_route(
             # subscription=f"{topic_base}/registry/ack",
@@ -758,7 +765,7 @@ class Controller(envdsBase):
         # extra_header = {"path_id": client_id}
         extra_header = {"path_id": client_id, "destpath": destpath}
         # event = DAQEvent.create_data_update(
-        event = DAQEvent.create_controller_data_recv(
+        event = DAQEvent.create_controller_data_update(
             # source="envds.core", data={"test": "one", "test2": 2}
             source=self.get_id_as_source(),
             data=data,
@@ -1041,7 +1048,8 @@ class Controller(envdsBase):
                     source=self.get_id_as_source(),
                     data={"settings": self.settings.get_settings()},
                 )
-                destpath = f"{self.get_id_as_topic()}/settings/update"
+                # destpath = f"{self.get_id_as_topic()}/settings/update"
+                destpath = f"envds/{self.core_settings.namespace_prefix}/controller/settings/update"
                 self.logger.debug(
                     "settings_monitor", extra={"data": event, "destpath": destpath}
                 )
