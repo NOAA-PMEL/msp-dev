@@ -1,10 +1,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 metadata:
-  name: brechtel-tap2901
+  name: aerosoldynamics-spidermagic810
 
 namespace: mspbase01-hardware
 
+
+# namespace: payload03-hardware
 # Example configuration for the webserver
 # at https://github.com/monopole/hello
 # commonLabels:
@@ -20,18 +22,22 @@ namespace: mspbase01-hardware
 
 resources:
 - ../../base
-- tap2901-configmap.yaml
+- spidermagic810-configmap.yaml
 
-nameSuffix: "-052"
+nameSuffix: "-011"
+
 # patchesStrategicMerge:
 #   - deployment.yaml
 
 patches:
-  # change configmap names to account for s/n suffix
+#   # change configmap names to account for s/n suffix
   - target:
       kind: Deployment
-      name: brechtel-tap2901
+      name: aerosoldynamics-spidermagic810
     patch: |-
       - op: replace 
         path: /spec/template/spec/volumes/0/configMap/name
-        value: brechtel-tap2901-config-052
+        value: aerosoldynamics-spidermagic810-config-011
+#       - op: replace 
+#         path: /spec/template/spec/volumes/1/configMap/name
+#         value: sensor-definition-011

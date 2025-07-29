@@ -2,18 +2,15 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: usconverters-uscdr301-config
-  # namespace: msp
-  namespace: mspbase01-hardware
+  namespace: msp
   labels:
     app: usconverters-uscdr301
 data:
-  namespace_prefix: mspbase01
-  envds_ev_id: mspbase01
   interface.conf: |
-    uid: usc206
+    uid: usc14
     # serial_number: "1234"
     # daq_id: clearsky
-    host: 10.55.169.206
+    host: 10.55.179.14
     paths:
       port-1:
           # host: 10.55.169.52

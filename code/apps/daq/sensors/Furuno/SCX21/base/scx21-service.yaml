@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: usconverters-uscdr301
+  name: furuno-scx21
   # namespace: msp
   labels:
-    app: usconverters-uscdr301
+    app: furuno-scx21
 spec:
   selector:
-    app: usconverters-uscdr301
+    app: furuno-scx21
   ports:
   - name: http
     protocol: TCP

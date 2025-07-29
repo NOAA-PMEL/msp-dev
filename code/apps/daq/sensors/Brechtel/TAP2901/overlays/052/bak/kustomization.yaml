@@ -25,13 +25,3 @@ resources:
 nameSuffix: "-052"
 # patchesStrategicMerge:
 #   - deployment.yaml
-
-patches:
-  # change configmap names to account for s/n suffix
-  - target:
-      kind: Deployment
-      name: brechtel-tap2901
-    patch: |-
-      - op: replace 
-        path: /spec/template/spec/volumes/0/configMap/name
-        value: brechtel-tap2901-config-052

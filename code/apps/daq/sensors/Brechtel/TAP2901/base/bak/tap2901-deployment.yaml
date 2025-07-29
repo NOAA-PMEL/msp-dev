@@ -1,29 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: usconverters-uscdr301
-  # namespace: msp
+  name: brechtel-tap2901
+  namespace: msp
   labels:
-    app: usconverters-uscdr301
+    app: brechtel-tap2901
 spec:
   selector:
     matchLabels:
-      app: usconverters-uscdr301
+      app: brechtel-tap2901
   template:
     metadata:
       labels:
-        app: usconverters-uscdr301
+        app: brechtel-tap2901
     spec:
       containers:
-      - name: usconverters-uscdr301
-        image: registry-msp:5000/msp/interface/usconverters-uscdr301:0.1.0
+      - name: brechtel-tap2901
+        image: registry-msp:5000/msp/sensor/brechtel-tap2901:0.1.0
         imagePullPolicy: "Always"
         env:
-          - name: ENVDS_CORE_NAMESPACE_PREFIX
-            valueFrom:
-              configMapKeyRef:
-                name: usconverters-uscdr301-config
-                key: namespace_prefix
           - name: ENVDS_ENV_ID
             value: mspbase01
           - name: REDIS_OM_URL
@@ -44,9 +39,9 @@ spec:
         #   containerPort: 8883
         #   protocol: TCP
         volumeMounts:
-            - name: usconverters-uscdr301-config
-              mountPath: /app/config/interface.conf
-              subPath: interface.conf
+            - name: brechtel-tap2901-config
+              mountPath: /app/config/sensor.conf
+              subPath: sensor.conf
             # - name: mosquitto-certs
             #   mountPath: /certs/ca.crt
             #   subPath: ca.crt
@@ -57,9 +52,9 @@ spec:
             #   mountPath: /certs/server.key
             #   subPath: server.key
       volumes:
-        - name: usconverters-uscdr301-config
+        - name: brechtel-tap2901-config
           configMap:
-            name: usconverters-uscdr301-config
+            name: brechtel-tap2901-config
         # - name: mosquitto-certs
         #   configMap:
         #     name: mosquitto-certs

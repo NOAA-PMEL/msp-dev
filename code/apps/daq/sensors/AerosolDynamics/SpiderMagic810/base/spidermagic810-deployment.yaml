@@ -1,31 +1,37 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: usconverters-uscdr301
-  # namespace: msp
+  name: aerosoldynamics-spidermagic810
+  # namespace: mspbase01-hardware
   labels:
-    app: usconverters-uscdr301
+    app: aerosoldynamics-spidermagic810
 spec:
   selector:
     matchLabels:
-      app: usconverters-uscdr301
+      app: aerosoldynamics-spidermagic810
   template:
     metadata:
       labels:
-        app: usconverters-uscdr301
+        app: aerosoldynamics-spidermagic810
     spec:
+      imagePullSecrets:
+      - name: ghcr-ro-secret
       containers:
-      - name: usconverters-uscdr301
-        image: registry-msp:5000/msp/interface/usconverters-uscdr301:0.1.0
+      - name: aerosoldynamics-spidermagic810
+        image: ghcr.io/noaa-pmel/msp/aerosoldynamics-spidermagic810:0.1.0
+        # image: registry-msp:5000/msp/sensor/aerosoldynamics-spidermagic810:0.1.0
         imagePullPolicy: "Always"
         env:
           - name: ENVDS_CORE_NAMESPACE_PREFIX
             valueFrom:
               configMapKeyRef:
-                name: usconverters-uscdr301-config
+                name: aerosoldynamics-spidermagic810-config
                 key: namespace_prefix
           - name: ENVDS_ENV_ID
-            value: mspbase01
+            valueFrom:
+              configMapKeyRef:
+                name: aerosoldynamics-spidermagic810-config
+                key: envds_env_id
           - name: REDIS_OM_URL
             value: redis://redis.default
           - name: LOG_LEVEL
@@ -44,9 +50,9 @@ spec:
         #   containerPort: 8883
         #   protocol: TCP
         volumeMounts:
-            - name: usconverters-uscdr301-config
-              mountPath: /app/config/interface.conf
-              subPath: interface.conf
+            - name: aerosoldynamics-spidermagic810-config
+              mountPath: /app/config/sensor.conf
+              subPath: sensor.conf
             # - name: mosquitto-certs
             #   mountPath: /certs/ca.crt
             #   subPath: ca.crt
@@ -57,9 +63,9 @@ spec:
             #   mountPath: /certs/server.key
             #   subPath: server.key
       volumes:
-        - name: usconverters-uscdr301-config
+        - name: aerosoldynamics-spidermagic810-config
           configMap:
-            name: usconverters-uscdr301-config
+            name: aerosoldynamics-spidermagic810-config
         # - name: mosquitto-certs
         #   configMap:
         #     name: mosquitto-certs
