@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: usconverters-uscdr301-config
+  namespace: mspbase01-hardware
+  labels:
+    app: usconverters-uscdr301
+data:
+  namespace_prefix: mspbase01
+  envds_env_id: mspbase01
+  interface.conf: |
+    uid: usc221
+    # serial_number: "1234"
+    # daq_id: clearsky
+    host: 10.55.169.221
+    paths:
+      port-1:
+          # host: 10.55.169.52
+          # host: 192.168.86.46 # can override interface host if needed?
+          port: 10001 # if omitted, default is used

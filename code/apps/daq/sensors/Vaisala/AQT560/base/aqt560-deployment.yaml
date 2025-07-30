@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vaisala-aqt560
-  namespace: msp
+  # namespace: msp
   labels:
     app: vaisala-aqt560
 spec:
@@ -14,13 +14,24 @@ spec:
       labels:
         app: vaisala-aqt560
     spec:
+      imagePullSecrets:
+        - name: ghcr-ro-secret
       containers:
       - name: vaisala-aqt560
-        image: registry-msp:5000/msp/sensor/vaisala-aqt560:0.1.0
+        # image: registry-msp:5000/msp/sensor/vaisala-aqt560:0.1.0
+        image: ghcr.io/noaa-pmel/msp/vaisala-aqt560:0.1.0
         imagePullPolicy: "Always"
         env:
+          - name: ENVDS_CORE_NAMESPACE_PREFIX
+            valueFrom:
+              configMapKeyRef:
+                name: vaisala-aqt560-config
+                key: namespace_prefix
           - name: ENVDS_ENV_ID
-            value: mspbase01
+            valueFrom:
+              configMapKeyRef:
+                name: vaisala-aqt560-config
+                key: envds_env_id
           - name: REDIS_OM_URL
             value: redis://redis.default
           - name: LOG_LEVEL

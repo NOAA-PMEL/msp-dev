@@ -2,18 +2,20 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: vaisala-aqt560-config
-  namespace: msp
+  # namespace: msp
   labels:
     app: vaisala-aqt560
-    app-group: envds-sensor-mspbase
+    app-group: envds-sensor-mspbase02
 data:
+  namespace_prefix: mspbase02
+  envds_env_id: mspbase02
   sensor.conf: |
     serial_number: "908"
-    daq_id: msp
+    daq_id: mspbase02
     interfaces:
       # default: serial
       default:
-        interface_env_id: msp # if omitted, defaults to envds_id of sensor
+        interface_env_id: mspbase02-hardware # if omitted, defaults to envds_id of sensor
         interface_id: USconverters::USCDR301::usc206
         path: port-1
       #   connection-properties:

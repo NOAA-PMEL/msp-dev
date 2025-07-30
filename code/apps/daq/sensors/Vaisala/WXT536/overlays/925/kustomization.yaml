@@ -3,6 +3,8 @@ kind: Kustomization
 metadata:
   name: vaisala-wxt536
 
+namespace: mspbase02-hardware
+
 # Example configuration for the webserver
 # at https://github.com/monopole/hello
 # commonLabels:
@@ -20,6 +22,19 @@ resources:
 - ../../base
 - wxt536-configmap.yaml
 
-nameSuffix: "-908"
+nameSuffix: "-925"
 # patchesStrategicMerge:
 #   - deployment.yaml
+
+patches:
+#   # change configmap names to account for s/n suffix
+  - target:
+      kind: Deployment
+      name: vaisala-wxt536
+    patch: |-
+      - op: replace 
+        path: /spec/template/spec/volumes/0/configMap/name
+        value: vaisala-wxt536-config-925
+#       - op: replace 
+#         path: /spec/template/spec/volumes/1/configMap/name
+#         value: sensor-definition-011

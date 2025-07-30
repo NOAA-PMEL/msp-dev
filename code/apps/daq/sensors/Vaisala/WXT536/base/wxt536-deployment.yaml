@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vaisala-wxt536
-  namespace: msp
+  # namespace: msp
   labels:
     app: vaisala-wxt536
 spec:
@@ -14,13 +14,24 @@ spec:
       labels:
         app: vaisala-wxt536
     spec:
+      imagePullSecrets:
+        - name: ghcr-ro-secret
       containers:
       - name: vaisala-wxt536
-        image: registry-msp:5000/msp/sensor/vaisala-wxt536:0.1.0
+        # image: registry-msp:5000/msp/sensor/vaisala-wxt536:0.1.0
+        image: ghcr.io/noaa-pmel/msp/vaisala-wxt536:0.1.0
         imagePullPolicy: "Always"
         env:
+          - name: ENVDS_CORE_NAMESPACE_PREFIX
+            valueFrom:
+              configMapKeyRef:
+                name: vaisala-wxt536-config
+                key: namespace_prefix
           - name: ENVDS_ENV_ID
-            value: mspbase01
+            valueFrom:
+              configMapKeyRef:
+                name: vaisala-wxt536-config
+                key: envds_env_id
           - name: REDIS_OM_URL
             value: redis://redis.default
           - name: LOG_LEVEL
