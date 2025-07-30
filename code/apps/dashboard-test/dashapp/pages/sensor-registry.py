@@ -16,9 +16,8 @@ import httpx
 dash.register_page(
     __name__,
     path="/sensor-registry",
-    title="UAS-DAQ Sensor registry",  # , prevent_initial_callbacks=True
+    title="UAS-DAQ Sensor Registry",  # , prevent_initial_callbacks=True
 )
-
 
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
