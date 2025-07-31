@@ -10,14 +10,14 @@ import dash_ag_grid as dag
 import pandas as pd
 # import pymongo
 
-
 import httpx 
 
 dash.register_page(
     __name__,
-    path="/sensor-registry",
-    title="Sensor Registry",  # , prevent_initial_callbacks=True
-     )
+    path="/controller-registry",
+    title="Controller Registry",  # , prevent_initial_callbacks=True
+)
+
 
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
@@ -244,14 +244,14 @@ def get_layout():
     # print("here:1")
     layout = html.Div(
         [
-            html.H1("Sensor Registry"),
+            html.H1("Controller Registry"),
             # get_button,
             dbc.Accordion(
                 [
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
-                                id="sensor-defs-table",
+                                id="controller-defs-table",
                                 rowData=[],
                                 columnDefs=[
                                     {
@@ -272,17 +272,17 @@ def get_layout():
                                 ],
                             )
                         ],
-                        title="Sensor Definitions",
+                        title="Controller Definitions",
                     ),
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
-                                id="active-sensor-table",
+                                id="active-controller-table",
                                 rowData=[],
                                 columnDefs=[
                                     {
-                                        "field": "sensor_id",
-                                        "headerName": "Sensor ID",
+                                        "field": "controller_id",
+                                        "headerName": "Controller ID",
                                         "filter": True,
                                         "cellRenderer": "markdown",
                                     },
@@ -310,22 +310,22 @@ def get_layout():
                                 ],
                             )
                         ],
-                        title="Active Sensors",
+                        title="Active Controllers",
                     ),
                 ],
-                id="sensor-accordion",
+                id="controller-accordion",
             ),
             WebSocket(
-                id="ws-sensor-registry",
+                id="ws-controller-registry",
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"ws:/dashboard/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"ws://mspbase01.pmel.noaa.gov:8080/msp/dashboardtest/ws/sensor-registry/main",
-                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor-registry/main"
+                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/controller-registry/main"
             ),
             ws_send_buffer,
-            dcc.Store(id="sensor-defs-changes", data=[]),
-            dcc.Store(id="active-sensor-changes", data=[]),
+            dcc.Store(id="controller-defs-changes", data=[]),
+            dcc.Store(id="active-controller-changes", data=[]),
             # dcc.Interval(id="test-interval", interval=(10*1000)),
             dcc.Interval(
                 id="table-update-interval", interval=(5 * 1000), n_intervals=0
@@ -366,12 +366,12 @@ layout = get_layout  # ()
 
 
 @callback(
-    Output("sensor-defs-table", "rowData"),
+    Output("controller-defs-table", "rowData"),
     Input("table-update-interval", "n_intervals"),
-    State("sensor-defs-table", "rowData")
+    State("controller-defs-table", "rowData")
     # prevent_initial_call=True
 )
-def update_sensor_definitions(count, table_data):
+def update_controller_definitions(count, table_data):
     # print(f"sensor_def: {count}")
     update = False
     new_data = []
@@ -416,31 +416,31 @@ def update_sensor_definitions(count, table_data):
         #     else:
         #         return dash.no_update
 
-        query = {"device_type": "sensor"}
-        url = f"http://{datastore_url}/device-definition/registry/get/"
-        print(f"device-definition-get: {url}")
+        query = {"device_type": "controller"}
+        url = f"http://{datastore_url}/controller-definition/registry/get/"
+        print(f"controller-definition-get: {url}")
         response = httpx.get(url, params=query)
         results = response.json()
-        # print(f"results: {results}")
+        print(f"controller definition results: {results}")
         if "results" in results and results["results"]:
             for doc in results["results"]:
                 if doc is not None:
                     # print(f"doc: {doc}")
-                    id = doc["device_definition_id"]
+                    id = doc["controller_definition_id"]
                     make = doc["make"]
                     model = doc["model"]
                     version = doc["version"]
 
-                    sensor_def = {
-                        "sensor-def-id": id,
+                    controller_def = {
+                        "controller-def-id": id,
                         "make": make,
                         "model": model,
                         "version": version,
                     }
-                    if sensor_def not in table_data:
-                        table_data.append(sensor_def)
+                    if controller_def not in table_data:
+                        table_data.append(controller_def)
                         update = True
-                    new_data.append(sensor_def)
+                    new_data.append(controller_def)
 
 
         remove_data = []
@@ -459,16 +459,16 @@ def update_sensor_definitions(count, table_data):
 
 
     except Exception as e:
-        print(f"update_sensor_definitions error: {e}")
+        print(f"update_controller_definitions error: {e}")
         return dash.no_update
 
 
 @callback(
-    Output("active-sensor-table", "rowData"),
+    Output("active-controller-table", "rowData"),
     Input("table-update-interval", "n_intervals"),
-    State("active-sensor-table", "rowData")
+    State("active-controller-table", "rowData")
 )
-def update_active_sensors(count, table_data):
+def update_active_controllers(count, table_data):
 
     # print(f"active_sensor: {count}")
     update = False
@@ -525,24 +525,24 @@ def update_active_sensors(count, table_data):
         # results = httpx.get(f"http://{datastore_url}/device-instance/registry/get/", params=query)
         # print(f"results: {results}")
 
-        query = {"device_type": "sensor"}
-        url = f"http://{datastore_url}/device-instance/registry/get/"
-        print(f"device-definition-get: {url}")
+        query = {"device_type": "controller"}
+        url = f"http://{datastore_url}/controller-instance/registry/get/"
+        print(f"controller-definition-get: {url}")
         response = httpx.get(url, params=query)
         results = response.json()
-        # print(f"results: {results}")
+        print(f"results: {results}")
         if "results" in results and results["results"]:
             for doc in results["results"]:
                 make = doc["make"]
                 model = doc["model"]
                 serial_number = doc["serial_number"]
                 version = doc["version"]
-                sensor_id = "::".join([make, model, serial_number])
+                controller_id = "::".join([make, model, serial_number])
                 sampling_system_id = "unknown::unknown::unknown"
 
-                sensor = {
+                controller = {
                     # "sensor_id": f"[{sensor_id}](http://uasdaq.pmel.noaa.gov/uasdaq/dashboard/dash/sensor/{sensor_id})",
-                    "sensor_id": f"[{sensor_id}]({link_url_base}/dash/sensor/{sensor_id})",
+                    "controller_id": f"[{controller_id}]({link_url_base}/dash/controller/{controller_id})",
                     # "sensor_id": f"[{sensor_id}]({rel_path}/sensor/{sensor_id})",
                     "make": make,
                     "model": model,
@@ -551,10 +551,10 @@ def update_active_sensors(count, table_data):
                     "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
                     # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
                 }
-                if sensor not in table_data:
-                    table_data.append(sensor)
+                if controller not in table_data:
+                    table_data.append(controller)
                     update = True
-                new_data.append(sensor)
+                new_data.append(controller)
 
         remove_data = []
         for index, data in enumerate(table_data):
@@ -571,7 +571,7 @@ def update_active_sensors(count, table_data):
 
 
     except Exception as e:
-        print(f"update_active_sensors error: {e}")
+        print(f"update_active_controllers error: {e}")
         return dash.no_update
 
 
@@ -1228,7 +1228,7 @@ def update_active_sensors(count, table_data):
 #     return sensor_def_data, active_sensor_data
 
 
-@callback(Output("ws-sensor-registry", "send"), Input("ws-send-buffer", "children"))
+@callback(Output("ws-controller-registry", "send"), Input("ws-send-buffer", "children"))
 def send(value):
     print(f"sending: {value}")
     return value
