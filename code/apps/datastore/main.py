@@ -17,6 +17,7 @@ from logfmter import Logfmter
 from typing import Annotated, List
 from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
+import traceback
 
 from datastore import Datastore
 from datastore_requests import (
@@ -275,10 +276,10 @@ async def device_definition_registry_get(
     )
     return await datastore.device_definition_registry_get(query)
 
-
 @app.get("/device-instance/registry/get/")
 # async def device_definition_registry_get(query: Annotated[DeviceInstanceRequest, Query()]):
-async def device_definition_registry_get(
+# async def device_definition_registry_get(
+async def device_instance_registry_get(
     device_id: str | None = None,
     make: str | None = None,
     model: str | None = None,
@@ -378,6 +379,8 @@ async def controller_definition_registry_update(request: Request):
         await datastore.controller_definition_registry_update(ce)
     except Exception as e:
         # L.error("send", extra={"reason": e})
+        L.error("datastore_register_controller_definition", extra={"reason": e})
+        print(traceback.format_exc())
         pass
         return "", 204
 

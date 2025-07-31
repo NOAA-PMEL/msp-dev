@@ -101,6 +101,8 @@ class DatastoreConfig(BaseSettings):
     db_data_ttl: int = 600  # seconds
     db_reg_device_definition_ttl: int = 0  # permanent
     db_reg_device_instance_ttl: int = 600  # seconds
+    db_reg_controller_definition_ttl: int = 0  # permanent
+    db_reg_controller_instance_ttl: int = 600  # seconds
 
     erddap_enable: bool = False
     erddap_http_connection: str | None = None
@@ -610,12 +612,14 @@ class Datastore:
             self.logger.debug(
                 "controller_definition_registry_update", extra={"request": request}
             )
+            print('TEST HERE')
             if self.db_client:
                 result = await self.db_client.controller_definition_registry_update(
                     database=database,
                     collection=collection,
                     request=request,
-                    ttl=self.config.db_reg_controller_definition_ttl,
+                    # ttl=self.config.db_reg_controller_definition_ttl,
+                    ttl=self.config.db_reg_device_definition_ttl
                 )
                 if result:
                     self.logger.debug("configure", extra={"self.config": self.config})
