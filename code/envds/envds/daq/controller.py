@@ -308,10 +308,9 @@ class Controller(envdsBase):
                         # source="device.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
                         # data={"device-definition": self.metadata},
-                        data = {"controller-definition:", self.metadata},
+                        data = {"controller-definition": self.metadata},
                     )
                     # destpath = f"{self.get_id_as_topic()}/registry/update"
-                    print('here', event)
                     destpath = f"envds/{self.core_settings.namespace_prefix}/controller-definition/registry/update"
                     self.logger.debug(
                         "register_controller_definition", extra={"data": event, "destpath": destpath}
