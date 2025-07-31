@@ -421,7 +421,7 @@ def update_controller_definitions(count, table_data):
         print(f"controller-definition-get: {url}")
         response = httpx.get(url, params=query)
         results = response.json()
-        # print(f"results: {results}")
+        print(f"controller definition results: {results}")
         if "results" in results and results["results"]:
             for doc in results["results"]:
                 if doc is not None:
@@ -530,7 +530,7 @@ def update_active_controllers(count, table_data):
         print(f"controller-definition-get: {url}")
         response = httpx.get(url, params=query)
         results = response.json()
-        # print(f"results: {results}")
+        print(f"results: {results}")
         if "results" in results and results["results"]:
             for doc in results["results"]:
                 make = doc["make"]
