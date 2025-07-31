@@ -309,6 +309,7 @@ class Controller(envdsBase):
                         # data={"device-definition": self.metadata},
                         data = {"controller-definition:", self.metadata},
                     )
+                    print('data here', event)
                     # destpath = f"{self.get_id_as_topic()}/registry/update"
                     destpath = f"envds/{self.core_settings.namespace_prefix}/controller-definition/registry/update"
                     self.logger.debug(
