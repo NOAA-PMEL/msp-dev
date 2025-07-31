@@ -15,7 +15,7 @@ import httpx
 dash.register_page(
     __name__,
     path="/sensor-registry",
-    title="UAS-DAQ Sensor Registry",  # , prevent_initial_callbacks=True
+    title="Sensor Registry",  # , prevent_initial_callbacks=True
 )
 
 

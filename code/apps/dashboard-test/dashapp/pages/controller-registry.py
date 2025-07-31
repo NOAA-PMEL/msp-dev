@@ -15,7 +15,7 @@ import httpx
 dash.register_page(
     __name__,
     path="/controller-registry",
-    title="UAS-DAQ Controller Registry",  # , prevent_initial_callbacks=True
+    title="Controller Registry",  # , prevent_initial_callbacks=True
 )
 
 
