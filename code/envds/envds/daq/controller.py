@@ -329,7 +329,8 @@ class Controller(envdsBase):
         while True:
         
             # if self.enabled and not self.device_registered:
-            if not self.device_registered:
+            # if not self.device_registered:
+            if not self.controller_registered:
                 
                 instance_reg = {
                     "make": self.config.make,

@@ -404,10 +404,11 @@ async def controller_definition_registry_get(
         valid_time=valid_time,
     )
     return await datastore.controller_definition_registry_get(query)
-
+    
 
 @app.get("/controller-instance/registry/get/")
-async def controller_definition_registry_get(
+# async def controller_definition_registry_get(
+async def controller_instance_registry_get(
     controller_id: str | None = None,
     make: str | None = None,
     model: str | None = None,

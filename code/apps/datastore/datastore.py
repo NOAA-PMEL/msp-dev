@@ -612,14 +612,13 @@ class Datastore:
             self.logger.debug(
                 "controller_definition_registry_update", extra={"request": request}
             )
-            print('TEST HERE')
             if self.db_client:
                 result = await self.db_client.controller_definition_registry_update(
                     database=database,
                     collection=collection,
                     request=request,
-                    # ttl=self.config.db_reg_controller_definition_ttl,
-                    ttl=self.config.db_reg_device_definition_ttl
+                    ttl=self.config.db_reg_controller_definition_ttl,
+                    # ttl=self.config.db_reg_device_definition_ttl
                 )
                 if result:
                     self.logger.debug("configure", extra={"self.config": self.config})
