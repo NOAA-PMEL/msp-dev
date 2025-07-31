@@ -10,14 +10,14 @@ import dash_ag_grid as dag
 import pandas as pd
 # import pymongo
 
+
 import httpx 
 
 dash.register_page(
     __name__,
     path="/sensor-registry",
     title="Sensor Registry",  # , prevent_initial_callbacks=True
-)
-
+     )
 
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
