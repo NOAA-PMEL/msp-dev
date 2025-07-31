@@ -306,7 +306,8 @@ class Controller(envdsBase):
                     event = DAQEvent.create_controller_definition_registry_update(
                         # source="device.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
-                        data={"device-definition": self.metadata},
+                        # data={"device-definition": self.metadata},
+                        data = {"controller-definition:", self.metadata},
                     )
                     # destpath = f"{self.get_id_as_topic()}/registry/update"
                     destpath = f"envds/{self.core_settings.namespace_prefix}/controller-definition/registry/update"
