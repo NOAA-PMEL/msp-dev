@@ -424,20 +424,23 @@ class ShellyPro3(Controller):
         while True:
             try:
                 data = await self.client_recv_buffer.get()
-                # self.logger.debug("recv_data_loop", extra={"recv_data": data})
+                self.logger.debug("recv_data_loop", extra={"recv_data": data})
 
                 # the only data coming from Shelly should be status
-                if data and "id" in data:
+                if data and "id" in data.data:
                     try:
-                        channel = data["id"]
-                        output = data["output"]
+                        channel = data.data["id"]
+                        output = data.data["output"]
                         # if output.lower() == "true":
                         #     output = 1
                         # elif output.lower() == "false":
                         #     output = 0 
                         # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
                         if channel == 0:
-                            temperature = data["temperature"]["tC"]
+                            record["timestamp"] = data.data["timestamp"]
+                            record["variables"]["time"]["data"] = data.data["timestamp"]
+
+                            temperature = data.data["temperature"]["tC"]
                             record = self.build_data_record(meta=False)
                             record["variables"]["temperature"]["data"] = temperature
                             # channel 0 temperature data record
