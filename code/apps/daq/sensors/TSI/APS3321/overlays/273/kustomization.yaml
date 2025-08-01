@@ -3,6 +3,8 @@ kind: Kustomization
 metadata:
   name: tsi-aps3321
 
+namespace: payload03-hardware
+
 # Example configuration for the webserver
 # at https://github.com/monopole/hello
 # commonLabels:
@@ -23,3 +25,17 @@ resources:
 nameSuffix: "-273"
 # patchesStrategicMerge:
 #   - deployment.yaml
+
+patches:
+#   # change configmap names to account for s/n suffix
+  - target:
+      kind: Deployment
+      name: tsi-aps3321
+    patch: |-
+      - op: replace 
+        path: /spec/template/spec/volumes/0/configMap/name
+        value: tsi-aps3321-config-273
+#       - op: replace 
+#         path: /spec/template/spec/volumes/1/configMap/name
+#         value: sensor-definition-011
+

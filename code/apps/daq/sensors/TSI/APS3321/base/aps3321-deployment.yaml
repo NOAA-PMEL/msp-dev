@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tsi-aps3321
-  namespace: msp
+  # namespace: msp
   labels:
     app: tsi-aps3321
 spec:
@@ -14,13 +14,24 @@ spec:
       labels:
         app: tsi-aps3321
     spec:
+      imagePullSecrets:
+        - name: ghcr-ro-secret
       containers:
       - name: tsi-aps3321
-        image: registry-msp:5000/msp/sensor/tsi-aps3321:0.1.0
+        # image: registry-msp:5000/msp/sensor/tsi-aps3321:0.1.0
+        image: ghcr.io/noaa-pmel/msp/tsi-aps3321:0.1.0
         imagePullPolicy: "Always"
         env:
+          - name: ENVDS_CORE_NAMESPACE_PREFEIX
+            valueFrom:
+              configMapKeyRef:
+                name: tsi-aps3321-config
+                key: namespace_prefix
           - name: ENVDS_ENV_ID
-            value: mspbase01
+            valueFrom:
+              configMapKeyRef:
+                name: tsi-aps3321-config
+                key: envds_env_id
           - name: REDIS_OM_URL
             value: redis://redis.default
           - name: LOG_LEVEL
