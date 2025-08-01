@@ -447,12 +447,12 @@ class ShellyPro3(Controller):
                             record["variables"]["temperature"]["data"] = temperature
                             # channel 0 temperature data record
                             if record:
-                                event = DAQEvent.create_data_update(
+                                event = DAQEvent.create_controller_data_update(
                                     # source="sensor.mockco-mock1-1234", data=record
                                     source=self.get_id_as_source(),
                                     data=record,
                                 )
-                                destpath = f"{self.get_id_as_topic()}/data/update"
+                                destpath = f"{self.get_id_as_topic()}/controller/data/update"
                                 event["destpath"] = destpath
                                 self.logger.debug(
                                     "recv_data_loop",
