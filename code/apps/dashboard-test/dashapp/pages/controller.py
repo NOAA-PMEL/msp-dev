@@ -1619,76 +1619,76 @@ def update_controller_data_buffer(e):
 #     # return dash.no_update
 
 
-# @callback(
-#     Output(
-#         {"type": "data-table-1d", "index": ALL}, "rowData"
-#     ),  # , Output("active-sensor-changes", "data")],
-#     Input("controller-data-buffer", "data"),
-#     # Input("ws-sensor-instance", "message"),
-#     [
-#         State({"type": "data-table-1d", "index": ALL}, "rowData"),
-#         State({"type": "data-table-1d", "index": ALL}, "columnDefs"),
-#     ],  # , dcc.Store("sensor-definition", "data")],
-#     # prevent_initial_call=True,
-# )
-# def update_table_1d(controller_data, row_data_list, col_defs_list):  # , sensor_definition):
-#     # sensor_def_data_changes = []
-#     # active_sensor_data_changes = []
-#     # # print(f"message data: {e}")
-#     # print(f"sensor_def_data: {sensor_def_data}")
-#     # print(f"row_data: {type(row_data)}, {row_data}, col_defs: {col_defs}")
-#     # if e is not None and "data" in e:
-#     if controller_data:
-#         new_row_data_list = []
-#         try:
-#             # sensor_data = json.loads(e["data"])
-#             for row_data, col_defs in zip(row_data_list, col_defs_list):
-#                 data = {}
-#                 # print(f"row, col: {row_data}, {col_defs}")
-#                 for col in col_defs:
-#                     name = col["field"]
-#                     # print(f"name: {name}")
-#                     if name in controller_data["variables"]:
-#                         # print(f"variable: {msg["variables"][name]["data"]}")
-#                         data[name] = controller_data["variables"][name]["data"]
-#                         # print(f"data: {data}")
-#                     else:
-#                         data[name] = ""
-#                 # if row_data is None:
-#                 #     row_data = []
-#                 # print(f"row_data1: {type(row_data), {row_data}}")
-#                 row_data.insert(0, data)
-#                 # print(f"row_data2: {type(row_data), {row_data}}")
-#                 # row_data = row_data.append(data)
-#                 # test_row_data = []
-#                 # test_row_data.append(data)
-#                 # print(f"row-data: {test_row_data}")
+@callback(
+    Output(
+        {"type": "data-table-1d", "index": ALL}, "rowData"
+    ),  # , Output("active-sensor-changes", "data")],
+    Input("controller-data-buffer", "data"),
+    # Input("ws-sensor-instance", "message"),
+    [
+        State({"type": "data-table-1d", "index": ALL}, "rowData"),
+        State({"type": "data-table-1d", "index": ALL}, "columnDefs"),
+    ],  # , dcc.Store("sensor-definition", "data")],
+    # prevent_initial_call=True,
+)
+def update_table_1d(controller_data, row_data_list, col_defs_list):  # , sensor_definition):
+    # sensor_def_data_changes = []
+    # active_sensor_data_changes = []
+    # # print(f"message data: {e}")
+    # print(f"sensor_def_data: {sensor_def_data}")
+    # print(f"row_data: {type(row_data)}, {row_data}, col_defs: {col_defs}")
+    # if e is not None and "data" in e:
+    if controller_data:
+        new_row_data_list = []
+        try:
+            # sensor_data = json.loads(e["data"])
+            for row_data, col_defs in zip(row_data_list, col_defs_list):
+                data = {}
+                # print(f"row, col: {row_data}, {col_defs}")
+                for col in col_defs:
+                    name = col["field"]
+                    # print(f"name: {name}")
+                    if name in controller_data["variables"]:
+                        # print(f"variable: {msg["variables"][name]["data"]}")
+                        data[name] = controller_data["variables"][name]["data"]
+                        # print(f"data: {data}")
+                    else:
+                        data[name] = ""
+                # if row_data is None:
+                #     row_data = []
+                # print(f"row_data1: {type(row_data), {row_data}}")
+                row_data.insert(0, data)
+                # print(f"row_data2: {type(row_data), {row_data}}")
+                # row_data = row_data.append(data)
+                # test_row_data = []
+                # test_row_data.append(data)
+                # print(f"row-data: {test_row_data}")
 
-#                 # limit size of table to 30 rows
-#                 if len(row_data) > 30:
-#                     # return row_data[:30]
-#                     new_row_data_list.append(row_data[:30])
-#                 else:
-#                     # return row_data
-#                     new_row_data_list.append(row_data)
-#                 # return dash.no_update
-#             # row_data_list.append(row_data)
-#             # print(f"row_data_list: {row_data_list}")
-#             if len(new_row_data_list) == 0:
-#                 raise PreventUpdate
-#             return new_row_data_list
+                # limit size of table to 30 rows
+                if len(row_data) > 30:
+                    # return row_data[:30]
+                    new_row_data_list.append(row_data[:30])
+                else:
+                    # return row_data
+                    new_row_data_list.append(row_data)
+                # return dash.no_update
+            # row_data_list.append(row_data)
+            # print(f"row_data_list: {row_data_list}")
+            if len(new_row_data_list) == 0:
+                raise PreventUpdate
+            return new_row_data_list
 
-#         except Exception as e:
-#             print(f"data update error: {e}")
-#             # return dash.no_update
-#         raise PreventUpdate
-#         # return [dash.no_update for i in range(0,len(col_defs_list))]
-#         # return row_data
-#     else:
-#         # return dash.no_update
-#         raise PreventUpdate
-#         # return [dash.no_update for i in range(0,len(col_defs_list))]
-#         # return dash.no_update
+        except Exception as e:
+            print(f"data update error: {e}")
+            # return dash.no_update
+        raise PreventUpdate
+        # return [dash.no_update for i in range(0,len(col_defs_list))]
+        # return row_data
+    else:
+        # return dash.no_update
+        raise PreventUpdate
+        # return [dash.no_update for i in range(0,len(col_defs_list))]
+        # return dash.no_update
 
 
 # @callback(
