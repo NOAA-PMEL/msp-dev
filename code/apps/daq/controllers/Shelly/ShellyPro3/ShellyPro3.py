@@ -423,7 +423,8 @@ class ShellyPro3(Controller):
     async def recv_data_loop(self):
         while True:
             try:
-                data = await self.client_recv_buffer.get()
+                # data = await self.client_recv_buffer.get()
+                data = await self.client.recv()
                 self.logger.debug("recv_data_loop", extra={"recv_data": data})
 
                 # the only data coming from Shelly should be status
