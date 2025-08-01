@@ -281,7 +281,7 @@ def build_tables(layout_options):
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
-                                id={"type": "data-table-1d", "index": dim},
+                                id={"type": "controller-data-table-1d", "index": dim},
                                 rowData=[],
                                 columnDefs=layout_options["layout-1d"][dim][
                                     "table-column-defs"
@@ -853,7 +853,7 @@ def layout(controller_id=None):
                 #     dbc.AccordionItem(
                 #         [
                 #             dag.AgGrid(
-                #                 id="data-table-1d",
+                #                 id="controller-data-table-1d",
                 #                 rowData=[],
                 #                 columnDefs=layout_options["layout-1d"]["time"]["table-column-defs"],
                 #                 columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
@@ -1621,13 +1621,13 @@ def update_controller_data_buffer(e):
 
 @callback(
     Output(
-        {"type": "data-table-1d", "index": ALL}, "rowData"
+        {"type": "controller-data-table-1d", "index": ALL}, "rowData"
     ),  # , Output("active-sensor-changes", "data")],
     Input("controller-data-buffer", "data"),
     # Input("ws-sensor-instance", "message"),
     [
-        State({"type": "data-table-1d", "index": ALL}, "rowData"),
-        State({"type": "data-table-1d", "index": ALL}, "columnDefs"),
+        State({"type": "controller-data-table-1d", "index": ALL}, "rowData"),
+        State({"type": "controller-data-table-1d", "index": ALL}, "columnDefs"),
     ],  # , dcc.Store("sensor-definition", "data")],
     # prevent_initial_call=True,
 )
