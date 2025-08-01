@@ -278,8 +278,8 @@ async def device_definition_registry_get(
 
 @app.get("/device-instance/registry/get/")
 # async def device_definition_registry_get(query: Annotated[DeviceInstanceRequest, Query()]):
-# async def device_definition_registry_get(
-async def device_instance_registry_get(
+async def device_definition_registry_get(
+# async def device_instance_registry_get(
     device_id: str | None = None,
     make: str | None = None,
     model: str | None = None,
@@ -360,6 +360,8 @@ async def controller_registry_update(request: Request):
         await datastore.controller_instance_registry_update(ce)
     except Exception as e:
         # L.error("send", extra={"reason": e})
+        L.error("controller_registry_update", extra={"reason": e})
+        print(traceback.format_exc())
         pass
         return "", 204
 
@@ -407,8 +409,8 @@ async def controller_definition_registry_get(
     
 
 @app.get("/controller-instance/registry/get/")
-# async def controller_definition_registry_get(
-async def controller_instance_registry_get(
+async def controller_definition_registry_get(
+# async def controller_instance_registry_get(
     controller_id: str | None = None,
     make: str | None = None,
     model: str | None = None,

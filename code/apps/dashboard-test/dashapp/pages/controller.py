@@ -255,9 +255,27 @@ def build_tables(layout_options):
     for ltype, dims in layout_options.items():
         for dim, options in dims.items():
             title = "Data"
-            if ltype == "layout-1d":
-                title = f"Data 1-D ({dim})"
 
+            if ltype == "layout-settings":
+                title = f'Controller Settings'
+                table_list.append(
+                    dbc.AccordionItem(
+                        # [
+                        #     dag.AgGrid(
+                        #         id={"type": "settings-table", "index": dim},
+                        #         rowData=[],
+                        #         columnDefs=layout_options["layout-settings"][dim][
+                        #             "table-column-defs"
+                        #         ],
+                        #         columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
+                        #     )
+                        # ],
+                        title=title,
+                    )
+                )
+            
+            elif ltype == "layout-1d":
+                title = f"Data 1-D ({dim})"
                 # TODO: make the ids work for multiple dims
                 table_list.append(
                     dbc.AccordionItem(
@@ -668,8 +686,8 @@ def layout(controller_id=None):
         controller_definition = {}
 
     layout_options = {
+        "layout-settings": {"time": {"table-column-defs": [], "variable-list": []}},
         "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}},
-        # "layout-settings": {"time": {"table-column-defs": [], "variable-list": []}}
     }
     column_defs_1d = []  # deque([], maxlen=10)
     dropdown_list_1d = []
