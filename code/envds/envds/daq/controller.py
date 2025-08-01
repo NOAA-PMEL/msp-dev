@@ -389,7 +389,7 @@ class Controller(envdsBase):
         return self.config.host
 
     def build_app_uid(self):
-        parts = [self.get_make(), self.get_model(), self.get_host()]
+        parts = [self.get_make(), self.get_model(), self.get_serial_number()]
         return (self.ID_DELIM).join(parts)
 
     # def build_app_uid(self):
