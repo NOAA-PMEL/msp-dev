@@ -270,7 +270,7 @@ class ShellyPro3(Controller):
 
             self.logger.debug("conf", extra={"data": conf})
 
-            attrs = ShellyPro3.metadata["attributes"]
+            attrs = self.metadata["attributes"]
 
             # override default metadata attributes with config values
             for name, val in conf["attributes"].items():
