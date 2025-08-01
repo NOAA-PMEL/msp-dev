@@ -426,7 +426,7 @@ class ShellyPro3(Controller):
                 data = await self.client_recv_buffer.get()
                 # data = await self.client.recv()
                 self.logger.debug("recv_data_loop", extra={"recv_data": data})
-
+                print(f"recv_data_loop: data: {data}")
                 # the only data coming from Shelly should be status
                 if data and "id" in data.data:
                     try:
