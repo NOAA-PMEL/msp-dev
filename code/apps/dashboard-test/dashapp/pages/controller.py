@@ -1325,19 +1325,19 @@ def layout(controller_id=None):
 #         # return [dash.no_update, dash.no_update]
 
 
-# @callback(Output("controller-data-buffer", "data"), Input("ws-controller-instance", "message"))
-# def update_controller_data_buffer(e):
-#     if e is not None and "data" in e:
-#         try:
-#             msg = json.loads(e["data"])
-#             print(f"update_controller_data: {msg}")
-#             if msg:
-#                 return msg
-#         except Exception as e:
-#             print(f"data buffer update error: {e}")
-#             # return dash.no_update
-#             # return dash.no_update
-#     return dash.no_update
+@callback(Output("controller-data-buffer", "data"), Input("ws-controller-instance", "message"))
+def update_controller_data_buffer(e):
+    if e is not None and "data" in e:
+        try:
+            msg = json.loads(e["data"])
+            print(f"update_controller_data: {msg}")
+            if msg:
+                return msg
+        except Exception as e:
+            print(f"data buffer update error: {e}")
+            # return dash.no_update
+            # return dash.no_update
+    return dash.no_update
 
 
 # @callback(
@@ -1862,10 +1862,10 @@ def layout(controller_id=None):
 # #     return heatmap
 
 
-# @callback(
-#     Output("ws-controller-instance", "send"), Input("ws-send-instance-buffer", "children")
-# )
-# def send_to_instance(value):
-#     print(f"sending: {value}")
-#     return value
+@callback(
+    Output("ws-controller-instance", "send"), Input("ws-send-instance-buffer", "children")
+)
+def send_to_instance(value):
+    print(f"sending: {value}")
+    return value
 
