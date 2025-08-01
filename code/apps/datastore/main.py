@@ -26,7 +26,7 @@ from datastore_requests import (
     DeviceDefinitionRequest,
     DeviceInstanceRequest,
     # ControllerDataUpdate,
-    # ControllerDataRequest,
+    ControllerDataRequest,
     ControllerDefinitionRequest,
     # ControllerDefinitionUpdate,
     ControllerInstanceRequest,
@@ -278,8 +278,8 @@ async def device_definition_registry_get(
 
 @app.get("/device-instance/registry/get/")
 # async def device_definition_registry_get(query: Annotated[DeviceInstanceRequest, Query()]):
-async def device_definition_registry_get(
-# async def device_instance_registry_get(
+# async def device_definition_registry_get(
+async def device_instance_registry_get(
     device_id: str | None = None,
     make: str | None = None,
     model: str | None = None,
@@ -297,9 +297,9 @@ async def device_definition_registry_get(
         device_type=device_type,
     )
 
-    L.debug("device_definition_registry_get", extra={"query": query})
+    L.debug("device_instance_registry_get", extra={"query": query})
     results = await datastore.device_instance_registry_get(query)
-    L.debug("device_definition_registry_get", extra={"results": results})
+    L.debug("device_instance_registry_get", extra={"results": results})
     # return await datastore.device_instance_registry_get(query)
     return results
 
@@ -332,7 +332,7 @@ async def controller_data_get(
     variable: List[str] | None = None,
 ):
     L.debug("main:controller_data_get", extra={"controller_id": controller_id})
-    query = DataRequest(
+    query = ControllerDataRequest(
         controller_id=controller_id,
         make=make,
         model=model,
@@ -409,8 +409,8 @@ async def controller_definition_registry_get(
     
 
 @app.get("/controller-instance/registry/get/")
-async def controller_definition_registry_get(
-# async def controller_instance_registry_get(
+# async def controller_definition_registry_get(
+async def controller_instance_registry_get(
     controller_id: str | None = None,
     make: str | None = None,
     model: str | None = None,
@@ -428,8 +428,8 @@ async def controller_definition_registry_get(
         # controller_type=device_type
     )
 
-    L.debug("controller_definition_registry_get", extra={"query": query})
+    L.debug("controller_instance_registry_get", extra={"query": query})
     results = await datastore.controller_instance_registry_get(query)
-    L.debug("controller_definition_registry_get", extra={"results": results})
+    L.debug("controller_instance_registry_get", extra={"results": results})
     # return await datastore.controller_instance_registry_get(query)
     return results
