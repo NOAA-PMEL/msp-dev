@@ -1,16 +1,16 @@
-name: Build and Push shelly-shellypro3
+name: Build and Push shelly-shellymock
 
 on:
 
   push:
     branches: [ dev-* ]
     paths:
-      - 'code/apps/daq/controllers/Shelly/ShellyPro3/**'
+      - 'code/apps/daq/controllers/Shelly/ShellyMock/**'
   
   pull_request:
     branches: [main, dev-*]
     paths:
-      - 'code/apps/daq/controllers/Shelly/ShellyPro3/**'
+      - 'code/apps/daq/controllers/Shelly/ShellyMock/**'
 
 env:
   REGISTRY: ghcr.io
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
         run:
-            working-directory: './code/apps/daq/controllers/Shelly/ShellyPro3'
+            working-directory: './code/apps/daq/controllers/Shelly/ShellyMock'
       
     permissions:
         contents: read
@@ -84,7 +84,7 @@ jobs:
         - name: Build and push multi-platform image
           uses: docker/build-push-action@v4
           with:
-            context: code/apps/daq/controllers/Shelly/ShellyPro3/.
+            context: code/apps/daq/controllers/Shelly/ShellyMock/.
             # dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
             push: true
             tags: |
