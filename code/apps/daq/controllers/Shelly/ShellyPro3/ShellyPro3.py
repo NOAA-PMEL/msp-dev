@@ -430,6 +430,7 @@ class ShellyPro3(Controller):
                 # the only data coming from Shelly should be status
                 if data and "timestamp" in data:
                     try:
+                        
                         channel = data["data"]["id"]
                         output = data["data"]["output"]
                         # if output.lower() == "true":
