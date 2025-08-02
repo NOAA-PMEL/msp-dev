@@ -589,7 +589,7 @@ def get_controller_data(controller_id: str):
         L.error("get_controller_data", extra={"reason": e})
     return []
 
-def get_controller_instance(device_id: str, device_type: str="controller"):
+def get_controller_instance(controller_id: str, device_type: str="controller"):
 
     query = {"controller_id": controller_id}
     url = f"http://{datastore_url}/controller-instance/registry/get/"
@@ -606,9 +606,9 @@ def get_controller_instance(device_id: str, device_type: str="controller"):
     
     return {}
 
-def get_controller_definition_by_device_id(controller_id: str):
+def get_controller_definition_by_id(controller_id: str):
 
-    device = get_controller_instance(device_id=controller_id)
+    device = get_controller_instance(controller_id=controller_id)
     if device:
         try:
             controller_definition_id = "::".join([
@@ -620,7 +620,7 @@ def get_controller_definition_by_device_id(controller_id: str):
             return get_controller_definition(controller_definition_id=controller_definition_id)
         
         except Exception as e:
-            print("ERROR: get_controller_definition_by_device_id", extra={"reason": e})
+            print("ERROR: get_controller_definition_by_id", extra={"reason": e})
     
     return {}
 
@@ -647,7 +647,7 @@ def layout(controller_id=None):
         parts = controller_id.split("::")
         # print(f"get_layout: {parts}")
         controller_meta = {
-            "device_id": controller_id,
+            "controller_id": controller_id,
             "make": parts[0],
             "model": parts[1],
             "serial_number": parts[2],
@@ -673,7 +673,7 @@ def layout(controller_id=None):
         #             except KeyError:
         #                 pass
 
-        controller_definition = get_controller_definition_by_device_id(device_id=controller_id)
+        controller_definition = get_controller_definition_by_id(controller_id_id=controller_id)
         print(f"controller_definition: {controller_definition}")
         # else:
         #     sensor_definition = None
