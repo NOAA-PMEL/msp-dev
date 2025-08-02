@@ -439,6 +439,7 @@ class ShellyPro3(Controller):
                         # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
                         if channel == 0:
                             record = self.build_data_record()
+                            self.logger.debug("recv_data_loop", extra={"record": record})
                             record["timestamp"] = data["timestamp"]
                             record["variables"]["time"]["data"] = data["timestamp"]
 
