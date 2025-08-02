@@ -438,13 +438,14 @@ class ShellyPro3(Controller):
                         #     output = 0 
                         # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
                         if channel == 0:
-                            record = self.build_data_record()
+                            record = self.build_data_record(meta=False)
                             self.logger.debug("recv_data_loop", extra={"record": record})
                             record["timestamp"] = data["timestamp"]
                             record["variables"]["time"]["data"] = data["timestamp"]
+                            self.logger.debug("recv_data_loop", extra={"ts": data["timestamp"], "record": record})
 
                             temperature = data["data"]["temperature"]["tC"]
-                            record = self.build_data_record(meta=False)
+                            # record = self.build_data_record(meta=False)
                             record["variables"]["temperature"]["data"] = temperature
                             # channel 0 temperature data record
                             if record:
