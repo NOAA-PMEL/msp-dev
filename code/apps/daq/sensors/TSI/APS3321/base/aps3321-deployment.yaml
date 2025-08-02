@@ -15,7 +15,7 @@ spec:
         app: tsi-aps3321
     spec:
       imagePullSecrets:
-        - name: ghcr-ro-secret
+      - name: ghcr-ro-secret
       containers:
       - name: tsi-aps3321
         # image: registry-msp:5000/msp/sensor/tsi-aps3321:0.1.0
