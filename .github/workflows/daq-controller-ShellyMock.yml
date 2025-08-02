@@ -14,7 +14,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: shelly-shellypro3
+  IMAGE_NAME: shelly-shellymock
   # IMAGE_TAG: ${{ github.sha }}
   # IMAGE_TAG: $(cat VERSION)
 
