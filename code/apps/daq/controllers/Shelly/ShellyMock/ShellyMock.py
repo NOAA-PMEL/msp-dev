@@ -1,5 +1,6 @@
 import asyncio
 import json
+import random
 import signal
 import sys
 import os
@@ -466,7 +467,8 @@ class ShellyMock(Controller):
                                 record["variables"]["time"]["data"] = data["timestamp"]
                                 self.logger.debug("recv_data_loop", extra={"ts": data["timestamp"], "record": record})
 
-                                temperature = data["data"]["temperature"]["tC"]
+                                delta = random.random() - 0.5
+                                temperature = data["data"]["temperature"]["tC"] + delta
                                 # record = self.build_data_record(meta=False)
                                 record["variables"]["temperature"]["data"] = temperature
                                 # channel 0 temperature data record
