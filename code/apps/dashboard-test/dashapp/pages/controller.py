@@ -1340,46 +1340,46 @@ def update_controller_data_buffer(e):
     return dash.no_update
 
 
-# @callback(
-#     Output({"type": "controller-graph-1d", "index": ALL}, "extendData"),
-#     Input("controller-data-buffer", "data"),
-#     [
-#         State({"type": "controller-graph-1d-dropdown", "index": ALL}, "value"),
-#         State("controller-graph-axes", "data"),
-#         State({"type": "controller-graph-1d", "index": ALL}, "figure"),
-#     ],
-# )
-# def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
+@callback(
+    Output({"type": "controller-graph-1d", "index": ALL}, "extendData"),
+    Input("controller-data-buffer", "data"),
+    [
+        State({"type": "controller-graph-1d-dropdown", "index": ALL}, "value"),
+        State("controller-graph-axes", "data"),
+        State({"type": "controller-graph-1d", "index": ALL}, "figure"),
+    ],
+)
+def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 
-#     # # may need this later with multiple plots but I think it will still loop through drop downs
-#     # if "graph-1d" not in graph_axes:
-#     #     return dash.no_update
+    # # may need this later with multiple plots but I think it will still loop through drop downs
+    # if "graph-1d" not in graph_axes:
+    #     return dash.no_update
 
-#     # axes = graph_axes["graph-1d"]# = {"x-axis": "time", "y-axis": y_axis}
-#     try:
-#         figs = []
-#         if controller_data:
-#             print(f"controller_data: {controller_data}")
-#             for y_axis in y_axis_list:
-#                 if (
-#                     "time" not in controller_data["variables"]
-#                     or y_axis not in controller_data["variables"]
-#                 ):
-#                     return dash.no_update
+    # axes = graph_axes["graph-1d"]# = {"x-axis": "time", "y-axis": y_axis}
+    try:
+        figs = []
+        if controller_data:
+            print(f"controller_data: {controller_data}")
+            for y_axis in y_axis_list:
+                if (
+                    "time" not in controller_data["variables"]
+                    or y_axis not in controller_data["variables"]
+                ):
+                    return dash.no_update
 
-#                 x = [controller_data["variables"]["time"]["data"]]
-#                 y = [controller_data["variables"][y_axis]["data"]]
-#                 print(f"update: {[x]}, {[y]}")
-#                 figs.append({"x": [x], "y": [y]})
-#             # return {"x": [x], "y": [y]}
-#             return figs
+                x = [controller_data["variables"]["time"]["data"]]
+                y = [controller_data["variables"][y_axis]["data"]]
+                print(f"update: {[x]}, {[y]}")
+                figs.append({"x": [x], "y": [y]})
+            # return {"x": [x], "y": [y]}
+            return figs
 
-#     except Exception as e:
-#         print(f"data update error: {e}")
-#         # return dash.no_update
-#         # return dash.no_update
-#     raise PreventUpdate
-#     # return dash.no_update
+    except Exception as e:
+        print(f"data update error: {e}")
+        # return dash.no_update
+        # return dash.no_update
+    raise PreventUpdate
+    # return dash.no_update
 
 
 # @callback(
