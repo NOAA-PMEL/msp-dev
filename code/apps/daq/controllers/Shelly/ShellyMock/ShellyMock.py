@@ -200,7 +200,6 @@ class ShellyMock(Controller):
         }
     }
 
-
     def __init__(self, config=None, **kwargs):
         super(ShellyMock, self).__init__(config=config, **kwargs)
         self.data_task = None
