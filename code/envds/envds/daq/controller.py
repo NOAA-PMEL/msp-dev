@@ -942,10 +942,10 @@ class Controller(envdsBase):
 
             # record["variables"] = self.config.metadata.dict()["variables"]
 
-            print(1, record)
+            # print(1, record)
             for name, _ in record["variables"].items():
                 record["variables"][name]["data"] = None
-            print(2, record)
+            # print(2, record)
         else:
             for name, variable in self.config.metadata.dict()["variables"].items():
                 variable_type = variable["attributes"].get(
@@ -955,10 +955,10 @@ class Controller(envdsBase):
                 if variable_type["data"] in variable_types:
                     print(f"name: {name}")
                     record["variables"][name] = {
-                        "attributes": {"variable_type": {"data": variable_type}},
+                        "attributes": {"variable_type": variable_type},
                         "data": None,
                     }
-            print(3, record)
+            # print(3, record)
 
             # record["variables"] = dict()
             # for name,_ in self.config.metadata.variables.items():
