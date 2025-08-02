@@ -521,7 +521,7 @@ class Datastore:
         return {"results": []}
 
     # TODO Add controller_data_update
-    async def device_data_update(self, ce: CloudEvent):
+    async def controller_data_update(self, ce: CloudEvent):
 
         try:
             # database = "data"
