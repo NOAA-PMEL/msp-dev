@@ -300,7 +300,7 @@ def build_tables(layout_options):
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
-                                id={"type": "data-table-2d", "index": f"time::{dim}"},
+                                id={"type": "controller-data-table-2d", "index": f"time::{dim}"},
                                 rowData=[],
                                 columnDefs=layout_options["layout-2d"][dim][
                                     "table-column-defs"
@@ -324,14 +324,14 @@ def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
             dbc.CardHeader(
                 children=[
                     dcc.Dropdown(
-                        id={"type": "graph-1d-dropdown", "index": xaxis},
+                        id={"type": "controller-graph-1d-dropdown", "index": xaxis},
                         options=dropdown_list,
                         value="",
                     )
                 ]
             ),
             dcc.Graph(
-                id={"type": "graph-1d", "index": xaxis},
+                id={"type": "controller-graph-1d", "index": xaxis},
                 figure=go.Figure(
                     data=go.Scatter(x=[], y=[], type="scatter")
                     # {
@@ -351,19 +351,19 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
 
     content = dbc.Row(
         children=[
-            dbc.Button("Submit", {"type": "graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
+            dbc.Button("Submit", {"type": "controller-graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
             dbc.Label("z-axis min:"),
             dbc.Col(
                 dbc.Input(
                     type="number",
-                    id={"type": "graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"},
+                    id={"type": "controller-graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"},
                 )
             ),
             dbc.Label("z-axis max:"),
             dbc.Col(
                 dbc.Input(
                     type="number",
-                    id={"type": "graph-2d-z-axis-max", "index": f"{xaxis}::{yaxis}"},
+                    id={"type": "controller-graph-2d-z-axis-max", "index": f"{xaxis}::{yaxis}"},
                 )
             ),
         ]
@@ -403,7 +403,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
             dbc.CardHeader(
                 children=[
                     dcc.Dropdown(
-                        id={"type": "graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"},
+                        id={"type": "controller-graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"},
                         options=dropdown_list,
                         value="",
                     )
@@ -415,7 +415,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
                     dbc.Col(
                         dcc.Graph(
                             id={
-                                "type": "graph-2d-heatmap",
+                                "type": "controller-graph-2d-heatmap",
                                 "index": f"{xaxis}::{yaxis}",
                             },
                             # figure=go.Figure(
@@ -434,7 +434,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
                     ),
                     dbc.Col(
                         dcc.Graph(
-                            id={"type": "graph-2d-line", "index": f"{xaxis}::{yaxis}"},
+                            id={"type": "controller-graph-2d-line", "index": f"{xaxis}::{yaxis}"},
                             # figure=go.Figure(
                             #     data=go.Line(x=[], y=[], type="line")
                             # ),
@@ -574,9 +574,9 @@ def build_graphs(layout_options):
 
     return graph_list
 
-def get_controller_data(device_id: str, device_type: str="controller"):
+def get_controller_data(controller_id: str):
     
-    query = {"device_type": device_type, "device_id": device_id}
+    query = {"controller_id": controller_id}
     url = f"http://{datastore_url}/controller/data/get/"
     print(f"controller-data-get: {url}, query: {query}")
     try:
@@ -591,7 +591,7 @@ def get_controller_data(device_id: str, device_type: str="controller"):
 
 def get_controller_instance(device_id: str, device_type: str="controller"):
 
-    query = {"device_type": device_type, "device_id": device_id}
+    query = {"controller_id": controller_id}
     url = f"http://{datastore_url}/controller-instance/registry/get/"
     L.debug("get_controller_instance", extra={"url": url, "query": query})
     try:
@@ -606,27 +606,27 @@ def get_controller_instance(device_id: str, device_type: str="controller"):
     
     return {}
 
-def get_controller_definition_by_device_id(device_id: str, device_type: str="controller"):
+def get_controller_definition_by_device_id(controller_id: str):
 
-    device = get_controller_instance(device_id=device_id, device_type=device_type)
+    device = get_controller_instance(device_id=controller_id)
     if device:
         try:
-            device_definition_id = "::".join([
+            controller_definition_id = "::".join([
                 device["make"],
                 device["model"],
                 device["version"]
             ])
-            print(f"controller_definition_id: {device_definition_id}")
-            return get_controller_definition(device_definition_id=device_definition_id, device_type=device_type)
+            print(f"controller_definition_id: {controller_definition_id}")
+            return get_controller_definition(controller_definition_id=controller_definition_id)
         
         except Exception as e:
             print("ERROR: get_controller_definition_by_device_id", extra={"reason": e})
     
     return {}
 
-def get_controller_definition(device_definition_id: str, device_type: str="controller"):
+def get_controller_definition(controller_definition_id: str):
 
-    query = {"device_type": device_type, "device_definition_id": device_definition_id}
+    query = {"controller_definition_id": controller_definition_id}
     url = f"http://{datastore_url}/controller-definition/registry/get/"
     print(f"controller-definition-get: {url}")
     try:
@@ -673,7 +673,7 @@ def layout(controller_id=None):
         #             except KeyError:
         #                 pass
 
-        controller_definition = get_controller_definition_by_device_id(device_id=controller_id, device_type="controller")
+        controller_definition = get_controller_definition_by_device_id(device_id=controller_id)
         print(f"controller_definition: {controller_definition}")
         # else:
         #     sensor_definition = None
@@ -912,7 +912,7 @@ def layout(controller_id=None):
                 #                     #         dbc.CardHeader(
                 #                     #             children=[
                 #                     #                 dcc.Dropdown(
-                #                     #                     id="graph-1d-dropdown",
+                #                     #                     id="controller-graph-1d-dropdown",
                 #                     #                     options=dropdown_list_1d,
                 #                     #                     value=""
                 #                     #                 )
@@ -961,7 +961,7 @@ def layout(controller_id=None):
             ws_send_buffer,
             dcc.Store(id="controller-definition", data=controller_definition),
             dcc.Store(id="controller-meta", data=controller_meta),
-            dcc.Store(id="graph-axes", data={}),
+            dcc.Store(id="controller-graph-axes", data={}),
             dcc.Store(id="controller-data-buffer", data={}),
             # dcc.Interval(id="test-interval", interval=(10*1000)),
             # dcc.Interval(
@@ -1110,85 +1110,85 @@ def layout(controller_id=None):
 #         return dash.no_update
 
 
-# @callback(
-#     # [Output({"type": "graph-1d", "index": MATCH}, "figure"), Output("graph-axes", "data")],
-#     Output(
-#         {"type": "graph-1d", "index": MATCH}, "figure"
-#     ),  # Output("graph-axes", "data")],
-#     Input({"type": "graph-1d-dropdown", "index": MATCH}, "value"),
-#     [
-#         State("controller-meta", "data"),
-#         State("graph-axes", "data"),
-#         State("controller-definition", "data"),
-#         State({"type": "graph-1d-dropdown", "index": MATCH}, "id"),
-#     ],
-# )
-# def select_graph_1d(y_axis, controller_meta, graph_axes, controller_definition, graph_id):
-#     print(f"select_graph_1d: {y_axis}, {controller_meta}, {graph_axes}")
-#     # print(f"current_fig: {current_fig}")
-#     try:
-#         if "graph-1d" not in graph_axes:
-#             graph_axes["graph-1d"] = dict()
-#         graph_axes["graph-1d"][graph_id["index"]] = {"x-axis": "time", "y-axis": y_axis}
-#         print(f"select_graph_1d: {graph_axes}")
+@callback(
+    # [Output({"type": "graph-1d", "index": MATCH}, "figure"), Output("graph-axes", "data")],
+    Output(
+        {"type": "controller-graph-1d", "index": MATCH}, "figure"
+    ),  # Output("graph-axes", "data")],
+    Input({"type": "controller-graph-1d-dropdown", "index": MATCH}, "value"),
+    [
+        State("controller-meta", "data"),
+        State("controller-graph-axes", "data"),
+        State("controller-definition", "data"),
+        State({"type": "controller-graph-1d-dropdown", "index": MATCH}, "id"),
+    ],
+)
+def select_graph_1d(y_axis, controller_meta, graph_axes, controller_definition, graph_id):
+    print(f"select_graph_1d: {y_axis}, {controller_meta}, {graph_axes}")
+    # print(f"current_fig: {current_fig}")
+    try:
+        if "controller-graph-1d" not in graph_axes:
+            graph_axes["controller-graph-1d"] = dict()
+        graph_axes["controller-graph-1d"][graph_id["index"]] = {"x-axis": "time", "y-axis": y_axis}
+        print(f"select_graph_1d: {graph_axes}")
 
-#         x = []
-#         y = []
-#         query = {
-#             "device_id": controller_meta["device_id"],
-#             # "make": sensor_meta["make"],
-#             # "model": sensor_meta["model"],
-#             # "serial_number": sensor_meta["serial_number"],
-#         }
-#         # sort = {"variables.time.data": 1}
-#         results = get_controller_data(device_id=controller_meta["device_id"], device_type="controller")
-#         # results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
-#         # # results = db_data_client.find("data", "sensor", query, sort)
-#         print(f"***results: {results}")
-#         if results is None or len(results) == 0:
-#             print("results = None")
-#             # return [{"x": [], "y": [], "type": "scatter"}, graph_axes]
-#             return {"x": [], "y": [], "type": "scatter"}  # , graph_axes]
-#         if results and len(results) > 0:
-#             print("results = good")
-#             for doc in results:
-#                 try:
-#                     x.append(doc["variables"]["time"]["data"])
-#                     y.append(doc["variables"][y_axis]["data"])
-#                 except KeyError:
-#                     continue
+        x = []
+        y = []
+        query = {
+            "controller_id": controller_meta["controller_id"],
+            # "make": sensor_meta["make"],
+            # "model": sensor_meta["model"],
+            # "serial_number": sensor_meta["serial_number"],
+        }
+        # sort = {"variables.time.data": 1}
+        results = get_controller_data(controller_id=controller_meta["controller_id"])
+        # results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
+        # # results = db_data_client.find("data", "sensor", query, sort)
+        print(f"***results: {results}")
+        if results is None or len(results) == 0:
+            print("results = None")
+            # return [{"x": [], "y": [], "type": "scatter"}, graph_axes]
+            return {"x": [], "y": [], "type": "scatter"}  # , graph_axes]
+        if results and len(results) > 0:
+            print("results = good")
+            for doc in results:
+                try:
+                    x.append(doc["variables"]["time"]["data"])
+                    y.append(doc["variables"][y_axis]["data"])
+                except KeyError:
+                    continue
 
-#         # print(f"x,y: {x}, {y}")
-#         # # fig = go.Figure(data=[go.Scatter(x=x, y=y)])
-#         # print(f"go fig: {fig}")
-#         # fig = dict(data=[{'x': x, 'y': y}])
-#         units = ""
-#         try:
-#             units = f'({controller_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
-#         except KeyError:
-#             pass
+        # print(f"x,y: {x}, {y}")
+        # # fig = go.Figure(data=[go.Scatter(x=x, y=y)])
+        # print(f"go fig: {fig}")
+        # fig = dict(data=[{'x': x, 'y': y}])
+        units = ""
+        try:
+            units = f'({controller_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
+        except KeyError:
+            pass
 
-#         # fig = {
-#         #     "data": [{"x": x, "y": y, "type": "scatter"}],
-#         #     "layout": {
-#         #         "xaxis": {"title": "Time"},
-#         #         "yaxis": {"title": f"{y_axis} {units}"},
-#         #     },
-#         # }
-#         fig = go.Figure(
-#             data=go.Scatter(x=x, y=y, type="scatter"),
-#             layout={
-#                 "xaxis": {"title": "Time"},
-#                 "yaxis": {"title": f"{y_axis} {units}"},
-#             },
-#         )
-#         # print(f"go fig: {fig}")
-#         # return [fig, graph_axes]
-#         return fig  # , graph_axes]
-#     except Exception as e:
-#         print(f"select_graph_1d error: {e}")
-#         # return [dash.no_update, dash.no_update]
-#         return dash.no_update  # , dash.no_update]
+        # fig = {
+        #     "data": [{"x": x, "y": y, "type": "scatter"}],
+        #     "layout": {
+        #         "xaxis": {"title": "Time"},
+        #         "yaxis": {"title": f"{y_axis} {units}"},
+        #     },
+        # }
+        fig = go.Figure(
+            data=go.Scatter(x=x, y=y, type="scatter"),
+            layout={
+                "xaxis": {"title": "Time"},
+                "yaxis": {"title": f"{y_axis} {units}"},
+            },
+        )
+        # print(f"go fig: {fig}")
+        # return [fig, graph_axes]
+        return fig  # , graph_axes]
+    except Exception as e:
+        print(f"select_graph_1d error: {e}")
+        # return [dash.no_update, dash.no_update]
+        return dash.no_update  # , dash.no_update]
 
 
 # @callback(
@@ -1340,46 +1340,46 @@ def update_controller_data_buffer(e):
     return dash.no_update
 
 
-# @callback(
-#     Output({"type": "graph-1d", "index": ALL}, "extendData"),
-#     Input("controller-data-buffer", "data"),
-#     [
-#         State({"type": "graph-1d-dropdown", "index": ALL}, "value"),
-#         State("graph-axes", "data"),
-#         State({"type": "graph-1d", "index": ALL}, "figure"),
-#     ],
-# )
-# def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
+@callback(
+    Output({"type": "controller-graph-1d", "index": ALL}, "extendData"),
+    Input("controller-data-buffer", "data"),
+    [
+        State({"type": "controller-graph-1d-dropdown", "index": ALL}, "value"),
+        State("controller-graph-axes", "data"),
+        State({"type": "controller-graph-1d", "index": ALL}, "figure"),
+    ],
+)
+def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 
-#     # # may need this later with multiple plots but I think it will still loop through drop downs
-#     # if "graph-1d" not in graph_axes:
-#     #     return dash.no_update
+    # # may need this later with multiple plots but I think it will still loop through drop downs
+    # if "graph-1d" not in graph_axes:
+    #     return dash.no_update
 
-#     # axes = graph_axes["graph-1d"]# = {"x-axis": "time", "y-axis": y_axis}
-#     try:
-#         figs = []
-#         if controller_data:
-#             print(f"controller_data: {controller_data}")
-#             for y_axis in y_axis_list:
-#                 if (
-#                     "time" not in controller_data["variables"]
-#                     or y_axis not in controller_data["variables"]
-#                 ):
-#                     return dash.no_update
+    # axes = graph_axes["graph-1d"]# = {"x-axis": "time", "y-axis": y_axis}
+    try:
+        figs = []
+        if controller_data:
+            print(f"controller_data: {controller_data}")
+            for y_axis in y_axis_list:
+                if (
+                    "time" not in controller_data["variables"]
+                    or y_axis not in controller_data["variables"]
+                ):
+                    return dash.no_update
 
-#                 x = [controller_data["variables"]["time"]["data"]]
-#                 y = [controller_data["variables"][y_axis]["data"]]
-#                 print(f"update: {[x]}, {[y]}")
-#                 figs.append({"x": [x], "y": [y]})
-#             # return {"x": [x], "y": [y]}
-#             return figs
+                x = [controller_data["variables"]["time"]["data"]]
+                y = [controller_data["variables"][y_axis]["data"]]
+                print(f"update: {[x]}, {[y]}")
+                figs.append({"x": [x], "y": [y]})
+            # return {"x": [x], "y": [y]}
+            return figs
 
-#     except Exception as e:
-#         print(f"data update error: {e}")
-#         # return dash.no_update
-#         # return dash.no_update
-#     raise PreventUpdate
-#     # return dash.no_update
+    except Exception as e:
+        print(f"data update error: {e}")
+        # return dash.no_update
+        # return dash.no_update
+    raise PreventUpdate
+    # return dash.no_update
 
 
 # @callback(
@@ -1693,13 +1693,13 @@ def update_table_1d(controller_data, row_data_list, col_defs_list):  # , sensor_
 
 # @callback(
 #     Output(
-#         {"type": "data-table-2d", "index": ALL}, "rowData"
+#         {"type": "controller-data-table-2d", "index": ALL}, "rowData"
 #     ),  # , Output("active-sensor-changes", "data")],
 #     Input("controller-data-buffer", "data"),
 #     # Input("ws-controller-instance", "message"),
 #     [
-#         State({"type": "data-table-2d", "index": ALL}, "rowData"),
-#         State({"type": "data-table-2d", "index": ALL}, "columnDefs"),
+#         State({"type": "controller-data-table-2d", "index": ALL}, "rowData"),
+#         State({"type": "controller-data-table-2d", "index": ALL}, "columnDefs"),
 #     ],  # , dcc.Store("controller-definition", "data")],
 #     # prevent_initial_call=True,
 # )
