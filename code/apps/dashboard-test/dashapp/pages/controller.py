@@ -673,7 +673,7 @@ def layout(controller_id=None):
         #             except KeyError:
         #                 pass
 
-        controller_definition = get_controller_definition_by_id(controller_id_id=controller_id)
+        controller_definition = get_controller_definition_by_id(controller_id=controller_id)
         print(f"controller_definition: {controller_definition}")
         # else:
         #     sensor_definition = None
