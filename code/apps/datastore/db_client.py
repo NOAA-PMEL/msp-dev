@@ -184,7 +184,7 @@ class DBClient:
         database: str,
         collection: str,
         # document: dict,
-        request: DataUpdate,
+        request: ControllerDataUpdate,
         # update: dict,
         # filter: dict = None,
         # upsert=False,
@@ -192,7 +192,7 @@ class DBClient:
     ):
         return None
 
-    async def controller_data_get(self, query: DataRequest):
+    async def controller_data_get(self, query: ControllerDataRequest):
         return None
 
     async def controller_definition_registry_update(

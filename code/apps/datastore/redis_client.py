@@ -511,7 +511,7 @@ class RedisClient(DBClient):
         # document: dict,
         database: str,
         collection: str,
-        request: DataUpdate,
+        request: ControllerDataUpdate,
         ttl: int = 300
     ):
         await super(RedisClient, self).controller_data_update(database, collection, request, ttl)
@@ -594,7 +594,7 @@ class RedisClient(DBClient):
             return False
 
     # async def controller_data_get(self, query: DataStoreQuery):
-    async def controller_data_get(self, request: DataRequest):
+    async def controller_data_get(self, request: ControllerDataRequest):
         await super(RedisClient, self).controller_data_get(request)
 
         max_results = 10000

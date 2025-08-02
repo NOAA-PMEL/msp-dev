@@ -521,6 +521,95 @@ class Datastore:
         return {"results": []}
 
     # TODO Add controller_data_update
+    async def device_data_update(self, ce: CloudEvent):
+
+        try:
+            # database = "data"
+            # collection = "device"
+            # self.logger.debug("data_device_update", extra={"ce": ce})
+            database = "data"
+            collection = "controller"
+            attributes = ce.data["attributes"]
+            dimensions = ce.data["dimensions"]
+            variables = ce.data["variables"]
+
+            make = attributes["make"]["data"]
+            model = attributes["model"]["data"]
+            serial_number = attributes["serial_number"]["data"]
+
+            # TODO fix serial number in magic data record, tmp workaround for now
+            # serial_number = attributes["serial_number"]
+
+            format_version = attributes["format_version"]["data"]
+            parts = format_version.split(".")
+            self.logger.debug(f"parts: {parts}, {format_version}")
+            erddap_version = f"v{parts[0]}"
+            controller_id = "::".join([make, model, serial_number])
+            self.logger.debug("controller_data_update", extra={"device_id": controller_id})
+            timestamp = string_to_timestamp(ce.data["timestamp"]) # change to an actual timestamp
+
+            self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
+
+            doc = {
+                # "_id": id,
+                "make": make,
+                "model": model,
+                "serial_number": serial_number,
+                "version": erddap_version,
+                "timestamp": timestamp,
+                "attributes": attributes,
+                "dimensions": dimensions,
+                "variables": variables,
+                # "last_update": datetime.now(tz=timezone.utc),
+            }
+
+            request = ControllerDataUpdate(
+                make=make,
+                model=model,
+                serial_number=serial_number,
+                version=erddap_version,
+                timestamp=timestamp,
+                attributes=attributes,
+                dimensions=dimensions,
+                variables=variables,
+            )
+
+            self.logger.debug("controller_data_update", extra={"request": request})
+            # request = DatastoreRequest(
+            #     database="data", collection="device", request=update
+            # )
+            # self.logger.debug("device_data_update", extra={"device-doc": doc})
+            # filter = {
+            #     "make": make,
+            #     "model": model,
+            #     "version": erddap_version,
+            #     "serial_number": serial_number,
+            #     "timestamp": timestamp,
+            # }
+            await self.db_client.controller_data_update(
+                database=database,
+                collection=collection,
+                request=request,
+                ttl=self.config.db_data_ttl,
+            )
+            # await self.db_client.device_data_update(
+            #     document=doc, ttl=self.config.db_data_ttl
+            # )
+            # result = self.db_client.update_one(
+            #     database="data",
+            #     collection="device",
+            #     filter=filter,
+            #     # update=update,
+            #     document=doc,
+            #     # upsert=True,
+            #     ttl=self.config.db_data_ttl
+            # )
+            # L.info("device_data_update result", extra={"result": result})
+
+        except Exception as e:
+            L.error("device_data_update", extra={"reason": e})
+        pass
+
 
     async def controller_data_get(self, query: DataRequest):
 
