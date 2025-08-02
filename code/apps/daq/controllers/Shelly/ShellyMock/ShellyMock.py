@@ -427,67 +427,76 @@ class ShellyMock(Controller):
             pass
 
     async def recv_data_loop(self):
-        tmpl ='{"id": 0,"source": "init","output": false,"temperature": {"tC": 46.4,"tF": 115.6}}'
+        
+        # tmpl ='{"id": 0,"source": "init","output": false,"temperature": {"tC": 46.4,"tF": 115.6}}'
+
+        data0 = {"id": 0,"source": "init","output": True,"temperature": {"tC": 46.4,"tF": 115.6}}
+        data1 = {"id": 1,"source": "init","output": True,"temperature": {"tC": 46.4,"tF": 115.6}}
+        data2 = {"id": 2,"source": "init","output": True,"temperature": {"tC": 46.4,"tF": 115.6}}
 
         while True:
             try:
                 # data = await self.client_recv_buffer.get()
                 # data = await self.client.recv()
 
-                shelly_data = json.loads(tmpl)
-                data = {"timestamp": get_datetime_string(), "data": shelly_data}
+                # shelly_data = json.loads(tmpl)
+                for shelly_data in [data0,data1,data2]:
+
+                    
+                    data = {"timestamp": get_datetime_string(), "data": shelly_data}
 
 
-                self.logger.debug("recv_data_loop", extra={"recv_data": data})
-                print(f"recv_data_loop: data: {data}")
-                # the only data coming from Shelly should be status
-                if data and "timestamp" in data:
-                    try:
-                        
-                        channel = data["data"]["id"]
-                        output = data["data"]["output"]
-                        # if output.lower() == "true":
-                        #     output = 1
-                        # elif output.lower() == "false":
-                        #     output = 0 
-                        # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
-                        if channel == 0:
-                            record = self.build_data_record(meta=False)
-                            self.logger.debug("recv_data_loop", extra={"record": record})
-                            record["timestamp"] = data["timestamp"]
-                            record["variables"]["time"]["data"] = data["timestamp"]
-                            self.logger.debug("recv_data_loop", extra={"ts": data["timestamp"], "record": record})
+                    self.logger.debug("recv_data_loop", extra={"recv_data": data})
+                    print(f"recv_data_loop: data: {data}")
+                    # the only data coming from Shelly should be status
+                    if data and "timestamp" in data:
+                        try:
+                            
+                            channel = data["data"]["id"]
+                            output = data["data"]["output"]
+                            # if output.lower() == "true":
+                            #     output = 1
+                            # elif output.lower() == "false":
+                            #     output = 0 
+                            # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
+                            if channel == 0:
+                                record = self.build_data_record(meta=False)
+                                self.logger.debug("recv_data_loop", extra={"record": record})
+                                record["timestamp"] = data["timestamp"]
+                                record["variables"]["time"]["data"] = data["timestamp"]
+                                self.logger.debug("recv_data_loop", extra={"ts": data["timestamp"], "record": record})
 
-                            temperature = data["data"]["temperature"]["tC"]
-                            # record = self.build_data_record(meta=False)
-                            record["variables"]["temperature"]["data"] = temperature
-                            # channel 0 temperature data record
-                            if record:
-                                event = DAQEvent.create_controller_data_update(
-                                    # source="sensor.mockco-mock1-1234", data=record
-                                    source=self.get_id_as_source(),
-                                    data=record,
-                                )
-                                destpath = f"{self.get_id_as_topic()}/controller/data/update"
-                                event["destpath"] = destpath
-                                self.logger.debug(
-                                    "recv_data_loop",
-                                    extra={"data": event, "destpath": destpath},
-                                )
-                                # message = Message(data=event, destpath=destpath)
-                                message = event
-                                # self.logger.debug("default_data_loop", extra={"m": message})
-                                await self.send_message(message)
+                                temperature = data["data"]["temperature"]["tC"]
+                                # record = self.build_data_record(meta=False)
+                                record["variables"]["temperature"]["data"] = temperature
+                                # channel 0 temperature data record
+                                if record:
+                                    event = DAQEvent.create_controller_data_update(
+                                        # source="sensor.mockco-mock1-1234", data=record
+                                        source=self.get_id_as_source(),
+                                        data=record,
+                                    )
+                                    destpath = f"{self.get_id_as_topic()}/controller/data/update"
+                                    event["destpath"] = destpath
+                                    self.logger.debug(
+                                        "recv_data_loop",
+                                        extra={"data": event, "destpath": destpath},
+                                    )
+                                    # message = Message(data=event, destpath=destpath)
+                                    message = event
+                                    # self.logger.debug("default_data_loop", extra={"m": message})
+                                    await self.send_message(message)
 
 
-                        # update actual state of channel output
-                        name = f"channel_{channel}_power"
-                        actual = int(output)
-                        self.settings.set_actual(name=name, actual=actual)
-                        self.logger.debug("recv_data_loop", extra={"setting_name": name, "actual": actual, "settings": self.settings.get_settings()})
-                    except KeyError as e:
-                        self.logger.error("unknown response", extra={"reason": e})
-                        pass
+                            # update actual state of channel output
+                            name = f"channel_{channel}_power"
+                            actual = int(output)
+                            self.settings.set_actual(name=name, actual=actual)
+                            self.logger.debug("recv_data_loop", extra={"setting_name": name, "actual": actual, "settings": self.settings.get_settings()})
+                        except KeyError as e:
+                            self.logger.error("unknown response", extra={"reason": e})
+                            pass
+                    await asyncio.sleep(.2)
 
                 await asyncio.sleep(2)
 
