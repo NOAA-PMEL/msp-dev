@@ -65,7 +65,6 @@ class FilemanagerConfig(BaseSettings):
     # )
     # # erddap_author: str = "fake_author"
 
-    # TODO fix ns prefix
     daq_id: str | None = None
     base_path: str | None = None
     save_interval: int = 60
@@ -257,13 +256,13 @@ class Filemanager:
 
         self.logger.debug("configure", extra={"self.config": self.config})
 
-    async def data_save(self, ce):
+    async def data_save(self, ce, data_type="device"):
         try:
             src = ce["source"]
             if src not in self.file_map:
                 parts = src.split(".")
                 device_name = parts[-1].split(self.ID_DELIM)
-                file_path = os.path.join("/data", "device", *device_name)
+                file_path = os.path.join("/data", data_type, *device_name)
 
                 self.file_map[src] = DataFile(base_path=file_path)
             await self.file_map[src].write(ce)

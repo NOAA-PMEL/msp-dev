@@ -81,8 +81,8 @@ filemanager = Filemanager()
 async def root():
     return {"message": "Hello World from Datastore"}
 
-@app.post("/data/save", status_code=status.HTTP_202_ACCEPTED)
-async def data_save(request: Request):
+@app.post("/device/data/save/", status_code=status.HTTP_202_ACCEPTED)
+async def device_data_save(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(
@@ -90,7 +90,23 @@ async def data_save(request: Request):
         )  # , "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
-        await filemanager.data_save(ce)
+        await filemanager.data_save(ce, data_type="device")
+
+    except Exception as e:
+        # print(e)
+        L.error("send", extra={"reason": e})
+        return "", 204
+
+@app.post("/controller/data/save/", status_code=status.HTTP_202_ACCEPTED)
+async def controller_data_save(request: Request):
+    try:
+        ce = from_http(request.headers, await request.body())
+        L.debug(
+            "data_save", extra={"ce": ce}
+        )  # , "destpath": ce["destpath"]})
+        # await adapter.send_to_mqtt(ce)
+        # await datastore.data_sensor_update(ce)
+        await filemanager.data_save(ce, data_type="controller")
 
     except Exception as e:
         # print(e)
