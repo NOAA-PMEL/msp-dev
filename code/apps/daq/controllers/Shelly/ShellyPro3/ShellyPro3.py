@@ -444,21 +444,23 @@ class ShellyPro3(Controller):
                         # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
                         if channel == 0:
                             record = self.build_data_record(meta=False)
-                            self.logger.debug("recv_data_loop", extra={"record": record})
+                            self.logger.debug("recv_data_loop1", extra={"record": record})
                             record["timestamp"] = data["timestamp"]
                             record["variables"]["time"]["data"] = data["timestamp"]
-                            self.logger.debug("recv_data_loop", extra={"ts": data["timestamp"], "record": record})
+                            self.logger.debug("recv_data_loop2", extra={"ts": data["timestamp"], "record": record})
 
                             temperature = data["data"]["temperature"]["tC"]
                             # record = self.build_data_record(meta=False)
                             record["variables"]["temperature"]["data"] = temperature
                             # channel 0 temperature data record
+                            self.logger.debug("recv_data_loop3", extra={"record": record})
                             if record:
                                 event = DAQEvent.create_controller_data_update(
                                     # source="sensor.mockco-mock1-1234", data=record
                                     source=self.get_id_as_source(),
                                     data=record,
                                 )
+                                self.logger.debug("recv_data_loop4", extra={"record": record})
                                 destpath = f"{self.get_id_as_topic()}/controller/data/update"
                                 event["destpath"] = destpath
                                 self.logger.debug(
