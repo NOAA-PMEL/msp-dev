@@ -1048,7 +1048,7 @@ class Controller(envdsBase):
 
             if self.enabled() and send_settings:
                 # send settings every other second
-                event = DAQEvent.create_sensor_settings_update(
+                event = DAQEvent.create_controller_settings_update(
                     # source="device.mockco-mock1-1234", data=record
                     source=self.get_id_as_source(),
                     data={"settings": self.settings.get_settings()},
