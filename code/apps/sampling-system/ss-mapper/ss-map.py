@@ -40,23 +40,22 @@ from envds.daq.types import DAQEventType as det
 
 import uvicorn
 
-from datastore_requests import (
-    DataStoreQuery,
-    DataUpdate,
-    DataRequest,
-    DeviceDefinitionUpdate,
-    DeviceDefinitionRequest,
-    DeviceInstanceUpdate,
-    DeviceInstanceRequest,
-    DatastoreRequest,
-    ControllerInstanceUpdate,
-    ControllerInstanceRequest,
-    ControllerDataRequest,
-    ControllerDataUpdate,
-    ControllerDefinitionRequest,
-    ControllerDefinitionUpdate
-)
-from db_client import DBClientManager, DBClientConfig
+# from datastore_requests import (
+#     DataStoreQuery,
+#     DataUpdate,
+#     DataRequest,
+#     DeviceDefinitionUpdate,
+#     DeviceDefinitionRequest,
+#     DeviceInstanceUpdate,
+#     DeviceInstanceRequest,
+#     DatastoreRequest,
+#     ControllerInstanceUpdate,
+#     ControllerInstanceRequest,
+#     ControllerDataRequest,
+#     ControllerDataUpdate,
+#     ControllerDefinitionRequest,
+#     ControllerDefinitionUpdate
+# )
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -68,7 +67,7 @@ L.setLevel(logging.INFO)
 # test
 
 
-class DatastoreConfig(BaseSettings):
+class SamplingSystemMapConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     debug: bool = True
@@ -91,62 +90,30 @@ class DatastoreConfig(BaseSettings):
     # TODO fix ns prefix
     daq_id: str | None = None
 
-    db_client_type: str | None = None
-    db_client_connection: str | None = None
-    db_client_hostname: str | None = None
-    db_client_port: str | None = None
-    db_client_username: str | None = None
-    db_client_password: str | None = None
-
-    db_data_ttl: int = 600  # seconds
-    db_reg_device_definition_ttl: int = 0  # permanent
-    db_reg_device_instance_ttl: int = 600  # seconds
-    db_reg_controller_definition_ttl: int = 0  # permanent
-    db_reg_controller_instance_ttl: int = 600  # seconds
-
-    erddap_enable: bool = False
-    erddap_http_connection: str | None = None
-    erddap_http_connection: str | None = None
-    erddap_author: str = "fake_author"
-
     knative_broker: str | None = None
     class Config:
         env_prefix = "DATASTORE_"
         case_sensitive = False
 
 
-class Datastore:
+class SamplingSystemMap:
     """docstring for TestClass."""
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.debug("TestClass instantiated")
         self.logger.setLevel(logging.DEBUG)
-        self.db_client = None
-        self.erddap_client = None
-        self.config = DatastoreConfig()
+
+        self.ss_map = dict()
+
+        self.config = SamplingSystemMapConfig()
         self.configure()
 
     def configure(self):
         # set clients
 
         self.logger.debug("configure", extra={"self.config": self.config})
-        db_client_config = DBClientConfig(
-            type=self.config.db_client_type,
-            config={
-                "connection": self.config.db_client_connection,
-                "hostname": self.config.db_client_hostname,
-                "port": self.config.db_client_port,
-                "username": self.config.db_client_username,
-                "password": self.config.db_client_password,
-            },
-        )
-        self.logger.debug("configure", extra={"db_client_config": db_client_config})
-        self.db_client = DBClientManager.create(db_client_config)
 
-        if self.config.erddap_enable:
-            # setup erddap client
-            pass
 
     async def send_event(self, ce):
         try:
@@ -845,7 +812,7 @@ async def main(config):
 if __name__ == "__main__":
     # app.run(debug=config.debug, host=config.host, port=config.port)
     # app.run()
-    config = DatastoreConfig()
+    config = SamplingSystemMapConfig()
     # asyncio.run(main(config))
 
     try:
