@@ -4,6 +4,7 @@ import signal
 import sys
 import os
 import logging
+import logging.config
 import yaml
 import traceback
 from envds.core import envdsLogger
