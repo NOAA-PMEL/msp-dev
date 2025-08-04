@@ -199,6 +199,8 @@ class ShellyPro3(Controller):
         }
     }
 
+
+
     def __init__(self, config=None, **kwargs):
         super(ShellyPro3, self).__init__(config=config, **kwargs)
         self.data_task = None
