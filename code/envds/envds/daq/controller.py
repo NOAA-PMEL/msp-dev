@@ -1046,7 +1046,9 @@ class Controller(envdsBase):
             except Exception as e:
                 self.logger.error("settings_monitor", extra={"error": e})
 
+            self.logger.debug("settings_monitor", extra={"enabled": self.enabled(), "send_settings": send_settings})
             if self.enabled() and send_settings:
+                
                 # send settings every other second
                 event = DAQEvent.create_controller_settings_update(
                     # source="device.mockco-mock1-1234", data=record

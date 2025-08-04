@@ -125,8 +125,15 @@ class DAQEvent(envdsEvent):
 
     @staticmethod
     def create_sensor_settings_update(source: str, data: dict = {}, extra_header: dict = None):
-        return DAQEvent.create(type=et.controller_settings_update(), source=source, data=data, extra_header=extra_header)
+        return DAQEvent.create(type=et.sensor_settings_update(), source=source, data=data, extra_header=extra_header)
 
+    @staticmethod
+    def create_controller_settings_request(source: str, data: dict = {}, extra_header: dict = None):
+        return DAQEvent.create(type=et.controller_settings_request(), source=source, data=data, extra_header=extra_header)
+
+    @staticmethod
+    def create_controller_settings_update(source: str, data: dict = {}, extra_header: dict = None):
+        return DAQEvent.create(type=et.controller_settings_update(), source=source, data=data, extra_header=extra_header)
 
     @staticmethod
     def create_controller_data_recv(source: str, data: dict = {}, extra_header: dict = None):
