@@ -362,7 +362,7 @@ async def test_task():
 async def root():
     return {"message": "Hello World from Test Dashboard"}
 
-@app.websocket("/ws/test/{client_id}")
+@app.websocket("/ws/test/{client_id}/")
 # @app.websocket("/ws/{client_id}")
 async def test_ws_endpoint(
     websocket: WebSocket,
@@ -539,7 +539,7 @@ async def sensor_ws_endpoint(
         await asyncio.sleep(.1)
         # await manager.broadcast(f"Client left the chat")
 
-@app.websocket("/ws/sensor-registry/{client_id}")
+@app.websocket("/ws/sensor-registry/{client_id}/")
 # @app.websocket("/ws/{client_id}")
 async def sensor_registry_ws_endpoint(
     websocket: WebSocket,
@@ -632,7 +632,7 @@ async def sensor_registry_ws_endpoint(
         await asyncio.sleep(.1)
         # await manager.broadcast(f"Client left the chat")
 
-@app.websocket("/ws/controller/{client_id}")
+@app.websocket("/ws/controller/{client_id}/")
 # @app.websocket("/ws/{client_id}")
 async def controller_ws_endpoint(
     websocket: WebSocket,
