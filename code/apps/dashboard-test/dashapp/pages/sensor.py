@@ -941,7 +941,7 @@ def layout(sensor_id=None):
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/{sensor_id}",
                 # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor/{sensor_id}"
                 # url=f"ws://mspbase01:8080/msp/dashboardtest/ws/sensor/{sensor_id}"
-                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor/{sensor_id}/"
+                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor/{sensor_id}"
 
             ),
             ws_send_buffer,
