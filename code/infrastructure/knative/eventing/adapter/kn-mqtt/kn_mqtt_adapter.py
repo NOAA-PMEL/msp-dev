@@ -205,8 +205,9 @@ class KNMQTTClient():
                     f'{error}. Trying again in {reconnect} seconds',
                     extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
                 )
-            finally:
                 await asyncio.sleep(reconnect)
+            finally:
+                await asyncio.sleep(0.0001)
 
     async def send_to_knbroker(self, ce: CloudEvent):
         print("send ", ce)
@@ -253,7 +254,7 @@ class KNMQTTClient():
                             data=body,
                             timeout=timeout
                         )
-                        # L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
+                        L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
                         r.raise_for_status()
                 except InvalidStructuredJSON:
                     L.error(f"INVALID MSG: {ce}")
