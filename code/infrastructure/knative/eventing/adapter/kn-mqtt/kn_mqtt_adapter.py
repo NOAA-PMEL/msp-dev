@@ -213,10 +213,19 @@ class KNMQTTClient():
         print("send ", ce)
         await self.to_knbroker_buffer.put(ce)
 
+    async def get_client(self):
+        # create a new client for each request
+        async with httpx.AsyncClient() as client:
+            # yield the client to the endpoint function
+            yield client
+            # close the client when the request is done
+
     async def send_to_knbroker_loop(self): #, template):
         while True:
+            if not client:
+                client = self.get_client()
             ce = await self.to_knbroker_buffer.get()
-            print(type(ce))
+            print(f"to_broker Qsize {self.to_knbroker_buffer.qsize()}")
             # print(ce)
             # continue
             try:
@@ -246,16 +255,30 @@ class KNMQTTClient():
                     headers, body = to_structured(ce)
                     L.debug("send_to_knbroker", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
                     # send to knative kafkabroker
-                    async with httpx.AsyncClient() as client:
-                        r = await client.post(
-                            self.config.knative_broker,
-                            # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
-                            headers=headers,
-                            data=body,
-                            timeout=timeout
-                        )
-                        L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
-                        r.raise_for_status()
+                    # async with httpx.AsyncClient() as client:
+                    #     r = await client.post(
+                    #         self.config.knative_broker,
+                    #         # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
+                    #         headers=headers,
+                    #         data=body,
+                    #         timeout=timeout
+                    #     )
+
+                    #     L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
+                    #     r.raise_for_status()
+
+                    r = await client.post(
+                        self.config.knative_broker,
+                        # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
+                        headers=headers,
+                        data=body,
+                        timeout=timeout
+                    )
+                    
+                    L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
+                    r.raise_for_status()
+
+
                 except InvalidStructuredJSON:
                     L.error(f"INVALID MSG: {ce}")
                 except httpx.TimeoutException:
