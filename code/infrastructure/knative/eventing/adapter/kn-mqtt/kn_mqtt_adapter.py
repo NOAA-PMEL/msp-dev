@@ -263,7 +263,7 @@ class KNMQTTClient():
                     L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
             except Exception as e:
                 print("error", e)
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.0001)
 
 
 async def shutdown():

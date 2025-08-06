@@ -446,7 +446,7 @@ async def test_ws_endpoint(
  
 
 
-@app.websocket("/ws/sensor/{client_id}")
+@app.websocket("/ws/sensor/{client_id}/")
 # @app.websocket("/ws/{client_id}")
 async def sensor_ws_endpoint(
     websocket: WebSocket,
@@ -725,7 +725,7 @@ async def controller_ws_endpoint(
         await asyncio.sleep(.1)
         # await manager.broadcast(f"Client left the chat")
 
-@app.websocket("/ws/chat/{client_id}")
+@app.websocket("/ws/chat/{client_id}/")
 # @app.websocket("/ws/{client_id}")
 async def chat_ws_endpoint(
     websocket: WebSocket,
@@ -806,7 +806,7 @@ async def chat_ws_endpoint(
 #     # event = from_http(ce.headers, ce.get_data)
 #     # print(event)
 
-@app.post("/sensor/data/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/sensor/data/update/", status_code=status.HTTP_202_ACCEPTED)
 async def sensor_data_update(request: Request):
 
     L.info("sensor/data/update")
@@ -855,7 +855,7 @@ async def sensor_data_update(request: Request):
     return {"message": "OK"}
     # return "ok", 200
 
-@app.post("/controller/data/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
 async def controller_data_update(request: Request):
 
     L.info("controller/data/update")
@@ -896,7 +896,7 @@ async def controller_data_update(request: Request):
         # timestamp = ce.data["timestamp"]
 
     except KeyError:
-        L.error("dashboard sensor update error", extra={"sensor": ce.data})
+        L.error("controller sensor update error", extra={"sensor": ce.data})
         return "bad sensor data", 400
 
     await manager.broadcast(json.dumps(ce.data), "controller", controller_id)
@@ -904,7 +904,7 @@ async def controller_data_update(request: Request):
     return {"message": "OK"}
     # return "ok", 200
 
-@app.post("/controller/settings/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/controller/settings/update/", status_code=status.HTTP_202_ACCEPTED)
 async def controller_settings_update(request: Request):
 
     L.info("controller/settings/update")
@@ -945,10 +945,10 @@ async def controller_settings_update(request: Request):
         # timestamp = ce.data["timestamp"]
 
     except KeyError:
-        L.error("dashboard sensor update error", extra={"sensor": ce.data})
+        L.error("dashboard controller settings update error", extra={"sensor": ce.data})
         return "bad sensor data", 400
 
-    await manager.broadcast(json.dumps(ce.data), "sensor", controller_id)
+    await manager.broadcast(json.dumps(ce.data), "controller", controller_id)
 
     return {"message": "OK"}
     # return "ok", 200
