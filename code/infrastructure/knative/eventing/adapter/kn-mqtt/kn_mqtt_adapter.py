@@ -185,7 +185,7 @@ class KNMQTTClient():
                         # L.debug("run", extra={"topic": topic})
                         if topic.strip():
                             L.debug("subscribe", extra={"topic": topic.strip()})
-                            await self.client.subscribe(topic.strip())
+                            await self.client.subscribe(f"$share/knative/{topic.strip()}")
 
                         # await client.subscribe(config.mqtt_topic_subscription, qos=2)
                     # async with client.messages() as messages:
@@ -223,13 +223,13 @@ class KNMQTTClient():
     async def send_to_knbroker_loop(self): #, template):
         client = None
         while True:
-            if not client:
-                client = self.get_client()
-            ce = await self.to_knbroker_buffer.get()
-            print(f"to_broker Qsize {self.to_knbroker_buffer.qsize()}")
-            # print(ce)
-            # continue
             try:
+                if not client:
+                    client = self.get_client()
+                ce = await self.to_knbroker_buffer.get()
+                print(f"to_broker Qsize {self.to_knbroker_buffer.qsize()}")
+                # print(ce)
+                # continue
                 # TODO discuss validation requirements
                 if self.config.validation_required:
                     # wrap in verification cloud event
