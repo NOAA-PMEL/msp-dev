@@ -6,6 +6,7 @@ import signal
 import sys
 import os
 import logging
+import traceback
 
 # from logfmter import Logfmter
 import logging.config
@@ -250,7 +251,7 @@ class SCX21(Sensor):
         self.data_task = None
         self.data_rate = 1
         # self.configure()
-        self.first_record = 'HDT'
+        self.first_record = 'ZDA'
         self.last_record = 'GPhve'
         self.array_buffer = []
 
@@ -513,14 +514,14 @@ class SCX21(Sensor):
 
                 if self.first_record in data.data['data']:
                     record1 = self.default_parse(data)
-                    self.record_counter += 1
+                    # self.record_counter += 1
                     continue
 
                 elif self.last_record in data.data['data']:
                     record2 = self.default_parse(data)
                     for var in record2["variables"]:
                         if var != 'time':
-                            if record2["variables"][var]["data"]:
+                            if record2["variables"][var]["data"] is not None:
                                 record1["variables"][var]["data"] = record2["variables"][var]["data"]
 
                 else:
@@ -530,10 +531,11 @@ class SCX21(Sensor):
                     else:
                         for var in record2["variables"]:
                             if var != 'time':
-                                if record2["variables"][var]["data"]:
+                                if record2["variables"][var]["data"] is not None:
                                     record1["variables"][var]["data"] = record2["variables"][var]["data"]
                         continue
                 record = record1
+                print('FINAL RECORD', record)
                 # record = self.default_parse(data)
                 if record:
                     self.collecting = True
@@ -559,68 +561,70 @@ class SCX21(Sensor):
                 self.logger.debug("default_data_loop", extra={"record": record})
             except Exception as e:
                 print(f"default_data_loop error: {e}")
+                print(traceback.format_exc())
             await asyncio.sleep(0.0001)
-
-
-    def check_array_buffer(self, data, array_cond = False):
-        self.array_buffer.append(data)
-        if array_cond:
-            return self.array_buffer
-        else:
-            return
-
 
     def default_parse(self, data):
         if data:
-            print("DATA HERE", data)
             try:
                 variables = list(self.config.metadata.variables.keys())
-                # print(f"variables: \n{variables}\n{variables2}")
                 variables.remove("time")
-                # variables2.remove("time")
                 print(f"variables: \n{variables}")
 
-                # print(f"include metadata: {self.include_metadata}")
                 record = self.build_data_record(meta=self.include_metadata)
-                # print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
+
                 try:
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
 
-                    if datavar := 'HDT' in data.data["data"]:
+                    if (datavar := 'HDT') in data.data["data"]:
                         parts = parts[1:2]
-                    elif datavar := 'GPatt' in data.data["data"]:
+                    elif (datavar := 'GPatt') in data.data["data"]:
                         parts = parts[2:5]
                         parts = [x.split("*")[0] for x in parts]
-                    elif datavar := 'GPhve' in data.data["data"]:
+                    elif (datavar := 'GPhve') in data.data["data"]:
                         parts = parts[2:3]
-                    elif datavar := 'ZDA' in data.data["data"]:
+                    elif (datavar := 'ZDA') in data.data["data"]:
                         parts = parts[1:2]
-                    elif datavar := 'VTG' in data.data["data"]:
+                    elif (datavar := 'VTG') in data.data["data"]:
                         parts = parts[7:8]
-                    elif datavar := 'GNS' in data.data["data"]:
+                    elif (datavar := 'GNS') in data.data["data"]:
                         parts = parts[2:8]
-                    
-                    self.var_name = [key for key, value in self.config.metadata.variables.items() if datavar in value.attributes.description["data"]]
+                    else:
+                        return None
+                                        
+                    self.var_name = []
+                    for key, value in self.config.metadata.variables.items():
+                        try:
+                            if value.attributes["description"].data:
+                                if datavar in value.attributes["description"].data:
+                                    self.var_name.append(key)
+                        except Exception as e:
+                            continue
 
                     for index, name in enumerate(self.var_name):
                         if name in record["variables"]:
                             instvar = self.config.metadata.variables[name]
                             try:
-                                if len(self.var_name) == 1:
-                                    record["variables"][name]["data"] = parts
-                                else:
-                                    if instvar.type == "int":
-                                        record["variables"][name]["data"] = int(parts[index])
-                                    elif instvar.type == "float":
-                                        record["variables"][name]["data"] = float(parts[index])
+                                if instvar.type == "int":
+                                    if isinstance(parts[index], list):
+                                        record["variables"][name]["data"] = [int(item) for item in parts[index]]
                                     else:
-                                        record["variables"][name]["data"] = parts[index]
+                                        record["variables"][name]["data"] = int(parts[index])
+
+                                elif instvar.type == "float":
+                                    if isinstance(parts[index], list):
+                                        record["variables"][name]["data"] = [float(item) for item in parts[index]]
+                                    else:
+                                        record["variables"][name]["data"] = float(parts[index])
+                                        
+                                else:
+                                    record["variables"][name]["data"] = parts[index]
 
                             except ValueError:
-                                if instvar.vartype == "str" or instvar.vartype == "char":
+                                if instvar.type == "str" or instvar.type == "char":
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
@@ -629,6 +633,7 @@ class SCX21(Sensor):
                     pass
             except Exception as e:
                 print(f"default_parse error: {e}")
+                print(traceback.format_exc())
         # else:
         return None
 
