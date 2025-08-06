@@ -221,6 +221,7 @@ class KNMQTTClient():
             # close the client when the request is done
 
     async def send_to_knbroker_loop(self): #, template):
+        client = None
         while True:
             if not client:
                 client = self.get_client()
