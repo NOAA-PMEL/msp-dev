@@ -227,7 +227,7 @@ class KNMQTTClient():
                 if not client:
                     client = self.get_client()
                 ce = await self.to_knbroker_buffer.get()
-                print(f"to_broker Qsize {self.to_knbroker_buffer.qsize(), "client": client}")
+                print(f"to_broker Qsize {self.to_knbroker_buffer.qsize()}")
                 # print(ce)
                 # continue
                 # TODO discuss validation requirements
