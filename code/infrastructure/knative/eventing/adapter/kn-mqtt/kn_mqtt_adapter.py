@@ -227,7 +227,7 @@ class KNMQTTClient():
                 if not client:
                     client = self.get_client()
                 ce = await self.to_knbroker_buffer.get()
-                print(f"to_broker Qsize {self.to_knbroker_buffer.qsize()}")
+                print(f"to_broker Qsize {self.to_knbroker_buffer.qsize(), "client": client}")
                 # print(ce)
                 # continue
                 # TODO discuss validation requirements
@@ -268,7 +268,7 @@ class KNMQTTClient():
                     #     L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
                     #     r.raise_for_status()
 
-                    r = await self.get_client.post(
+                    r = await client.post(
                         self.config.knative_broker,
                         # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
                         headers=headers,
