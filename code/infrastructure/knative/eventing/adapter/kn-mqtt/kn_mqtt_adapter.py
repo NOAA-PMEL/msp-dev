@@ -227,7 +227,7 @@ class KNMQTTClient():
 
                 L.debug(ce)#, extra=template)
                 try:
-                    timeout = httpx.Timeout(5.0, read=0.1)
+                    timeout = httpx.Timeout(5.0, read=0.0001)
                     ce["datacontenttype"] = "application/json"
                     attrs = {
                         # "type": "envds.controller.control.request",
