@@ -20,7 +20,7 @@ class XPort(Interface):
 
     metadata = {
         "attributes": {
-            "type": {"type": "char", "data": "Lantrnonix"},
+            "type": {"type": "char", "data": "Lantronix"},
             "name": {"type": "char", "data": "XPort"},
             "host": {"type": "char", "data": "localhost"},
             "description": {
