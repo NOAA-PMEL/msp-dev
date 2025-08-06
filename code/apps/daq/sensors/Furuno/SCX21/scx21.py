@@ -87,71 +87,6 @@ class SCX21(Sensor):
                     }
                 },
             },
-            "heading": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Heading from True north"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: HDT",
-                    },
-                    "units": {"type": "char", "data": "degrees"},
-                },
-            },
-            "yaw": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Yaw"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GPatt",
-                    },
-                    "units": {"type": "char", "data": "degrees"},
-                },
-            },
-            "pitch": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Pitch"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GPatt",
-                    },
-                    "units": {"type": "char", "data": "degrees"},
-                },
-            },
-            "roll": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Roll"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GPatt",
-                    },
-                    "units": {"type": "char", "data": "degrees"},
-                },
-            },
-            "heave": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Heave"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GPhve",
-                    },
-                    "units": {"type": "char", "data": "meters"},
-                },
-            },
             "lat": {
                 "type": "float",
                 "shape": ["time"],
@@ -229,6 +164,19 @@ class SCX21(Sensor):
                     "units": {"type": "char", "data": "count"},
                 },
             },
+            "heading": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Heading from True north"},
+                    "description": {
+                        "type": "char",
+                        "data": "NMEA 0183 ID: HDT",
+                    },
+                    "units": {"type": "char", "data": "degrees"},
+                },
+            },
             "speed": {
                 "type": "float",
                 "shape": ["time"],
@@ -242,6 +190,58 @@ class SCX21(Sensor):
                     "units": {"type": "char", "data": "kilometers/hour"},
                 },
             },
+            "yaw": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Yaw"},
+                    "description": {
+                        "type": "char",
+                        "data": "NMEA 0183 ID: GPatt",
+                    },
+                    "units": {"type": "char", "data": "degrees"},
+                },
+            },
+            "pitch": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Pitch"},
+                    "description": {
+                        "type": "char",
+                        "data": "NMEA 0183 ID: GPatt",
+                    },
+                    "units": {"type": "char", "data": "degrees"},
+                },
+            },
+            "roll": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Roll"},
+                    "description": {
+                        "type": "char",
+                        "data": "NMEA 0183 ID: GPatt",
+                    },
+                    "units": {"type": "char", "data": "degrees"},
+                },
+            },
+            "heave": {
+                "type": "float",
+                "shape": ["time"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Heave"},
+                    "description": {
+                        "type": "char",
+                        "data": "NMEA 0183 ID: GPhve",
+                    },
+                    "units": {"type": "char", "data": "meters"},
+                },
+            },
         },
     }
 
@@ -251,19 +251,19 @@ class SCX21(Sensor):
         self.data_rate = 1
         # self.configure()
         self.first_record = 'HDT'
-        self.last_record = 'CHANGE'
+        self.last_record = 'GPhve'
         self.array_buffer = []
 
         self.default_data_buffer = asyncio.Queue()
 
-        self.sensor_definition_file = "Furuno_SCX21_sensor_definition.json"
+        # self.sensor_definition_file = "Furuno_SCX21_sensor_definition.json"
 
-        try:            
-            with open(self.sensor_definition_file, "r") as f:
-                self.metadata = json.load(f)
-        except FileNotFoundError:
-            self.logger.error("sensor_definition not found. Exiting")            
-            sys.exit(1)
+        # try:            
+        #     with open(self.sensor_definition_file, "r") as f:
+        #         self.metadata = json.load(f)
+        # except FileNotFoundError:
+        #     self.logger.error("sensor_definition not found. Exiting")            
+        #     sys.exit(1)
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
