@@ -899,8 +899,8 @@ async def controller_data_update(request: Request):
         L.error("controller sensor update error", extra={"sensor": ce.data})
         return "bad sensor data", 400
 
-    msg = {"data": json.dumps(ce.data)}
-    await manager.broadcast(msg, "controller", controller_id)
+    msg = {"data-update": ce.data}
+    await manager.broadcast(json.dumps(msg), "controller", controller_id)
 
     return {"message": "OK"}
     # return "ok", 200
@@ -949,8 +949,8 @@ async def controller_settings_update(request: Request):
         except KeyError:
             L.error("dashboard controller settings update error", extra={"sensor": ce.data})
             return "bad sensor data", 400
-        msg = {"settings": json.dumps(ce.data)}
-        await manager.broadcast(msg, "controller", controller_id)
+        msg = {"settings-update": ce.data}
+        await manager.broadcast(json.dumps(msg), "controller", controller_id)
     except Exception as e:
         L.error("controller_settings_update-all", extra={"reason": e})
     return {"message": "OK"}
