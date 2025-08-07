@@ -50,6 +50,7 @@ class USCDR301(Interface):
         self.default_client_module = "envds.daq.clients.tcp_client"
         self.default_client_class = "TCPClient"
 
+        self.metadata = self.metadata
         self.data_loop_task = None
 
     def configure(self):
@@ -81,11 +82,11 @@ class USCDR301(Interface):
             # print("configure:5")
             self.logger.debug("conf", extra={"data": conf})
 
-            atts = USCDR301.metadata["attributes"]
+            atts = self.metadata["attributes"]
 
             # print("configure:7")
             path_map = dict()
-            for name, val in USCDR301.metadata["paths"].items():
+            for name, val in self.metadata["paths"].items():
                 # path_map[name] = InterfacePath(name=name, path=val["data"])
                 # print("configure:8")
 

@@ -806,7 +806,7 @@ async def chat_ws_endpoint(
 #     # event = from_http(ce.headers, ce.get_data)
 #     # print(event)
 
-@app.post("/sensor/data/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/sensor/data/update/", status_code=status.HTTP_202_ACCEPTED)
 async def sensor_data_update(request: Request):
 
     L.info("sensor/data/update")
@@ -855,7 +855,7 @@ async def sensor_data_update(request: Request):
     return {"message": "OK"}
     # return "ok", 200
 
-@app.post("/controller/data/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
 async def controller_data_update(request: Request):
 
     L.info("controller/data/update")
@@ -896,60 +896,65 @@ async def controller_data_update(request: Request):
         # timestamp = ce.data["timestamp"]
 
     except KeyError:
-        L.error("dashboard sensor update error", extra={"sensor": ce.data})
+        L.error("controller sensor update error", extra={"sensor": ce.data})
         return "bad sensor data", 400
 
-    await manager.broadcast(json.dumps(ce.data), "controller", controller_id)
+    print(f"json_data: {json.dumps(ce.data)}")
+    msg = {"data-update": ce.data}
+    print(f"json_data2: {json.dumps(msg)}")
+    await manager.broadcast(json.dumps(msg), "controller", controller_id)
 
     return {"message": "OK"}
     # return "ok", 200
 
-@app.post("/controller/settings/update", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/controller/settings/update/", status_code=status.HTTP_202_ACCEPTED)
 async def controller_settings_update(request: Request):
 
-    L.info("controller/settings/update")
-    data = await request.body()
-    L.info(f"headers: {request.headers}, data: {data}")
-    headers = request.headers
-    # headers = dict(request.headers)
-
     try:
-        ce = from_http(headers=headers, data=data)
-        # to support local testing...
-        if isinstance(ce.data, str):
-            ce.data = json.loads(ce.data)
-    except InvalidStructuredJSON:
-        L.error("not a valid cloudevent")
-        return "not a valid cloudevent", 400
+        L.info("controller/settings/update")
+        data = await request.body()
+        L.info(f"headers: {request.headers}, data: {data}")
+        headers = request.headers
+        # headers = dict(request.headers)
 
-    # parts = Path(ce["source"]).parts
-    L.info(
-        "dashboard controller settings update",
-        extra={"ce-source": ce["source"], "ce-type": ce["type"], "ce-data": ce.data},
-    )
+        try:
+            ce = from_http(headers=headers, data=data)
+            # to support local testing...
+            if isinstance(ce.data, str):
+                ce.data = json.loads(ce.data)
+        except InvalidStructuredJSON:
+            L.error("not a valid cloudevent")
+            return "not a valid cloudevent", 400
 
-    try:
-        attributes = ce.data["attributes"]
-        # dimensions = ce.data["dimensions"]
-        # variables = ce.data["variables"]
+        # parts = Path(ce["source"]).parts
+        L.info(
+            "dashboard controller settings update",
+            extra={"ce-source": ce["source"], "ce-type": ce["type"], "ce-data": ce.data},
+        )
 
-        make = attributes["make"]["data"]
-        model = attributes["model"]["data"]
-        # # TODO fix serial number in magic data record, tmp workaround for now
-        # serial_number = attributes["serial_number"]
-        serial_number = attributes["serial_number"]["data"]
-        # format_version = attributes["format_version"]["data"]
-        # parts = format_version.split(".")
-        # erddap_version = f"v{parts[0]}"
-        controller_id = "::".join([make, model, serial_number])
-        # timestamp = ce.data["timestamp"]
+        try:
+            attributes = ce.data["attributes"]
+            # dimensions = ce.data["dimensions"]
+            # variables = ce.data["variables"]
 
-    except KeyError:
-        L.error("dashboard sensor update error", extra={"sensor": ce.data})
-        return "bad sensor data", 400
+            make = attributes["make"]["data"]
+            model = attributes["model"]["data"]
+            # # TODO fix serial number in magic data record, tmp workaround for now
+            # serial_number = attributes["serial_number"]
+            serial_number = attributes["serial_number"]["data"]
+            # format_version = attributes["format_version"]["data"]
+            # parts = format_version.split(".")
+            # erddap_version = f"v{parts[0]}"
+            controller_id = "::".join([make, model, serial_number])
+            # timestamp = ce.data["timestamp"]
 
-    await manager.broadcast(json.dumps(ce.data), "sensor", controller_id)
-
+        except KeyError:
+            L.error("dashboard controller settings update error", extra={"sensor": ce.data})
+            return "bad sensor data", 400
+        msg = {"settings-update": ce.data}
+        await manager.broadcast(json.dumps(msg), "controller", controller_id)
+    except Exception as e:
+        L.error("controller_settings_update-all", extra={"reason": e})
     return {"message": "OK"}
     # return "ok", 200
 
