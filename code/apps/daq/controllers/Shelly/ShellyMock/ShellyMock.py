@@ -1,12 +1,11 @@
 import asyncio
 import json
+import random
 import signal
 import sys
 import os
 import logging
-import logging.config
 import yaml
-import traceback
 from envds.core import envdsLogger
 from envds.daq.controller import Controller, ControllerMetadata, ControllerConfig #, InterfacePath
 from envds.daq.event import DAQEvent
@@ -21,17 +20,17 @@ from envds.util.util import (
 
 task_list = []
 
-class ShellyPro3(Controller):
+class ShellyMock(Controller):
     """docstring for ShellyPro3."""
 
     metadata = {
         "attributes": {
             "make": {"type": "char", "data": "Shelly"},
-            "model": {"type": "char", "data": "ShellyPro3"},
+            "model": {"type": "char", "data": "ShellyMock"},
             "host": {"type": "char", "data": "localhost"},
             "description": {
                 "type": "char",
-                "data": "Shelly Pro 3 Smart Switch",
+                "data": "Shelly Mock Smart Switch",
             },
             "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, sensor"},
             "format_version": {
@@ -199,18 +198,19 @@ class ShellyPro3(Controller):
         }
     }
 
+
     def __init__(self, config=None, **kwargs):
-        super(ShellyPro3, self).__init__(config=config, **kwargs)
+        super(ShellyMock, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
 
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
         self.default_client_host = "mqtt.default"
-        self.default_client_port = 1883        
+        self.default_client_port = 1883
+        
 
-
-        self.controller_id_prefix = "shellypro3"
+        self.controller_id_prefix = "shellymock"
 
         self.data_loop_task = None
         self.enable_task_list.append(self.recv_data_loop())
@@ -219,7 +219,7 @@ class ShellyPro3(Controller):
 
         # TODO change to external json definition - this is placeholder
         # self.metadata = ShellyPro3.metadata
-        self.controller_definition_file = "Shelly_ShellyPro3_controller_definition.json"
+        self.controller_definition_file = "Shelly_ShellyMock_controller_definition.json"
 
         try:            
             with open(self.controller_definition_file, "r") as f:
@@ -230,7 +230,7 @@ class ShellyPro3(Controller):
 
     def configure(self):
 
-        super(ShellyPro3, self).configure()
+        super(ShellyMock, self).configure()
 
         try:
             try:
@@ -425,64 +425,79 @@ class ShellyPro3(Controller):
             pass
 
     async def recv_data_loop(self):
+        
+        # tmpl ='{"id": 0,"source": "init","output": false,"temperature": {"tC": 46.4,"tF": 115.6}}'
+
+        data0 = {"id": 0,"source": "init","output": True,"temperature": {"tC": 46.4,"tF": 115.6}}
+        data1 = {"id": 1,"source": "init","output": True,"temperature": {"tC": 46.4,"tF": 115.6}}
+        data2 = {"id": 2,"source": "init","output": True,"temperature": {"tC": 46.4,"tF": 115.6}}
+
         while True:
             try:
-                data = await self.client_recv_buffer.get()
+                # data = await self.client_recv_buffer.get()
                 # data = await self.client.recv()
-                self.logger.debug("recv_data_loop", extra={"recv_data": data})
-                print(f"recv_data_loop: data: {data}")
-                # the only data coming from Shelly should be status
-                if data and "timestamp" in data:
-                    try:
-                        
-                        channel = data["data"]["id"]
-                        output = data["data"]["output"]
-                        # if output.lower() == "true":
-                        #     output = 1
-                        # elif output.lower() == "false":
-                        #     output = 0 
-                        # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
-                        if channel == 0:
-                            record = self.build_data_record(meta=False)
-                            self.logger.debug("recv_data_loop1", extra={"record": record})
-                            record["timestamp"] = data["timestamp"]
-                            record["variables"]["time"]["data"] = data["timestamp"]
-                            self.logger.debug("recv_data_loop2", extra={"ts": data["timestamp"], "record": record})
 
-                            temperature = data["data"]["temperature"]["tC"]
-                            # record = self.build_data_record(meta=False)
-                            record["variables"]["temperature"]["data"] = temperature
-                            # channel 0 temperature data record
-                            self.logger.debug("recv_data_loop3", extra={"record": record})
-                            if record:
-                                event = DAQEvent.create_controller_data_update(
-                                    # source="sensor.mockco-mock1-1234", data=record
-                                    source=self.get_id_as_source(),
-                                    data=record,
-                                )
-                                self.logger.debug("recv_data_loop4", extra={"record": record})
-                                destpath = f"{self.get_id_as_topic()}/controller/data/update"
-                                event["destpath"] = destpath
-                                self.logger.debug(
-                                    "recv_data_loop",
-                                    extra={"data": event, "destpath": destpath},
-                                )
-                                # message = Message(data=event, destpath=destpath)
-                                message = event
-                                # self.logger.debug("default_data_loop", extra={"m": message})
-                                await self.send_message(message)
+                # shelly_data = json.loads(tmpl)
+                for shelly_data in [data0,data1,data2]:
+
+                    
+                    data = {"timestamp": get_datetime_string(), "data": shelly_data}
 
 
-                        # update actual state of channel output
-                        name = f"channel_{channel}_power"
-                        actual = int(output)
-                        self.settings.set_actual(name=name, actual=actual)
-                        self.logger.debug("recv_data_loop", extra={"setting_name": name, "actual": actual, "settings": self.settings.get_settings()})
-                    except KeyError as e:
-                        self.logger.error("unknown response", extra={"reason": e})
-                        pass
+                    self.logger.debug("recv_data_loop", extra={"recv_data": data})
+                    print(f"recv_data_loop: data: {data}")
+                    # the only data coming from Shelly should be status
+                    if data and "timestamp" in data:
+                        try:
+                            
+                            channel = data["data"]["id"]
+                            output = data["data"]["output"]
+                            # if output.lower() == "true":
+                            #     output = 1
+                            # elif output.lower() == "false":
+                            #     output = 0 
+                            # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
+                            if channel == 0:
+                                record = self.build_data_record(meta=False)
+                                self.logger.debug("recv_data_loop", extra={"record": record})
+                                record["timestamp"] = data["timestamp"]
+                                record["variables"]["time"]["data"] = data["timestamp"]
+                                self.logger.debug("recv_data_loop", extra={"ts": data["timestamp"], "record": record})
 
-                await asyncio.sleep(0.01)
+                                delta = random.random() - 0.5
+                                temperature = data["data"]["temperature"]["tC"] + delta
+                                # record = self.build_data_record(meta=False)
+                                record["variables"]["temperature"]["data"] = temperature
+                                # channel 0 temperature data record
+                                if record:
+                                    event = DAQEvent.create_controller_data_update(
+                                        # source="sensor.mockco-mock1-1234", data=record
+                                        source=self.get_id_as_source(),
+                                        data=record,
+                                    )
+                                    destpath = f"{self.get_id_as_topic()}/controller/data/update"
+                                    event["destpath"] = destpath
+                                    self.logger.debug(
+                                        "recv_data_loop",
+                                        extra={"data": event, "destpath": destpath},
+                                    )
+                                    # message = Message(data=event, destpath=destpath)
+                                    message = event
+                                    # self.logger.debug("default_data_loop", extra={"m": message})
+                                    await self.send_message(message)
+
+
+                            # update actual state of channel output
+                            name = f"channel_{channel}_power"
+                            actual = int(output)
+                            self.settings.set_actual(name=name, actual=actual)
+                            self.logger.debug("recv_data_loop", extra={"setting_name": name, "actual": actual, "settings": self.settings.get_settings()})
+                        except KeyError as e:
+                            self.logger.error("unknown response", extra={"reason": e})
+                            pass
+                    await asyncio.sleep(.2)
+
+                await asyncio.sleep(2)
 
             except (KeyError, Exception) as e:
                 self.logger.error("recv_data_loop", extra={"error": e})
@@ -581,7 +596,7 @@ async def main(server_config: ServerConfig = None):
     # test = envdsBase()
     # task_list.append(asyncio.create_task(test_task()))
 
-    iface = ShellyPro3()
+    iface = ShellyMock()
     iface.run()
     # task_list.append(asyncio.create_task(iface.run()))
     # await asyncio.sleep(2)

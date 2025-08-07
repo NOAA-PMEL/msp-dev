@@ -66,7 +66,7 @@ sidebar = html.Div(
                 # ],
                 [
                     dbc.NavLink(
-                        html.Div(page["name"], className="ms-2"),
+                        html.Div(page["title"], className="ms-2"),
                         href=f'/msp/dashboardtest/dash{page["path"]}',
                         # href=dash.get_relative_path(page["path"]),
                         active="exact",
