@@ -209,6 +209,7 @@ class ShellyPro3(Controller):
         self.default_client_host = "mqtt.default"
         self.default_client_port = 1883        
 
+
         self.controller_id_prefix = "shellypro3"
 
         self.data_loop_task = None
