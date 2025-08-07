@@ -1060,9 +1060,9 @@ class Controller(envdsBase):
                     current_settings = self.settings.get_settings()
 
                     for name, setting in record["settings"].items():
-                        if name in current_settings and "data" in setting[name]:
+                        if name in current_settings and "data" in setting:
                             self.logger.debug("settings_monitor", extra={"set_name": name, "set_setting": current_settings[name]})
-                            setting[name]["data"] = current_settings[name]
+                            setting["data"] = current_settings[name]
                     self.logger.debug("settings_monitor", extra={"settings_record": record})
 
                     # send settings every other second
