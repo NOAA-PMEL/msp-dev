@@ -68,7 +68,7 @@ class SpiderMagic810(Sensor):
             "variable_types": {"type": "string", "data": "main, setting, calibration"},
             "serial_number": {"type": "string", "data": ""},
         },
-        "dimensions": {"time": 0, "aerodynamic diameter": 53},
+        "dimensions": {"time": 0, "diameter": 53},
         "variables": {
             "time": {
                 "type": "str",
@@ -79,11 +79,11 @@ class SpiderMagic810(Sensor):
                 },
             },
             "tau": {
-                "type": "str",
+                "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "CHANGE"}
+                    "long_name": {"type": "string", "data": "Ratio of the exponential scan time constant to the gas mean residence time in the classifier"}
                 },
             },
             "HV_polarity": {
@@ -135,15 +135,6 @@ class SpiderMagic810(Sensor):
                     "long_name": {"type": "string", "data": "Internal Timestamp"}
                 },
             },
-            # "concentration": {
-            #     "type": "float",
-            #     "shape": ["time"],
-            #     "attributes": {
-            #         "variable_type": {"type": "string", "data": "main"},
-            #         "long_name": {"type": "char", "data": "Concentration"},
-            #         "units": {"type": "char", "data": "cm-3"},
-            #     },
-            # },
             "dew_point": {
                 "type": "float",
                 "shape": ["time"],
@@ -470,6 +461,50 @@ class SpiderMagic810(Sensor):
                     "units": {"type": "char", "data": "cm3 min-1"},
                 },
             },
+            "diameter": {
+                "type": "int",
+                "shape": ["time", "diameter"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Diameter"},
+                    "units": {"type": "char", "data": "nm"},
+                },
+            },
+            "dN": {
+                "type": "int",
+                "shape": ["time", "diameter"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Diameter"},
+                    "units": {"type": "char", "data": "cm-3"},
+                },
+            },
+            "dlogDp": {
+                "type": "int",
+                "shape": ["time", "diameter"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Diameter"},
+                },
+            },
+            "dNdlogDp": {
+                "type": "int",
+                "shape": ["time", "diameter"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Diameter"},
+                    "units": {"type": "char", "data": "cm-3"},
+                },
+            },
+            "intN": {
+                "type": "int",
+                "shape": ["time", "diameter"],
+                "attributes": {
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Diameter"},
+                    "units": {"type": "char", "data": "counts"},
+                },
+            },
         },
     }
 
@@ -752,6 +787,13 @@ class SpiderMagic810(Sensor):
                     for var in record_heading["variables"]:
                         if record_heading["variables"][var]["data"]:
                             ongoing_record["variables"][var]["data"] = record_heading["variables"][var]["data"]
+                    
+                    # THIS WILL CHANGE WHEN AN INVERSION ROUTINE IS IMPLEMENTED
+                    ongoing_record["variables"]['diameter']["data"] = [None]*53
+                    ongoing_record["variables"]['dN']["data"] = [None]*53
+                    ongoing_record["variables"]['dlogDp']["data"] = [None]*53
+                    ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
+                    ongoing_record["variables"]['intN']["data"] = [None]*53
                 
                 elif "STARTING" in data.data['data']:
                     ongoing_record = self.default_parse(data)
