@@ -1061,7 +1061,7 @@ class Controller(envdsBase):
 
                 for name, setting in record["settings"].items():
                     if name in current_settings:
-                        setting[name] = current_settings[name]
+                        setting[name]["data"] = current_settings[name]
                 self.logger.debug("settings_monitor", extra={"settings_record": record})
 
                 # send settings every other second
