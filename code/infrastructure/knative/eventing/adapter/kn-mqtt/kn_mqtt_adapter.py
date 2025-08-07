@@ -267,17 +267,17 @@ class KNMQTTClient():
 
                     #     L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
                     #     r.raise_for_status()
-
-                    r = await client.post(
-                        self.config.knative_broker,
-                        # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
-                        headers=headers,
-                        data=body,
-                        timeout=timeout
-                    )
-                    
-                    L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
-                    r.raise_for_status()
+                    async with self.get_client() as client:
+                        r = await client.post(
+                            self.config.knative_broker,
+                            # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
+                            headers=headers,
+                            data=body,
+                            timeout=timeout
+                        )
+                        
+                        L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
+                        r.raise_for_status()
 
 
                 except InvalidStructuredJSON:
