@@ -10,7 +10,7 @@ data:
   namespace_prefix: mspbase02
   envds_env_id: mspbase02
   sensor.conf: |
-    serial_number: "315"
+    serial_number: "582"
     daq_id: mspbase02
     interfaces:
       # default: serial
