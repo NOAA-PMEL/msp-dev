@@ -999,25 +999,30 @@ class Controller(envdsBase):
             # }
         }
         # print(record)
-        if meta:
-            record["attributes"] = self.config.metadata.dict()["attributes"]
+        settings_meta = self.get_definition_by_variable_type(device_def=self.get_metadata(), variable_type="setting")
+
+        if settings_meta:
+        # if meta:
+            record["attributes"] = settings_meta["attributes"]
             # print(record)
             record["attributes"]["serial_number"] = {
                 "type": "char",
+                "data": self.config.serial_number,
             }
-            record["attributes"]["mode"] = {
-                "type": "char",
-            }
+            # record["attributes"]["mode"] = {
+            #     "type": "char",
+            # }
         else:
             record["attributes"] = {
                 "make": {"data": self.config.make},
                 "model": {"data": self.config.model},
+                "serial_number": {"data": self.config.serial_number},
                 # "serial_number": self.config.serial_number,
                 # "sampling_mode": mode,
-                "format_version": {"data": self.config.format_ersion},
+                "format_version": {"data": self.config.format_version},
             }
-        record["attributes"]["serial_number"] = {"data": self.config.serial_number}
-        record["attributes"]["mode"] = {"data": mode}
+        # record["attributes"]["serial_number"] = {"data": self.config.serial_number}
+        # record["attributes"]["mode"] = {"data": mode}
 
         # print(record)
 
@@ -1026,15 +1031,17 @@ class Controller(envdsBase):
 
         # record["variables"] = dict()
         if meta:
-            record["settings"] = self.config.metadata.dict()["settings"]
+            record["settings"] = settings_meta["variables"]
             # print(record)
             for name, _ in record["settings"].items():
-                record["settings"][name]["data"] = None
+                # record["settings"][name]["data"] = None
+                record["settings"][name]["data"] = {"requested": None, "actual": None}
             # print(record)
         else:
             record["settings"] = dict()
-            for name, _ in self.config.metadata.variables.items():
-                record["settings"][name] = {"data": None}
+            for name, _ in settings_meta["variables"].items():
+                # record["settings"][name] = {"data": None}
+                record["settings"][name] = {"data": {"requested": None, "actual": None}}
         return record
 
     async def settings_monitor(self):
@@ -1049,11 +1056,20 @@ class Controller(envdsBase):
             self.logger.debug("settings_monitor", extra={"enabled": self.enabled(), "send_settings": send_settings})
             if self.enabled() and send_settings:
                 
+                record = self.build_settings_record()
+                current_settings = self.settings.get_settings()
+
+                for name, setting in record["settings"].items()
+                    if name in current_settings:
+                        setting[name] = current_settings[name]
+                self.logger.debug("settings_monitor", extra={"settings_record": record})
+
                 # send settings every other second
                 event = DAQEvent.create_controller_settings_update(
                     # source="device.mockco-mock1-1234", data=record
                     source=self.get_id_as_source(),
-                    data={"settings": self.settings.get_settings()},
+                    # data={"settings": self.settings.get_settings()},
+                    data=record
                 )
                 # destpath = f"{self.get_id_as_topic()}/settings/update"
                 destpath = f"envds/{self.core_settings.namespace_prefix}/controller/settings/update"
