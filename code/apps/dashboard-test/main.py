@@ -899,7 +899,9 @@ async def controller_data_update(request: Request):
         L.error("controller sensor update error", extra={"sensor": ce.data})
         return "bad sensor data", 400
 
+    print(f"json_data: {json.dumps(ce.data)}")
     msg = {"data-update": ce.data}
+    print(f"json_data2: {json.dumps(msg)}")
     await manager.broadcast(json.dumps(msg), "controller", controller_id)
 
     return {"message": "OK"}
