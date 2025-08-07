@@ -22,7 +22,7 @@ resources:
 - ../../base
 - scx21-configmap.yaml
 
-nameSuffix: "-315"
+nameSuffix: "-582"
 # patchesStrategicMerge:
 #   - deployment.yaml
 
@@ -34,7 +34,7 @@ patches:
     patch: |-
       - op: replace 
         path: /spec/template/spec/volumes/0/configMap/name
-        value: furuno-scx21-config-315
+        value: furuno-scx21-config-582
 #       - op: replace 
 #         path: /spec/template/spec/volumes/1/configMap/name
 #         value: sensor-definition-011

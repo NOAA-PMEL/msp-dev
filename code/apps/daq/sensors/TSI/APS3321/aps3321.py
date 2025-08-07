@@ -549,7 +549,7 @@ class APS3321(Sensor):
                                     record1["variables"][var]["data"] = record2["variables"][var]["data"]
                         continue
                 record = record1
-                record = self.default_parse(data)
+                # record = self.default_parse(data)
                 if record:
                     self.collecting = True
 
