@@ -1373,23 +1373,25 @@ def select_graph_1d(
     Input("ws-controller-instance", "message"),
 )
 def update_controller_buffers(event):
-    if event is not None:
-        print(f"update_controller_buffers: {event}")
-        if "data-update" in event:
+    if event is not None and "data" in event:
+        # print(f"update_controller_buffers: {event}")
+        event_data = json.loads(event["data"])
+        print(f"update_controller_buffers: {event_data}")
+        if "data-update" in event_data:
             try:
-                msg = json.loads(event["data-update"])
-                print(f"update_controller_data: {msg}")
-                if msg["data"]:
-                    return [msg["data"], dash.no_update]
+                # msg = json.loads(event["data-update"])
+                # print(f"update_controller_data: {event_data}")
+                if event_data["data-update"]:
+                    return [event_data["data-update"], dash.no_update]
             except Exception as event:
                 print(f"data buffer update error: {event}")
             
-        elif "settings-update" in event:
+        elif "settings-update" in event_data:
             try:
-                msg = json.loads(event["settings"])
-                print(f"update_controller_settings: {msg}")
-                if msg["data"]:
-                    return [dash.no_update,msg["data"]]
+                # msg = json.loads(event["settings"])
+                # print(f"update_controller_settings: {event_data}")
+                if event_data["settings-update"]:
+                    return [dash.no_update,event_data["settings-update"]]
             except Exception as e:
                 print(f"settings buffer update error: {e}")
             # return dash.no_update
