@@ -1059,7 +1059,7 @@ class Controller(envdsBase):
                 record = self.build_settings_record()
                 current_settings = self.settings.get_settings()
 
-                for name, setting in record["settings"].items()
+                for name, setting in record["settings"].items():
                     if name in current_settings:
                         setting[name] = current_settings[name]
                 self.logger.debug("settings_monitor", extra={"settings_record": record})
