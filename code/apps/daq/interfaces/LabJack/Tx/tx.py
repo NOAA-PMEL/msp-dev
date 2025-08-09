@@ -97,8 +97,8 @@ class Tx(Interface):
         self.data_task = None
         self.data_rate = 1
 
-        self.default_client_module = "envds.daq.clients.tcp_client"
-        self.default_client_class = "TCPClient"
+        self.default_client_module = "labjack_client"
+        self.default_client_class = "LabJackClient"
 
         self.interface_definition_file = "LabJack_Tx_interface_definition.json"
         try:            
@@ -108,7 +108,12 @@ class Tx(Interface):
             self.logger.error("interface_config not found. Exiting")            
             sys.exit(1)
 
+        self.host = "localhost"
+        # self.labjack = None
+
+        # self.run_tasks.append(self.connection_monitor())
         self.data_loop_task = None
+        self.recv_data_buffers = dict()
 
     def configure(self):
 
@@ -133,6 +138,7 @@ class Tx(Interface):
             except KeyError as e:
                 self.logger.debug("no host - default to localhost")
                 host = "localhost"
+            self.host = host
             for name, path in conf["paths"].items():
                 if "host" not in path:
                     path["host"] = host
@@ -168,8 +174,11 @@ class Tx(Interface):
                             client_config["attributes"][path_att_name]["data"] = path_att
                     print("here:4")
 
-                    if client_config["attributes"][path_att_name]["data"] == "":
-                        client_config["attributes"][path_att_name]["data"] == attrs["host"]
+                    if client_config["attributes"]["host"]["data"] == "":
+                        client_config["attributes"]["host"]["data"] = attrs["host"]
+                    
+                    client_config["attributes"]["path_type"] = {"data": val["path_type"]}
+
                     print("here:5")
                 except KeyError as e:
                     self.logger.error("configuration: unknown or missing path type", extra={"path": name})
@@ -200,14 +209,15 @@ class Tx(Interface):
             #             client_config["attributes"][attname]["data"] = attval
             #     # print("configure:10")
                 self.logger.debug("config paths", extra={"client_config": client_config})
-                    
+                
+                self.recv_data_buffers[name] = asyncio.Queue()
                 path_map[name] = {
                     "client_id": name,
                     "client": None,
                     "client_config": client_config,
                     "client_module": client_config["attributes"]["client_module"]["data"],
                     "client_class": client_config["attributes"]["client_class"]["data"],
-                    # "data_buffer": asyncio.Queue(),
+                    # "data_buffer": self.recv_data_buffers[name],
                     "recv_handler": self.recv_data_loop(name),
                     "recv_task": None,
                 }
@@ -228,7 +238,16 @@ class Tx(Interface):
         except Exception as e:
             self.logger.debug("Tx:configure", extra={"error": e})
  
-        
+    # async def connection_monitor(self):
+    #     while True:
+    #         try:
+    #             if not self.labjack:
+    #                 self.labjack = ljm.openS("ANY", "ANY", self.host)
+    #         except Exception as e:
+    #             self.logger.error("connection_monitor", extra={"reason": e})
+    #             self.labjack = None
+    #         await asyncio.sleep(5)
+
     async def recv_data_loop(self, client_id: str):
         
         # self.logger.debug("recv_data_loop", extra={"client_id": client_id})
@@ -236,10 +255,13 @@ class Tx(Interface):
             try:
                 # client = self.config.paths[client_id]["client"]
                 client = self.client_map[client_id]["client"]
+                # data_buffer = self.client_map[client_id]["data_buffer"]
                 # while client is not None:
+                # if data_buffer:
                 if client:
                     self.logger.debug("recv_data_loop", extra={"client": client})
                     data = await client.recv()
+                    # data = await data_buffer.get()
                     self.logger.debug("recv_data", extra={"client_id": client_id, "data": data})
 
                     await self.update_recv_data(client_id=client_id, data=data)
@@ -262,11 +284,81 @@ class Tx(Interface):
                 print(f"send_data:1 - {event}")
                 client_id = event["path_id"]
                 client = self.client_map[client_id]["client"]
-                data = event.data["data"]
+                client_config = self.client_map[client_id]["client_config"]
+                path_type = client_config["attributes"]["path_type"]["data"]
 
+                data = event.data["data"]
                 await client.send(data)
+                # if path_type == "AtoD":
+                #     pass
+                # elif path_type == "DtoA":
+                #     pass
+                # elif path_type == "pwm":
+                #     pass
+                # elif path_type == "counter":
+                #     pass
+                # elif path_type == "i2c":
+                #     await self.send_i2c(client_id, data)
+                # elif path_type == "spi":
+                #     pass
+
+
+                # await client.send(data)
             except KeyError:
                 pass
+
+    # def hex_to_int(self, hex_val):
+    #         if "Ox" not in hex_val:
+    #             hex_val = f"0x{hex_val}"
+    #         return int(hex_val, 16) 
+        
+    # async def send_i2c(self, client_id, data):
+
+    #     try:
+    #         client_config = self.client_map[client_id]["client_config"]
+    #         data_buffer = self.client_map[client_id]["data_buffer"]
+    #         # get i2c commands
+    #         i2c_write = data["i2c-write"]
+    #         # i2c_read = data["i2c-read"]
+            
+    #         address = self.hex_to_int(i2c_write["address"])
+    #         write_data = [self.hex_to_int(hex_val) for hex_val in i2c_write["data"]]
+
+    #         ljm.eWriteName(self.labjack, "I2C_SDA_DIONUM", client_config["attributes"]["sda_channel"]["data"])  # CS is FIO2
+    #         ljm.eWriteName(self.labjack, "I2C_SCL_DIONUM", client_config["attributes"]["scl_channel"]["data"])  # CLK is FIO3
+    #         ljm.eWriteName(self.labjack, "I2C_SPEED_THROTTLE", client_config["attributes"]["speed_throttle"]["data"]) # CLK frequency approx 100 kHz
+    #         ljm.eWriteName(self.labjack, "I2C_OPTIONS", 0)
+    #         ljm.eWriteName(self.labjack, "I2C_SLAVE_ADDRESS", address) # default address is 0x28 (40 decimal)
+
+    #         ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", len(write_data))
+    #         ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", 0)
+
+    #         ljm.eWriteNameByteArray(self.labjack, "I2C_DATA_TX", len(write_data), write_data)
+    #         #ljm.eWriteNameArray(self.labjack, "I2C_DATA_TX", 1, [0x00])
+    #         #ljm.eWriteName(self.labjack, "I2C_DATA_TX", 0x00)
+    #         ljm.eWriteName(self.labjack, "I2C_GO", 1)
+
+    #         i2c_read = data["i2c-read"]
+    #         await asyncio.sleep(i2c_read.get("delay-ms",500)/1000) # does this have to be 0.5?
+
+    #         address = self.hex_to_int(i2c_read["address"])
+    #         read_bytes = i2c_read["read-length"]
+
+    #         #dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", 4)
+    #         ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", 0)
+    #         ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", read_bytes)
+    #         ljm.eWriteName(self.labjack, "I2C_GO", 1)
+
+    #         dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", read_bytes)
+    #         if dataRead:
+    #             output = {
+    #                 "input-data": data,
+    #                 "data": dataRead 
+    #             }
+    #             await data_buffer.put(output)
+
+    #     except Exception as e:
+    #         self.logger.error("send_i2c")
 
 class ServerConfig(BaseModel):
     host: str = "localhost"
