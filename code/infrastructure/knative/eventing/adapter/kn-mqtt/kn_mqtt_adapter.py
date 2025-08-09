@@ -141,7 +141,7 @@ class KNMQTTClient():
         asyncio.create_task(self.send_to_knbroker_loop())
 
         self.client = None
-
+        self.http_client = None
 
     async def send_to_mqtt(self, ce: CloudEvent):
         await self.to_mqtt_buffer.put(ce)
@@ -185,7 +185,7 @@ class KNMQTTClient():
                         # L.debug("run", extra={"topic": topic})
                         if topic.strip():
                             L.debug("subscribe", extra={"topic": topic.strip()})
-                            await self.client.subscribe(topic.strip())
+                            await self.client.subscribe(f"$share/knative/{topic.strip()}")
 
                         # await client.subscribe(config.mqtt_topic_subscription, qos=2)
                     # async with client.messages() as messages:
@@ -205,20 +205,43 @@ class KNMQTTClient():
                     f'{error}. Trying again in {reconnect} seconds',
                     extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
                 )
-            finally:
                 await asyncio.sleep(reconnect)
+            finally:
+                await asyncio.sleep(0.0001)
 
     async def send_to_knbroker(self, ce: CloudEvent):
         print("send ", ce)
         await self.to_knbroker_buffer.put(ce)
 
+    async def get_client(self):
+        # create a new client for each request
+        async with httpx.AsyncClient() as client:
+            # yield the client to the endpoint function
+            yield client
+            # close the client when the request is done
+
+    def open_http_client(self):
+        # create a new client for each request
+        self.http_client = httpx.AsyncClient()
+            # # yield the client to the endpoint function
+            # yield client
+            # # close the client when the request is done
+
+    async def close_http_client(self):
+        await self.http_client.aclose()
+        self.http_client = None
+
     async def send_to_knbroker_loop(self): #, template):
+        # client = None
         while True:
-            ce = await self.to_knbroker_buffer.get()
-            print(type(ce))
-            # print(ce)
-            # continue
             try:
+                if not self.http_client:
+                    self.open_http_client()
+
+                ce = await self.to_knbroker_buffer.get()
+                print(f"to_broker Qsize {self.to_knbroker_buffer.qsize()}")
+                # print(ce)
+                # continue
                 # TODO discuss validation requirements
                 if self.config.validation_required:
                     # wrap in verification cloud event
@@ -245,16 +268,30 @@ class KNMQTTClient():
                     headers, body = to_structured(ce)
                     L.debug("send_to_knbroker", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
                     # send to knative kafkabroker
-                    async with httpx.AsyncClient() as client:
-                        r = await client.post(
-                            self.config.knative_broker,
-                            # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
-                            headers=headers,
-                            data=body,
-                            timeout=timeout
-                        )
-                        # L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
-                        r.raise_for_status()
+                    # async with httpx.AsyncClient() as client:
+                    #     r = await client.post(
+                    #         self.config.knative_broker,
+                    #         # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
+                    #         headers=headers,
+                    #         data=body,
+                    #         timeout=timeout
+                    #     )
+
+                    #     L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
+                    #     r.raise_for_status()
+                    # async with self.get_client() as client:
+                    r = await self.http_client.post(
+                        self.config.knative_broker,
+                        # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
+                        headers=headers,
+                        data=body,
+                        timeout=timeout
+                    )
+                    
+                    L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
+                    r.raise_for_status()
+
+
                 except InvalidStructuredJSON:
                     L.error(f"INVALID MSG: {ce}")
                 except httpx.TimeoutException:
@@ -263,7 +300,7 @@ class KNMQTTClient():
                     L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
             except Exception as e:
                 print("error", e)
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.0001)
 
 
 async def shutdown():

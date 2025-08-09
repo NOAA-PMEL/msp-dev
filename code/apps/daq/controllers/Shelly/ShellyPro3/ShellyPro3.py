@@ -10,8 +10,13 @@ import traceback
 from envds.core import envdsLogger
 from envds.daq.controller import Controller, ControllerMetadata, ControllerConfig #, InterfacePath
 from envds.daq.event import DAQEvent
-from aiomqtt import Client
 from pydantic import BaseModel
+from envds.util.util import (
+    # get_datetime_format,
+    # time_to_next,
+    # get_datetime,
+    get_datetime_string,
+)
 
 
 task_list = []
@@ -194,7 +199,6 @@ class ShellyPro3(Controller):
         }
     }
 
-
     def __init__(self, config=None, **kwargs):
         super(ShellyPro3, self).__init__(config=config, **kwargs)
         self.data_task = None
@@ -203,8 +207,8 @@ class ShellyPro3(Controller):
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
         self.default_client_host = "mqtt.default"
-        self.default_client_port = 1883
-        
+        self.default_client_port = 1883        
+
 
         self.controller_id_prefix = "shellypro3"
 
@@ -440,21 +444,23 @@ class ShellyPro3(Controller):
                         # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
                         if channel == 0:
                             record = self.build_data_record(meta=False)
-                            self.logger.debug("recv_data_loop", extra={"record": record})
+                            self.logger.debug("recv_data_loop1", extra={"record": record})
                             record["timestamp"] = data["timestamp"]
                             record["variables"]["time"]["data"] = data["timestamp"]
-                            self.logger.debug("recv_data_loop", extra={"ts": data["timestamp"], "record": record})
+                            self.logger.debug("recv_data_loop2", extra={"ts": data["timestamp"], "record": record})
 
                             temperature = data["data"]["temperature"]["tC"]
                             # record = self.build_data_record(meta=False)
                             record["variables"]["temperature"]["data"] = temperature
                             # channel 0 temperature data record
+                            self.logger.debug("recv_data_loop3", extra={"record": record})
                             if record:
                                 event = DAQEvent.create_controller_data_update(
                                     # source="sensor.mockco-mock1-1234", data=record
                                     source=self.get_id_as_source(),
                                     data=record,
                                 )
+                                self.logger.debug("recv_data_loop4", extra={"record": record})
                                 destpath = f"{self.get_id_as_topic()}/controller/data/update"
                                 event["destpath"] = destpath
                                 self.logger.debug(

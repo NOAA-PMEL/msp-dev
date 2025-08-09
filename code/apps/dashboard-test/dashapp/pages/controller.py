@@ -24,6 +24,7 @@ from ulid import ULID
 import dash_ag_grid as dag
 import pandas as pd
 from logfmter import Logfmter
+
 # import pymongo
 from collections import deque
 import httpx
@@ -257,7 +258,7 @@ def build_tables(layout_options):
             title = "Data"
 
             if ltype == "layout-settings":
-                title = f'Controller Settings'
+                title = f"Controller Settings"
                 table_list.append(
                     dbc.AccordionItem(
                         # [
@@ -273,7 +274,7 @@ def build_tables(layout_options):
                         title=title,
                     )
                 )
-            
+
             elif ltype == "layout-1d":
                 title = f"Data 1-D ({dim})"
                 # TODO: make the ids work for multiple dims
@@ -300,7 +301,10 @@ def build_tables(layout_options):
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
-                                id={"type": "controller-data-table-2d", "index": f"time::{dim}"},
+                                id={
+                                    "type": "controller-data-table-2d",
+                                    "index": f"time::{dim}",
+                                },
                                 rowData=[],
                                 columnDefs=layout_options["layout-2d"][dim][
                                     "table-column-defs"
@@ -315,6 +319,7 @@ def build_tables(layout_options):
     print(f"build_tables: {table_list}")
 
     return table_list
+
 
 # def build_graph_1d(dropdown_list):
 def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
@@ -347,23 +352,36 @@ def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
 
     return graph
 
+
 def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
 
     content = dbc.Row(
         children=[
-            dbc.Button("Submit", {"type": "controller-graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
+            dbc.Button(
+                "Submit",
+                {
+                    "type": "controller-graph-2d-z-axis-submit",
+                    "index": f"{xaxis}::{yaxis}",
+                },
+            ),
             dbc.Label("z-axis min:"),
             dbc.Col(
                 dbc.Input(
                     type="number",
-                    id={"type": "controller-graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"},
+                    id={
+                        "type": "controller-graph-2d-z-axis-min",
+                        "index": f"{xaxis}::{yaxis}",
+                    },
                 )
             ),
             dbc.Label("z-axis max:"),
             dbc.Col(
                 dbc.Input(
                     type="number",
-                    id={"type": "controller-graph-2d-z-axis-max", "index": f"{xaxis}::{yaxis}"},
+                    id={
+                        "type": "controller-graph-2d-z-axis-max",
+                        "index": f"{xaxis}::{yaxis}",
+                    },
                 )
             ),
         ]
@@ -395,7 +413,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
                 # start_collapsed=True
             )
         ],
-        start_collapsed=True
+        start_collapsed=True,
     )
 
     graph = dbc.Card(
@@ -403,7 +421,10 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
             dbc.CardHeader(
                 children=[
                     dcc.Dropdown(
-                        id={"type": "controller-graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"},
+                        id={
+                            "type": "controller-graph-2d-dropdown",
+                            "index": f"{xaxis}::{yaxis}",
+                        },
                         options=dropdown_list,
                         value="",
                     )
@@ -434,7 +455,10 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
                     ),
                     dbc.Col(
                         dcc.Graph(
-                            id={"type": "controller-graph-2d-line", "index": f"{xaxis}::{yaxis}"},
+                            id={
+                                "type": "controller-graph-2d-line",
+                                "index": f"{xaxis}::{yaxis}",
+                            },
                             # figure=go.Figure(
                             #     data=go.Line(x=[], y=[], type="line")
                             # ),
@@ -500,6 +524,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
 
     return graph
 
+
 def build_graph_settings_2d():
 
     collapse = html.Div(
@@ -518,6 +543,7 @@ def build_graph_settings_2d():
             ),
         ]
     )
+
 
 def build_graphs(layout_options):
 
@@ -574,8 +600,9 @@ def build_graphs(layout_options):
 
     return graph_list
 
+
 def get_controller_data(controller_id: str):
-    
+
     query = {"controller_id": controller_id}
     url = f"http://{datastore_url}/controller/data/get/"
     print(f"controller-data-get: {url}, query: {query}")
@@ -589,7 +616,8 @@ def get_controller_data(controller_id: str):
         L.error("get_controller_data", extra={"reason": e})
     return []
 
-def get_controller_instance(controller_id: str, device_type: str="controller"):
+
+def get_controller_instance(controller_id: str, device_type: str = "controller"):
 
     query = {"controller_id": controller_id}
     url = f"http://{datastore_url}/controller-instance/registry/get/"
@@ -603,26 +631,28 @@ def get_controller_instance(controller_id: str, device_type: str="controller"):
             return results["results"][0]
     except Exception as e:
         L.error("get_controller_instance", extra={"reason": e})
-    
+
     return {}
+
 
 def get_controller_definition_by_id(controller_id: str):
 
     device = get_controller_instance(controller_id=controller_id)
     if device:
         try:
-            controller_definition_id = "::".join([
-                device["make"],
-                device["model"],
-                device["version"]
-            ])
+            controller_definition_id = "::".join(
+                [device["make"], device["model"], device["version"]]
+            )
             print(f"controller_definition_id: {controller_definition_id}")
-            return get_controller_definition(controller_definition_id=controller_definition_id)
-        
+            return get_controller_definition(
+                controller_definition_id=controller_definition_id
+            )
+
         except Exception as e:
             print("ERROR: get_controller_definition_by_id", extra={"reason": e})
-    
+
     return {}
+
 
 def get_controller_definition(controller_definition_id: str):
 
@@ -637,8 +667,9 @@ def get_controller_definition(controller_definition_id: str):
             return results["results"][0]
     except Exception as e:
         L.error("get_controller_definition", extra={"reason": e})
-        
+
         return {}
+
 
 def layout(controller_id=None):
     print(f"get_layout: {controller_id}")
@@ -657,7 +688,7 @@ def layout(controller_id=None):
         # response = httpx.get(f"http://{datastore_url}/device-definition/registry/get", params=query)
         # print(f"response: {response}")
         # # print(f"get_layout: {query}")
-        
+
         # # TODO: replace with datastore call
         # results = []
         # # results = db_registry_client.find(
@@ -673,11 +704,13 @@ def layout(controller_id=None):
         #             except KeyError:
         #                 pass
 
-        controller_definition = get_controller_definition_by_id(controller_id=controller_id)
+        controller_definition = get_controller_definition_by_id(
+            controller_id=controller_id
+        )
         print(f"controller_definition: {controller_definition}")
         # else:
         #     sensor_definition = None
-        
+
         # print(f"sensor def: {sdef}")
     else:
         # sensor_id = "AerosolDynamics::MAGIC250::142"
@@ -734,7 +767,9 @@ def layout(controller_id=None):
                         }
                         ln = d
                         try:
-                            ln = controller_definition["attributes"][d]["long_name"]["data"]
+                            ln = controller_definition["attributes"][d]["long_name"][
+                                "data"
+                            ]
                         except KeyError:
                             pass
 
@@ -955,14 +990,14 @@ def layout(controller_id=None):
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/{sensor_id}",
                 # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor/{sensor_id}"
                 # url=f"ws://mspbase01:8080/msp/dashboardtest/ws/sensor/{sensor_id}"
-                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/controller/{controller_id}"
-
+                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/controller/{controller_id}",
             ),
             ws_send_buffer,
             dcc.Store(id="controller-definition", data=controller_definition),
             dcc.Store(id="controller-meta", data=controller_meta),
             dcc.Store(id="controller-graph-axes", data={}),
             dcc.Store(id="controller-data-buffer", data={}),
+            dcc.Store(id="controller-settings-buffer", data={}),
             # dcc.Interval(id="test-interval", interval=(10*1000)),
             # dcc.Interval(
             #     id="table-update-interval", interval=(5 * 1000), n_intervals=0
@@ -1123,13 +1158,18 @@ def layout(controller_id=None):
         State({"type": "controller-graph-1d-dropdown", "index": MATCH}, "id"),
     ],
 )
-def select_graph_1d(y_axis, controller_meta, graph_axes, controller_definition, graph_id):
+def select_graph_1d(
+    y_axis, controller_meta, graph_axes, controller_definition, graph_id
+):
     print(f"select_graph_1d: {y_axis}, {controller_meta}, {graph_axes}")
     # print(f"current_fig: {current_fig}")
     try:
         if "controller-graph-1d" not in graph_axes:
             graph_axes["controller-graph-1d"] = dict()
-        graph_axes["controller-graph-1d"][graph_id["index"]] = {"x-axis": "time", "y-axis": y_axis}
+        graph_axes["controller-graph-1d"][graph_id["index"]] = {
+            "x-axis": "time",
+            "y-axis": y_axis,
+        }
         print(f"select_graph_1d: {graph_axes}")
 
         x = []
@@ -1325,19 +1365,38 @@ def select_graph_1d(y_axis, controller_meta, graph_axes, controller_definition, 
 #         # return [dash.no_update, dash.no_update]
 
 
-@callback(Output("controller-data-buffer", "data"), Input("ws-controller-instance", "message"))
-def update_controller_data_buffer(e):
-    if e is not None and "data" in e:
-        try:
-            msg = json.loads(e["data"])
-            print(f"update_controller_data: {msg}")
-            if msg:
-                return msg
-        except Exception as e:
-            print(f"data buffer update error: {e}")
+@callback(
+    [
+        Output("controller-data-buffer", "data"),
+        Output("controller-settings-buffer", "data"),
+    ],
+    Input("ws-controller-instance", "message"),
+)
+def update_controller_buffers(event):
+    if event is not None and "data" in event:
+        # print(f"update_controller_buffers: {event}")
+        event_data = json.loads(event["data"])
+        print(f"update_controller_buffers: {event_data}")
+        if "data-update" in event_data:
+            try:
+                # msg = json.loads(event["data-update"])
+                # print(f"update_controller_data: {event_data}")
+                if event_data["data-update"]:
+                    return [event_data["data-update"], dash.no_update]
+            except Exception as event:
+                print(f"data buffer update error: {event}")
+            
+        elif "settings-update" in event_data:
+            try:
+                # msg = json.loads(event["settings"])
+                # print(f"update_controller_settings: {event_data}")
+                if event_data["settings-update"]:
+                    return [dash.no_update,event_data["settings-update"]]
+            except Exception as e:
+                print(f"settings buffer update error: {e}")
             # return dash.no_update
             # return dash.no_update
-    return dash.no_update
+    return [dash.no_update, dash.no_update]
 
 
 @callback(
@@ -1631,7 +1690,9 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
     ],  # , dcc.Store("sensor-definition", "data")],
     # prevent_initial_call=True,
 )
-def update_table_1d(controller_data, row_data_list, col_defs_list):  # , sensor_definition):
+def update_table_1d(
+    controller_data, row_data_list, col_defs_list
+):  # , sensor_definition):
     # sensor_def_data_changes = []
     # active_sensor_data_changes = []
     # # print(f"message data: {e}")
@@ -1833,7 +1894,7 @@ def update_table_1d(controller_data, row_data_list, col_defs_list):  # , sensor_
 #     # try:
 #     #     heatmap['layout']['template']['layout']['coloraxis']['cmin'] = axis_min
 #     #     heatmap['layout']['template']['layout']['coloraxis']['cmix'] = axis_max
-#     #     print(f"heatmap: {heatmap['layout']['template']['layout']['coloraxis']}") 
+#     #     print(f"heatmap: {heatmap['layout']['template']['layout']['coloraxis']}")
 #     #     # for k,v in heatmap['layout']["template"]['coloraxis'].items():
 #     #     #     print(f"[{k}]: [{v.keys()}]")
 #     # except KeyError:
@@ -1863,9 +1924,9 @@ def update_table_1d(controller_data, row_data_list, col_defs_list):  # , sensor_
 
 
 @callback(
-    Output("ws-controller-instance", "send"), Input("ws-send-instance-buffer", "children")
+    Output("ws-controller-instance", "send"),
+    Input("ws-send-instance-buffer", "children"),
 )
 def send_to_instance(value):
     print(f"sending: {value}")
     return value
-
