@@ -118,11 +118,11 @@
             "attributes": {
                 "client_module": {
                     "type": "string",
-                    "data": "envds.daq.clients.tcp_client"
+                    "data": "labjack_client"
                 },
                 "client_class": {
                     "type": "string",
-                    "data": "TCPClient"
+                    "data": "I2CClient"
                 },
                 "host": {
                     "type": "string",

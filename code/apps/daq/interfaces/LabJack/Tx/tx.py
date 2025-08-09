@@ -109,7 +109,7 @@ class Tx(Interface):
             sys.exit(1)
 
         self.host = "localhost"
-        self.labjack = None
+        # self.labjack = None
 
         # self.run_tasks.append(self.connection_monitor())
         self.data_loop_task = None
@@ -238,15 +238,15 @@ class Tx(Interface):
         except Exception as e:
             self.logger.debug("Tx:configure", extra={"error": e})
  
-    async def connection_monitor(self):
-        while True:
-            try:
-                if not self.labjack:
-                    self.labjack = ljm.openS("ANY", "ANY", self.host)
-            except Exception as e:
-                self.logger.error("connection_monitor", extra={"reason": e})
-                self.labjack = None
-            await asyncio.sleep(5)
+    # async def connection_monitor(self):
+    #     while True:
+    #         try:
+    #             if not self.labjack:
+    #                 self.labjack = ljm.openS("ANY", "ANY", self.host)
+    #         except Exception as e:
+    #             self.logger.error("connection_monitor", extra={"reason": e})
+    #             self.labjack = None
+    #         await asyncio.sleep(5)
 
     async def recv_data_loop(self, client_id: str):
         
@@ -283,81 +283,82 @@ class Tx(Interface):
             try:
                 print(f"send_data:1 - {event}")
                 client_id = event["path_id"]
-                # client = self.client_map[client_id]["client"]
+                client = self.client_map[client_id]["client"]
                 client_config = self.client_map[client_id]["client_config"]
                 path_type = client_config["attributes"]["path_type"]["data"]
 
                 data = event.data["data"]
-                if path_type == "AtoD":
-                    pass
-                elif path_type == "DtoA":
-                    pass
-                elif path_type == "pwm":
-                    pass
-                elif path_type == "counter":
-                    pass
-                elif path_type == "i2c":
-                    await self.send_i2c(client_id, data)
-                elif path_type == "spi":
-                    pass
+                await client.send(data)
+                # if path_type == "AtoD":
+                #     pass
+                # elif path_type == "DtoA":
+                #     pass
+                # elif path_type == "pwm":
+                #     pass
+                # elif path_type == "counter":
+                #     pass
+                # elif path_type == "i2c":
+                #     await self.send_i2c(client_id, data)
+                # elif path_type == "spi":
+                #     pass
 
 
                 # await client.send(data)
             except KeyError:
                 pass
 
-    def hex_to_int(self, hex_val):
-            if "Ox" not in hex_val:
-                hex_val = f"0x{hex_val}"
-            return int(hex_val, 16) 
+    # def hex_to_int(self, hex_val):
+    #         if "Ox" not in hex_val:
+    #             hex_val = f"0x{hex_val}"
+    #         return int(hex_val, 16) 
         
-    async def send_i2c(self, client_id, data):
+    # async def send_i2c(self, client_id, data):
 
-        try:
-            client_config = self.client_map[client_id]["client_config"]
-            data_buffer = self.client_map[client_id]["data_buffer"]
-            # get i2c commands
-            i2c_write = data["i2c-write"]
-            # i2c_read = data["i2c-read"]
+    #     try:
+    #         client_config = self.client_map[client_id]["client_config"]
+    #         data_buffer = self.client_map[client_id]["data_buffer"]
+    #         # get i2c commands
+    #         i2c_write = data["i2c-write"]
+    #         # i2c_read = data["i2c-read"]
             
-            address = self.hex_to_int(i2c_write["address"])
-            write_data = [self.hex_to_int(hex_val) for hex_val in i2c_write["data"]]
+    #         address = self.hex_to_int(i2c_write["address"])
+    #         write_data = [self.hex_to_int(hex_val) for hex_val in i2c_write["data"]]
 
-            ljm.eWriteName(self.labjack, "I2C_SDA_DIONUM", client_config["attributes"]["sda_channel"]["data"])  # CS is FIO2
-            ljm.eWriteName(self.labjack, "I2C_SCL_DIONUM", client_config["attributes"]["scl_channel"]["data"])  # CLK is FIO3
-            ljm.eWriteName(self.labjack, "I2C_SPEED_THROTTLE", client_config["attributes"]["speed_throttle"]["data"]) # CLK frequency approx 100 kHz
-            ljm.eWriteName(self.labjack, "I2C_OPTIONS", 0)
-            ljm.eWriteName(self.labjack, "I2C_SLAVE_ADDRESS", address) # default address is 0x28 (40 decimal)
+    #         ljm.eWriteName(self.labjack, "I2C_SDA_DIONUM", client_config["attributes"]["sda_channel"]["data"])  # CS is FIO2
+    #         ljm.eWriteName(self.labjack, "I2C_SCL_DIONUM", client_config["attributes"]["scl_channel"]["data"])  # CLK is FIO3
+    #         ljm.eWriteName(self.labjack, "I2C_SPEED_THROTTLE", client_config["attributes"]["speed_throttle"]["data"]) # CLK frequency approx 100 kHz
+    #         ljm.eWriteName(self.labjack, "I2C_OPTIONS", 0)
+    #         ljm.eWriteName(self.labjack, "I2C_SLAVE_ADDRESS", address) # default address is 0x28 (40 decimal)
 
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", len(write_data))
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", 0)
+    #         ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", len(write_data))
+    #         ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", 0)
 
-            ljm.eWriteNameByteArray(self.labjack, "I2C_DATA_TX", len(write_data), write_data)
-            #ljm.eWriteNameArray(self.labjack, "I2C_DATA_TX", 1, [0x00])
-            #ljm.eWriteName(self.labjack, "I2C_DATA_TX", 0x00)
-            ljm.eWriteName(self.labjack, "I2C_GO", 1)
+    #         ljm.eWriteNameByteArray(self.labjack, "I2C_DATA_TX", len(write_data), write_data)
+    #         #ljm.eWriteNameArray(self.labjack, "I2C_DATA_TX", 1, [0x00])
+    #         #ljm.eWriteName(self.labjack, "I2C_DATA_TX", 0x00)
+    #         ljm.eWriteName(self.labjack, "I2C_GO", 1)
 
-            i2c_read = data["i2c-read"]
-            await asyncio.sleep(i2c_read.get("delay-ms",500)/1000) # does this have to be 0.5?
+    #         i2c_read = data["i2c-read"]
+    #         await asyncio.sleep(i2c_read.get("delay-ms",500)/1000) # does this have to be 0.5?
 
-            address = self.hex_to_int(i2c_read["address"])
-            read_bytes = i2c_read["read-length"]
+    #         address = self.hex_to_int(i2c_read["address"])
+    #         read_bytes = i2c_read["read-length"]
 
-            #dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", 4)
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", 0)
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", read_bytes)
-            ljm.eWriteName(self.labjack, "I2C_GO", 1)
+    #         #dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", 4)
+    #         ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", 0)
+    #         ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", read_bytes)
+    #         ljm.eWriteName(self.labjack, "I2C_GO", 1)
 
-            dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", read_bytes)
-            if dataRead:
-                output = {
-                    "input-data": data,
-                    "data": dataRead 
-                }
-                await data_buffer.put(output)
+    #         dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", read_bytes)
+    #         if dataRead:
+    #             output = {
+    #                 "input-data": data,
+    #                 "data": dataRead 
+    #             }
+    #             await data_buffer.put(output)
 
-        except Exception as e:
-            self.logger.error("send_i2c")
+    #     except Exception as e:
+    #         self.logger.error("send_i2c")
 
 class ServerConfig(BaseModel):
     host: str = "localhost"
