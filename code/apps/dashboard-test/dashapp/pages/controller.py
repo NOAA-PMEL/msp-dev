@@ -261,16 +261,14 @@ def build_tables(layout_options):
                 title = f"Controller Settings"
                 table_list.append(
                     dbc.AccordionItem(
-                        # [
-                        #     dag.AgGrid(
-                        #         id={"type": "settings-table", "index": dim},
-                        #         rowData=[],
-                        #         columnDefs=layout_options["layout-settings"][dim][
-                        #             "table-column-defs"
-                        #         ],
-                        #         columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
-                        #     )
-                        # ],
+                        [
+                            dag.AgGrid(
+                                id={"type": "settings-table", "index": dim},
+                                rowData=[],
+                                columnDefs=layout_options["layout-settings"][dim]["table-column-defs"],
+                                columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
+                            )
+                        ],
                         title=title,
                     )
                 )
@@ -808,6 +806,34 @@ def layout(controller_id=None):
                     }
                     layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
                     print(f"layout: {layout_options}")
+            
+            # make settings table
+            for name, var in controller_definition["variables"].items():
+                if var["attributes"]["variable_type"]["data"] == "setting":
+                    long_name = name
+                    ln = var["attributes"].get("long_name", None)
+                    if ln:
+                        long_name = ln.get("data", name)
+
+                    # get data type
+                    dtype = var.get("type", "unknown")
+                    print(f"dtype = {dtype}")
+                    data_type = "text"
+                    if dtype in ["float", "double", "int"]:
+                        data_type = "number"
+                    elif dtype in ["str", "string", "char"]:
+                        data_type = "text"
+                    elif dtype in ["bool"]:
+                        data_type = "boolean"
+
+                    cd = {
+                        "field": name,
+                        "headerName": long_name,
+                        "filter": False,
+                        "cellDataType": data_type,
+                        # "cellRenderer": "DBC_Switch",
+                    }
+                    layout_options["layout-settings"]["time"]["table-column-defs"].append(cd)
 
             for name, var in controller_definition["variables"].items():
                 # only get the data variables for main
@@ -1676,6 +1702,42 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 #         # return dash.no_update
 #     raise PreventUpdate
 #     # return dash.no_update
+
+@callback(
+    Output({"type": "settings-table", "index": ALL}, "rowData"), 
+    Output({"type": "settings-table", "index": ALL}, "columnDefs"),
+    Input("controller-settings-buffer", "data"),
+    [
+        State({"type": "settings-table", "index": ALL}, "rowData"),
+        State({"type": "settings-table", "index": ALL}, "columnDefs"),
+    ],
+)
+def update_settings_table(controller_settings, row_data_list, col_defs_list):
+    if controller_settings:
+            new_row_data_list = []
+            new_column_defs = []
+            try:
+                for row_data, col_defs in zip(row_data_list, col_defs_list):
+                    data = {}
+                    for col in col_defs:
+                        name = col["field"]
+                        if name in controller_settings["settings"]:
+                            data[name] = controller_settings["settings"][name]["data"]["actual"]
+                        else:
+                            data[name] = ""
+                        col["cellRenderer"] = "DBC_Switch"
+                        col_defs_list.insert(0, col)
+                    new_column_defs.append(col_defs_list)
+                    row_data.insert(0, data)
+                    new_row_data_list.append(row_data[0:1])
+                if len(new_row_data_list) == 0:
+                    raise PreventUpdate
+                return new_row_data_list, new_column_defs
+            except Exception as e:
+                print(f"data update error: {e}")
+            raise PreventUpdate
+    else:
+        raise PreventUpdate
 
 
 @callback(
