@@ -235,6 +235,11 @@ class Tx(Interface):
                 "configure",
                 extra={"conf": conf, "self.config": self.config},
             )
+
+
+            # TODO Loop through paths and check for "unpolled" ops and start a task to 
+            # handle
+            
         except Exception as e:
             self.logger.debug("Tx:configure", extra={"error": e})
  

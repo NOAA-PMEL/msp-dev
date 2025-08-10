@@ -30,7 +30,39 @@
         }
     },
     "path_types": {
-        "AtoD": {
+        "ADC": {
+            "attributes": {
+                "client_module": {
+                    "type": "string",
+                    "data": "envds.daq.clients.tcp_client"
+                },
+                "client_class": {
+                    "type": "string",
+                    "data": "TCPClient"
+                },
+                "host": {
+                    "type": "string",
+                    "data": ""
+                },
+                "channel": {
+                    "type": "int",
+                    "data": 0
+                },
+                "sample_mode": {
+                    "type": "string",
+                    "data": "polled"
+                },
+                "unpolled_interval_handle": {
+                    "type": "int",
+                    "data": 1
+                },
+                "unpolled_sample_frequency_sec": {
+                    "type": "double",
+                    "data": 1.0
+                }
+            }
+        },
+        "DAC": {
             "attributes": {
                 "client_module": {
                     "type": "string",
@@ -50,7 +82,7 @@
                 }
             }
         },
-        "DtoA": {
+        "DIO": {
             "attributes": {
                 "client_module": {
                     "type": "string",
@@ -84,13 +116,25 @@
                     "type": "string",
                     "data": ""
                 },
-                "channel": {
-                    "type": "string",
-                    "data": "FIO0"
-                },
-                "clock_roll_value": {
+                "pwm_channel": {
                     "type": "int",
-                    "data": 3200
+                    "data": 6
+                },
+                "clock_channel": {
+                    "type": "int",
+                    "data": 0
+                },
+                "clock_divisor": {
+                    "type": "int",
+                    "data": 1
+                },
+                "clock_core_frequency": {
+                    "type": "int",
+                    "data": 80000000
+                },
+                "clock_desired_frequency": {
+                    "type": "int",
+                    "data": 80000000
                 }
             }
         },
@@ -109,8 +153,20 @@
                     "data": ""
                 },
                 "channel": {
+                    "type": "int",
+                    "data": 7
+                },
+                "sample_mode": {
                     "type": "string",
-                    "data": "FIO0"
+                    "data": "polled"
+                },
+                "unpolled_interval_handle": {
+                    "type": "int",
+                    "data": 1
+                },
+                "unpolled_sample_frequency_sec": {
+                    "type": "double",
+                    "data": 1.0
                 }
             }
         },
