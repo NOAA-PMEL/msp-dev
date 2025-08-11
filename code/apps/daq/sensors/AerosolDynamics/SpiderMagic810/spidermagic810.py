@@ -819,6 +819,7 @@ class SpiderMagic810(Sensor):
                     self.collecting = True
 
                 if record and self.sampling():
+                    print('size record', sys.getsizeof(record))
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
@@ -832,6 +833,7 @@ class SpiderMagic810(Sensor):
                     )
                     # message = Message(data=event, destpath=destpath)
                     message = event
+                    print('size message', sys.getsizeof(message))
                     # self.logger.debug("default_data_loop", extra={"m": message})
                     await self.send_message(message)
 
