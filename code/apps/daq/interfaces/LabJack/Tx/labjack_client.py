@@ -335,6 +335,8 @@ class I2CClient(LabJackClient):
             address = self.hex_to_int(i2c_write["address"])
             write_data = [self.hex_to_int(hex_val) for hex_val in i2c_write["data"]]
 
+            self.logger.debug("send_to_client", extra={"i2c-data": data})
+
             ljm.eWriteName(self.labjack, "I2C_SDA_DIONUM", self.config.properties["attributes"]["sda_channel"]["data"])  # CS is FIO2
             ljm.eWriteName(self.labjack, "I2C_SCL_DIONUM", self.config.properties["attributes"]["scl_channel"]["data"])  # CLK is FIO3
             ljm.eWriteName(self.labjack, "I2C_SPEED_THROTTLE", self.config.properties["attributes"]["speed_throttle"]["data"]) # CLK frequency approx 100 kHz
@@ -350,8 +352,8 @@ class I2CClient(LabJackClient):
             ljm.eWriteName(self.labjack, "I2C_GO", 1)
 
             i2c_read = data["data"]["i2c-read"]
-            await asyncio.sleep(i2c_read.get("delay-ms",500)/1000.) # does this have to be 0.5?
-
+            # await asyncio.sleep(i2c_read.get("delay-ms",500)/1000.) # does this have to be 0.5?
+            await asyncio.sleep(0.5)
             address = self.hex_to_int(i2c_read["address"])
             read_bytes = i2c_read["read-length"]
 
@@ -361,12 +363,14 @@ class I2CClient(LabJackClient):
             ljm.eWriteName(self.labjack, "I2C_GO", 1)
 
             dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", read_bytes)
+            self.logger.debug("send_to_client", extra={"dataread": dataRead})
             if dataRead:
                 output = {
                     "address": address,
                     "input-data": data,
                     "data": dataRead 
                 }
+                self.logger.debug("send_to_client", extra={"output": output})
                 await self.data_buffer.put(output)
 
         except Exception as e:
