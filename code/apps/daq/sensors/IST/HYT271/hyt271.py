@@ -191,7 +191,7 @@ class HYT271(Sensor):
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
             variables=self.metadata["variables"],
-            settings=settings_def["settings"],
+            settings=settings_def["variables"],
         )
 
         self.config = DeviceConfig(
