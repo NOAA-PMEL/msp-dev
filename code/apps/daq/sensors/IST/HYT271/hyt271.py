@@ -178,10 +178,20 @@ class HYT271(Sensor):
                 "hyt271.configure", extra={"interfaces": conf["interfaces"]}
             )
 
+        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+        # for name, setting in self.metadata["settings"].items():
+        for name, setting in settings_def["variables"].items():
+        
+            requested = setting["attributes"]["default_value"]["data"]
+            if "settings" in config and name in config["settings"]:
+                requested = config["settings"][name]
+
+            self.settings.set_setting(name, requested=requested)
+
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
             variables=self.metadata["variables"],
-            settings=self.metadata["settings"],
+            settings=settings_def["settings"],
         )
 
         self.config = DeviceConfig(
