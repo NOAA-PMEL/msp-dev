@@ -102,7 +102,7 @@
                 }
             }
         },
-        "pwm": {
+        "PWM": {
             "attributes": {
                 "client_module": {
                     "type": "string",
@@ -138,7 +138,7 @@
                 }
             }
         },
-        "counter": {
+        "COUNTER": {
             "attributes": {
                 "client_module": {
                     "type": "string",
@@ -170,7 +170,7 @@
                 }
             }
         },
-        "i2c": {
+        "I2C": {
             "attributes": {
                 "client_module": {
                     "type": "string",
@@ -198,7 +198,7 @@
                 }
             }
         },
-        "spi": {
+        "SPI": {
             "attributes": {
                 "client_module": {
                     "type": "string",

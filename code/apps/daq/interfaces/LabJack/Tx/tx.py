@@ -170,6 +170,8 @@ class Tx(Interface):
                     print("here:3")
 
                     for path_att_name, path_att in val.items():
+                        if path_att_name == "path_type":
+                            continue
                         if path_att_name in client_config["attributes"]:
                             client_config["attributes"][path_att_name]["data"] = path_att
                     print("here:4")
