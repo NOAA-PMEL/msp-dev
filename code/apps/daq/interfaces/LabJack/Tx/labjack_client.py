@@ -254,7 +254,8 @@ class PWMClient(LabJackClient):
             clockTickRate = core_frequency / clock_divisor
             clockRollValue = clockTickRate / desired_frequency
 
-            duty_cycle = data["duty_cycle_percent"]
+            pwm_data = data["pwm-data"]
+            duty_cycle = pwm_data["duty_cycle_percent"]
             pwmConfigA = int(clockRollValue * (duty_cycle/100.0))
 
             clock_channel = self.config.properties["attributes"]["clock_channel"]["data"]
@@ -328,7 +329,7 @@ class I2CClient(LabJackClient):
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
 
-            i2c_write = data["i2c-write"]
+            i2c_write = data["data"]["i2c-write"]
             # i2c_read = data["i2c-read"]
             
             address = self.hex_to_int(i2c_write["address"])
@@ -348,7 +349,7 @@ class I2CClient(LabJackClient):
             #ljm.eWriteName(self.labjack, "I2C_DATA_TX", 0x00)
             ljm.eWriteName(self.labjack, "I2C_GO", 1)
 
-            i2c_read = data["i2c-read"]
+            i2c_read = data["data"]["i2c-read"]
             await asyncio.sleep(i2c_read.get("delay-ms",500)/1000.) # does this have to be 0.5?
 
             address = self.hex_to_int(i2c_read["address"])
@@ -362,6 +363,7 @@ class I2CClient(LabJackClient):
             dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", read_bytes)
             if dataRead:
                 output = {
+                    "address": address,
                     "input-data": data,
                     "data": dataRead 
                 }

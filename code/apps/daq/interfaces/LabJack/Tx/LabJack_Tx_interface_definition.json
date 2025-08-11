@@ -134,7 +134,7 @@
                 },
                 "clock_desired_frequency": {
                     "type": "int",
-                    "data": 80000000
+                    "data": 25000
                 }
             }
         },
