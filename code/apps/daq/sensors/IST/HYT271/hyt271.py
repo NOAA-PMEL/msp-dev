@@ -105,6 +105,7 @@ class HYT271(Sensor):
 
         self.sensor_definition_file = "IST_HYT271_sensor_definition.json"
 
+
         try:            
             with open(self.sensor_definition_file, "r") as f:
                 self.metadata = json.load(f)
