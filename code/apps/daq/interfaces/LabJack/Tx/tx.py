@@ -114,11 +114,14 @@ class Tx(Interface):
         # self.run_tasks.append(self.connection_monitor())
         self.data_loop_task = None
         self.recv_data_buffers = dict()
+        self.logger.info("Tx - done with init")
 
     def configure(self):
 
         # print("configure:1")
+        self.logger.debug("configure:pre")
         super(Tx, self).configure()
+        self.logger.debug("configure:post")
         try:
             # get config from file
             # print("configure:2")
