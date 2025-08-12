@@ -414,12 +414,15 @@ async def main(server_config: ServerConfig = None):
     # test = envdsBase()
     # task_list.append(asyncio.create_task(test_task()))
     try:
+        logger.debug("Starting LabJack Tx Interface 1")
         iface = Tx()
+        logger.debug("Starting LabJack Tx Interface 2")
         iface.run()
+        logger.debug("Starting LabJack Tx Interface 3")
         # task_list.append(asyncio.create_task(iface.run()))
         # await asyncio.sleep(2)
         iface.enable()
-        logger.debug("Starting LabJack Tx Interface")
+        logger.debug("Starting LabJack Tx Interface 4")
     except Exception as e:
         logger.error("Tx.main", extra={"reason": e})
     # remove fastapi ----
