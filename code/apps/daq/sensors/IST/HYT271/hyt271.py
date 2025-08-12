@@ -235,7 +235,7 @@ class HYT271(Sensor):
     async def handle_interface_data(self, message: Message):
         await super(HYT271, self).handle_interface_data(message)
 
-        # self.logger.debug("interface_recv_data", extra={"data": message.data})
+        self.logger.debug("interface_recv_data", extra={"data": message.data})
         if message.data["type"] == det.interface_data_recv():
             try:
                 self.logger.debug(
