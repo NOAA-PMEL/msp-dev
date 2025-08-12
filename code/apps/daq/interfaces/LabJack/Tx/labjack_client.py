@@ -444,7 +444,7 @@ class I2CClient(LabJackClient):
             dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", read_bytes)
             self.logger.debug("send_to_client", extra={"dataread": dataRead})
             if dataRead:
-                output = {"address": address, "input-data": data, "data": dataRead}
+                output = {"address": i2c_read["address"], "input-data": data, "data": dataRead}
                 self.logger.debug("send_to_client", extra={"output": output})
                 await self.data_buffer.put(output)
 
