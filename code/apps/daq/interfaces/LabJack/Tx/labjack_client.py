@@ -49,6 +49,7 @@ class LabJackClient(DAQClient):
         #     self.client = None
         # self.logger.debug("init", extra={"client": self.client})
 
+        self.run_task_list.append(self.connection_monitor())
         try:
             if (
                 "sample_mode" in self.config.properties["attributes"]
