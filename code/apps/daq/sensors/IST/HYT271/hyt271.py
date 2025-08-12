@@ -238,8 +238,12 @@ class HYT271(Sensor):
         # self.logger.debug("interface_recv_data", extra={"data": message.data})
         if message.data["type"] == det.interface_data_recv():
             try:
+                self.logger.debug(
+                    "interface_recv_data", extra={"data": message.data}
+                )
                 path_id = message.data["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
+                self.logger.debug("interface_recv_data", extra={"path_id": path_id, "iface_path": iface_path})
                 # if path_id == "default":
                 if path_id == iface_path:
                     self.logger.debug(
