@@ -2,17 +2,22 @@ import asyncio
 import binascii
 from envds.daq.client import DAQClient, DAQClientConfig, _StreamClient
 from envds.core import envdsStatus
-from envds.exceptions import envdsRunTransitionException, envdsRunWaitException, envdsRunErrorException
+from envds.exceptions import (
+    envdsRunTransitionException,
+    envdsRunWaitException,
+    envdsRunErrorException,
+)
 import random
 
 from envds.util.util import time_to_next
 
 from labjack import ljm
 
+
 class LabJackClient(DAQClient):
     """docstring for self.LabJackClient."""
 
-    def __init__(self, config: DAQClientConfig=None, **kwargs):
+    def __init__(self, config: DAQClientConfig = None, **kwargs):
         # print("mock_client: 1")
         super(LabJackClient, self).__init__(config=config)
         # print("mock_client: 2")
@@ -23,8 +28,8 @@ class LabJackClient(DAQClient):
         # TODO: set uid here? or let caller do it?
         self.config = config
         # print("mock_client: 3")
-        
-        self.labjack = None # labjack handle
+
+        self.labjack = None  # labjack handle
 
         # # self.mock_type = "1D"  # 2D, i2c
         # self.read_method = "readline"
@@ -32,7 +37,7 @@ class LabJackClient(DAQClient):
         # self.decode_errors = "strict"
         # self.read_terminator = "\r"
         # # print("mock_client: 4")
-        self.logger.debug("self.LabJackClient.init", extra={'config': self.config})
+        self.logger.debug("self.LabJackClient.init", extra={"config": self.config})
         self.data_buffer = asyncio.Queue()
         # self.enable_task_list.append(self.recv_loop())
 
@@ -43,11 +48,21 @@ class LabJackClient(DAQClient):
         #     self.logger.error("init client error", extra={"error": e})
         #     self.client = None
         # self.logger.debug("init", extra={"client": self.client})
-        
+
         try:
-            if "sample_mode" in self.config.properties["attributes"] and "unpolled_sample_frequency_sec" in self.config.properties["attributes"]:
+            if (
+                "sample_mode" in self.config.properties["attributes"]
+                and "unpolled_sample_frequency_sec"
+                in self.config.properties["attributes"]
+            ):
                 if self.config.properties["attributes"]["sample_mode"]["data"]:
-                    asyncio.create_task(self.upolled_sample_loop(self.config.properties["attributes"]["unpolled_sample_frequency_sec"]["data"]))
+                    asyncio.create_task(
+                        self.upolled_sample_loop(
+                            self.config.properties["attributes"][
+                                "unpolled_sample_frequency_sec"
+                            ]["data"]
+                        )
+                    )
         except:
             print("error: unpolled sampling not started")
             pass
@@ -58,15 +73,30 @@ class LabJackClient(DAQClient):
             try:
                 if not self.labjack:
                     self.labjack = ljm.openS("ANY", "ANY", host)
+                    info = ljm.getHandleInfo(self.labjack)
+                    self.logger.info(
+                        "connection_monitor: labjack info",
+                        extra={
+                            "device_type": info[0],
+                            "connection_type": info[1],
+                            "serial_number": info[2],
+                            "ip_address": ljm.numberToIP(info[3]),
+                            "port": info[4],
+                            "max_bytes_per_mb": info[5],
+                        },
+                    )
+
+                    # deviceType = info[0]
+
             except Exception as e:
                 self.logger.error("connection_monitor", extra={"reason": e})
                 self.labjack = None
             await asyncio.sleep(5)
 
     def hex_to_int(self, hex_val):
-            if "Ox" not in hex_val:
-                hex_val = f"0x{hex_val}"
-            return int(hex_val, 16) 
+        if "Ox" not in hex_val:
+            hex_val = f"0x{hex_val}"
+        return int(hex_val, 16)
 
     async def recv_from_client(self):
         if True:
@@ -82,18 +112,25 @@ class LabJackClient(DAQClient):
         pass
 
     async def upolled_sample_loop(self, sample_freq):
-        handle = self.config.properties["attributes"]["unpolled_interval_handle"]["data"]
+        handle = self.config.properties["attributes"]["unpolled_interval_handle"][
+            "data"
+        ]
         while self.config.properties["attributes"]["sample_mode"]["data"] == "unpolled":
             try:
-                freq = int(self.config.properties["attributes"]["unpolled_sample_frequency_sec"]["data"] * 1000000)
-                ljm.startInterval(
-                    handle,
-                    freq
+                freq = int(
+                    self.config.properties["attributes"][
+                        "unpolled_sample_frequency_sec"
+                    ]["data"]
+                    * 1000000
                 )
+                ljm.startInterval(handle, freq)
 
                 skipped_intervals = ljm.waitForNextInterval(handle)
                 if skipped_intervals > 0:
-                    self.logger.debug("upolled_sample_loop", extra={"skipped intervals": skipped_intervals})
+                    self.logger.debug(
+                        "upolled_sample_loop",
+                        extra={"skipped intervals": skipped_intervals},
+                    )
 
                 data = None
                 if "unpolled_data" in self.config.properties["attributes"]:
@@ -105,10 +142,11 @@ class LabJackClient(DAQClient):
 
         ljm.cleanInterval(handle)
 
+
 class ADCClient(LabJackClient):
     """docstring for self.LabJackClient."""
 
-    def __init__(self, config: DAQClientConfig=None, **kwargs):
+    def __init__(self, config: DAQClientConfig = None, **kwargs):
         # print("mock_client: 1")
         super(ADCClient, self).__init__(config=config)
         # self.adc_started = False
@@ -118,7 +156,7 @@ class ADCClient(LabJackClient):
     #     while True:
     #         try:
     #             clock_channel = self.config.properties["attributes"]["channel"]["data"]
-    #             if not self.counter_started:        
+    #             if not self.counter_started:
     #                 ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_INDEX", 7)            # Set DIO#_EF_INDEX to 7 - High-Speed Counter.
     #                 ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_ENABLE", 1)
     #                 self.counter_started = True             # Enable the High-Speed Counter.
@@ -137,10 +175,11 @@ class ADCClient(LabJackClient):
         except Exception as e:
             self.logger.error("send_to_client")
 
+
 class DACClient(LabJackClient):
     """docstring for self.LabJackClient."""
 
-    def __init__(self, config: DAQClientConfig=None, **kwargs):
+    def __init__(self, config: DAQClientConfig = None, **kwargs):
         # print("mock_client: 1")
         super(DACClient, self).__init__(config=config)
         # self.adc_started = False
@@ -157,7 +196,7 @@ class DACClient(LabJackClient):
             self.logger.error("send_to_client")
 
         # try:
-            
+
         #     # send_method = data.get("send-method", self.send_method)
 
         #     print(f"send_to_client:1 props {self.config.properties}")
@@ -172,7 +211,6 @@ class DACClient(LabJackClient):
         #     send_method = self.send_method
         #     if "send-method" in self.config.properties['device-interface-properties']['read-properties']:
         #         send_method = self.config.properties['device-interface-properties']['read-properties']['send-method']
-
 
         #     self.logger.debug("send_to_client", extra={"send_method": send_method, "data": data})
         #     if send_method == "binary":
@@ -206,10 +244,11 @@ class DACClient(LabJackClient):
         # except Exception as e:
         #     self.logger.error("send_to_client error", extra={"error": e})
 
+
 class DIOClient(LabJackClient):
     """docstring for self.LabJackClient."""
 
-    def __init__(self, config: DAQClientConfig=None, **kwargs):
+    def __init__(self, config: DAQClientConfig = None, **kwargs):
         # print("mock_client: 1")
         super(DIOClient, self).__init__(config=config)
         # self.adc_started = False
@@ -221,7 +260,7 @@ class DIOClient(LabJackClient):
             channel = self.config.properties["attributes"]["channel"]["data"]
 
             mode = data["dio_mode"]
-            if mode.lower() == "output": # write to DIO pin
+            if mode.lower() == "output":  # write to DIO pin
                 state = data["do_state"]
                 ljm.eWriteName(self.labview, f"FIO{channel}", state)
             elif mode.lower == "input":
@@ -236,10 +275,9 @@ class DIOClient(LabJackClient):
 class PWMClient(LabJackClient):
     """docstring for self.LabJackClient."""
 
-    def __init__(self, config: DAQClientConfig=None, **kwargs):
+    def __init__(self, config: DAQClientConfig = None, **kwargs):
         # print("mock_client: 1")
         super(PWMClient, self).__init__(config=config)
-
 
     async def send_to_client(self, data):
         try:
@@ -247,32 +285,54 @@ class PWMClient(LabJackClient):
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
 
-            clock_divisor = self.config.properties["attributes"]["clock_divisor"]["data"]
-            core_frequency = self.config.properties["attributes"]["clock_core_frequency"]["data"]
-            desired_frequency = self.config.properties["attributes"]["clock_desired_frequency"]["data"]
+            clock_divisor = self.config.properties["attributes"]["clock_divisor"][
+                "data"
+            ]
+            core_frequency = self.config.properties["attributes"][
+                "clock_core_frequency"
+            ]["data"]
+            desired_frequency = self.config.properties["attributes"][
+                "clock_desired_frequency"
+            ]["data"]
 
             clockTickRate = core_frequency / clock_divisor
             clockRollValue = clockTickRate / desired_frequency
 
             pwm_data = data["pwm-data"]
             duty_cycle = pwm_data["duty_cycle_percent"]
-            pwmConfigA = int(clockRollValue * (duty_cycle/100.0))
+            pwmConfigA = int(clockRollValue * (duty_cycle / 100.0))
 
-            clock_channel = self.config.properties["attributes"]["clock_channel"]["data"]
+            clock_channel = self.config.properties["attributes"]["clock_channel"][
+                "data"
+            ]
             pwm_channel = self.config.properties["attributes"]["pwm_channel"]["data"]
 
             # configure clock
-            ljm.eWriteName(self.labjack, f"DIO_EF_CLOCK{clock_channel}_DIVISOR", clock_divisor)     # Set Clock Divisor.
-            ljm.eWriteName(self.labjack, f"DIO_EF_CLOCK{clock_channel}_ROLL_VALUE", clockRollValue)  # Set calculated Clock Roll Value.
+            ljm.eWriteName(
+                self.labjack, f"DIO_EF_CLOCK{clock_channel}_DIVISOR", clock_divisor
+            )  # Set Clock Divisor.
+            ljm.eWriteName(
+                self.labjack, f"DIO_EF_CLOCK{clock_channel}_ROLL_VALUE", clockRollValue
+            )  # Set calculated Clock Roll Value.
 
             # Configure PWM Registers
-            ljm.eWriteName(self.labjack, f"DIO{pwm_channel}_EF_INDEX", 0)              # Set DIO#_EF_INDEX to 0 - PWM Out.
-            ljm.eWriteName(self.labjack, f"DIO{pwm_channel}_EF_CLOCK_SOURCE", clock_channel)       # Set DIO#_EF to use clock 0. Formerly DIO#_EF_OPTIONS, you may need to switch to this name on older LJM versions.
-            ljm.eWriteName(self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A", pwmConfigA)  # Set DIO#_EF_CONFIG_A to the calculated value.
-            ljm.eWriteName(self.labjack, f"DIO{pwm_channel}_EF_ENABLE", 1)             # Enable the DIO#_EF Mode, PWM signal will not start until DIO_EF and CLOCK are enabled.
+            ljm.eWriteName(
+                self.labjack, f"DIO{pwm_channel}_EF_INDEX", 0
+            )  # Set DIO#_EF_INDEX to 0 - PWM Out.
+            ljm.eWriteName(
+                self.labjack, f"DIO{pwm_channel}_EF_CLOCK_SOURCE", clock_channel
+            )  # Set DIO#_EF to use clock 0. Formerly DIO#_EF_OPTIONS, you may need to switch to this name on older LJM versions.
+            ljm.eWriteName(
+                self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A", pwmConfigA
+            )  # Set DIO#_EF_CONFIG_A to the calculated value.
+            ljm.eWriteName(
+                self.labjack, f"DIO{pwm_channel}_EF_ENABLE", 1
+            )  # Enable the DIO#_EF Mode, PWM signal will not start until DIO_EF and CLOCK are enabled.
 
-            ljm.eWriteName(self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 1) # Enable Clock#, this will start the PWM signal.
-        
+            ljm.eWriteName(
+                self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 1
+            )  # Enable Clock#, this will start the PWM signal.
+
         # TODO turn off pwm on stop/disable
 
         except Exception as e:
@@ -282,7 +342,7 @@ class PWMClient(LabJackClient):
 class CounterClient(LabJackClient):
     """docstring for self.LabJackClient."""
 
-    def __init__(self, config: DAQClientConfig=None, **kwargs):
+    def __init__(self, config: DAQClientConfig = None, **kwargs):
         # print("mock_client: 1")
         super(CounterClient, self).__init__(config=config)
         self.counter_started = False
@@ -292,10 +352,12 @@ class CounterClient(LabJackClient):
         while True:
             try:
                 clock_channel = self.config.properties["attributes"]["channel"]["data"]
-                if not self.counter_started:        
-                    ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_INDEX", 7)            # Set DIO#_EF_INDEX to 7 - High-Speed Counter.
+                if not self.counter_started:
+                    ljm.eWriteName(
+                        self.labjack, f"DIO{clock_channel}_EF_INDEX", 7
+                    )  # Set DIO#_EF_INDEX to 7 - High-Speed Counter.
                     ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_ENABLE", 1)
-                    self.counter_started = True             # Enable the High-Speed Counter.
+                    self.counter_started = True  # Enable the High-Speed Counter.
             except Exception as e:
                 self.logger.error("start_counter", extra={"reason": e})
                 self.counter_started = False
@@ -318,10 +380,9 @@ class CounterClient(LabJackClient):
 class I2CClient(LabJackClient):
     """docstring for self.LabJackClient."""
 
-    def __init__(self, config: DAQClientConfig=None, **kwargs):
+    def __init__(self, config: DAQClientConfig = None, **kwargs):
         # print("mock_client: 1")
         super(I2CClient, self).__init__(config=config)
-
 
     async def send_to_client(self, data):
         try:
@@ -332,24 +393,40 @@ class I2CClient(LabJackClient):
 
             i2c_write = data["data"]["i2c-write"]
             # i2c_read = data["i2c-read"]
-            
+
             address = self.hex_to_int(i2c_write["address"])
             write_data = [self.hex_to_int(hex_val) for hex_val in i2c_write["data"]]
 
             self.logger.debug("send_to_client", extra={"i2c-data": data})
 
-            ljm.eWriteName(self.labjack, "I2C_SDA_DIONUM", self.config.properties["attributes"]["sda_channel"]["data"])  # CS is FIO2
-            ljm.eWriteName(self.labjack, "I2C_SCL_DIONUM", self.config.properties["attributes"]["scl_channel"]["data"])  # CLK is FIO3
-            ljm.eWriteName(self.labjack, "I2C_SPEED_THROTTLE", self.config.properties["attributes"]["speed_throttle"]["data"]) # CLK frequency approx 100 kHz
+            ljm.eWriteName(
+                self.labjack,
+                "I2C_SDA_DIONUM",
+                self.config.properties["attributes"]["sda_channel"]["data"],
+            )  # CS is FIO2
+            ljm.eWriteName(
+                self.labjack,
+                "I2C_SCL_DIONUM",
+                self.config.properties["attributes"]["scl_channel"]["data"],
+            )  # CLK is FIO3
+            ljm.eWriteName(
+                self.labjack,
+                "I2C_SPEED_THROTTLE",
+                self.config.properties["attributes"]["speed_throttle"]["data"],
+            )  # CLK frequency approx 100 kHz
             ljm.eWriteName(self.labjack, "I2C_OPTIONS", 0)
-            ljm.eWriteName(self.labjack, "I2C_SLAVE_ADDRESS", address) # default address is 0x28 (40 decimal)
+            ljm.eWriteName(
+                self.labjack, "I2C_SLAVE_ADDRESS", address
+            )  # default address is 0x28 (40 decimal)
 
             ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", len(write_data))
             ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", 0)
 
-            ljm.eWriteNameByteArray(self.labjack, "I2C_DATA_TX", len(write_data), write_data)
-            #ljm.eWriteNameArray(self.labjack, "I2C_DATA_TX", 1, [0x00])
-            #ljm.eWriteName(self.labjack, "I2C_DATA_TX", 0x00)
+            ljm.eWriteNameByteArray(
+                self.labjack, "I2C_DATA_TX", len(write_data), write_data
+            )
+            # ljm.eWriteNameArray(self.labjack, "I2C_DATA_TX", 1, [0x00])
+            # ljm.eWriteName(self.labjack, "I2C_DATA_TX", 0x00)
             ljm.eWriteName(self.labjack, "I2C_GO", 1)
 
             i2c_read = data["data"]["i2c-read"]
@@ -358,7 +435,7 @@ class I2CClient(LabJackClient):
             address = self.hex_to_int(i2c_read["address"])
             read_bytes = i2c_read["read-length"]
 
-            #dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", 4)
+            # dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", 4)
             ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", 0)
             ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", read_bytes)
             ljm.eWriteName(self.labjack, "I2C_GO", 1)
@@ -366,11 +443,7 @@ class I2CClient(LabJackClient):
             dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", read_bytes)
             self.logger.debug("send_to_client", extra={"dataread": dataRead})
             if dataRead:
-                output = {
-                    "address": address,
-                    "input-data": data,
-                    "data": dataRead 
-                }
+                output = {"address": address, "input-data": data, "data": dataRead}
                 self.logger.debug("send_to_client", extra={"output": output})
                 await self.data_buffer.put(output)
 
@@ -381,10 +454,9 @@ class I2CClient(LabJackClient):
 class SPIClient(LabJackClient):
     """docstring for self.LabJackClient."""
 
-    def __init__(self, config: DAQClientConfig=None, **kwargs):
+    def __init__(self, config: DAQClientConfig = None, **kwargs):
         # print("mock_client: 1")
         super(SPIClient, self).__init__(config=config)
-
 
     async def send_to_client(self, data):
         try:
@@ -394,48 +466,63 @@ class SPIClient(LabJackClient):
 
             spi_write = data["spi-write"]
             # spi_read = data["spi-read"]
-            
+
             address = self.hex_to_int(spi_write["address"])
             write_data = [self.hex_to_int(hex_val) for hex_val in spi_write["data"]]
 
-            ljm.eWriteName(self.labjack, "I2C_SDA_DIONUM", self.config.properties["attributes"]["sda_channel"]["data"])  # CS is FIO2
-            ljm.eWriteName(self.labjack, "I2C_SCL_DIONUM", self.config.properties["attributes"]["scl_channel"]["data"])  # CLK is FIO3
-            ljm.eWriteName(self.labjack, "I2C_SPEED_THROTTLE", self.config.properties["attributes"]["speed_throttle"]["data"]) # CLK frequency approx 100 kHz
+            ljm.eWriteName(
+                self.labjack,
+                "I2C_SDA_DIONUM",
+                self.config.properties["attributes"]["sda_channel"]["data"],
+            )  # CS is FIO2
+            ljm.eWriteName(
+                self.labjack,
+                "I2C_SCL_DIONUM",
+                self.config.properties["attributes"]["scl_channel"]["data"],
+            )  # CLK is FIO3
+            ljm.eWriteName(
+                self.labjack,
+                "I2C_SPEED_THROTTLE",
+                self.config.properties["attributes"]["speed_throttle"]["data"],
+            )  # CLK frequency approx 100 kHz
             ljm.eWriteName(self.labjack, "I2C_OPTIONS", 0)
-            ljm.eWriteName(self.labjack, "I2C_SLAVE_ADDRESS", address) # default address is 0x28 (40 decimal)
+            ljm.eWriteName(
+                self.labjack, "I2C_SLAVE_ADDRESS", address
+            )  # default address is 0x28 (40 decimal)
 
             ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", len(write_data))
             ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", 0)
 
-            ljm.eWriteNameByteArray(self.labjack, "I2C_DATA_TX", len(write_data), write_data)
-            #ljm.eWriteNameArray(self.labjack, "I2C_DATA_TX", 1, [0x00])
-            #ljm.eWriteName(self.labjack, "I2C_DATA_TX", 0x00)
+            ljm.eWriteNameByteArray(
+                self.labjack, "I2C_DATA_TX", len(write_data), write_data
+            )
+            # ljm.eWriteNameArray(self.labjack, "I2C_DATA_TX", 1, [0x00])
+            # ljm.eWriteName(self.labjack, "I2C_DATA_TX", 0x00)
             ljm.eWriteName(self.labjack, "I2C_GO", 1)
 
             spi_read = data["spi-read"]
-            await asyncio.sleep(spi_read.get("delay-ms",500)/1000.) # does this have to be 0.5?
+            await asyncio.sleep(
+                spi_read.get("delay-ms", 500) / 1000.0
+            )  # does this have to be 0.5?
 
             address = self.hex_to_int(spi_read["address"])
             read_bytes = spi_read["read-length"]
 
-            #dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", 4)
+            # dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", 4)
             ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", 0)
             ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", read_bytes)
             ljm.eWriteName(self.labjack, "I2C_GO", 1)
 
             dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", read_bytes)
             if dataRead:
-                output = {
-                    "input-data": data,
-                    "data": dataRead 
-                }
+                output = {"input-data": data, "data": dataRead}
                 await self.data_buffer.put(output)
 
         except Exception as e:
             self.logger.error("send_spi")
 
         # try:
-            
+
         #     # send_method = data.get("send-method", self.send_method)
 
         #     print(f"send_to_client:1 props {self.config.properties}")
@@ -450,7 +537,6 @@ class SPIClient(LabJackClient):
         #     send_method = self.send_method
         #     if "send-method" in self.config.properties['device-interface-properties']['read-properties']:
         #         send_method = self.config.properties['device-interface-properties']['read-properties']['send-method']
-
 
         #     self.logger.debug("send_to_client", extra={"send_method": send_method, "data": data})
         #     if send_method == "binary":
