@@ -344,6 +344,7 @@ async def send_event(ce: CloudEvent):
         except InvalidStructuredJSON:
             L.error(f"INVALID MSG: {ce}")
         except httpx.TimeoutException:
+            L.error(f"HTTP Timeout: {ce}")
             pass
         except httpx.HTTPError as e:
             L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
@@ -646,6 +647,18 @@ async def controller_ws_endpoint(
             data = await websocket.receive_text()
             print(f"controller data: {data}")
             message = json.loads(data)
+
+            if 'controller/settings/request' in message['destpath']:
+                event = DAQEvent.create_controller_settings_request(
+                    source = message['source'],
+                    data = message['data']
+                )
+                event['destpath'] = message['destpath']
+                event["controller_id"] = message["controller_id"]
+                print('EVENT', event)
+                await send_event(event)
+                print('event sent')
+
             if "client-request" in message:
                 # await manager.broadcast(json.dumps(message), "sensor", client_id)
                 if message['client-request'] == "start-updates":
