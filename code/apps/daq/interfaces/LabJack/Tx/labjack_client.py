@@ -369,7 +369,6 @@ class CounterClient(LabJackClient):
             # client_config = self.client_map[client_id]["client_config"]
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
-
             clock_channel = self.config.properties["attributes"]["channel"]["data"]
             dataRead = ljm.eReadName(self.labjack, f"DIO{clock_channel}_EF_READ_A")
             output = {"data": dataRead}
@@ -399,7 +398,7 @@ class I2CClient(LabJackClient):
             address = self.hex_to_int(i2c_write["address"])
             write_data = [self.hex_to_int(hex_val) for hex_val in i2c_write["data"]]
 
-            self.logger.debug("send_to_client", extra={"i2c-data": data})
+            self.logger.debug("send_to_client", extra={"i2c-data": data, "config": self.config})
 
             ljm.eWriteName(
                 self.labjack,
@@ -450,7 +449,7 @@ class I2CClient(LabJackClient):
                 await self.data_buffer.put(output)
 
         except Exception as e:
-            self.logger.error("send_i2c")
+            self.logger.error("send_i2c", extra={"reason": e})
 
 
 class SPIClient(LabJackClient):
