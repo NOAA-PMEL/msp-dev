@@ -617,7 +617,7 @@ class Controller(envdsBase):
     async def handle_settings(self, message: CloudEvent):
         # if message.data["type"] == det.sensor_settings_request():
         self.logger.debug(
-                    "handle_settings", extra={"message": message}
+                    "handle_settings", extra={"ce_mess": message}
                 )
         if message["type"] == det.controller_settings_request():
             try:
