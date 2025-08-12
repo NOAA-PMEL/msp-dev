@@ -291,7 +291,7 @@ class Tx(Interface):
     async def send_data(self, event: DAQEvent):
             print(f"here:1 {event}")
             try:
-                print(f"send_data:1 - {event}, {self.client_map[client_id]}")
+                print(f"send_data:1 - {event}")
                 client_id = event["path_id"]
                 client = self.client_map[client_id]["client"]
                 # client_config = self.config.paths[client_id]["client_config"]
