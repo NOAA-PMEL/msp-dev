@@ -480,6 +480,7 @@ async def main(server_config: ServerConfig = None):
 
 if __name__ == "__main__":
 
+    print("tx:entry:1")
     BASE_DIR = os.path.dirname(
         # os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         os.path.dirname(os.path.abspath(__file__))
@@ -487,6 +488,7 @@ if __name__ == "__main__":
     # insert BASE at beginning of paths
     sys.path.insert(0, BASE_DIR)
     print(sys.path, BASE_DIR)
+    print("tx:entry:2")
 
     print(sys.argv)
     config = ServerConfig()
@@ -496,6 +498,7 @@ if __name__ == "__main__":
         config.host = host
     except (ValueError, IndexError):
         pass
+    print("tx:entry:3")
 
     try:
         index = sys.argv.index("--port")
@@ -503,6 +506,7 @@ if __name__ == "__main__":
         config.port = int(port)
     except (ValueError, IndexError):
         pass
+    print("tx:entry:4")
 
     try:
         index = sys.argv.index("--log_level")
@@ -510,5 +514,7 @@ if __name__ == "__main__":
         config.log_level = ll
     except (ValueError, IndexError):
         pass
+    print("tx:entry:5")
 
     asyncio.run(main(config))
+    print("tx:entry:6")
