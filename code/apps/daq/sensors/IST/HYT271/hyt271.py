@@ -235,21 +235,21 @@ class HYT271(Sensor):
     async def handle_interface_data(self, message: Message):
         await super(HYT271, self).handle_interface_data(message)
 
-        self.logger.debug("interface_recv_data", extra={"data": message.data})
-        if message.data["type"] == det.interface_data_recv():
+        self.logger.debug("interface_recv_data", extra={"data": message})
+        if message["type"] == det.interface_data_recv():
             try:
                 self.logger.debug(
-                    "interface_recv_data", extra={"data": message.data}
+                    "interface_recv_data", extra={"data": message}
                 )
-                path_id = message.data["path_id"]
+                path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
                 self.logger.debug("interface_recv_data", extra={"path_id": path_id, "iface_path": iface_path})
                 # if path_id == "default":
                 if path_id == iface_path:
                     self.logger.debug(
-                        "interface_recv_data", extra={"data": message.data.data}
+                        "interface_recv_data", extra={"data": message.data}
                     )
-                    await self.default_data_buffer.put(message.data)
+                    await self.default_data_buffer.put(message)
             except KeyError:
                 pass
 
