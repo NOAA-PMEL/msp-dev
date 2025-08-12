@@ -70,9 +70,9 @@ class LabJackClient(DAQClient):
 
     async def connection_monitor(self):
         while True:
-            host = self.config.properties["attributes"]["host"]["data"]
-            self.logger.debug("connection_monitor", extra={"host": host, "self.labjack": self.labjack})
             try:
+                host = self.config.properties["host"]["data"]
+                self.logger.debug("connection_monitor", extra={"host": host, "self.labjack": self.labjack})
                 if not self.labjack:
                     self.labjack = ljm.openS("ANY", "ANY", host)
                     info = ljm.getHandleInfo(self.labjack)
