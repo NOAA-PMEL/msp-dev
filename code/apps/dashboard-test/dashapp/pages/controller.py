@@ -1714,7 +1714,7 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 )
 def get_requested_setting(changed_component, controller_meta):
     print('COMPONENT CHANGED', json.dumps(changed_component))
-    requested_val = changed_component[0]["value"]
+    requested_val = int(changed_component[0]["value"])
     col_id = changed_component[0]["colId"]
     try:
         event = {
