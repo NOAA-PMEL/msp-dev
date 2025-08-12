@@ -1718,10 +1718,10 @@ def get_requested_setting(changed_component, controller_meta):
     col_id = changed_component[0]["colId"]
     try:
         event = {
-            "source": "test source",
+            "source": "testsource",
             "data": {"settings": col_id, "requested": requested_val},
             "destpath": "envds/controller/settings/request",
-            "controller_id": controller_meta["controller_id"]
+            # "controllerid": controller_meta["controller_id"]
         }
     except Exception as e:
             print(f"data update error: {e}")
