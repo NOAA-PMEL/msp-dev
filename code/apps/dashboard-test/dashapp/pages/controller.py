@@ -24,6 +24,8 @@ from ulid import ULID
 import dash_ag_grid as dag
 import pandas as pd
 from logfmter import Logfmter
+import traceback
+from envds.daq.event import DAQEvent
 
 # import pymongo
 from collections import deque
@@ -905,6 +907,7 @@ def layout(controller_id=None):
     # print("here:1")
     layout = html.Div(
         [
+            html.Div(id="dbc-switch-value-changed"),
             html.H1(f"Controller: {controller_id}"),
             # get_button,
             # build_tables(layout_options)
@@ -1704,37 +1707,75 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 #     # return dash.no_update
 
 @callback(
+        Output("ws-send-instance-buffer", "children"),
+        Output("ws-send-instance-buffer", "children"),
+        Input({"type": "settings-table", "index": ALL}, "cellRendererData")
+)
+def get_requested_setting(changed_component):
+    print('COMPONENT CHANGED', json.dumps(changed_component))
+    requested_val = changed_component[0]["value"]
+    col_id = changed_component[0]["colId"]
+    print(requested_val, col_id)
+    event = DAQEvent.controller_settings_request(
+        # source=self.get_id_as_source(),
+        source = 'test source',
+        data = {"settings": col_id, "requested": requested_val}
+    )
+    destpath = f"{self.get_id_as_topic()}/settings/request"
+    event["destpath"] = destpath
+    message = event
+    return json.dumps(changed_component), message
+
+
+@callback(
     Output({"type": "settings-table", "index": ALL}, "rowData"), 
     Output({"type": "settings-table", "index": ALL}, "columnDefs"),
     Input("controller-settings-buffer", "data"),
+    # Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
     [
         State({"type": "settings-table", "index": ALL}, "rowData"),
         State({"type": "settings-table", "index": ALL}, "columnDefs"),
+        State("controller-definition", "data")
     ],
 )
-def update_settings_table(controller_settings, row_data_list, col_defs_list):
+def update_settings_table(controller_settings, row_data_list, col_defs_list, controller_definition):
     if controller_settings:
+            print('Controller Settings', controller_settings)
+            print('Controller Definition', controller_definition)
             new_row_data_list = []
             new_column_defs = []
             try:
                 for row_data, col_defs in zip(row_data_list, col_defs_list):
+                    print('col defs', col_defs)
                     data = {}
                     for col in col_defs:
+                        print('col', col)
                         name = col["field"]
                         if name in controller_settings["settings"]:
                             data[name] = controller_settings["settings"][name]["data"]["actual"]
                         else:
                             data[name] = ""
-                        col["cellRenderer"] = "DBC_Switch"
-                        col_defs_list.insert(0, col)
-                    new_column_defs.append(col_defs_list)
+                        
+                        if controller_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
+                            if controller_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
+                                if controller_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
+                                    col["cellRenderer"] = "DBC_Switch"
+                                    col["cellRendererParams"] = {"color": "success"}
+                        
+                        # print('col list 1', col_defs_list)
+                        # col_defs_list.insert(0, col)
+                        # print('col list 2', col_defs_list)
+                    # new_column_defs.append(col_defs_list)
+                        new_column_defs.append(col)
+                    print('new column defs', new_column_defs)
                     row_data.insert(0, data)
                     new_row_data_list.append(row_data[0:1])
                 if len(new_row_data_list) == 0:
                     raise PreventUpdate
-                return new_row_data_list, new_column_defs
+                return new_row_data_list, [new_column_defs]
             except Exception as e:
                 print(f"data update error: {e}")
+                print(traceback.format_exc())
             raise PreventUpdate
     else:
         raise PreventUpdate
