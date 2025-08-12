@@ -598,7 +598,7 @@ class Controller(envdsBase):
 
     async def handle_registry(self, message: CloudEvent):
 
-        self.logger.debug("handle_registry", extra={"ce-type": message["type"]})
+        self.logger.debug("handle_registry", extra={"ce - type": message["type"]})
         # if message.data["type"] == det.sensor_registry_update():
         if message["type"] == det.controller_definition_registry_request():
             controller_id = message.data.get("controller-definition", None)
