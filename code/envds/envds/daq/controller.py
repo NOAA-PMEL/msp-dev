@@ -445,7 +445,7 @@ class Controller(envdsBase):
 
         self.set_route(
             subscription=f"envds/controller/settings/request",
-            route_key=det.sensor_settings_request(),
+            route_key=det.controller_settings_request(),
             route=self.handle_settings,
             enable=enable,
         )
@@ -454,7 +454,7 @@ class Controller(envdsBase):
         self.set_route(
             # subscription=f"{topic_base}/registry/ack",
             subscription = topic,
-            route_key=det.device_definition_registry_ack(),
+            route_key=det.controller_definition_registry_ack(),
             route=self.handle_registry,
             enable=enable
         )
