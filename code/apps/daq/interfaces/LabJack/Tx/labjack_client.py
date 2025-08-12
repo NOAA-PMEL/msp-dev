@@ -325,6 +325,7 @@ class I2CClient(LabJackClient):
 
     async def send_to_client(self, data):
         try:
+            self.logger.debug("send_to_client", extra={"i2c-data": data})
             # client_config = self.client_map[client_id]["client_config"]
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands

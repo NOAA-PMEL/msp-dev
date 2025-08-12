@@ -295,6 +295,7 @@ class Tx(Interface):
                 path_type = client_config["attributes"]["path_type"]["data"]
 
                 data = event.data["data"]
+                self.logger.debug("send_data", extra={"client.send.data": data})
                 await client.send(data)
                 # if path_type == "AtoD":
                 #     pass
@@ -311,7 +312,8 @@ class Tx(Interface):
 
 
                 # await client.send(data)
-            except KeyError:
+            except KeyError as e:
+                self.logger.error("send_data", extra={"reason": e})
                 pass
 
     # def hex_to_int(self, hex_val):
