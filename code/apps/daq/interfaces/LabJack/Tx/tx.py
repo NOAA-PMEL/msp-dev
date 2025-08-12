@@ -413,14 +413,15 @@ async def main(server_config: ServerConfig = None):
 
     # test = envdsBase()
     # task_list.append(asyncio.create_task(test_task()))
-
-    iface = Tx()
-    iface.run()
-    # task_list.append(asyncio.create_task(iface.run()))
-    # await asyncio.sleep(2)
-    iface.enable()
-    logger.debug("Starting LabJack Tx Interface")
-
+    try:
+        iface = Tx()
+        iface.run()
+        # task_list.append(asyncio.create_task(iface.run()))
+        # await asyncio.sleep(2)
+        iface.enable()
+        logger.debug("Starting LabJack Tx Interface")
+    except Exception as e:
+        logger.error("Tx.main", extra={"reason": e})
     # remove fastapi ----
     # # get config from file
     # uid = "9999"
