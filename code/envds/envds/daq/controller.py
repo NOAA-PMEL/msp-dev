@@ -450,6 +450,7 @@ class Controller(envdsBase):
             enable=enable,
         )
 
+
         topic = f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
         self.set_route(
             # subscription=f"{topic_base}/registry/ack",
