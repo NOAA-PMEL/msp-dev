@@ -423,6 +423,7 @@ class HYT271(Sensor):
                 timestamp = data.data["timestamp"]
                 iface_data = data.data["data"]
                 address = iface_data["address"]
+                self.logger.debug("default_parse", extra={"iface_data": iface_data, "address": address, "i2c-address": self.i2c_address})
                 if address == "" or address != self.i2c_address:
                     return None
                 
