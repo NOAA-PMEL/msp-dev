@@ -403,17 +403,17 @@ class I2CClient(LabJackClient):
             ljm.eWriteName(
                 self.labjack,
                 "I2C_SDA_DIONUM",
-                self.config.properties["attributes"]["sda_channel"]["data"],
+                self.config.properties["sda_channel"]["data"],
             )  # CS is FIO2
             ljm.eWriteName(
                 self.labjack,
                 "I2C_SCL_DIONUM",
-                self.config.properties["attributes"]["scl_channel"]["data"],
+                self.config.properties["scl_channel"]["data"],
             )  # CLK is FIO3
             ljm.eWriteName(
                 self.labjack,
                 "I2C_SPEED_THROTTLE",
-                self.config.properties["attributes"]["speed_throttle"]["data"],
+                self.config.properties["speed_throttle"]["data"],
             )  # CLK frequency approx 100 kHz
             ljm.eWriteName(self.labjack, "I2C_OPTIONS", 0)
             ljm.eWriteName(
