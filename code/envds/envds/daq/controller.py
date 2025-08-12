@@ -437,13 +437,6 @@ class Controller(envdsBase):
         # )
 
         self.set_route(
-            subscription=f"{topic_base}/settings/request",
-            route_key=det.sensor_settings_request(),
-            route=self.handle_settings,
-            enable=enable,
-        )
-
-        self.set_route(
             subscription=f"envds/controller/settings/request",
             route_key=det.controller_settings_request(),
             route=self.handle_settings,
