@@ -418,7 +418,7 @@ class NP05B(Controller):
             await self.send_data(data)
 
     
-    async def recv_data_loop(self, client_id: str):
+    async def recv_data_loop(self):
         while True:
             try:
                 data = await self.client_recv_buffer.get()
