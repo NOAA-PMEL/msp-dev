@@ -619,32 +619,33 @@ class Controller(envdsBase):
                     "handle_settings", extra={"ce_mess": message}
                 )
         if message["type"] == det.controller_settings_request():
-            print(self.build_app_uid())
-            # if message["attributes"]["controllerid"] == self.build_app_uid():
+            print('controller id', message.data.get("controllerid"))
+            print('controller id', self.build_app_uid())
             if message.data.get("controllerid") == self.build_app_uid():
-                print('here')
-            try:
-                # src = message.data["source"]
-                # setting = message.data.data.get("settings", None)
-                # requested = message.data.data.get("requested", None)
-                src = message["source"]
-                setting = message.data.get("settings", None)
-                requested = message.data.get("requested", None)
-                self.logger.debug(
-                    "handle_settings", extra={"source": src, "setting": setting, "requested": requested}
-                )
-                if (setting is not None) and (requested is not None):
-                    # name = setting["settings"]
-                    # current = self.settings.get_setting(setting)
-                    # self.settings.set_setting(
-                    #     name=setting, requested=requested, actual=current["actual"]
-                    # )
-                    self.settings.set_requested(
-                        name=setting, requested=requested
+                try:
+                    # src = message.data["source"]
+                    # setting = message.data.data.get("settings", None)
+                    # requested = message.data.data.get("requested", None)
+                    src = message["source"]
+                    setting = message.data.get("settings", None)
+                    requested = message.data.get("requested", None)
+                    self.logger.debug(
+                        "handle_settings", extra={"source": src, "setting": setting, "requested": requested}
                     )
+                    if (setting is not None) and (requested is not None):
+                        # name = setting["settings"]
+                        # current = self.settings.get_setting(setting)
+                        # self.settings.set_setting(
+                        #     name=setting, requested=requested, actual=current["actual"]
+                        # )
+                        self.settings.set_requested(
+                            name=setting, requested=requested
+                        )
 
-            except (KeyError, Exception) as e:
-                self.logger.error("databuffer save error", extra={"error": e})
+                except (KeyError, Exception) as e:
+                    self.logger.error("databuffer save error", extra={"error": e})
+            else:
+                pass
 
     # async def handle_config(self, message: Message):
     async def handle_config(self, message: CloudEvent):
