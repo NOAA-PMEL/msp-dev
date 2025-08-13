@@ -369,13 +369,15 @@ class NP05B(Controller):
                 "properties": {
                     "host": client_host,
                     "port": client_port,
-                    "read-properties": {
-                            "read-method": "readline",  # readline, read-until, readbytes, readbinary
-                            # "read-terminator": "\r",  # only used for read_until
-                            "decode-errors": "strict",
-                            "send-method": "ascii",
-                        },
-                    # "subscriptions": client_subscriptions,
+                    "device-interface-properties": {
+                        "read-properties": {
+                                "read-method": "readline",  # readline, read-until, readbytes, readbinary
+                                # "read-terminator": "\r",  # only used for read_until
+                                "decode-errors": "strict",
+                                "send-method": "ascii",
+                            },
+                        # "subscriptions": client_subscriptions,
+                    }
                 }
             }
 
