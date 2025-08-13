@@ -14,13 +14,13 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: synaccess-NP05B
+  IMAGE_NAME: synaccess-np05b
   # IMAGE_TAG: ${{ github.sha }}
   # IMAGE_TAG: $(cat VERSION)
 
 jobs:
 
-  build-and-push-synaccess-NP05B:
+  build-and-push-synaccess-np05b:
 
     runs-on: ubuntu-latest
     defaults:
