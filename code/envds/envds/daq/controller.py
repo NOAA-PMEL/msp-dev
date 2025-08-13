@@ -166,7 +166,6 @@ class RuntimeSettings(object):
     def add_setting(self, name: str, requested, actual=None):
         if name not in self.settings:
             self.settings[name] = dict()
-        
         self.settings[name]["requested"] = requested
         self.settings[name]["actual"] = actual
 
@@ -437,13 +436,6 @@ class Controller(envdsBase):
         # )
 
         self.set_route(
-            subscription=f"{topic_base}/settings/request",
-            route_key=det.sensor_settings_request(),
-            route=self.handle_settings,
-            enable=enable,
-        )
-
-        self.set_route(
             subscription=f"envds/controller/settings/request",
             route_key=det.controller_settings_request(),
             route=self.handle_settings,
@@ -598,7 +590,7 @@ class Controller(envdsBase):
 
     async def handle_registry(self, message: CloudEvent):
 
-        self.logger.debug("handle_registry", extra={"ce-type": message["type"]})
+        self.logger.debug("handle_registry", extra={"ce - type": message["type"]})
         # if message.data["type"] == det.sensor_registry_update():
         if message["type"] == det.controller_definition_registry_request():
             controller_id = message.data.get("controller-definition", None)
@@ -622,33 +614,27 @@ class Controller(envdsBase):
             )
 
     async def handle_settings(self, message: CloudEvent):
-        # if message.data["type"] == det.sensor_settings_request():
         self.logger.debug(
-                    "handle_settings", extra={"message": message}
+                    "handle_settings", extra={"ce_mess": message}
                 )
         if message["type"] == det.controller_settings_request():
-            try:
-                # src = message.data["source"]
-                # setting = message.data.data.get("settings", None)
-                # requested = message.data.data.get("requested", None)
-                src = message["source"]
-                setting = message.data.get("settings", None)
-                requested = message.data.get("requested", None)
-                self.logger.debug(
-                    "handle_settings", extra={"source": src, "setting": setting}
-                )
-                if setting and requested:
-                    # name = setting["settings"]
-                    # current = self.settings.get_setting(setting)
-                    # self.settings.set_setting(
-                    #     name=setting, requested=requested, actual=current["actual"]
-                    # )
-                    self.settings.set_requested(
-                        name=setting, requested=requested
+            if message["controllerid"] == self.build_app_uid():
+                try:
+                    src = message["source"]
+                    setting = message.data.get("settings", None)
+                    requested = message.data.get("requested", None)
+                    self.logger.debug(
+                        "handle_settings", extra={"source": src, "setting": setting, "requested": requested}
                     )
+                    if (setting is not None) and (requested is not None):
+                        self.settings.set_requested(
+                            name=setting, requested=requested
+                        )
 
-            except (KeyError, Exception) as e:
-                self.logger.error("databuffer save error", extra={"error": e})
+                except (KeyError, Exception) as e:
+                    self.logger.error("databuffer save error", extra={"error": e})
+            else:
+                pass
 
     # async def handle_config(self, message: Message):
     async def handle_config(self, message: CloudEvent):
