@@ -654,7 +654,7 @@ async def controller_ws_endpoint(
                     data = message['data']
                 )
                 event['destpath'] = message['destpath']
-                # event["controllerid"] = message["controllerid"]
+                event["controllerid"] = message["controllerid"]
                 print('EVENT', event)
                 await send_event(event)
                 print('event sent')
