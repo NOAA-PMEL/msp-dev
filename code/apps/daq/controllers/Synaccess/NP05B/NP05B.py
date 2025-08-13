@@ -362,7 +362,6 @@ class NP05B(Controller):
                 daq_id=self.core_settings.namespace_prefix # this is a hack for now
             )
 
-
             # TODO build client config 
             self.client_config = {
                 "client_module": client_module,
