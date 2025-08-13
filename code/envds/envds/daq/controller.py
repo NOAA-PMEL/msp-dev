@@ -614,18 +614,12 @@ class Controller(envdsBase):
             )
 
     async def handle_settings(self, message: CloudEvent):
-        # if message.data["type"] == det.sensor_settings_request():
         self.logger.debug(
                     "handle_settings", extra={"ce_mess": message}
                 )
         if message["type"] == det.controller_settings_request():
-            print('message', message)
-            print(message["controllerid"])
             if message["controllerid"] == self.build_app_uid():
                 try:
-                    # src = message.data["source"]
-                    # setting = message.data.data.get("settings", None)
-                    # requested = message.data.data.get("requested", None)
                     src = message["source"]
                     setting = message.data.get("settings", None)
                     requested = message.data.get("requested", None)
@@ -633,11 +627,6 @@ class Controller(envdsBase):
                         "handle_settings", extra={"source": src, "setting": setting, "requested": requested}
                     )
                     if (setting is not None) and (requested is not None):
-                        # name = setting["settings"]
-                        # current = self.settings.get_setting(setting)
-                        # self.settings.set_setting(
-                        #     name=setting, requested=requested, actual=current["actual"]
-                        # )
                         self.settings.set_requested(
                             name=setting, requested=requested
                         )
