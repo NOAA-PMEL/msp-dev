@@ -1707,24 +1707,25 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 #     # return dash.no_update
 
 @callback(
-        Output("ws-send-instance-buffer", "children"),
-        Output("ws-send-instance-buffer", "children"),
-        Input({"type": "settings-table", "index": ALL}, "cellRendererData")
+    Output("dbc-switch-value-changed", "children"),
+    Output("ws-send-instance-buffer", "children"),
+    Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
+    State("controller-meta", "data")
 )
-def get_requested_setting(changed_component):
+def get_requested_setting(changed_component, controller_meta):
     print('COMPONENT CHANGED', json.dumps(changed_component))
-    requested_val = changed_component[0]["value"]
+    requested_val = int(changed_component[0]["value"])
     col_id = changed_component[0]["colId"]
-    print(requested_val, col_id)
-    event = DAQEvent.controller_settings_request(
-        # source=self.get_id_as_source(),
-        source = 'test source',
-        data = {"settings": col_id, "requested": requested_val}
-    )
-    destpath = f"{self.get_id_as_topic()}/settings/request"
-    event["destpath"] = destpath
-    message = event
-    return json.dumps(changed_component), message
+    try:
+        event = {
+            "source": "testsource",
+            "data": {"settings": col_id, "requested": requested_val},
+            "destpath": "envds/controller/settings/request",
+            "controllerid": controller_meta["controller_id"]
+        }
+    except Exception as e:
+            print(f"data update error: {e}")
+    return json.dumps(changed_component), json.dumps(event)
 
 
 @callback(
@@ -1740,8 +1741,6 @@ def get_requested_setting(changed_component):
 )
 def update_settings_table(controller_settings, row_data_list, col_defs_list, controller_definition):
     if controller_settings:
-            print('Controller Settings', controller_settings)
-            print('Controller Definition', controller_definition)
             new_row_data_list = []
             new_column_defs = []
             try:
