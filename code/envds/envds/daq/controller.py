@@ -619,6 +619,8 @@ class Controller(envdsBase):
                     "handle_settings", extra={"ce_mess": message}
                 )
         if message["type"] == det.controller_settings_request():
+            print('message', message)
+            print(message.controllerid)
             print('controller id', message.data.get("controllerid"))
             print('controller id', self.build_app_uid())
             if message.data.get("controllerid") == self.build_app_uid():
