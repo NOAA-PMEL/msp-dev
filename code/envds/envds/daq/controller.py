@@ -620,7 +620,8 @@ class Controller(envdsBase):
                 )
         if message["type"] == det.controller_settings_request():
             print(self.build_app_uid())
-            if message["attributes"]["controllerid"] == self.build_app_uid():
+            # if message["attributes"]["controllerid"] == self.build_app_uid():
+            if message.data.get("controllerid") == self.build_app_uid():
                 print('here')
             try:
                 # src = message.data["source"]
