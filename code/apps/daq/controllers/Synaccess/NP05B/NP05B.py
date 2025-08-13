@@ -7,10 +7,11 @@ import logging.config
 import yaml
 import traceback
 from envds.core import envdsLogger
-from envds.daq.controller import Controller, ControllerConfig #, InterfacePath
+from envds.daq.controller import Controller, ControllerConfig, ControllerMetadata
 from envds.daq.event import DAQEvent
 from aiomqtt import Client
 from pydantic import BaseModel
+import json
 
 
 task_list = []
@@ -28,34 +29,223 @@ class NP05B(Controller):
                 "data": "Synaccess 5 outlet switch PDU",
             },
             "tags": {"type": "char", "data": "testing, Synaccess, PDU, outlet, serial, tcp, ethernet, sensor"},
-        },
-        "paths": {
-            "port-1": {
-                "attributes": {
-                    "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
-                    "client_class": {"type": "string", "data": "TCPClient"},
-                    "host": {"type": "string", "data": 'localhost'},
-                    "port": {"type": "int", "data": 23},
-                    "device-interface-properties": {
-                        "read-properties": {
-                            "read-method": "readline",  # readline, read-until, readbytes, readbinary
-                            # "read-terminator": "\r",  # only used for read_until
-                            "decode-errors": "strict",
-                            "send-method": "ascii",
-                        }
-                    }
-                },
-                "data": [],
+            "variable_types": {
+                "type": "string",
+                "data": ""
             },
-            "port-2": {
-                "attributes": {
-                    "client_module": {"type": "string", "data": "envds.daq.clients.mqtt_client"},
-                    "client_class": {"type": "string", "data": "MQTT_Client"},
-                    "host": {"type": "string", "data": 'mqtt.default'},
-                    "port": {"type": "int", "data": 1883},
-                    "subscriptions": {"type": "string", "data": None}
-                },
-                "data": [],
+            "serial_number": {
+                "type": "string",
+                "data": ""
+            },
+            "client_module": {"type": "string", "data": "envds.daq.clients.tcp_client"},
+            "client_class": {"type": "string", "data": "TCPClient"},
+            "client_host": {"type": "string", "data": 'localhost'},
+            "client_port": {"type": "int", "data": 1883},
+            # "subscriptions": {"type": "string", "data": None}
+        },
+        "dimensions": {
+            "time": 0
+        },
+        "variables": {
+            "outlet_1_power": {
+                "type": "int",
+                "shape": [
+                    "time"
+                ],
+                "attribute": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "setting"
+                    },
+                    "outlet": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Outlet 1 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
+            "outlet_2_power": {
+                "type": "int",
+                "shape": [
+                    "time"
+                ],
+                "attribute": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "setting"
+                    },
+                    "outlet": {
+                        "type": "int",
+                        "data": 2
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Outlet 2 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
+            "outlet_3_power": {
+                "type": "int",
+                "shape": [
+                    "time"
+                ],
+                "attribute": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "setting"
+                    },
+                    "outlet": {
+                        "type": "int",
+                        "data": 3
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Outlet 3 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
+            "outlet_4_power": {
+                "type": "int",
+                "shape": [
+                    "time"
+                ],
+                "attribute": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "setting"
+                    },
+                    "outlet": {
+                        "type": "int",
+                        "data": 4
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Outlet 4 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
+            "outlet_5_power": {
+                "type": "int",
+                "shape": [
+                    "time"
+                ],
+                "attribute": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "setting"
+                    },
+                    "outlet": {
+                        "type": "int",
+                        "data": 5
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Outlet 5 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
             }
         }
     }
@@ -67,10 +257,24 @@ class NP05B(Controller):
 
         self.default_client_module = "envds.daq.clients.tcp_client"
         self.default_client_class = "TCPClient"
+        self.default_client_host = "localhost"
+        self.default_client_port = 1883
+
+        self.controller_id_prefix = "NP05B"
 
         self.data_loop_task = None
-        # asyncio.create_task(self.monitor_outlet_status())
-        self.enable_task_list.append(self.monitor_outlet_status())
+        self.enable_task_list.append(self.recv_data_loop())
+        self.enable_task_list.append(self.get_status_loop())
+
+        self.controller_definition_file = "Synaccess_NP05B_controller_definition.json"
+
+        try:            
+            with open(self.controller_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("controller_definition not found. Exiting")            
+            sys.exit(1)
+
 
     def configure(self):
 
@@ -82,144 +286,177 @@ class NP05B(Controller):
                     conf = yaml.safe_load(f)
             except FileNotFoundError:
                 conf = {"uid": "UNKNOWN", "paths": {}}
+            
+            self.logger.debug("configure", extra={"conf": conf})
 
-            # add hosts to each path if not present
-            try:
-                host = conf["host"]
-            except KeyError as e:
-                self.logger.debug("no host - default to localhost")
-                host = "localhost"
-            print('paths', conf["paths"].items())
-            for name, path in conf["paths"].items():
-                if "host" not in path:
-                    path["host"] = host
+            host = conf.get("host", "localhost")
+            port = conf.get("port", 80)
+            client_module = conf.get("client_module", self.default_client_module)
+            client_class = conf.get("client_class", self.default_client_class)
+            client_host = conf.get("client_host", self.default_client_host)
+            client_port = conf.get("client_port", self.default_client_port)
+            self.controller_id_prefix = conf.get("controller_id_prefix", "NP05B")
+            # client_subscriptions_list = conf.get("client_subscriptions", "")
+            # if client_subscriptions_list == "":
+            #     client_subscriptions = []
+            # else:
+            #     client_subscriptions = client_subscriptions_list.split(",")
+
+            # status_sub = f"{self.controller_id_prefix}/status/#"
+            # if status_sub not in client_subscriptions:
+            #     client_subscriptions.append(status_sub)
+
 
             self.logger.debug("conf", extra={"data": conf})
 
-            atts = NP05B.metadata["attributes"]
+            attrs = self.metadata["attributes"]
 
-            path_map = dict()
-            for name, val in NP05B.metadata["paths"].items():
+            # override default metadata attributes with config values
+            for name, val in conf["attributes"].items():
+                if name in attrs:
+                    attrs[name]["data"] = val
 
+            settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+            # for name, setting in self.metadata["settings"].items():
+            for name, setting in settings_def["variables"].items():
+            
+                requested = setting["attributes"]["default_value"]["data"]
+                if "settings" in config and name in config["settings"]:
+                    requested = config["settings"][name]
 
-                if "client_module" not in val["attributes"]:
-                    val["attributes"]["client_module"]["data"] = self.default_client_module
-                if "client_class" not in val["attributes"]:
-                    val["attributes"]["client_class"]["data"] = self.default_client_class
+                self.settings.add_setting(name, requested=requested)
 
-                # set path host from controller attributes
-                if "host" in atts:
-                    val["attributes"]["host"]["data"] = atts["host"]
-
-                client_config = val
-                # override values from yaml config
-                if "paths" in conf and name in conf["paths"]:
-                    self.logger.debug("yaml conf", extra={"id": name, "conf['paths']": conf['paths'], })
-                    for attname, attval in conf["paths"][name].items():
-                        self.logger.debug("config paths", extra={"id": name, "attname": attname, "attval": attval})
-                        client_config["attributes"][attname]["data"] = attval
-                self.logger.debug("config paths", extra={"client_config": client_config})
-                    
-                path_map[name] = {
-                    "client_id": name,
-                    "client": None,
-                    "client_config": client_config,
-                    "client_module": val["attributes"]["client_module"]["data"],
-                    "client_class": val["attributes"]["client_class"]["data"],
-                    # "data_buffer": asyncio.Queue(),
-                    "recv_handler": self.recv_data_loop(name),
-                    "recv_task": None,
-                }
+            meta = ControllerMetadata(
+                attributes=self.metadata["attributes"],
+                dimensions=self.metadata["dimensions"],
+                variables=self.metadata["variables"],
+                settings=settings_def["variables"]
+            )
 
             self.config = ControllerConfig(
-                type=atts["type"]["data"],
-                name=atts["name"]["data"],
-                uid=conf["uid"],
-                paths=path_map
+                make=self.metadata["attributes"]["make"]["data"],
+                model=self.metadata["attributes"]["model"]["data"],
+                serial_number=self.metadata["attributes"]["serial_number"]["data"],
+                format_version=self.metadata["attributes"]["format_version"]["data"],
+                metadata=meta,
+                host=host,
+                port=port,
+                daq_id=self.core_settings.namespace_prefix # this is a hack for now
             )
+
+            # TODO build client config 
+            self.client_config = {
+                "client_module": client_module,
+                "client_class": client_class,
+                "properties": {
+                    "host": client_host,
+                    "port": client_port,
+                    # "subscriptions": client_subscriptions,
+                }
+            }
+
+            print(f"self.config: {self.config}")
 
             self.logger.debug(
                 "configure",
                 extra={"conf": conf, "self.config": self.config},
             )
+
+
         except Exception as e:
             self.logger.debug("NP05B:configure", extra={"error": e})
             print(traceback.format_exc())
+    
 
-    async def monitor_outlet_status(self):
+    async def get_status_loop(self):
         while True:
-            try:
-                tcp_client = self.client_map["port-1"]["client"]
-                get_status_command = {'data': "$A5\r"}
-                await self.send_data(tcp_client, get_status_command)
-                status_data = await tcp_client.recv()
-                print("STATUS DATA                                 ", status_data)
-                if '$A0,' in status_data["data"]:
-                    final_status = {}
-                    status_data = status_data["data"].replace('$A0,', '').replace('$A5\r\n', '')
-                    print("STATUS DATA                                 ", status_data)
-                    # for outlet_status in status_data:
-                    #     final_status[outlet] = outlet_status
-                    # await asyncio.sleep(0.1)
-            except Exception as e:
-                self.logger.error("get status error", extra={"error": e})
-                await asyncio.sleep(1)
+            for outlet in range(0,5):
+                get_status_cmd = "$A5\r"
+                self.logger.debug("get_status_loop", extra={"payload": get_status_cmd})
+                await self.send_data(get_status_cmd)
+            await asyncio.sleep(5)
 
-    async def deal_with_data(self, client, data):
-        try:
-            if data['data']['device'] == 'pdu':
-                outlet = data['data']['outlet']
-                if data['data']['message'] == 'on':
-                    print('Driver thinks outlet is commanded on', data)
-                    command = {'data': f"pset {outlet} 1\r"}
-                    print('COMMAND', command)
-                if data['data']['message'] == 'off':
-                    command = {'data': f"pset {outlet} 0\r"}
-                try:
-                    tcp_client = self.client_map["port-1"]["client"]
-                    await self.send_data(tcp_client, command)
-                except Exception as e:
-                    self.logger.error("deal with data error", extra={"error": e})
-                    await asyncio.sleep(1)
-        except Exception as e:
-                    self.logger.error("deal with data error", extra={"error": e})
-                    await asyncio.sleep(1)
+
+    async def set_outlet_power(self, outlet, state):
+        if isinstance(state, str):
+            if state.lower() in ["on", "yes"]:
+                state = 1
+            else:
+                state = 0
+
+            if state:
+                cmd = 1
+            else:
+                cmd = 0
+            
+            data = f"pset {outlet} {cmd}\r"
+            self.logger.debug("set_outlet_power", extra={"payload", data})
+            await self.send_data(data)
+
     
     async def recv_data_loop(self, client_id: str):
         while True:
             try:
-                client = self.client_map[client_id]["client"]
-                print("Client ID in recv_data_loop:", client_id)
-                if client:
-                    self.logger.debug("recv_data_loop", extra={"client": client})
-                    data = await client.recv()
-                    self.logger.debug("recv_data", extra={"client_id": client_id, "data": data}) 
-                    await self.update_recv_data(client_id=client_id, data=data)
-                    await self.deal_with_data(client, data)
+                data = await self.client_recv_buffer.get()
+                self.logger.debu("recv_data_loop", extra={"recv_data": data})
+                if data:
+                    if '$A0,' in data:
+                        try:
+                            status_data = status_data["data"].replace('$A0,', '').replace('$A5\r\n', '')
+                            status_list = [int(digit) for digit in str(status_data)]
+                            self.logger.debug("recv_data_loop", extra={"status_data": status_list})
+                            for outlet_status in status_list:
+                                name = f"outlet_{status_list.index(outlet_status)}_power"
+                                self.settings.set_actual(name=name, actual=outlet_status)
+                                self.logger.debug("recv_data_loop", extra={"setting_name": name, "actual": outlet_status, "settings": self.settings.get_settings()})
+
+                        except (KeyError, Exception) as e:
+                            self.logger.error("recv_data_loop", extra={"error": e})
+                        
+                    await asyncio.sleep(0.01)
 
             except (KeyError, Exception) as e:
                 self.logger.error("recv_data_loop", extra={"error": e})
-                await asyncio.sleep(1)           
+                await asyncio.sleep(0.1)           
+
 
     async def wait_for_ok(self, timeout=0):
         pass
 
-    async def send_data(self, event: DAQEvent):
-            print(f"here:1 {event}")
-            try:
-                print(f"send_data:1 - {event}")
-                client_id = event["path_id"]
-                client = self.client_map[client_id]["client"]
-                data = event.data["data"]
 
-                await client.send(data)
-            except KeyError:
-                pass
-    # async def send_data(self, client, data):
-    #         try:
-    #             await client.send(data)
-    #         except KeyError:
-    #             pass
+    async def send_data(self, data):
+        try:
+            self.logger.debug("send_data", extra={"payload": data})
+            if self.client:
+                self.logger.debug("send_data", extra={"payload": data})
+                await self.client.send_to_client(data)
+        
+        except Exception:
+            pass
+    
+
+    async def settings_check(self):
+        await super().settings_check()
+
+        if not self.settings.get_health():
+            for name in self.settings.get_settings().keys():
+                if not self.settings.get_health_setting(name):
+
+                    try:
+                        setting = self.settings.get_setting(name)
+                        if name in ["outlet_1_power", "outlet_2_power", "outlet_3_power", "outlet_4_power", "outlet_5_power"]:
+                            outlet = self.metadata["variables"][name]["attributes"]["outlet"]["data"]
+                            await self.set_outlet_power(outlet, setting["requested"])
+
+                        self.logger.debug(
+                            "settings_check - set setting",
+                            extra={
+                                "setting-name": name,
+                                "setting": self.settings.get_setting(name)
+                            }
+                        )
+                    except Exception as e:
+                        self.logger.errot("settings_check", extra={"reason": e})
 
 
 class ServerConfig(BaseModel):
