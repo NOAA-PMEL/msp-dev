@@ -306,6 +306,24 @@ class NP05B(Controller):
             # if status_sub not in client_subscriptions:
             #     client_subscriptions.append(status_sub)
 
+            sensor_iface_properties = {
+                "default": {
+                    "device-interface-properties": {
+                        "connection-properties": {
+                            "baudrate": 115200,
+                            "bytesize": 8,
+                            "parity": "N",
+                            "stopbit": 1,
+                        },
+                        "read-properties": {
+                            "read-method": "readline",  # readline, read-until, readbytes, readbinary
+                            # "read-terminator": "\r",  # only used for read_until
+                            "decode-errors": "strict",
+                            "send-method": "ascii",
+                        },
+                    }
+                }
+            }
 
             self.logger.debug("conf", extra={"data": conf})
 
@@ -351,6 +369,12 @@ class NP05B(Controller):
                 "properties": {
                     "host": client_host,
                     "port": client_port,
+                    "read-properties": {
+                            "read-method": "readline",  # readline, read-until, readbytes, readbinary
+                            # "read-terminator": "\r",  # only used for read_until
+                            "decode-errors": "strict",
+                            "send-method": "ascii",
+                        },
                     # "subscriptions": client_subscriptions,
                 }
             }
