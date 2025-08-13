@@ -171,6 +171,7 @@ class RuntimeSettings(object):
         self.settings[name]["actual"] = actual
 
     def set_requested(self, name: str, requested) -> bool:
+        self.logger.debug("set_requested", extra={"setting": name, "requested": requested})
         return self.update_setting(name=name, requested=requested)
     
     def set_actual(self, name: str, actual) -> bool:
@@ -179,17 +180,18 @@ class RuntimeSettings(object):
     def update_setting(self, name: str, requested=None, actual=None) -> bool:
         # print(f"update_setting1: {name}, {requested}, {actual}, {self.settings}")
         if name not in self.settings:
+            self.logger.debug("requested setting not found in controller settings variable")
             return False
         
         # print(f"update_setting2: {name}, {requested}, {actual}, {self.settings}")
         if requested is not None:
-            # print(f"update_setting3: {name}, {requested}, {actual}, {self.settings}")
+            print(f"update_setting3: {name}, {requested}, {actual}, {self.settings}")
             self.settings[name]["requested"] = requested
-            # print(f"update_setting4: {name}, {requested}, {actual}, {self.settings}")
+            print(f"update_setting4: {name}, {requested}, {actual}, {self.settings}")
         if actual is not None:
-            # print(f"update_setting5: {name}, {requested}, {actual}, {self.settings}")
+            print(f"update_setting5: {name}, {requested}, {actual}, {self.settings}")
             self.settings[name]["actual"] = actual
-            # print(f"update_setting6: {name}, {requested}, {actual}, {self.settings}")
+            print(f"update_setting6: {name}, {requested}, {actual}, {self.settings}")
         # print(f"update_setting7: {name}, {requested}, {actual}, {self.settings}")
         return True
     
@@ -628,9 +630,9 @@ class Controller(envdsBase):
                 setting = message.data.get("settings", None)
                 requested = message.data.get("requested", None)
                 self.logger.debug(
-                    "handle_settings", extra={"source": src, "setting": setting}
+                    "handle_settings", extra={"source": src, "setting": setting, "requested": requested}
                 )
-                if setting and requested:
+                if (setting is not None) and (requested is not None):
                     # name = setting["settings"]
                     # current = self.settings.get_setting(setting)
                     # self.settings.set_setting(
