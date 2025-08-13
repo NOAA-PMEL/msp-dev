@@ -166,12 +166,10 @@ class RuntimeSettings(object):
     def add_setting(self, name: str, requested, actual=None):
         if name not in self.settings:
             self.settings[name] = dict()
-        
         self.settings[name]["requested"] = requested
         self.settings[name]["actual"] = actual
 
     def set_requested(self, name: str, requested) -> bool:
-        print("set_requested", name, requested)
         return self.update_setting(name=name, requested=requested)
     
     def set_actual(self, name: str, actual) -> bool:
@@ -180,18 +178,17 @@ class RuntimeSettings(object):
     def update_setting(self, name: str, requested=None, actual=None) -> bool:
         # print(f"update_setting1: {name}, {requested}, {actual}, {self.settings}")
         if name not in self.settings:
-            print("requested setting not found in controller settings variable")
             return False
         
         # print(f"update_setting2: {name}, {requested}, {actual}, {self.settings}")
         if requested is not None:
-            print(f"update_setting3: {name}, {requested}, {actual}, {self.settings}")
+            # print(f"update_setting3: {name}, {requested}, {actual}, {self.settings}")
             self.settings[name]["requested"] = requested
-            print(f"update_setting4: {name}, {requested}, {actual}, {self.settings}")
+            # print(f"update_setting4: {name}, {requested}, {actual}, {self.settings}")
         if actual is not None:
-            print(f"update_setting5: {name}, {requested}, {actual}, {self.settings}")
+            # print(f"update_setting5: {name}, {requested}, {actual}, {self.settings}")
             self.settings[name]["actual"] = actual
-            print(f"update_setting6: {name}, {requested}, {actual}, {self.settings}")
+            # print(f"update_setting6: {name}, {requested}, {actual}, {self.settings}")
         # print(f"update_setting7: {name}, {requested}, {actual}, {self.settings}")
         return True
     
@@ -622,6 +619,9 @@ class Controller(envdsBase):
                     "handle_settings", extra={"ce_mess": message}
                 )
         if message["type"] == det.controller_settings_request():
+            print(self.build_app_uid())
+            if message["attributes"]["controllerid"] == self.build_app_uid():
+                print('here')
             try:
                 # src = message.data["source"]
                 # setting = message.data.data.get("settings", None)
