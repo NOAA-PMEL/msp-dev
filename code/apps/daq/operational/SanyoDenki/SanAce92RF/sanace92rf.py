@@ -168,7 +168,7 @@ class SanAce92RF(Operational):
 
         self.default_data_buffer = asyncio.Queue()
 
-        self.sensor_definition_file = "SanyoDenki_SanAce92RF_operational_definition.json"
+        self.operational_definition_file = "SanyoDenki_SanAce92RF_operational_definition.json"
 
         self.last_read_timestamp = None
         self.last_read_count = None
