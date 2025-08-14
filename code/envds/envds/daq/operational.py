@@ -14,6 +14,7 @@ class Operational(Device):
     SAMPLING = "sampling"
     DEVICE_TYPE = "operational"
 
+
     def __init__(self, config=None, **kwargs):
         super(Operational, self).__init__(config=config, **kwargs)
 
