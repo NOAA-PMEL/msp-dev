@@ -219,36 +219,40 @@ class SanAce92RF(Operational):
         if "metadata_interval" in conf:
             self.include_metadata_interval = conf["metadata_interval"]
 
-        sensor_iface_properties = {
-            "default": {
-                "sensor-interface-properties": {
-                    "connection-properties": {
-                    },
-                    "read-properties": {
-                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
-                        # "read-terminator": "\r",  # only used for read_until
-                        "decode-errors": "strict",
-                        "send-method": "ascii"
-                    },
-                }
-            }
-        }
+        # This device does not have a serial/tcp option
 
-        if "interfaces" in conf:
-            for name, iface in conf["interfaces"].items():
-                if name in sensor_iface_properties:
-                    for propname, prop in sensor_iface_properties[name].items():
-                        iface[propname] = prop
+        # sensor_iface_properties = {
+        #     "default": {
+        #         "sensor-interface-properties": {
+        #             "connection-properties": {
+        #             },
+        #             "read-properties": {
+        #                 "read-method": "readline",  # readline, read-until, readbytes, readbinary
+        #                 # "read-terminator": "\r",  # only used for read_until
+        #                 "decode-errors": "strict",
+        #                 "send-method": "ascii"
+        #             },
+        #         }
+        #     }
+        # }
 
-            self.logger.debug(
-                "sanace92rf.configure", extra={"interfaces": conf["interfaces"]}
-            )
+        # if "interfaces" in conf:
+        #     for name, iface in conf["interfaces"].items():
+        #         if name in sensor_iface_properties:
+        #             for propname, prop in sensor_iface_properties[name].items():
+        #                 iface[propname] = prop
+
+        #     self.logger.debug(
+        #         "sanace92rf.configure", extra={"interfaces": conf["interfaces"]}
+        #     )
 
         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
         # for name, setting in self.metadata["settings"].items():
         for name, setting in settings_def["variables"].items():
         
             requested = setting["attributes"]["default_value"]["data"]
+
+            # override default setting if in config
             if "settings" in config and name in config["settings"]:
                 requested = config["settings"][name]
 
@@ -361,7 +365,7 @@ class SanAce92RF(Operational):
 
         while True:
             if self.sampling():
-                await self.interface_send_data(data=data)
+                await self.interface_send_data(data=data, path_id="default")
                 await asyncio.sleep(time_to_next(self.sampling_interval))
 
 
@@ -533,6 +537,38 @@ class SanAce92RF(Operational):
                 print(f"default_parse error: {e}")
         # else:
         return None
+
+    async def settings_check(self):
+        await super().settings_check()
+
+        if not self.settings.get_health():  # something has changed
+            for name in self.settings.get_settings().keys():
+                if not self.settings.get_health_setting(name):
+                    
+                    try:
+                        # set channel power
+                        setting = self.settings.get_setting(name)
+                        # TODO: debug here
+                        # self.logger.debug("settings_check", extra={"setting": setting, "setting_name": name})
+                        if name in ["fan_speed_sp"]:
+                            sp = setting["requested"]
+                            # convert +/- pct to duty_cycle
+                            pwm_data = float((sp/2.) + 50.)
+                            data = {"data": {"pwm-data": pwm_data}}
+                            # self.logger.debug("settings_check:set_channel_power", extra={"ch": ch, "requested": setting["requested"]})
+                            # await self.set_channel_power(ch, setting["requested"])
+                            await self.interface_send_data(data=data, path_id="fan_speed_sp")
+
+
+                        self.logger.debug(
+                            "settings_check - set setting",
+                            extra={
+                                "setting-name": name,
+                                "setting": self.settings.get_setting(name),
+                            },
+                        )
+                    except Exception as e:
+                        self.logger.error("settings_check", extra={"reason": e})
 
 class ServerConfig(BaseModel):
     host: str = "localhost"

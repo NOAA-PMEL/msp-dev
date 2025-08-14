@@ -20,7 +20,7 @@ RUN pip3 install -r requirements.txt
 # for fastapi/uvicorn
 # COPY . .
 # without fastapi/uvicorn
-COPY ./ShellyPro3.py .
+COPY ./sanace92rf.py .
 
 
 # WORKDIR $APP_HOME/envds
@@ -32,5 +32,5 @@ COPY ./ShellyPro3.py .
 # For environments with multiple CPU cores, increase the number of workers
 # to be equal to the cores available.
 # CMD ["uvicorn", "envds.main:app", "--host", "0.0.0.0", "--port", "8080"]
-CMD ["python", "ShellyPro3.py", "--host", "0.0.0.0"]
+CMD ["python", "sanace92rf.py", "--host", "0.0.0.0"]
 # CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
