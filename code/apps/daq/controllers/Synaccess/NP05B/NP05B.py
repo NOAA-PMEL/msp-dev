@@ -411,10 +411,10 @@ class NP05B(Controller):
             else:
                 state = 0
 
-            if state:
-                cmd = 1
-            else:
-                cmd = 0
+        if state:
+            cmd = 1
+        else:
+            cmd = 0
             
             data = f"pset {outlet} {cmd}\r"
             message = {"data": data}
