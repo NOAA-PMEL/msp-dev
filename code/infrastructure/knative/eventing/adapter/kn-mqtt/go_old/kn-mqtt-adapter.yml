@@ -1,0 +1,84 @@
+name: Build and Push Multi-arch Docker Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'code/infrastructure/knative/eventing/adapter/kn-mqtt/**'
+      - 'VERSION' # Include VERSION file explicitly if it's outside the main path
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'code/infrastructure/knative/eventing/adapter/kn-mqtt/**'
+      - 'VERSION' # Include VERSION file explicitly if it's outside the main path
+  workflow_dispatch: # Allows manual triggering of the workflow
+
+env:
+  # Define the name of your Docker image
+  IMAGE_NAME: kn-mqtt-adapter
+  # Define the Docker registry to push to (GitHub Container Registry)
+  REGISTRY: ghcr.io
+  # Define the path to your Dockerfile relative to the repository root
+  DOCKERFILE_PATH: Dockerfile
+
+jobs:
+  build-and-push:
+    # Run the job on the latest Ubuntu runner
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Grant permission to read repository contents
+      contents: read
+      # Grant permission to write (push) packages to GitHub Container Registry
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        # Action to checkout your repository code
+        uses: actions/checkout@v4
+
+      - name: Get Version
+        id: get_version
+        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        # Action to set up Docker Buildx, which enables multi-architecture builds
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        # Action to log in to the specified Docker registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }} # Uses the GitHub actor (user or bot) as username
+          password: ${{ secrets.GITHUB_TOKEN }} # Uses the automatically provided GitHub token
+
+      - name: Extract metadata (tags, labels) for Docker
+        # Action to generate Docker image tags and labels based on Git refs and SHA
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Apply 'latest' tag only for pushes to the 'main' branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            # Apply a tag based on the Git SHA (e.g., 1a2b3c4d)
+            type=sha,enable=true,prefix=
+            # Apply a tag based on the branch name (e.g., main, feature-branch)
+            type=ref,event=branch
+            # Apply a tag using the version from the VERSION file
+            type=raw,value=${{ steps.get_version.outputs.version }}
+
+      - name: Build and push Docker image
+        # Action to build and push the Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: . # The build context is the root of the repository
+          file: ${{ env.DOCKERFILE_PATH }} # Path to your Dockerfile
+          # Specify the target platforms (architectures) for the build
+          platforms: linux/amd64,linux/arm64
+          push: true # Push the built image to the registry
+          tags: ${{ steps.meta.outputs.tags }} # Use the generated tags
+          labels: ${{ steps.meta.outputs.labels }} # Use the generated labels
