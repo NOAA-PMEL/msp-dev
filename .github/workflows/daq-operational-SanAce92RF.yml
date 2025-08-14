@@ -3,12 +3,12 @@ name: Build and Push sanyodenki_sanace92rf
 on:
 
   push:
-    branches: [ dev-* , create-op-device']
+    branches: [ dev-* , create-op-device]
     paths:
       - 'code/apps/daq/operational/SanyoDenki/SanAce92RF/**'
   
   pull_request:
-    branches: [main, dev-*]
+    branches: [main, dev-*, create-op-device]
     paths:
       - 'code/apps/daq/operational/SanyoDenki/SanAce92RF/**'
   
