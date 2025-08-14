@@ -159,6 +159,7 @@ class SanAce92RF(Operational):
         }
     }
 
+
     def __init__(self, config=None, **kwargs):
         super(SanAce92RF, self).__init__(config=config, **kwargs)
         self.data_task = None
