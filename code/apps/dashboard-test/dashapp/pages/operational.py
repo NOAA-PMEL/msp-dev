@@ -1447,7 +1447,7 @@ def update_graph_1d(operational_data, y_axis_list, graph_axes, current_figs):
     try:
         figs = []
         if operational_data:
-            print(f"controller_data: {operational_data}")
+            print(f"operational_data: {operational_data}")
             for y_axis in y_axis_list:
                 if (
                     "time" not in operational_data["variables"]
