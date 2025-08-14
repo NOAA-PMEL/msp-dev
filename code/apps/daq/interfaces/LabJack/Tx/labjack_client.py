@@ -354,6 +354,8 @@ class CounterClient(LabJackClient):
         while True:
             try:
                 clock_channel = self.config.properties["channel"]["data"]
+
+                # TODO check for clock mode: "interrupt" (8) vs "high-speed" (7)
                 if not self.counter_started:
                     ljm.eWriteName(
                         self.labjack, f"DIO{clock_channel}_EF_INDEX", 7
@@ -369,13 +371,14 @@ class CounterClient(LabJackClient):
             # client_config = self.client_map[client_id]["client_config"]
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
+            self.logger.debug("send_to_client", extra={"handle": self.labjack, "config": self.config})
             clock_channel = self.config.properties["channel"]["data"]
             dataRead = ljm.eReadName(self.labjack, f"DIO{clock_channel}_EF_READ_A")
             output = {"data": dataRead}
             await self.data_buffer.put(output)
 
         except Exception as e:
-            self.logger.error("send_i2c")
+            self.logger.error("send_to_client", extra={"reason": e})
 
 
 class I2CClient(LabJackClient):
