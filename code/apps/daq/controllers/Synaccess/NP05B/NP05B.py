@@ -405,11 +405,12 @@ class NP05B(Controller):
 
 
     async def set_outlet_power(self, outlet, state):
-        if isinstance(state, str):
-            if state.lower() in ["on", "yes"]:
-                state = 1
-            else:
-                state = 0
+        print('outlet and state', outlet, state)
+        # if isinstance(state, str):
+        #     if state.lower() in ["on", "yes"]:
+        #         state = 1
+        #     else:
+        #         state = 0
 
         if state:
             cmd = 1
