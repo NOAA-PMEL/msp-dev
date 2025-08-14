@@ -433,8 +433,10 @@ class NP05B(Controller):
                             status_data = data["data"].replace('$A0,', '').replace('$A5\r\n', '')
                             status_list = [int(digit) for digit in str(status_data)]
                             self.logger.debug("recv_data_loop", extra={"status_data": status_list})
+                            count = 0
                             for outlet_status in status_list:
-                                name = f"outlet_{status_list.index(outlet_status)}_power"
+                                name = f"outlet_{status_list[count]}_power"
+                                count += 1
                                 self.settings.set_actual(name=name, actual=outlet_status)
                                 self.logger.debug("recv_data_loop", extra={"setting_name": name, "actual": outlet_status, "settings": self.settings.get_settings()})
 
