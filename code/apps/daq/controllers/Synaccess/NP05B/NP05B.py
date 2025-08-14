@@ -398,8 +398,9 @@ class NP05B(Controller):
         while True:
             for outlet in range(0,5):
                 get_status_cmd = "$A5\r"
-                self.logger.debug("get_status_loop", extra={"payload": get_status_cmd})
-                await self.send_data(get_status_cmd)
+                message = {"data": get_status_cmd}
+                self.logger.debug("get_status_loop", extra={"payload": message})
+                await self.send_data(message)
             await asyncio.sleep(5)
 
 
@@ -416,8 +417,9 @@ class NP05B(Controller):
                 cmd = 0
             
             data = f"pset {outlet} {cmd}\r"
-            self.logger.debug("set_outlet_power", extra={"payload", data})
-            await self.send_data(data)
+            message = {"data": data}
+            self.logger.debug("set_outlet_power", extra={"payload", message})
+            await self.send_data(message)
 
     
     async def recv_data_loop(self):
