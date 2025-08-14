@@ -487,7 +487,7 @@ class NP05B(Controller):
                             }
                         )
                     except Exception as e:
-                        self.logger.errot("settings_check", extra={"reason": e})
+                        self.logger.error("settings_check", extra={"reason": e})
 
 
 class ServerConfig(BaseModel):
