@@ -430,7 +430,8 @@ class NP05B(Controller):
                 if data:
                     if '$A0,' in data:
                         try:
-                            status_data = status_data["data"].replace('$A0,', '').replace('$A5\r\n', '')
+                            print('here')
+                            status_data = status_data["data"].replace('$A0,', '').replace('$A5\n', '')
                             status_list = [int(digit) for digit in str(status_data)]
                             self.logger.debug("recv_data_loop", extra={"status_data": status_list})
                             for outlet_status in status_list:
