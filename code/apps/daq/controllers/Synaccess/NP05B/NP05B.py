@@ -426,7 +426,7 @@ class NP05B(Controller):
         while True:
             try:
                 data = await self.client_recv_buffer.get()
-                self.logger.debu("recv_data_loop", extra={"recv_data": data})
+                self.logger.debug("recv_data_loop", extra={"recv_data": data})
                 if data:
                     if '$A0,' in data:
                         try:
