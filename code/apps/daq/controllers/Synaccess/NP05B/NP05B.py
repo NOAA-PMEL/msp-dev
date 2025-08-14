@@ -367,8 +367,8 @@ class NP05B(Controller):
                 "client_module": client_module,
                 "client_class": client_class,
                 "properties": {
-                    "host": client_host,
-                    "port": client_port,
+                    "host": {"data": client_host},
+                    "port": {"data": client_port},
                     "device-interface-properties": {
                         "read-properties": {
                                 "read-method": "readline",  # readline, read-until, readbytes, readbinary
