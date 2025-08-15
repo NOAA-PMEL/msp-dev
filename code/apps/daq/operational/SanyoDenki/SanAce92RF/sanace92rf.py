@@ -241,6 +241,10 @@ class SanAce92RF(Operational):
     async def handle_interface_message(self, message: Message):
         pass
 
+    def check_fan_speed_sp(self, data):
+        self.logger.debug("check_fan_speed_sp", extra={"fs-data": data})
+        # TODO set setting actual if ok
+        
     async def handle_interface_data(self, message: Message):
         await super(SanAce92RF, self).handle_interface_data(message)
 
@@ -249,17 +253,21 @@ class SanAce92RF(Operational):
             try:
                 self.logger.debug("interface_recv_data", extra={"data": message})
                 path_id = message["path_id"]
-                iface_path = self.config.interfaces["default"]["path"]
+                default_path = self.config.interfaces["default"]["path"]
+                pwm_path = self.config.interfaces["fan_speed_sp"]["path"]
                 self.logger.debug(
                     "interface_recv_data",
                     extra={"path_id": path_id, "iface_path": iface_path},
                 )
                 # if path_id == "default":
-                if path_id == iface_path:
+                # if path_id == iface_path:
+                if path_id == default_path:
                     self.logger.debug(
                         "interface_recv_data", extra={"data": message.data}
                     )
                     await self.default_data_buffer.put(message)
+                elif path_id == pwm_path:
+                    self.check_fan_speed_sp(message.data)
             except KeyError:
                 pass
 
@@ -478,7 +486,7 @@ class SanAce92RF(Operational):
                     speed = 60.0 * revs / elapsed_time
                     record["variables"]["fan_speed"]["data"] = round(speed, 3)
 
-                    self.last_read_timestamp = timestamp
+                    self.last_read_timestamp = string_to_datetime(timestamp)
                     self.last_read_count = dataRead
 
                     return record

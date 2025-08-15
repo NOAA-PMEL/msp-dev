@@ -94,9 +94,18 @@ class Registrar:
         self.current_device_definition_list = []
         self.current_controller_definition_list = []
 
+        self.http_client = None
+
+    def open_http_client(self):
+        # create a new client for each request
+        self.http_client = httpx.AsyncClient()
+
+
     async def send_event(self, ce):
         try:
             self.logger.debug(ce)  # , extra=template)
+            if not self.http_client:
+                self.open_http_client()
             try:
                 timeout = httpx.Timeout(5.0, read=0.1)
                 headers, body = to_structured(ce)
@@ -109,14 +118,23 @@ class Registrar:
                     },
                 )
                 # send to knative broker
-                async with httpx.AsyncClient() as client:
-                    r = await client.post(
-                        self.config.knative_broker,
-                        headers=headers,
-                        data=body,
-                        timeout=timeout,
-                    )
-                    r.raise_for_status()
+                # async with httpx.AsyncClient() as client:
+                #     r = await client.post(
+                #         self.config.knative_broker,
+                #         headers=headers,
+                #         data=body,
+                #         timeout=timeout,
+                #     )
+                #     r.raise_for_status()
+
+                r = await self.http_client.post(
+                    self.config.knative_broker,
+                    headers=headers,
+                    data=body,
+                    timeout=timeout,
+                )
+                r.raise_for_status()
+
             except InvalidStructuredJSON:
                 self.logger.error(f"INVALID MSG: {ce}")
             except httpx.TimeoutException:

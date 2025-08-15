@@ -299,6 +299,11 @@ class PWMClient(LabJackClient):
 
     async def send_to_client(self, data):
         try:
+            max_attempts = 30
+            attempt = 0
+            while self.labjack is None and attempt < max_attempts:
+                await asyncio.sleep(1)
+                attempt += 1
             # client_config = self.client_map[client_id]["client_config"]
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
@@ -352,6 +357,13 @@ class PWMClient(LabJackClient):
             )  # Enable Clock#, this will start the PWM signal.
 
         # TODO turn off pwm on stop/disable
+
+            await asyncio.sleep(1)
+            dataRead = ljm.eReadName(
+                self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A"
+            )  
+            output = {"input-value": pwmConfigA, "data": dataRead}
+            await self.data_buffer.put(output)
 
         except Exception as e:
             self.logger.error("send_to_client", extra={"reason": e})
