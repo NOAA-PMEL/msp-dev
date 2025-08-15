@@ -362,7 +362,8 @@ class PWMClient(LabJackClient):
             dataRead = ljm.eReadName(
                 self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A"
             )  
-            output = {"input-value": pwmConfigA, "data": dataRead}
+            duty_cycle = (pwmConfigA/clockRollValue)*100.0
+            output = {"input-value": pwmConfigA, "data": {"raw": dataRead, "duty_cycle": duty_cycle }}
             await self.data_buffer.put(output)
 
         except Exception as e:
