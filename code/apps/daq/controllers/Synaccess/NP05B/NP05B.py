@@ -418,9 +418,9 @@ class NP05B(Controller):
             cmd = 0
             
         message = {"data": f"pset {outlet} {cmd}\r"}
-        message2 = {"data": message}
-        self.logger.debug("set_outlet_power", extra={"payload": message2})
-        await self.send_data(message2)
+        # message2 = {"data": message}
+        self.logger.debug("set_outlet_power", extra={"payload": message})
+        await self.send_data(message)
 
     
     async def recv_data_loop(self):
