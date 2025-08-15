@@ -1,0 +1,74 @@
+name: Build and Push kn-mqtt-go-adapter
+
+on:
+  push:
+    branches:
+      - dev-*, create-op-device
+    paths:
+      - 'code/infrastructure/knative/eventing/adapter/kn-mqtt-go/**'
+  
+  pull_request:
+    branches:
+      - main
+      - dev-*
+    paths:
+      - 'code/infrastructure/knative/eventing/adapter/kn-mqtt-go/**'
+   
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: kn-mqtt-go-adapter
+  # IMAGE_TAG: ${{ github.sha }}
+  # IMAGE_TAG: $(cat VERSION)
+
+jobs:
+
+  build-and-push-kn-mqtt-go-adapter:
+
+    runs-on: ubuntu-latest
+    defaults:
+        run:
+            working-directory: './code/infrastructure/knative/eventing/adapter/kn-mqtt-go'
+      
+    permissions:
+        contents: read
+        packages: write
+        attestations: write
+        id-token: write
+
+    steps:
+
+        - name: 'Checkout Main'
+          uses: actions/checkout@v4
+
+        - name: 'set env variables'
+          run: |
+            VER=$(cat VERSION)
+            echo "IMAGE_TAG=$VER" >> $GITHUB_ENV
+    
+        - name: Set up QEMU
+          uses: docker/setup-qemu-action@v2
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v2
+  
+        - name: 'Login to GitHub Container Registry'
+          uses: docker/login-action@v1
+          with:
+            registry: ${{ env.REGISTRY }}
+            username: ${{github.actor}}
+            password: ${{secrets.GITHUB_TOKEN}}
+
+        - name: Build and push multi-platform image
+          uses: docker/build-push-action@v4
+          with:
+            context: code/infrastructure/knative/eventing/adapter/kn-mqtt-go/.
+            # dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
+            push: true
+            tags: |
+              ghcr.io/noaa-pmel/msp/kn-mqtt-go-adapter:${{env.IMAGE_TAG}}
+            platforms: linux/amd64,linux/arm64
+
+        # - name: Build the Docker image
+        #   run: docker build . --file Dockerfile --tag ghcr.io/noaa-pmel/msp/kn-mqtt-go-adapter:$IMAGE_TAG
+ 
+        # - name: Push the Docker image
+        #   run: docker push ghcr.io/noaa-pmel/msp/kn-mqtt-go-adapter:$IMAGE_TAG
