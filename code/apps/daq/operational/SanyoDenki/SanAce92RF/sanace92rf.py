@@ -22,7 +22,7 @@ from envds.util.util import (
     time_to_next,
     get_datetime,
     get_datetime_string,
-    string_to_datetime
+    string_to_datetime,
 )
 from envds.daq.operational import Operational
 from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
@@ -51,112 +51,47 @@ class SanAce92RF(Operational):
 
     metadata = {
         "attributes": {
-            "make": {
-                "type": "string",
-                "data": "SanyoDenki"
-            },
-            "model": {
-                "type": "string",
-                "data": "SanAce92RF"
-            },
-            "description": {
-                "type": "string",
-                "data": "Reverisble Fan"
-            },
-            "tags": {
-                "type": "char",
-                "data": "flow"
-            },
-            "format_version": {
-                "type": "char",
-                "data": "1.0.0"
-            },
-            "variable_types": {
-                "type": "string",
-                "data": "main, setting, calibration"
-            },
-            "serial_number": {
-                "type": "string",
-                "data": ""
-            }
+            "make": {"type": "string", "data": "SanyoDenki"},
+            "model": {"type": "string", "data": "SanAce92RF"},
+            "description": {"type": "string", "data": "Reverisble Fan"},
+            "tags": {"type": "char", "data": "flow"},
+            "format_version": {"type": "char", "data": "1.0.0"},
+            "variable_types": {"type": "string", "data": "main, setting, calibration"},
+            "serial_number": {"type": "string", "data": ""},
         },
-        "dimensions": {
-            "time": 0
-        },
+        "dimensions": {"time": 0},
         "variables": {
             "time": {
                 "type": "str",
-                "shape": [
-                    "time"
-                ],
+                "shape": ["time"],
                 "attributes": {
-                    "variable_type": {
-                        "type": "string",
-                        "data": "main"
-                    },
-                    "long_name": {
-                        "type": "string",
-                        "data": "Time"
-                    }
-                }
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "string", "data": "Time"},
+                },
             },
             "rpm": {
                 "type": "float",
-                "shape": [
-                    "time"
-                ],
+                "shape": ["time"],
                 "attributes": {
-                    "variable_type": {
-                        "type": "string",
-                        "data": "main"
-                    },
-                    "long_name": {
-                        "type": "char",
-                        "data": "Fan RPM"
-                    },
-                    "units": {
-                        "type": "char",
-                        "data": "count"
-                    }
-                }
+                    "variable_type": {"type": "string", "data": "main"},
+                    "long_name": {"type": "char", "data": "Fan RPM"},
+                    "units": {"type": "char", "data": "count"},
+                },
             },
             "fan_speed": {
                 "type": "float",
-                "shape": [
-                    "time"
-                ],
+                "shape": ["time"],
                 "attributes": {
-                    "variable_type": {
-                        "type": "string",
-                        "data": "setting"
-                    },
-                    "long_name": {
-                        "type": "char",
-                        "data": "Fan Speed"
-                    },
-                    "units": {
-                        "type": "string",
-                        "data": "%"
-                    },
-                    "valid_min": {
-                        "type": "float",
-                        "data": -100.0
-                    },
-                    "valid_max": {
-                        "type": "int",
-                        "data": 100.0
-                    },
-                    "step_increment": {
-                        "type": "int",
-                        "data": 10
-                    },
-                    "default_value": {
-                        "type": "int",
-                        "data": 0
-                    }
-                }
-            }
-        }
+                    "variable_type": {"type": "string", "data": "setting"},
+                    "long_name": {"type": "char", "data": "Fan Speed"},
+                    "units": {"type": "string", "data": "%"},
+                    "valid_min": {"type": "float", "data": -100.0},
+                    "valid_max": {"type": "int", "data": 100.0},
+                    "step_increment": {"type": "int", "data": 10},
+                    "default_value": {"type": "int", "data": 0},
+                },
+            },
+        },
     }
 
     def __init__(self, config=None, **kwargs):
@@ -168,16 +103,18 @@ class SanAce92RF(Operational):
 
         self.default_data_buffer = asyncio.Queue()
 
-        self.operational_definition_file = "SanyoDenki_SanAce92RF_operational_definition.json"
+        self.operational_definition_file = (
+            "SanyoDenki_SanAce92RF_operational_definition.json"
+        )
 
         self.last_read_timestamp = None
         self.last_read_count = None
 
-        try:            
+        try:
             with open(self.operational_definition_file, "r") as f:
                 self.metadata = json.load(f)
         except FileNotFoundError:
-            self.logger.error("sensor_definition not found. Exiting")            
+            self.logger.error("sensor_definition not found. Exiting")
             sys.exit(1)
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
@@ -246,10 +183,12 @@ class SanAce92RF(Operational):
         #         "sanace92rf.configure", extra={"interfaces": conf["interfaces"]}
         #     )
 
-        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+        settings_def = self.get_definition_by_variable_type(
+            self.metadata, variable_type="setting"
+        )
         # for name, setting in self.metadata["settings"].items():
         for name, setting in settings_def["variables"].items():
-        
+
             requested = setting["attributes"]["default_value"]["data"]
 
             # override default setting if in config
@@ -257,7 +196,7 @@ class SanAce92RF(Operational):
                 requested = config["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
-            
+
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
             dimensions=self.metadata["dimensions"],
@@ -308,12 +247,13 @@ class SanAce92RF(Operational):
         self.logger.debug("interface_recv_data", extra={"data": message})
         if message["type"] == det.interface_data_recv():
             try:
-                self.logger.debug(
-                    "interface_recv_data", extra={"data": message}
-                )
+                self.logger.debug("interface_recv_data", extra={"data": message})
                 path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
-                self.logger.debug("interface_recv_data", extra={"path_id": path_id, "iface_path": iface_path})
+                self.logger.debug(
+                    "interface_recv_data",
+                    extra={"path_id": path_id, "iface_path": iface_path},
+                )
                 # if path_id == "default":
                 if path_id == iface_path:
                     self.logger.debug(
@@ -324,7 +264,7 @@ class SanAce92RF(Operational):
                 pass
 
     async def polling_loop(self):
-        
+
         # TODO add sensor address to config
 
         # redo format to be more generic (based on new labjack code)
@@ -344,7 +284,9 @@ class SanAce92RF(Operational):
         #     }
         # }
 
-        data = {} # no data required for counter but that may change for other interfaces
+        data = (
+            {}
+        )  # no data required for counter but that may change for other interfaces
 
         # write_command = {
         #     "i2c-command": "write-byte",
@@ -367,7 +309,6 @@ class SanAce92RF(Operational):
             if self.sampling():
                 await self.interface_send_data(data=data, path_id="default")
                 await asyncio.sleep(time_to_next(self.sampling_interval))
-
 
     # async def sampling_monitor(self):
 
@@ -427,7 +368,7 @@ class SanAce92RF(Operational):
     #                     await self.interface_send_data(data={"data": stop_command})
     #                     await asyncio.sleep(2)
     #                     self.collecting = False
-                            
+
     #             await asyncio.sleep(.1)
 
     #             # if self.collecting:
@@ -439,9 +380,8 @@ class SanAce92RF(Operational):
     #             #     # self.logger.debug("sampling_monitor:7", extra={"self.collecting": self.collecting})
     #         except Exception as e:
     #             print(f"sampling monitor error: {e}")
-                
-    #         await asyncio.sleep(.1)
 
+    #         await asyncio.sleep(.1)
 
     # async def start_command(self):
     #     pass # Log,{sampling interval}
@@ -502,7 +442,7 @@ class SanAce92RF(Operational):
                 if not self.last_read_timestamp:
                     self.last_read_timestamp = string_to_datetime(timestamp)
                     return None
-                
+
                 variables = list(self.config.metadata.variables.keys())
                 # print(f"variables: \n{variables}\n{variables2}")
                 variables.remove("time")
@@ -515,22 +455,34 @@ class SanAce92RF(Operational):
                     record["variables"]["time"]["data"] = timestamp
                     # parts = data.data["data"].split(",")
 
-                    dataRead = iface_data["data"] # should return as bytearray
+                    dataRead = iface_data["data"]  # should return as bytearray
+
+                    self.logger.debug(
+                        "default_parse",
+                        extra={
+                            "last_ts": self.last_read_timestamp,
+                            "ts": timestamp,
+                            "last_cnt": self.last_read_count,
+                            "cnt": dataRead,
+                        },
+                    )
                     if not self.last_read_timestamp or not self.last_read_count:
                         self.last_read_timestamp = string_to_datetime(timestamp)
                         self.last_read_count = dataRead
                         return None
 
-                    elapsed_time = (current_read_timestamp - self.last_read_timestamp).total_seconds()
-                    revs = (dataRead - self.last_read_count)/2
-                    speed = 60.*revs/elapsed_time
-                    record["variables"]["fan_speed"]["data"] = round(speed,3)
-                    
+                    elapsed_time = (
+                        current_read_timestamp - self.last_read_timestamp
+                    ).total_seconds()
+                    revs = (dataRead - self.last_read_count) / 2
+                    speed = 60.0 * revs / elapsed_time
+                    record["variables"]["fan_speed"]["data"] = round(speed, 3)
+
                     self.last_read_timestamp = timestamp
                     self.last_read_count = dataRead
 
                     return record
-                                    
+
                 except KeyError:
                     pass
             except Exception as e:
@@ -544,7 +496,7 @@ class SanAce92RF(Operational):
         if not self.settings.get_health():  # something has changed
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
-                    
+
                     try:
                         # set channel power
                         setting = self.settings.get_setting(name)
@@ -553,12 +505,13 @@ class SanAce92RF(Operational):
                         if name in ["fan_speed_sp"]:
                             sp = setting["requested"]
                             # convert +/- pct to duty_cycle
-                            pwm_data = float((sp/2.) + 50.)
+                            pwm_data = float((sp / 2.0) + 50.0)
                             data = {"data": {"pwm-data": pwm_data}}
                             # self.logger.debug("settings_check:set_channel_power", extra={"ch": ch, "requested": setting["requested"]})
                             # await self.set_channel_power(ch, setting["requested"])
-                            await self.interface_send_data(data=data, path_id="fan_speed_sp")
-
+                            await self.interface_send_data(
+                                data=data, path_id="fan_speed_sp"
+                            )
 
                         self.logger.debug(
                             "settings_check - set setting",
@@ -569,6 +522,7 @@ class SanAce92RF(Operational):
                         )
                     except Exception as e:
                         self.logger.error("settings_check", extra={"reason": e})
+
 
 class ServerConfig(BaseModel):
     host: str = "localhost"
