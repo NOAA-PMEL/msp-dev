@@ -244,7 +244,7 @@ class SanAce92RF(Operational):
     def check_fan_speed_sp(self, data):
         self.logger.debug("check_fan_speed_sp", extra={"fs-data": data})
         # TODO set setting actual if ok
-        
+
     async def handle_interface_data(self, message: Message):
         await super(SanAce92RF, self).handle_interface_data(message)
 
@@ -257,7 +257,7 @@ class SanAce92RF(Operational):
                 pwm_path = self.config.interfaces["fan_speed_sp"]["path"]
                 self.logger.debug(
                     "interface_recv_data",
-                    extra={"path_id": path_id, "iface_path": iface_path},
+                    extra={"path_id": path_id, "iface_path": self.config.interfaces["default"]["path"]},
                 )
                 # if path_id == "default":
                 # if path_id == iface_path:

@@ -307,7 +307,7 @@ class PWMClient(LabJackClient):
             # client_config = self.client_map[client_id]["client_config"]
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
-            self.logger.debug("send_to_client", extra={"config": self.config})
+            self.logger.debug("send_to_client", extra={"pwm-data": data, "config": self.config})
             clock_divisor = self.config.properties["clock_divisor"][
                 "data"
             ]
@@ -321,7 +321,7 @@ class PWMClient(LabJackClient):
             clockTickRate = core_frequency / clock_divisor
             clockRollValue = clockTickRate / desired_frequency
 
-            pwm_data = data["pwm-data"]
+            pwm_data = data["data"]["pwm-data"]
             duty_cycle = pwm_data["duty_cycle_percent"]
             pwmConfigA = int(clockRollValue * (duty_cycle / 100.0))
 
@@ -389,6 +389,8 @@ class CounterClient(LabJackClient):
                 if self.config.properties["counter_mode"]["data"].lower() == "high-speed":
                     counter_mode = 7
                 if not self.counter_started:
+                    ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_ENABLE", 0)
+                    self.counter_started = True  # Enable the High-Speed Counter.
                     ljm.eWriteName(
                         self.labjack, f"DIO{clock_channel}_EF_INDEX", counter_mode
                     )  # Set DIO#_EF_INDEX to 7 - High-Speed Counter.
