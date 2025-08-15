@@ -324,14 +324,14 @@ async def send_event(ce: CloudEvent):
         try:
             timeout = httpx.Timeout(5.0, read=0.1)
             headers, body = to_structured(ce)
-            # self.logger.debug(
-            #     "send_event",
-            #     extra={
-            #         "broker": self.config.knative_broker,
-            #         "h": headers,
-            #         "b": body,
-            #     },
-            # )
+            L.debug(
+                "send_event",
+                extra={
+                    # "broker": self.config.knative_broker,
+                    "h": headers,
+                    "b": body,
+                },
+            )
             # send to knative broker
             async with httpx.AsyncClient() as client:
                 r = await client.post(

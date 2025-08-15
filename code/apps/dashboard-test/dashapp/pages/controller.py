@@ -907,7 +907,7 @@ def layout(controller_id=None):
     # print("here:1")
     layout = html.Div(
         [
-            html.Div(id="dbc-switch-value-changed"),
+            # html.Div(id="dbc-switch-value-changed"),
             html.H1(f"Controller: {controller_id}"),
             # get_button,
             # build_tables(layout_options)
@@ -1707,7 +1707,7 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 #     # return dash.no_update
 
 @callback(
-    Output("dbc-switch-value-changed", "children"),
+    # Output("dbc-switch-value-changed", "children"),
     Output("ws-send-instance-buffer", "children"),
     Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
     State("controller-meta", "data")
@@ -1732,7 +1732,6 @@ def get_requested_setting(changed_component, controller_meta):
     Output({"type": "settings-table", "index": ALL}, "rowData"), 
     Output({"type": "settings-table", "index": ALL}, "columnDefs"),
     Input("controller-settings-buffer", "data"),
-    # Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
     [
         State({"type": "settings-table", "index": ALL}, "rowData"),
         State({"type": "settings-table", "index": ALL}, "columnDefs"),
@@ -1754,19 +1753,17 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                             data[name] = controller_settings["settings"][name]["data"]["actual"]
                         else:
                             data[name] = ""
-                        
+
+                        # Check if the setting should be set up as a boolean switch
                         if controller_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
                             if controller_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
                                 if controller_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
                                     col["cellRenderer"] = "DBC_Switch"
                                     col["cellRendererParams"] = {"color": "success"}
                         
-                        # print('col list 1', col_defs_list)
-                        # col_defs_list.insert(0, col)
-                        # print('col list 2', col_defs_list)
-                    # new_column_defs.append(col_defs_list)
+                        # Check if the setting should be set up as 
+
                         new_column_defs.append(col)
-                    print('new column defs', new_column_defs)
                     row_data.insert(0, data)
                     new_row_data_list.append(row_data[0:1])
                 if len(new_row_data_list) == 0:
