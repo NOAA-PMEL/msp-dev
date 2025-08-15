@@ -371,6 +371,7 @@ class CounterClient(LabJackClient):
             # client_config = self.client_map[client_id]["client_config"]
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
+            self.logger.debug("send_to_client", extra={"send-data": data})
             self.logger.debug("send_to_client", extra={"handle": data["labjack-handle"], "config": self.config})
             clock_channel = self.config.properties["channel"]["data"]
             dataRead = ljm.eReadName(data["labjack-handle"], f"DIO{clock_channel}_EF_READ_A")
