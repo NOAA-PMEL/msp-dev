@@ -109,6 +109,7 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 	c.toKnativeChannel <- newEvent
 }
 
+// old
 // // mqttMessageHandler receives messages from MQTT and sends them to the Knative channel.
 // func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) {
 // 	log.Printf("Received MQTT message on topic: %s", msg.Topic())
