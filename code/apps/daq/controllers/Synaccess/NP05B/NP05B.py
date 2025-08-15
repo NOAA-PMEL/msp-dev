@@ -440,6 +440,7 @@ class NP05B(Controller):
                             status_data = init_status_data[:5]
                             print('status data', status_data)
                             status_list = [int(digit) for digit in str(status_data)]
+                            status_list.reverse() # right most value is outlet 1
                             self.logger.debug("recv_data_loop", extra={"status_data": status_list})
                             count = 1
                             for outlet_status in status_list:
