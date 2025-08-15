@@ -418,6 +418,7 @@ class NP05B(Controller):
             cmd = 0
             
         message = {"data": f"pset {outlet} {cmd}\r"}
+        message = {"data": message}
         self.logger.debug("set_outlet_power", extra={"payload": message})
         await self.send_data(message)
 
