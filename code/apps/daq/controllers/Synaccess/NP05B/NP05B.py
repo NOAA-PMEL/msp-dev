@@ -433,9 +433,11 @@ class NP05B(Controller):
                 if data:
                     if '$A0,' in data["data"]:
                         try:
-                            init_status_data = re.search('$A0,(.*)$A5', data["data"])
+                            # init_status_data = re.search('$A0,(.*)$A5', data["data"])
+                            init_status_data = data["data"].split(',')[1]
                             # status_data = data["data"].replace('$A0,', '').replace('$A5\r\n', '')
-                            status_data = init_status_data.group(1)
+                            # status_data = init_status_data.group(1)
+                            status_data = init_status_data[:5]
                             print('status data', status_data)
                             status_list = [int(digit) for digit in str(status_data)]
                             self.logger.debug("recv_data_loop", extra={"status_data": status_list})
