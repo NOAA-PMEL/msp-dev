@@ -338,7 +338,7 @@ class PWMClient(LabJackClient):
         # TODO turn off pwm on stop/disable
 
         except Exception as e:
-            self.logger.error("send_to_client")
+            self.logger.error("send_to_client", extra={"reason": e})
 
 
 class CounterClient(LabJackClient):
