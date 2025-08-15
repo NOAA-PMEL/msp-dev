@@ -12,6 +12,7 @@ from envds.daq.event import DAQEvent
 from aiomqtt import Client
 from pydantic import BaseModel
 import json
+import re
 
 
 task_list = []
@@ -432,7 +433,9 @@ class NP05B(Controller):
                 if data:
                     if '$A0,' in data["data"]:
                         try:
-                            status_data = data["data"].replace('$A0,', '').replace('$A5\r\n', '')
+                            init_status_data = re.search('$A0,(.*)$A5', data["data"])
+                            # status_data = data["data"].replace('$A0,', '').replace('$A5\r\n', '')
+                            status_data = init_status_data.group(1)
                             print('status data', status_data)
                             status_list = [int(digit) for digit in str(status_data)]
                             self.logger.debug("recv_data_loop", extra={"status_data": status_list})
