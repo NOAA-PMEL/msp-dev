@@ -97,6 +97,19 @@ class LabJackClient(DAQClient):
 
     def set_labjack_handle(self, handle):
         self.labjack = handle
+        info = ljm.getHandleInfo(self.labjack)
+        self.logger.info(
+            "set_labjack_info: labjack info",
+            extra={
+                "device_type": info[0],
+                "connection_type": info[1],
+                "serial_number": info[2],
+                "ip_address": ljm.numberToIP(info[3]),
+                "port": info[4],
+                "max_bytes_per_mb": info[5],
+            },
+        )
+
 
     def hex_to_int(self, hex_val):
         if "Ox" not in hex_val:
@@ -366,8 +379,9 @@ class CounterClient(LabJackClient):
                     ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_ENABLE", 1)
                     self.counter_started = True  # Enable the High-Speed Counter.
             except Exception as e:
-                self.logger.error("start_counter", extra={"reason": e})
+                self.logger.error("start_counter", extra={"handle": self.labjack, "reason": e})
                 self.counter_started = False
+            await asyncio.sleep(1)
 
     async def send_to_client(self, data):
         try:
