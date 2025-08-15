@@ -3,7 +3,7 @@ name: Build and Push labjack-tx
 on:
 
   push:
-    branches: [ dev-* ]
+    branches: [ dev-*, create=op-device ]
     paths:
       - 'code/apps/daq/interfaces/LabJack/Tx/**'
   
