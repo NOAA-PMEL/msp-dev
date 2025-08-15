@@ -135,30 +135,30 @@ class LabJackClient(DAQClient):
         ]
         while self.config.properties["sample_mode"]["data"] == "unpolled":
             try:
-                freq = int(
-                    self.config.properties[
-                        "unpolled_sample_frequency_sec"
-                    ]["data"]
-                    * 1000000
-                )
-                ljm.startInterval(handle, freq)
+                # freq = int(
+                #     self.config.properties[
+                #         "unpolled_sample_frequency_sec"
+                #     ]["data"]
+                #     * 1000000
+                # )
+                # ljm.startInterval(handle, freq)
 
-                skipped_intervals = ljm.waitForNextInterval(handle)
-                if skipped_intervals > 0:
-                    self.logger.debug(
-                        "upolled_sample_loop",
-                        extra={"skipped intervals": skipped_intervals},
-                    )
+                # skipped_intervals = ljm.waitForNextInterval(handle)
+                # if skipped_intervals > 0:
+                #     self.logger.debug(
+                #         "upolled_sample_loop",
+                #         extra={"skipped intervals": skipped_intervals},
+                #     )
 
                 data = {}
                 if "unpolled_data" in self.config.properties:
                     data = self.config.properties["unpolled_data"]["data"]
                 await self.send_to_client(data)
-
+                await asyncio.sleep(time_to_next(self.config.properties["unpolled_sample_frequency_sec"]["data"]))
             except Exception as e:
                 self.logger.error("unpolled_sample_loop", extra={"reason": e})
 
-        ljm.cleanInterval(handle)
+        # ljm.cleanInterval(handle)
 
 
 class ADCClient(LabJackClient):
