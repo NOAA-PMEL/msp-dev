@@ -29,7 +29,7 @@ class LabJackClient(DAQClient):
         self.config = config
         # print("mock_client: 3")
 
-        self.labjack = None  # labjack handle
+        # self.labjack = None  # labjack handle
 
         # # self.mock_type = "1D"  # 2D, i2c
         # self.read_method = "readline"
@@ -49,7 +49,7 @@ class LabJackClient(DAQClient):
         #     self.client = None
         # self.logger.debug("init", extra={"client": self.client})
 
-        self.run_task_list.append(self.connection_monitor())
+        # self.run_task_list.append(self.connection_monitor())
         try:
             if (
                 "sample_mode" in self.config.properties
@@ -68,32 +68,32 @@ class LabJackClient(DAQClient):
             print("error: unpolled sampling not started")
             pass
 
-    async def connection_monitor(self):
-        while True:
-            try:
-                host = self.config.properties["host"]["data"]
-                self.logger.debug("connection_monitor", extra={"host": host, "self.labjack": self.labjack})
-                if not self.labjack:
-                    self.labjack = ljm.openS("ANY", "ANY", host)
-                    info = ljm.getHandleInfo(self.labjack)
-                    self.logger.info(
-                        "connection_monitor: labjack info",
-                        extra={
-                            "device_type": info[0],
-                            "connection_type": info[1],
-                            "serial_number": info[2],
-                            "ip_address": ljm.numberToIP(info[3]),
-                            "port": info[4],
-                            "max_bytes_per_mb": info[5],
-                        },
-                    )
+    # async def connection_monitor(self):
+    #     while True:
+    #         try:
+    #             host = self.config.properties["host"]["data"]
+    #             self.logger.debug("connection_monitor", extra={"host": host, "self.labjack": self.labjack})
+    #             if not self.labjack:
+    #                 self.labjack = ljm.openS("ANY", "ANY", host)
+    #                 info = ljm.getHandleInfo(self.labjack)
+    #                 self.logger.info(
+    #                     "connection_monitor: labjack info",
+    #                     extra={
+    #                         "device_type": info[0],
+    #                         "connection_type": info[1],
+    #                         "serial_number": info[2],
+    #                         "ip_address": ljm.numberToIP(info[3]),
+    #                         "port": info[4],
+    #                         "max_bytes_per_mb": info[5],
+    #                     },
+    #                 )
 
-                    # deviceType = info[0]
+    #                 # deviceType = info[0]
 
-            except Exception as e:
-                self.logger.error("connection_monitor", extra={"reason": e})
-                self.labjack = None
-            await asyncio.sleep(5)
+    #         except Exception as e:
+    #             self.logger.error("connection_monitor", extra={"reason": e})
+    #             self.labjack = None
+    #         await asyncio.sleep(5)
 
     def hex_to_int(self, hex_val):
         if "Ox" not in hex_val:
@@ -170,7 +170,7 @@ class ADCClient(LabJackClient):
         try:
 
             channel = self.config.properties["channel"]["data"]
-            dataRead = ljm.eReadName(self.labjack, f"AIN{channel}")
+            dataRead = ljm.eReadName(data["labjack-handle"], f"AIN{channel}")
             output = {"data": dataRead}
             await self.data_buffer.put(output)
 
@@ -192,7 +192,7 @@ class DACClient(LabJackClient):
 
             channel = self.config.properties["channel"]["data"]
             volts = data["ouput_volts"]
-            ljm.WriteName(self.labjack, f"DAC{channel}", volts)
+            ljm.WriteName(data["labjack-handle"], f"DAC{channel}", volts)
 
         except Exception as e:
             self.logger.error("send_to_client")
@@ -266,7 +266,7 @@ class DIOClient(LabJackClient):
                 state = data["do_state"]
                 ljm.eWriteName(self.labview, f"FIO{channel}", state)
             elif mode.lower == "input":
-                dataRead = ljm.eReadName(self.labjack, f"FIO{channel}")
+                dataRead = ljm.eReadName(data["labjack-handle"], f"FIO{channel}")
                 output = {"data": dataRead}
                 await self.data_buffer.put(output)
 
@@ -311,28 +311,28 @@ class PWMClient(LabJackClient):
 
             # configure clock
             ljm.eWriteName(
-                self.labjack, f"DIO_EF_CLOCK{clock_channel}_DIVISOR", clock_divisor
+                data["labjack-handle"], f"DIO_EF_CLOCK{clock_channel}_DIVISOR", clock_divisor
             )  # Set Clock Divisor.
             ljm.eWriteName(
-                self.labjack, f"DIO_EF_CLOCK{clock_channel}_ROLL_VALUE", clockRollValue
+                data["labjack-handle"], f"DIO_EF_CLOCK{clock_channel}_ROLL_VALUE", clockRollValue
             )  # Set calculated Clock Roll Value.
 
             # Configure PWM Registers
             ljm.eWriteName(
-                self.labjack, f"DIO{pwm_channel}_EF_INDEX", 0
+                data["labjack-handle"], f"DIO{pwm_channel}_EF_INDEX", 0
             )  # Set DIO#_EF_INDEX to 0 - PWM Out.
             ljm.eWriteName(
-                self.labjack, f"DIO{pwm_channel}_EF_CLOCK_SOURCE", clock_channel
+                data["labjack-handle"], f"DIO{pwm_channel}_EF_CLOCK_SOURCE", clock_channel
             )  # Set DIO#_EF to use clock 0. Formerly DIO#_EF_OPTIONS, you may need to switch to this name on older LJM versions.
             ljm.eWriteName(
-                self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A", pwmConfigA
+                data["labjack-handle"], f"DIO{pwm_channel}_EF_CONFIG_A", pwmConfigA
             )  # Set DIO#_EF_CONFIG_A to the calculated value.
             ljm.eWriteName(
-                self.labjack, f"DIO{pwm_channel}_EF_ENABLE", 1
+                data["labjack-handle"], f"DIO{pwm_channel}_EF_ENABLE", 1
             )  # Enable the DIO#_EF Mode, PWM signal will not start until DIO_EF and CLOCK are enabled.
 
             ljm.eWriteName(
-                self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 1
+                data["labjack-handle"], f"DIO_EF_CLOCK{clock_channel}_ENABLE", 1
             )  # Enable Clock#, this will start the PWM signal.
 
         # TODO turn off pwm on stop/disable
@@ -358,9 +358,9 @@ class CounterClient(LabJackClient):
                 # TODO check for clock mode: "interrupt" (8) vs "high-speed" (7)
                 if not self.counter_started:
                     ljm.eWriteName(
-                        self.labjack, f"DIO{clock_channel}_EF_INDEX", 7
+                        data["labjack-handle"], f"DIO{clock_channel}_EF_INDEX", 7
                     )  # Set DIO#_EF_INDEX to 7 - High-Speed Counter.
-                    ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_ENABLE", 1)
+                    ljm.eWriteName(data["labjack-handle"], f"DIO{clock_channel}_EF_ENABLE", 1)
                     self.counter_started = True  # Enable the High-Speed Counter.
             except Exception as e:
                 self.logger.error("start_counter", extra={"reason": e})
@@ -371,9 +371,9 @@ class CounterClient(LabJackClient):
             # client_config = self.client_map[client_id]["client_config"]
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
-            self.logger.debug("send_to_client", extra={"handle": self.labjack, "config": self.config})
+            self.logger.debug("send_to_client", extra={"handle": data["labjack-handle"], "config": self.config})
             clock_channel = self.config.properties["channel"]["data"]
-            dataRead = ljm.eReadName(self.labjack, f"DIO{clock_channel}_EF_READ_A")
+            dataRead = ljm.eReadName(data["labjack-handle"], f"DIO{clock_channel}_EF_READ_A")
             output = {"data": dataRead}
             await self.data_buffer.put(output)
 
@@ -404,34 +404,34 @@ class I2CClient(LabJackClient):
             self.logger.debug("send_to_client", extra={"i2c-data": data, "config": self.config})
 
             ljm.eWriteName(
-                self.labjack,
+                data["labjack-handle"],
                 "I2C_SDA_DIONUM",
                 self.config.properties["sda_channel"]["data"],
             )  # CS is FIO2
             ljm.eWriteName(
-                self.labjack,
+                data["labjack-handle"],
                 "I2C_SCL_DIONUM",
                 self.config.properties["scl_channel"]["data"],
             )  # CLK is FIO3
             ljm.eWriteName(
-                self.labjack,
+                data["labjack-handle"],
                 "I2C_SPEED_THROTTLE",
                 self.config.properties["speed_throttle"]["data"],
             )  # CLK frequency approx 100 kHz
-            ljm.eWriteName(self.labjack, "I2C_OPTIONS", 0)
+            ljm.eWriteName(data["labjack-handle"], "I2C_OPTIONS", 0)
             ljm.eWriteName(
-                self.labjack, "I2C_SLAVE_ADDRESS", address
+                data["labjack-handle"], "I2C_SLAVE_ADDRESS", address
             )  # default address is 0x28 (40 decimal)
 
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", len(write_data))
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", 0)
+            ljm.eWriteName(data["labjack-handle"], "I2C_NUM_BYTES_TX", len(write_data))
+            ljm.eWriteName(data["labjack-handle"], "I2C_NUM_BYTES_RX", 0)
 
             ljm.eWriteNameByteArray(
-                self.labjack, "I2C_DATA_TX", len(write_data), write_data
+                data["labjack-handle"], "I2C_DATA_TX", len(write_data), write_data
             )
-            # ljm.eWriteNameArray(self.labjack, "I2C_DATA_TX", 1, [0x00])
-            # ljm.eWriteName(self.labjack, "I2C_DATA_TX", 0x00)
-            ljm.eWriteName(self.labjack, "I2C_GO", 1)
+            # ljm.eWriteNameArray(data["labjack-handle"], "I2C_DATA_TX", 1, [0x00])
+            # ljm.eWriteName(data["labjack-handle"], "I2C_DATA_TX", 0x00)
+            ljm.eWriteName(data["labjack-handle"], "I2C_GO", 1)
 
             i2c_read = data["data"]["i2c-read"]
             # await asyncio.sleep(i2c_read.get("delay-ms",500)/1000.) # does this have to be 0.5?
@@ -439,12 +439,12 @@ class I2CClient(LabJackClient):
             address = self.hex_to_int(i2c_read["address"])
             read_bytes = i2c_read["read-length"]
 
-            # dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", 4)
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", 0)
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", read_bytes)
-            ljm.eWriteName(self.labjack, "I2C_GO", 1)
+            # dataRead = ljm.eReadNameByteArray(data["labjack-handle"], "I2C_DATA_RX", 4)
+            ljm.eWriteName(data["labjack-handle"], "I2C_NUM_BYTES_TX", 0)
+            ljm.eWriteName(data["labjack-handle"], "I2C_NUM_BYTES_RX", read_bytes)
+            ljm.eWriteName(data["labjack-handle"], "I2C_GO", 1)
 
-            dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", read_bytes)
+            dataRead = ljm.eReadNameByteArray(data["labjack-handle"], "I2C_DATA_RX", read_bytes)
             self.logger.debug("send_to_client", extra={"dataread": dataRead})
             if dataRead:
                 output = {"address": i2c_read["address"], "input-data": data, "data": dataRead}
@@ -475,34 +475,34 @@ class SPIClient(LabJackClient):
             write_data = [self.hex_to_int(hex_val) for hex_val in spi_write["data"]]
 
             ljm.eWriteName(
-                self.labjack,
+                data["labjack-handle"],
                 "I2C_SDA_DIONUM",
                 self.config.properties["sda_channel"]["data"],
             )  # CS is FIO2
             ljm.eWriteName(
-                self.labjack,
+                data["labjack-handle"],
                 "I2C_SCL_DIONUM",
                 self.config.properties["scl_channel"]["data"],
             )  # CLK is FIO3
             ljm.eWriteName(
-                self.labjack,
+                data["labjack-handle"],
                 "I2C_SPEED_THROTTLE",
                 self.config.properties["speed_throttle"]["data"],
             )  # CLK frequency approx 100 kHz
-            ljm.eWriteName(self.labjack, "I2C_OPTIONS", 0)
+            ljm.eWriteName(data["labjack-handle"], "I2C_OPTIONS", 0)
             ljm.eWriteName(
-                self.labjack, "I2C_SLAVE_ADDRESS", address
+                data["labjack-handle"], "I2C_SLAVE_ADDRESS", address
             )  # default address is 0x28 (40 decimal)
 
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", len(write_data))
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", 0)
+            ljm.eWriteName(data["labjack-handle"], "I2C_NUM_BYTES_TX", len(write_data))
+            ljm.eWriteName(data["labjack-handle"], "I2C_NUM_BYTES_RX", 0)
 
             ljm.eWriteNameByteArray(
-                self.labjack, "I2C_DATA_TX", len(write_data), write_data
+                data["labjack-handle"], "I2C_DATA_TX", len(write_data), write_data
             )
-            # ljm.eWriteNameArray(self.labjack, "I2C_DATA_TX", 1, [0x00])
-            # ljm.eWriteName(self.labjack, "I2C_DATA_TX", 0x00)
-            ljm.eWriteName(self.labjack, "I2C_GO", 1)
+            # ljm.eWriteNameArray(data["labjack-handle"], "I2C_DATA_TX", 1, [0x00])
+            # ljm.eWriteName(data["labjack-handle"], "I2C_DATA_TX", 0x00)
+            ljm.eWriteName(data["labjack-handle"], "I2C_GO", 1)
 
             spi_read = data["spi-read"]
             await asyncio.sleep(
@@ -512,12 +512,12 @@ class SPIClient(LabJackClient):
             address = self.hex_to_int(spi_read["address"])
             read_bytes = spi_read["read-length"]
 
-            # dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", 4)
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_TX", 0)
-            ljm.eWriteName(self.labjack, "I2C_NUM_BYTES_RX", read_bytes)
-            ljm.eWriteName(self.labjack, "I2C_GO", 1)
+            # dataRead = ljm.eReadNameByteArray(data["labjack-handle"], "I2C_DATA_RX", 4)
+            ljm.eWriteName(data["labjack-handle"], "I2C_NUM_BYTES_TX", 0)
+            ljm.eWriteName(data["labjack-handle"], "I2C_NUM_BYTES_RX", read_bytes)
+            ljm.eWriteName(data["labjack-handle"], "I2C_GO", 1)
 
-            dataRead = ljm.eReadNameByteArray(self.labjack, "I2C_DATA_RX", read_bytes)
+            dataRead = ljm.eReadNameByteArray(data["labjack-handle"], "I2C_DATA_RX", read_bytes)
             if dataRead:
                 output = {"input-data": data, "data": dataRead}
                 await self.data_buffer.put(output)

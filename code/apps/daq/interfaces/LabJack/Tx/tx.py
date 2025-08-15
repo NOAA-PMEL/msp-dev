@@ -109,6 +109,9 @@ class Tx(Interface):
             sys.exit(1)
 
         self.host = "localhost"
+        self.labjack = None # labjack handle
+        self.run_task_list.append(self.connection_monitor())
+
         # self.labjack = None
 
         # self.run_tasks.append(self.connection_monitor())
@@ -258,6 +261,33 @@ class Tx(Interface):
     #             self.labjack = None
     #         await asyncio.sleep(5)
 
+    async def connection_monitor(self):
+        while True:
+            try:
+                host = self.host
+                self.logger.debug("connection_monitor", extra={"host": host, "self.labjack": self.labjack})
+                if not self.labjack:
+                    self.labjack = ljm.openS("ANY", "ANY", host)
+                    info = ljm.getHandleInfo(self.labjack)
+                    self.logger.info(
+                        "connection_monitor: labjack info",
+                        extra={
+                            "device_type": info[0],
+                            "connection_type": info[1],
+                            "serial_number": info[2],
+                            "ip_address": ljm.numberToIP(info[3]),
+                            "port": info[4],
+                            "max_bytes_per_mb": info[5],
+                        },
+                    )
+
+                    # deviceType = info[0]
+
+            except Exception as e:
+                self.logger.error("connection_monitor", extra={"reason": e})
+                self.labjack = None
+            await asyncio.sleep(5)
+
     async def recv_data_loop(self, client_id: str):
         
         # self.logger.debug("recv_data_loop", extra={"client_id": client_id})
@@ -298,6 +328,7 @@ class Tx(Interface):
                 # path_type = client_config["attributes"]["path_type"]["data"]
 
                 data = event.data["data"]
+                data["labjack-handle"] = self.labjack
                 self.logger.debug("send_data", extra={"client.send.data": data})
                 await client.send(data)
                 # if path_type == "AtoD":
