@@ -429,16 +429,11 @@ class NP05B(Controller):
             try:
                 data = await self.client_recv_buffer.get()
                 self.logger.debug("recv_data_loop", extra={"recv_data": data})
-                print('data', data)
                 if data:
                     if '$A0,' in data["data"]:
                         try:
-                            # init_status_data = re.search('$A0,(.*)$A5', data["data"])
                             init_status_data = data["data"].split(',')[1]
-                            # status_data = data["data"].replace('$A0,', '').replace('$A5\r\n', '')
-                            # status_data = init_status_data.group(1)
                             status_data = init_status_data[:5]
-                            print('status data', status_data)
                             status_list = [int(digit) for digit in str(status_data)]
                             status_list.reverse() # right most value is outlet 1
                             self.logger.debug("recv_data_loop", extra={"status_data": status_list})

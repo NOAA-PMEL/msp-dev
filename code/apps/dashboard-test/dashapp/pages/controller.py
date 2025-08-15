@@ -1754,14 +1754,32 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                         else:
                             data[name] = ""
 
-                        # Check if the setting should be set up as a boolean switch
-                        if controller_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
-                            if controller_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
-                                if controller_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
-                                    col["cellRenderer"] = "DBC_Switch"
-                                    col["cellRendererParams"] = {"color": "success"}
+                        # # Check if the setting should be set up as a boolean switch
+                        # if controller_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
+                        #     if controller_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
+                        #         if controller_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
+                        #             col["cellRenderer"] = "DBC_Switch"
+                        #             col["cellRendererParams"] = {"color": "success"}
                         
-                        # Check if the setting should be set up as 
+                        # # Check if the setting should be set up as 
+
+                        # Make sure the settings contain integers
+                        if controller_definition["variables"][name]["attributes"]["valid_min"]["type"] == "int":
+                            min_val = controller_definition["variables"][name]["attributes"]["valid_min"]["data"]
+                            max_val = controller_definition["variables"][name]["attributes"]["valid_max"]["data"]
+                            step_val = controller_definition["variables"][name]["attributes"]["step_increment"]["data"]
+
+                            # Check if the setting should be set up as a boolean switch
+                            if min_val == 0:
+                                if max_val == 1:
+                                    if step_val == 1:
+                                        col["cellRenderer"] = "DBC_Switch"
+                                        col["cellRendererParams"] = {"color": "success"}
+                            
+                            # Check if the setting should be set up as numeric input
+                            elif max_val > 1:
+                                col["cellRenderer"] = "DCC_Input"
+                                col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val}
 
                         new_column_defs.append(col)
                     row_data.insert(0, data)
