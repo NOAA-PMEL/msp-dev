@@ -428,10 +428,12 @@ class NP05B(Controller):
             try:
                 data = await self.client_recv_buffer.get()
                 self.logger.debug("recv_data_loop", extra={"recv_data": data})
+                print('data', data)
                 if data:
                     if '$A0,' in data["data"]:
                         try:
                             status_data = data["data"].replace('$A0,', '').replace('$A5\r\n', '')
+                            print('status data', status_data)
                             status_list = [int(digit) for digit in str(status_data)]
                             self.logger.debug("recv_data_loop", extra={"status_data": status_list})
                             count = 1
