@@ -419,7 +419,7 @@ class NP05B(Controller):
             
         data = {"data": f"pset {outlet} {cmd}\r"}
         message = {"data": data}
-        self.logger.debug("set_outlet_power", extra={"payload", message})
+        self.logger.debug("set_outlet_power", extra={"payload": message})
         await self.send_data(message)
 
     
@@ -462,7 +462,9 @@ class NP05B(Controller):
                 self.logger.debug("send_data", extra={"payload": data})
                 await self.client.send_to_client(data)
         
-        except Exception:
+        except Exception as e:
+            self.logger.error("send_data", extra={"error": e})
+            print(traceback.format_exc())
             pass
     
 
