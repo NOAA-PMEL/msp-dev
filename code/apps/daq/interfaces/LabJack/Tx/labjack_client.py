@@ -322,7 +322,8 @@ class PWMClient(LabJackClient):
             clockRollValue = clockTickRate / desired_frequency
 
             pwm_data = data["data"]["pwm-data"]
-            duty_cycle = pwm_data["duty_cycle_percent"]
+            # duty_cycle = pwm_data["duty_cycle_percent"]
+            duty_cycle = pwm_data
             pwmConfigA = int(clockRollValue * (duty_cycle / 100.0))
 
             clock_channel = self.config.properties["clock_channel"][
