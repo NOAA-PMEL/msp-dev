@@ -288,8 +288,12 @@ class Tx(Interface):
                 self.labjack = None
 
             for client_id,_ in self.client_map.items():
-                client = self.client_map[client_id]["client"]
-                client.set_labjack_handle(self.labjack)
+                try:
+                    client = self.client_map[client_id]["client"]
+                    self.logger.debug("connection_monitor", extra={"labjack_handle": self.labjack, "client-id": client_id, "client": client})
+                    client.set_labjack_handle(self.labjack)
+                except Exception as e:
+                    self.logger.error("connection_monitor", extra={"reason": e})
             await asyncio.sleep(5)
 
     async def recv_data_loop(self, client_id: str):
