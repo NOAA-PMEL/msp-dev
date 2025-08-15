@@ -1,0 +1,109 @@
+{
+    "attributes": {
+        "make": {
+            "type": "string",
+            "data": "SanyoDenki"
+        },
+        "model": {
+            "type": "string",
+            "data": "SanAce92RF"
+        },
+        "description": {
+            "type": "string",
+            "data": "Reverisble Fan"
+        },
+        "tags": {
+            "type": "char",
+            "data": "flow"
+        },
+        "format_version": {
+            "type": "char",
+            "data": "1.0.0"
+        },
+        "variable_types": {
+            "type": "string",
+            "data": "main, setting, calibration"
+        },
+        "serial_number": {
+            "type": "string",
+            "data": ""
+        }
+    },
+    "dimensions": {
+        "time": 0
+    },
+    "variables": {
+        "time": {
+            "type": "str",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "string",
+                    "data": "Time"
+                }
+            }
+        },
+        "fan_speed": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Fan Speed - RPM"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "min-1"
+                }
+            }
+        },
+        "fan_speed_sp": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "setting"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Fan Speed SP"
+                },
+                "units": {
+                    "type": "string",
+                    "data": "%"
+                },
+                "valid_min": {
+                    "type": "float",
+                    "data": -100
+                },
+                "valid_max": {
+                    "type": "int",
+                    "data": 100.0
+                },
+                "step_increment": {
+                    "type": "int",
+                    "data": 10
+                },
+                "default_value": {
+                    "type": "int",
+                    "data": 0
+                }
+            }
+        }
+    }
+}

@@ -2,7 +2,7 @@ name: Build Envds Package
 
 on:
   push:
-    branches: [ dev-* , add-envds-package-workflow']
+    branches: [ dev-* , add-envds-package-workflow, create-op-device]
     paths:
       - 'code/envds/envds/**'
   

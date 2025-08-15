@@ -49,7 +49,7 @@ class LabJackClient(DAQClient):
         #     self.client = None
         # self.logger.debug("init", extra={"client": self.client})
 
-        self.run_task_list.append(self.connection_monitor())
+        # self.run_task_list.append(self.connection_monitor())
         try:
             if (
                 "sample_mode" in self.config.properties
@@ -68,32 +68,48 @@ class LabJackClient(DAQClient):
             print("error: unpolled sampling not started")
             pass
 
-    async def connection_monitor(self):
-        while True:
-            try:
-                host = self.config.properties["host"]["data"]
-                self.logger.debug("connection_monitor", extra={"host": host, "self.labjack": self.labjack})
-                if not self.labjack:
-                    self.labjack = ljm.openS("ANY", "ANY", host)
-                    info = ljm.getHandleInfo(self.labjack)
-                    self.logger.info(
-                        "connection_monitor: labjack info",
-                        extra={
-                            "device_type": info[0],
-                            "connection_type": info[1],
-                            "serial_number": info[2],
-                            "ip_address": ljm.numberToIP(info[3]),
-                            "port": info[4],
-                            "max_bytes_per_mb": info[5],
-                        },
-                    )
+    # async def connection_monitor(self):
+    #     while True:
+    #         try:
+    #             host = self.config.properties["host"]["data"]
+    #             self.logger.debug("connection_monitor", extra={"host": host, "self.labjack": self.labjack})
+    #             if not self.labjack:
+    #                 self.labjack = ljm.openS("ANY", "ANY", host)
+    #                 info = ljm.getHandleInfo(self.labjack)
+    #                 self.logger.info(
+    #                     "connection_monitor: labjack info",
+    #                     extra={
+    #                         "device_type": info[0],
+    #                         "connection_type": info[1],
+    #                         "serial_number": info[2],
+    #                         "ip_address": ljm.numberToIP(info[3]),
+    #                         "port": info[4],
+    #                         "max_bytes_per_mb": info[5],
+    #                     },
+    #                 )
 
-                    # deviceType = info[0]
+    #                 # deviceType = info[0]
 
-            except Exception as e:
-                self.logger.error("connection_monitor", extra={"reason": e})
-                self.labjack = None
-            await asyncio.sleep(5)
+    #         except Exception as e:
+    #             self.logger.error("connection_monitor", extra={"reason": e})
+    #             self.labjack = None
+    #         await asyncio.sleep(5)
+
+    def set_labjack_handle(self, handle):
+        self.labjack = handle
+        info = ljm.getHandleInfo(self.labjack)
+        self.logger.info(
+            "set_labjack_info: labjack info",
+            extra={
+                "device_type": info[0],
+                "connection_type": info[1],
+                "serial_number": info[2],
+                "ip_address": ljm.numberToIP(info[3]),
+                "port": info[4],
+                "max_bytes_per_mb": info[5],
+            },
+        )
+
 
     def hex_to_int(self, hex_val):
         if "Ox" not in hex_val:
@@ -119,30 +135,30 @@ class LabJackClient(DAQClient):
         ]
         while self.config.properties["sample_mode"]["data"] == "unpolled":
             try:
-                freq = int(
-                    self.config.properties[
-                        "unpolled_sample_frequency_sec"
-                    ]["data"]
-                    * 1000000
-                )
-                ljm.startInterval(handle, freq)
+                # freq = int(
+                #     self.config.properties[
+                #         "unpolled_sample_frequency_sec"
+                #     ]["data"]
+                #     * 1000000
+                # )
+                # ljm.startInterval(handle, freq)
 
-                skipped_intervals = ljm.waitForNextInterval(handle)
-                if skipped_intervals > 0:
-                    self.logger.debug(
-                        "upolled_sample_loop",
-                        extra={"skipped intervals": skipped_intervals},
-                    )
+                # skipped_intervals = ljm.waitForNextInterval(handle)
+                # if skipped_intervals > 0:
+                #     self.logger.debug(
+                #         "upolled_sample_loop",
+                #         extra={"skipped intervals": skipped_intervals},
+                #     )
 
-                data = None
+                data = {}
                 if "unpolled_data" in self.config.properties:
                     data = self.config.properties["unpolled_data"]["data"]
                 await self.send_to_client(data)
-
+                await asyncio.sleep(time_to_next(self.config.properties["unpolled_sample_frequency_sec"]["data"]))
             except Exception as e:
                 self.logger.error("unpolled_sample_loop", extra={"reason": e})
 
-        ljm.cleanInterval(handle)
+        # ljm.cleanInterval(handle)
 
 
 class ADCClient(LabJackClient):
@@ -283,10 +299,15 @@ class PWMClient(LabJackClient):
 
     async def send_to_client(self, data):
         try:
+            max_attempts = 30
+            attempt = 0
+            while self.labjack is None and attempt < max_attempts:
+                await asyncio.sleep(1)
+                attempt += 1
             # client_config = self.client_map[client_id]["client_config"]
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
-
+            self.logger.debug("send_to_client", extra={"config": self.config})
             clock_divisor = self.config.properties["clock_divisor"][
                 "data"
             ]
@@ -337,8 +358,15 @@ class PWMClient(LabJackClient):
 
         # TODO turn off pwm on stop/disable
 
+            await asyncio.sleep(1)
+            dataRead = ljm.eReadName(
+                self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A"
+            )  
+            output = {"input-value": pwmConfigA, "data": dataRead}
+            await self.data_buffer.put(output)
+
         except Exception as e:
-            self.logger.error("send_to_client")
+            self.logger.error("send_to_client", extra={"reason": e})
 
 
 class CounterClient(LabJackClient):
@@ -354,28 +382,36 @@ class CounterClient(LabJackClient):
         while True:
             try:
                 clock_channel = self.config.properties["channel"]["data"]
+
+                # TODO check for clock mode: "interrupt" (8) vs "high-speed" (7)
+                counter_mode = 8
+                if self.config.properties["counter_mode"]["data"].lower() == "high-speed":
+                    counter_mode = 7
                 if not self.counter_started:
                     ljm.eWriteName(
-                        self.labjack, f"DIO{clock_channel}_EF_INDEX", 7
+                        self.labjack, f"DIO{clock_channel}_EF_INDEX", counter_mode
                     )  # Set DIO#_EF_INDEX to 7 - High-Speed Counter.
                     ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_ENABLE", 1)
                     self.counter_started = True  # Enable the High-Speed Counter.
             except Exception as e:
-                self.logger.error("start_counter", extra={"reason": e})
+                self.logger.error("start_counter", extra={"handle": self.labjack, "reason": e})
                 self.counter_started = False
+            await asyncio.sleep(1)
 
     async def send_to_client(self, data):
         try:
             # client_config = self.client_map[client_id]["client_config"]
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
+            self.logger.debug("send_to_client", extra={"send-data": data})
+            self.logger.debug("send_to_client", extra={"handle": self.labjack, "config": self.config})
             clock_channel = self.config.properties["channel"]["data"]
             dataRead = ljm.eReadName(self.labjack, f"DIO{clock_channel}_EF_READ_A")
             output = {"data": dataRead}
             await self.data_buffer.put(output)
 
         except Exception as e:
-            self.logger.error("send_i2c")
+            self.logger.error("send_to_client", extra={"reason": e})
 
 
 class I2CClient(LabJackClient):
