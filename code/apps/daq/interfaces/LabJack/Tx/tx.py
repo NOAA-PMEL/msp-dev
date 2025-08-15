@@ -286,6 +286,10 @@ class Tx(Interface):
             except Exception as e:
                 self.logger.error("connection_monitor", extra={"reason": e})
                 self.labjack = None
+
+            for client_id,_ in self.client_map.items():
+                client = self.client_map[client_id]["client"]
+                client.set_labjack_handle(self.labjack)
             await asyncio.sleep(5)
 
     async def recv_data_loop(self, client_id: str):
@@ -328,7 +332,7 @@ class Tx(Interface):
                 # path_type = client_config["attributes"]["path_type"]["data"]
 
                 data = event.data["data"]
-                data["labjack-handle"] = self.labjack
+                # data["labjack-handle"] = self.labjack
                 self.logger.debug("send_data", extra={"client.send.data": data})
                 await client.send(data)
                 # if path_type == "AtoD":
