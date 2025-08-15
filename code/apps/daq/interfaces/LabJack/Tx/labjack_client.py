@@ -286,7 +286,7 @@ class PWMClient(LabJackClient):
             # client_config = self.client_map[client_id]["client_config"]
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
-
+            self.logger.debug("send_to_client", extra={"config": self.config})
             clock_divisor = self.config.properties["clock_divisor"][
                 "data"
             ]
