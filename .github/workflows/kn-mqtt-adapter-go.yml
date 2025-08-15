@@ -3,7 +3,8 @@ name: Build and Push kn-mqtt-go-adapter
 on:
   push:
     branches:
-      - dev-*, create-op-device
+      - dev-*
+      - create-op-device
     paths:
       - 'code/infrastructure/knative/eventing/adapter/kn-mqtt-go/**'
   
