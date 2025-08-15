@@ -66,7 +66,7 @@ func NewKNMQTTClient(config KNMQTTAdapterSettings) *KNMQTTClient {
 
 // subscribeToMqttTopics subscribes to all configured topics.
 func (c *KNMQTTClient) subscribeToMqttTopics() {
-	topics := strings.Split(c.config.MQTTTopicSubscriptions, "\n")
+	topics := strings.Split(c.config.MQTTTopicSubscriptions, ",")
 	for _, topic := range topics {
 		topic = strings.TrimSpace(topic)
 		if topic == "" {
