@@ -358,13 +358,13 @@ class PWMClient(LabJackClient):
 
         # TODO turn off pwm on stop/disable
 
-            await asyncio.sleep(1)
-            dataRead = ljm.eReadName(
-                self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A"
-            )  
-            duty_cycle = (pwmConfigA/clockRollValue)*100.0
-            output = {"input-value": pwmConfigA, "data": {"raw": dataRead, "duty_cycle": duty_cycle }}
-            await self.data_buffer.put(output)
+            # await asyncio.sleep(1)
+            # dataRead = ljm.eReadName(
+            #     self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A"
+            # )  
+            # duty_cycle = (pwmConfigA/clockRollValue)*100.0
+            # output = {"input-value": pwmConfigA, "data": {"raw": dataRead, "duty_cycle": duty_cycle }}
+            # await self.data_buffer.put(output)
 
         except Exception as e:
             self.logger.error("send_to_client", extra={"reason": e})
