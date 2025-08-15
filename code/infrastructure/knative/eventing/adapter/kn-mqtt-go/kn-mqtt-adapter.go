@@ -32,17 +32,17 @@ type KNMQTTAdapterSettings struct {
 
 // KNMQTTClient encapsulates the core logic.
 type KNMQTTClient struct {
-	config        KNMQTTAdapterSettings
-	mqttClient    mqtt.Client
-	toMqttChannel chan event.Event
+	config           KNMQTTAdapterSettings
+	mqttClient       mqtt.Client
+	toMqttChannel    chan event.Event
 	toKnativeChannel chan event.Event
 }
 
 // NewKNMQTTClient initializes a new client.
 func NewKNMQTTClient(config KNMQTTAdapterSettings) *KNMQTTClient {
 	c := &KNMQTTClient{
-		config:        config,
-		toMqttChannel: make(chan event.Event, 100),
+		config:           config,
+		toMqttChannel:    make(chan event.Event, 100),
 		toKnativeChannel: make(chan event.Event, 100),
 	}
 
@@ -55,9 +55,9 @@ func NewKNMQTTClient(config KNMQTTAdapterSettings) *KNMQTTClient {
 	if token := c.mqttClient.Connect(); token.Wait() && token.Error() != nil {
 		log.Fatalf("Error connecting to MQTT broker: %v", token.Error())
 	}
-	
+
 	c.subscribeToMqttTopics()
-	
+
 	go c.sendToMqttLoop()
 	go c.sendToKnativeLoop()
 
@@ -98,8 +98,8 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 	}
 
 	// Set required CloudEvent attributes
-	newEvent.SetSource("mqtt-source") // Consistent with Python's origin
-	newEvent.SetType("envds.mqtt.message") // A type for MQTT-originated messages
+	newEvent.SetSource("mqtt-source")                                 // Consistent with Python's origin
+	newEvent.SetType("envds.mqtt.message")                            // A type for MQTT-originated messages
 	newEvent.SetID(fmt.Sprintf("mqtt-msg-%d", time.Now().UnixNano())) // Unique ID for the event
 
 	// Set the 'sourcepath' extension, which was used in the Python version
@@ -112,7 +112,7 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 // // mqttMessageHandler receives messages from MQTT and sends them to the Knative channel.
 // func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) {
 // 	log.Printf("Received MQTT message on topic: %s", msg.Topic())
-	
+
 // 	// Convert MQTT payload to a CloudEvent
 // 	event := event.New()
 // 	if err := event.SetData(event.ApplicationJSON, msg.Payload()); err != nil {
