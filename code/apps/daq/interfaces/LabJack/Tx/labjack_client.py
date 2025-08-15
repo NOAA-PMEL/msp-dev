@@ -372,9 +372,12 @@ class CounterClient(LabJackClient):
                 clock_channel = self.config.properties["channel"]["data"]
 
                 # TODO check for clock mode: "interrupt" (8) vs "high-speed" (7)
+                counter_mode = 8
+                if self.config.properties["counter_mode"]["data"].lower() == "high-speed":
+                    counter_mode = 7
                 if not self.counter_started:
                     ljm.eWriteName(
-                        self.labjack, f"DIO{clock_channel}_EF_INDEX", 7
+                        self.labjack, f"DIO{clock_channel}_EF_INDEX", counter_mode
                     )  # Set DIO#_EF_INDEX to 7 - High-Speed Counter.
                     ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_ENABLE", 1)
                     self.counter_started = True  # Enable the High-Speed Counter.
