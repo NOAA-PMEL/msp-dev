@@ -30,71 +30,115 @@
         }
     },
     "path_types": {
-        "AtoD": {
+        "ADC": {
             "attributes": {
                 "client_module": {
                     "type": "string",
-                    "data": "envds.daq.clients.tcp_client"
+                    "data": "labjack_client"
                 },
                 "client_class": {
                     "type": "string",
-                    "data": "TCPClient"
+                    "data": "ADCClient"
                 },
                 "host": {
                     "type": "string",
                     "data": ""
                 },
                 "channel": {
-                    "type": "string",
-                    "data": "FIO0"
-                }
-            }
-        },
-        "DtoA": {
-            "attributes": {
-                "client_module": {
-                    "type": "string",
-                    "data": "envds.daq.clients.tcp_client"
-                },
-                "client_class": {
-                    "type": "string",
-                    "data": "TCPClient"
-                },
-                "host": {
-                    "type": "string",
-                    "data": ""
-                },
-                "channel": {
-                    "type": "string",
-                    "data": "FIO0"
-                }
-            }
-        },
-        "pwm": {
-            "attributes": {
-                "client_module": {
-                    "type": "string",
-                    "data": "envds.daq.clients.tcp_client"
-                },
-                "client_class": {
-                    "type": "string",
-                    "data": "TCPClient"
-                },
-                "host": {
-                    "type": "string",
-                    "data": ""
-                },
-                "channel": {
-                    "type": "string",
-                    "data": "FIO0"
-                },
-                "clock_roll_value": {
                     "type": "int",
-                    "data": 3200
+                    "data": 0
+                },
+                "sample_mode": {
+                    "type": "string",
+                    "data": "polled"
+                },
+                "unpolled_interval_handle": {
+                    "type": "int",
+                    "data": 1
+                },
+                "unpolled_sample_frequency_sec": {
+                    "type": "double",
+                    "data": 1.0
                 }
             }
         },
-        "counter": {
+        "DAC": {
+            "attributes": {
+                "client_module": {
+                    "type": "string",
+                    "data": "labjack_client"
+                },
+                "client_class": {
+                    "type": "string",
+                    "data": "DACClient"
+                },
+                "host": {
+                    "type": "string",
+                    "data": ""
+                },
+                "channel": {
+                    "type": "string",
+                    "data": "FIO0"
+                }
+            }
+        },
+        "DIO": {
+            "attributes": {
+                "client_module": {
+                    "type": "string",
+                    "data": "labjack_client"
+                },
+                "client_class": {
+                    "type": "string",
+                    "data": "DIOClient"
+                },
+                "host": {
+                    "type": "string",
+                    "data": ""
+                },
+                "channel": {
+                    "type": "string",
+                    "data": "FIO0"
+                }
+            }
+        },
+        "PWM": {
+            "attributes": {
+                "client_module": {
+                    "type": "string",
+                    "data": "labjack_client"
+                },
+                "client_class": {
+                    "type": "string",
+                    "data": "PWMClient"
+                },
+                "host": {
+                    "type": "string",
+                    "data": ""
+                },
+                "pwm_channel": {
+                    "type": "int",
+                    "data": 6
+                },
+                "clock_channel": {
+                    "type": "int",
+                    "data": 0
+                },
+                "clock_divisor": {
+                    "type": "int",
+                    "data": 1
+                },
+                "clock_core_frequency": {
+                    "type": "int",
+                    "data": 80000000
+                },
+                "clock_desired_frequency": {
+                    "type": "int",
+                    "data": 25000
+                }
+            }
+        },
+        "COUNTER": {
             "attributes": {
                 "client_module": {
                     "type": "string",
@@ -109,20 +153,32 @@
                     "data": ""
                 },
                 "channel": {
+                    "type": "int",
+                    "data": 7
+                },
+                "sample_mode": {
                     "type": "string",
-                    "data": "FIO0"
+                    "data": "polled"
+                },
+                "unpolled_interval_handle": {
+                    "type": "int",
+                    "data": 1
+                },
+                "unpolled_sample_frequency_sec": {
+                    "type": "double",
+                    "data": 1.0
                 }
             }
         },
-        "i2c": {
+        "I2C": {
             "attributes": {
                 "client_module": {
                     "type": "string",
-                    "data": "envds.daq.clients.tcp_client"
+                    "data": "labjack_client"
                 },
                 "client_class": {
                     "type": "string",
-                    "data": "TCPClient"
+                    "data": "I2CClient"
                 },
                 "host": {
                     "type": "string",
@@ -142,7 +198,7 @@
                 }
             }
         },
-        "spi": {
+        "SPI": {
             "attributes": {
                 "client_module": {
                     "type": "string",

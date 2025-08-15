@@ -23,7 +23,8 @@ from envds.util.util import (
     get_datetime,
     get_datetime_string,
 )
-from envds.daq.sensor import Sensor, SensorConfig, SensorVariable, SensorMetadata
+from envds.daq.sensor import Sensor
+from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
@@ -105,6 +106,7 @@ class HYT271(Sensor):
 
         self.sensor_definition_file = "IST_HYT271_sensor_definition.json"
 
+
         try:            
             with open(self.sensor_definition_file, "r") as f:
                 self.metadata = json.load(f)
@@ -135,6 +137,8 @@ class HYT271(Sensor):
         self.enable_task_list.append(self.polling_loop())
         # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
+
+        self.i2c_address = "28"
 
     def configure(self):
         super(HYT271, self).configure()
@@ -174,13 +178,24 @@ class HYT271(Sensor):
                 "hyt271.configure", extra={"interfaces": conf["interfaces"]}
             )
 
-        meta = SensorMetadata(
+        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+        # for name, setting in self.metadata["settings"].items():
+        for name, setting in settings_def["variables"].items():
+        
+            requested = setting["attributes"]["default_value"]["data"]
+            if "settings" in config and name in config["settings"]:
+                requested = config["settings"][name]
+
+            self.settings.set_setting(name, requested=requested)
+
+        meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
+            dimensions=self.metadata["dimensions"],
             variables=self.metadata["variables"],
-            settings=self.metadata["settings"],
+            settings=settings_def["variables"],
         )
 
-        self.config = SensorConfig(
+        self.config = DeviceConfig(
             make=self.metadata["attributes"]["make"]["data"],
             model=self.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
@@ -220,38 +235,61 @@ class HYT271(Sensor):
     async def handle_interface_data(self, message: Message):
         await super(HYT271, self).handle_interface_data(message)
 
-        # self.logger.debug("interface_recv_data", extra={"data": message.data})
-        if message.data["type"] == det.interface_data_recv():
+        self.logger.debug("interface_recv_data", extra={"data": message})
+        if message["type"] == det.interface_data_recv():
             try:
-                path_id = message.data["path_id"]
+                self.logger.debug(
+                    "interface_recv_data", extra={"data": message}
+                )
+                path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
+                self.logger.debug("interface_recv_data", extra={"path_id": path_id, "iface_path": iface_path})
                 # if path_id == "default":
                 if path_id == iface_path:
                     self.logger.debug(
-                        "interface_recv_data", extra={"data": message.data.data}
+                        "interface_recv_data", extra={"data": message.data}
                     )
-                    await self.default_data_buffer.put(message.data)
+                    await self.default_data_buffer.put(message)
             except KeyError:
                 pass
 
     async def polling_loop(self):
         
-        write_command = {
-            "i2c-command": "write-byte",
-            "address": "28",
-            "data": "00",
-            # "delay-ms": 50 # 50ms in seconds
+        # TODO add sensor address to config
+
+        # redo format to be more generic (based on new labjack code)
+        i2c_write = {
+            "address": self.i2c_address,
+            "data": "00"
         }
-        read_command = {
-            "i2c-command": "read-buffer",
-            "address": "28",
+        i2c_read = {
+            "address": self.i2c_address,
             "read-length": 4,
             "delay-ms": 50 # timeout in ms to wait for ACK
         }
-        i2c_commands = [write_command, read_command]
         data = {
-            "data": {"i2c-commands": i2c_commands}
+            "data": {
+                "i2c-write": i2c_write,
+                "i2c-read": i2c_read
+            }
         }
+
+        # write_command = {
+        #     "i2c-command": "write-byte",
+        #     "address": "28",
+        #     "data": "00",
+        #     # "delay-ms": 50 # 50ms in seconds
+        # }
+        # read_command = {
+        #     "i2c-command": "read-buffer",
+        #     "address": "28",
+        #     "read-length": 4,
+        #     "delay-ms": 50 # timeout in ms to wait for ACK
+        # }
+        # i2c_commands = [write_command, read_command]
+        # data = {
+        #     "data": {"i2c-commands": i2c_commands}
+        # }
 
         while True:
             if self.sampling():
@@ -382,6 +420,13 @@ class HYT271(Sensor):
     def default_parse(self, data):
         if data:
             try:
+                timestamp = data.data["timestamp"]
+                iface_data = data.data["data"]
+                address = iface_data["address"]
+                self.logger.debug("default_parse", extra={"iface_data": iface_data, "address": address, "i2c-address": self.i2c_address})
+                if address == "" or address != self.i2c_address:
+                    return None
+                
                 variables = list(self.config.metadata.variables.keys())
                 # print(f"variables: \n{variables}\n{variables2}")
                 variables.remove("time")
@@ -389,11 +434,37 @@ class HYT271(Sensor):
                 # print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
                 try:
-                    record["timestamp"] = data.data["timestamp"]
-                    record["variables"]["time"]["data"] = data.data["timestamp"]
+                    # record["timestamp"] = data.data["timestamp"]
+                    record["timestamp"] = timestamp
+                    record["variables"]["time"]["data"] = timestamp
                     # parts = data.data["data"].split(",")
 
-                    hexdata = data.data["data"].strip()
+                    # change for new format
+
+                    dataRead = iface_data["data"] # should return as bytearray
+                    if len(dataRead) != 4:
+                        return None
+                    rh = ((((dataRead[0] & 0x3F) * 256) + dataRead[1]) * 100.0) / 16383.0
+                    print(f"rh: {rh}")
+                    temp = ((dataRead[2] * 256) + (dataRead[3] & 0xFC)) / 4
+                    print(f"temp: {temp}")
+                    cTemp = (temp / 16384.0) * 165.0 - 40.0
+                    print(f"cTemp: {cTemp}")
+
+                    # achieves the same and seems much cleaner...
+
+                    # raw_RH = (dataRead[0] << 8) | dataRead[1]
+                    # raw_RH = raw_RH & 0x3FFF
+                    # raw_temp = ((dataRead[2] << 8) | dataRead[3]) >> 2
+                    # RH = (raw_RH/16383)*100
+                    # temp = (raw_temp*165/16383)-40
+
+                    record["variables"]["temperature"]["data"] = round(cTemp,3)
+                    record["variables"]["rh"]["data"] = round(rh,3)
+                    return record
+                    
+
+                    # hexdata = data.data["data"].strip()
                     print(f"hexdata: {hexdata}")
                     if hexdata and "0x"in hexdata:
                         bindata = binascii.unhexlify(
@@ -404,7 +475,7 @@ class HYT271(Sensor):
                         print(f"fmt: {fmt}")
                         data = unpack(fmt, bindata)
                         print(f"data: {data}")
-                        
+
                         rh = ((((data[0] & 0x3F) * 256) + data[1]) * 100.0) / 16383.0
                         print(f"rh: {rh}")
                         temp = ((data[2] * 256) + (data[3] & 0xFC)) / 4

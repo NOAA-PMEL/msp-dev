@@ -18,7 +18,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ist_hyt271
+  IMAGE_NAME: ist-hyt271
   # IMAGE_TAG: ${{ github.sha }}
   # IMAGE_TAG: $(cat VERSION)
 
@@ -112,7 +112,7 @@ jobs:
             # dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
             push: true
             tags: |
-              ghcr.io/noaa-pmel/msp/ist_hyt271:${{env.IMAGE_TAG}}
+              ghcr.io/noaa-pmel/msp/ist-hyt271:${{env.IMAGE_TAG}}
             platforms: linux/amd64,linux/arm64
             
             # build_args: |
