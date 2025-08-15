@@ -417,8 +417,7 @@ class NP05B(Controller):
         else:
             cmd = 0
             
-        data = {"data": f"pset {outlet} {cmd}\r"}
-        message = {"data": data}
+        message = {"data": f"pset {outlet} {cmd}\r"}
         self.logger.debug("set_outlet_power", extra={"payload": message})
         await self.send_data(message)
 
