@@ -162,7 +162,8 @@ func (c *KNMQTTClient) sendToKnativeLoop() {
 	}
 
 	for ce := range c.toKnativeChannel {
-		ctx := context.Background()
+		// ctx := context.Background()
+		ctx := cloudevents.ContextWithTarget(context.Background(), c.config.KnativeBroker)
 		if result := client.Send(ctx, ce); !protocol.IsACK(result) {
 			log.Printf("Failed to send CloudEvent to Knative broker: %v", result)
 		} else {
