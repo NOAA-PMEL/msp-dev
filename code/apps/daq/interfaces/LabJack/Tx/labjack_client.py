@@ -337,10 +337,10 @@ class PWMClient(LabJackClient):
 
             # configure clock
             ljm.eWriteName(
-                self.labjack, f"DIO_EF_CLOCK{clock_channel}_DIVISOR", clock_divisor
+                self.labjack, f"DIO_EF_CLOCK{clock_channel}_DIVISOR", int(clock_divisor)
             )  # Set Clock Divisor.
             ljm.eWriteName(
-                self.labjack, f"DIO_EF_CLOCK{clock_channel}_ROLL_VALUE", clockRollValue
+                self.labjack, f"DIO_EF_CLOCK{clock_channel}_ROLL_VALUE", int(clockRollValue)
             )  # Set calculated Clock Roll Value.
 
             # Configure PWM Registers
