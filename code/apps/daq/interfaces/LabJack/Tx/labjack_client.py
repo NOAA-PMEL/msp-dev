@@ -350,9 +350,9 @@ class PWMClient(LabJackClient):
             ljm.eWriteName(
                 self.labjack, f"DIO{pwm_channel}_EF_INDEX", 0
             )  # Set DIO#_EF_INDEX to 0 - PWM Out.
-            ljm.eWriteName(
-                self.labjack, f"DIO{pwm_channel}_EF_CLOCK_SOURCE", clock_channel
-            )  # Set DIO#_EF to use clock 0. Formerly DIO#_EF_OPTIONS, you may need to switch to this name on older LJM versions.
+            # ljm.eWriteName(
+            #     self.labjack, f"DIO{pwm_channel}_EF_CLOCK_SOURCE", clock_channel
+            # )  # Set DIO#_EF to use clock 0. Formerly DIO#_EF_OPTIONS, you may need to switch to this name on older LJM versions.
             ljm.eWriteName(
                 self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A", pwmConfigA
             )  # Set DIO#_EF_CONFIG_A to the calculated value.
