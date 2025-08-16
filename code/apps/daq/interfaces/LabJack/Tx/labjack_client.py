@@ -331,6 +331,10 @@ class PWMClient(LabJackClient):
             ]
             pwm_channel = self.config.properties["pwm_channel"]["data"]
 
+            ljm.eWriteName(
+                self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 0
+            )  # Enable Clock#, this will start the PWM signal.
+
             # configure clock
             ljm.eWriteName(
                 self.labjack, f"DIO_EF_CLOCK{clock_channel}_DIVISOR", clock_divisor
@@ -340,6 +344,9 @@ class PWMClient(LabJackClient):
             )  # Set calculated Clock Roll Value.
 
             # Configure PWM Registers
+            ljm.eWriteName(
+                self.labjack, f"DIO{pwm_channel}_EF_ENABLE", 0
+            )  
             ljm.eWriteName(
                 self.labjack, f"DIO{pwm_channel}_EF_INDEX", 0
             )  # Set DIO#_EF_INDEX to 0 - PWM Out.
