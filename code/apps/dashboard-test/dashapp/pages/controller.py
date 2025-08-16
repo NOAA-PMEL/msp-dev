@@ -907,7 +907,7 @@ def layout(controller_id=None):
     # print("here:1")
     layout = html.Div(
         [
-            # html.Div(id="dbc-switch-value-changed"),
+            html.Div(id="dbc-switch-value-changed"),
             html.H1(f"Controller: {controller_id}"),
             # get_button,
             # build_tables(layout_options)
@@ -1707,7 +1707,7 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 #     # return dash.no_update
 
 @callback(
-    # Output("dbc-switch-value-changed", "children"),
+    Output("dbc-switch-value-changed", "children"),
     Output("ws-send-instance-buffer", "children"),
     Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
     State("controller-meta", "data")
@@ -1761,13 +1761,14 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                         #             col["cellRenderer"] = "DBC_Switch"
                         #             col["cellRendererParams"] = {"color": "success"}
                         
-                        # # Check if the setting should be set up as 
+                        # Check if the setting should be set up as 
 
                         # Make sure the settings contain integers
                         if controller_definition["variables"][name]["attributes"]["valid_min"]["type"] == "int":
                             min_val = controller_definition["variables"][name]["attributes"]["valid_min"]["data"]
                             max_val = controller_definition["variables"][name]["attributes"]["valid_max"]["data"]
                             step_val = controller_definition["variables"][name]["attributes"]["step_increment"]["data"]
+                            print('min, max, step', min_val, max_val, step_val)
 
                             # Check if the setting should be set up as a boolean switch
                             if min_val == 0:
