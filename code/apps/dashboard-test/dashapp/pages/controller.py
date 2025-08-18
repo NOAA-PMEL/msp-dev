@@ -1714,14 +1714,16 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 )
 def get_requested_setting(changed_component, controller_meta):
     print('COMPONENT CHANGED', json.dumps(changed_component))
+    controller_id = controller_meta["controller_id"]
+    source = f"dashboard-test/{controller_id}"
     requested_val = int(changed_component[0]["value"])
     col_id = changed_component[0]["colId"]
     try:
         event = {
-            "source": "testsource",
+            "source": source,
             "data": {"settings": col_id, "requested": requested_val},
             "destpath": "envds/controller/settings/request",
-            "controllerid": controller_meta["controller_id"]
+            "controllerid": controller_id
         }
     except Exception as e:
             print(f"data update error: {e}")

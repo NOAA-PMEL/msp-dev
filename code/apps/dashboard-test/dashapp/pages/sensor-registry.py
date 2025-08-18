@@ -326,6 +326,7 @@ def get_layout():
             ws_send_buffer,
             dcc.Store(id="sensor-defs-changes", data=[]),
             dcc.Store(id="active-sensor-changes", data=[]),
+            # dcc.Store(id="active-sensors", data=[]),
             # dcc.Interval(id="test-interval", interval=(10*1000)),
             dcc.Interval(
                 id="table-update-interval", interval=(5 * 1000), n_intervals=0
@@ -465,8 +466,10 @@ def update_sensor_definitions(count, table_data):
 
 @callback(
     Output("active-sensor-table", "rowData"),
+    # Output("active-sensors", "data"),
     Input("table-update-interval", "n_intervals"),
-    State("active-sensor-table", "rowData")
+    # State("active-sensor-table", "rowData"),
+    State("active-sensors", "data")
 )
 def update_active_sensors(count, table_data):
 
@@ -554,6 +557,7 @@ def update_active_sensors(count, table_data):
                 if sensor not in table_data:
                     table_data.append(sensor)
                     update = True
+                    
                 new_data.append(sensor)
 
         remove_data = []
@@ -565,6 +569,7 @@ def update_active_sensors(count, table_data):
             table_data.pop(index)
 
         if update:
+            print('sensor update detected')
             return table_data
         else:
             return dash.no_update
