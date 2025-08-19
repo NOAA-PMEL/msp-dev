@@ -542,13 +542,13 @@ class SanAce92RF(Operational):
                                 data=data, path_id="fan_speed_sp"
                             )
 
-                        self.logger.debug(
-                            "settings_check - set setting",
-                            extra={
-                                "setting-name": name,
-                                "setting": self.settings.get_setting(name),
-                            },
-                        )
+                        # self.logger.debug(
+                        #     "settings_check - set setting",
+                        #     extra={
+                        #         "setting-name": name,
+                        #         "setting": self.settings.get_setting(name),
+                        #     },
+                        # )
                     except Exception as e:
                         self.logger.error("settings_check", extra={"reason": e})
 
