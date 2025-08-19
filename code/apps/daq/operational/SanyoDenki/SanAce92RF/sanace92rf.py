@@ -246,13 +246,13 @@ class SanAce92RF(Operational):
         # TODO set setting actual if ok
         
         try:
-            requested = self.settings.get_setting("fan_speed_sp")
+            requested_sp = self.settings.get_setting("fan_speed_sp")
             duty_cycle = data["data"]["data"].get("duty_cycle", None)
             if duty_cycle:
                 sp = (duty_cycle-50.0) * 2
                 self.logger.debug("check_fan_speed_sp", extra={"sp": sp, "minus": (sp-5), "plus": (sp+5)})
-                if sp > (sp-5) and sp < (sp+5):
-                    self.settings.update_setting("fan_speed_sp", actual=requested)
+                if (sp > (sp-5)) and (sp < (sp+5)):
+                    self.settings.update_setting("fan_speed_sp", actual=requested_sp)
                 self.logger.debug(
                     "check_fan_speed_sp",
                     extra={
