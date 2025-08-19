@@ -256,13 +256,13 @@ class SanAce92RF(Operational):
                     self.settings.set_actual("fan_speed_sp", actual=requested_sp)
                     self.logger.debug("check_fan_speed_sp: here2")
                 
-                self.logger.debug(
-                    "check_fan_speed_sp",
-                    extra={
-                        "setting-name": "fan_speed_sp",
-                        "setting-value": self.settings.get_setting("fan_speed_sp")
-                    },
-                )
+                # self.logger.debug(
+                #     "check_fan_speed_sp",
+                #     extra={
+                #         "setting-name": "fan_speed_sp",
+                #         "setting-value": self.settings.get_setting("fan_speed_sp")
+                #     },
+                # )
         except Exception as e:
             self.logger.error("check_fan_speed_sp", extra={"reason": e})
 
