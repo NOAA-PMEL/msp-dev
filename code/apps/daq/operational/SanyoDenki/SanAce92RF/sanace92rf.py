@@ -250,7 +250,8 @@ class SanAce92RF(Operational):
             duty_cycle = data["data"]["data"].get("duty_cycle", None)
             if duty_cycle:
                 sp = (duty_cycle-50.0) * 2
-                if sp > (sp-sp*0.05) and sp < (sp+sp*0.05):
+                self.logger.debug("check_fan_speed_sp", extra={"sp": sp, "minus": (sp-5), "plus": (sp+5)})
+                if sp > (sp-5) and sp < (sp+5):
                     self.settings.update_setting("fan_speed_sp", actual=requested)
                 self.logger.debug(
                     "check_fan_speed_sp",
