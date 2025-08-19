@@ -252,14 +252,16 @@ class SanAce92RF(Operational):
                 sp = (duty_cycle-50.0) * 2
                 self.logger.debug("check_fan_speed_sp", extra={"sp": sp, "minus": (sp-5), "plus": (sp+5)})
                 if (sp > (sp-5)) and (sp < (sp+5)):
+                    self.logger.debug("check_fan_speed_sp: here1")
                     self.settings.update_setting("fan_speed_sp", actual=requested_sp)
-                self.logger.debug(
-                    "check_fan_speed_sp",
-                    extra={
-                        "setting-name": "fan_speed_sp",
-                        "setting": self.settings.get_setting("fan_speed_sp"),
-                    },
-                )
+                    self.logger.debug("check_fan_speed_sp: here2")
+                # self.logger.debug(
+                #     "check_fan_speed_sp",
+                #     extra={
+                #         "setting-name": "fan_speed_sp",
+                #         "setting": self.settings.get_setting("fan_speed_sp"),
+                #     },
+                # )
         except Exception as e:
             self.logger.error("check_fan_speed_sp", extra={"reason": e})
 
