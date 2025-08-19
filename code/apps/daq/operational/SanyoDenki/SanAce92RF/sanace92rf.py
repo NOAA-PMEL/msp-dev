@@ -246,7 +246,7 @@ class SanAce92RF(Operational):
         # TODO set setting actual if ok
         
         try:
-            requested = self.settings.get("fan_speed_sp")
+            requested = self.settings.get_setting("fan_speed_sp")
             duty_cycle = data["data"]["data"].get("duty_cycle", None)
             if duty_cycle:
                 sp = (duty_cycle-50.0) * 2
@@ -261,7 +261,7 @@ class SanAce92RF(Operational):
                 )
         except Exception as e:
             self.logger.error("check_fan_speed_sp", extra={"reason": e})
-            
+
     async def handle_interface_data(self, message: Message):
         await super(SanAce92RF, self).handle_interface_data(message)
 
