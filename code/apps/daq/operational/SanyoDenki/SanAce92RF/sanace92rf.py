@@ -450,7 +450,7 @@ class SanAce92RF(Operational):
                     )
                     message = event
                     # message = Message(data=event, destpath=destpath)
-                    # self.logger.debug("default_data_loop", extra={"m": message})
+                    self.logger.debug("default_data_loop", extra={"m": message})
                     await self.send_message(message)
 
                 # self.logger.debug("default_data_loop", extra={"record": record})
