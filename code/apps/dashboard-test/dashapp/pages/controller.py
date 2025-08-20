@@ -248,7 +248,7 @@ link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 # websocket = WebSocket(
 #     id="ws-sensor", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/main"
 # )
-ws_send_buffer = html.Div(id="ws-send-instance-buffer", style={"display": "none"})
+ws_send_buffer = html.Div(id="controller-ws-send-instance-buffer", style={"display": "none"})
 
 
 def build_tables(layout_options):
@@ -265,7 +265,7 @@ def build_tables(layout_options):
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
-                                id={"type": "settings-table", "index": dim},
+                                id={"type": "controller-settings-table", "index": dim},
                                 rowData=[],
                                 columnDefs=layout_options["layout-settings"][dim]["table-column-defs"],
                                 columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
@@ -1708,8 +1708,8 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 
 @callback(
     Output("dbc-switch-value-changed", "children"),
-    Output("ws-send-instance-buffer", "children"),
-    Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
+    Output("controller-ws-send-instance-buffer", "children"),
+    Input({"type": "controller-settings-table", "index": ALL}, "cellRendererData"),
     State("controller-meta", "data")
 )
 def get_requested_setting(changed_component, controller_meta):
@@ -1731,12 +1731,12 @@ def get_requested_setting(changed_component, controller_meta):
 
 
 @callback(
-    Output({"type": "settings-table", "index": ALL}, "rowData"), 
-    Output({"type": "settings-table", "index": ALL}, "columnDefs"),
+    Output({"type": "controller-settings-table", "index": ALL}, "rowData"), 
+    Output({"type": "controller-settings-table", "index": ALL}, "columnDefs"),
     Input("controller-settings-buffer", "data"),
     [
-        State({"type": "settings-table", "index": ALL}, "rowData"),
-        State({"type": "settings-table", "index": ALL}, "columnDefs"),
+        State({"type": "controller-settings-table", "index": ALL}, "rowData"),
+        State({"type": "controller-settings-table", "index": ALL}, "columnDefs"),
         State("controller-definition", "data")
     ],
 )
@@ -1755,34 +1755,35 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                             data[name] = controller_settings["settings"][name]["data"]["actual"]
                         else:
                             data[name] = ""
+                        print('name', name, data[name])
 
                         # # Check if the setting should be set up as a boolean switch
-                        # if controller_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
-                        #     if controller_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
-                        #         if controller_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
-                        #             col["cellRenderer"] = "DBC_Switch"
-                        #             col["cellRendererParams"] = {"color": "success"}
+                        if controller_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
+                            if controller_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
+                                if controller_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
+                                    col["cellRenderer"] = "DBC_Switch"
+                                    col["cellRendererParams"] = {"color": "success"}
                         
                         # Check if the setting should be set up as 
 
                         # Make sure the settings contain integers
-                        if controller_definition["variables"][name]["attributes"]["valid_min"]["type"] == "int":
-                            min_val = controller_definition["variables"][name]["attributes"]["valid_min"]["data"]
-                            max_val = controller_definition["variables"][name]["attributes"]["valid_max"]["data"]
-                            step_val = controller_definition["variables"][name]["attributes"]["step_increment"]["data"]
-                            print('min, max, step', min_val, max_val, step_val)
+                        # if controller_definition["variables"][name]["attributes"]["valid_min"]["type"] == "int":
+                        #     min_val = controller_definition["variables"][name]["attributes"]["valid_min"]["data"]
+                        #     max_val = controller_definition["variables"][name]["attributes"]["valid_max"]["data"]
+                        #     step_val = controller_definition["variables"][name]["attributes"]["step_increment"]["data"]
+                        #     print('min, max, step', min_val, max_val, step_val)
 
-                            # Check if the setting should be set up as a boolean switch
-                            if min_val == 0:
-                                if max_val == 1:
-                                    if step_val == 1:
-                                        col["cellRenderer"] = "DBC_Switch"
-                                        col["cellRendererParams"] = {"color": "success"}
+                        #     # Check if the setting should be set up as a boolean switch
+                        #     if min_val == 0:
+                        #         if max_val == 1:
+                        #             if step_val == 1:
+                        #                 col["cellRenderer"] = "DBC_Switch"
+                        #                 col["cellRendererParams"] = {"color": "success"}
                             
-                            # Check if the setting should be set up as numeric input
-                            elif max_val > 1:
-                                col["cellRenderer"] = "DCC_Input"
-                                col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val}
+                        #     # Check if the setting should be set up as numeric input
+                        #     elif max_val > 1:
+                        #         col["cellRenderer"] = "DCC_Input"
+                        #         col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val}
 
                         new_column_defs.append(col)
                     row_data.insert(0, data)
@@ -2045,7 +2046,7 @@ def update_table_1d(
 
 @callback(
     Output("ws-controller-instance", "send"),
-    Input("ws-send-instance-buffer", "children"),
+    Input("controller-ws-send-instance-buffer", "children"),
 )
 def send_to_instance(value):
     print(f"sending: {value}")

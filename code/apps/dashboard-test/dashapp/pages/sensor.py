@@ -1393,16 +1393,17 @@ def update_sensor_buffers(event):
             except Exception as event:
                 print(f"data buffer update error: {event}")
             
-        elif "settings-update" in event_data:
+        if "settings-update" in event_data:
             try:
                 # msg = json.loads(event["settings"])
                 # print(f"update_controller_settings: {event_data}")
                 if event_data["settings-update"]:
-                    return [dash.no_update,event_data["settings-update"]]
+                    return [dash.no_update, event_data["settings-update"]]
             except Exception as e:
                 print(f"settings buffer update error: {e}")
             # return dash.no_update
             # return dash.no_update
+        
     return [dash.no_update, dash.no_update]
 
 
@@ -1708,6 +1709,7 @@ def update_graph_2d_scatter(
 #         }
 #     except Exception as e:
 #             print(f"data update error: {e}")
+#             print(traceback.format_exc())
 #     return json.dumps(changed_component), json.dumps(event)
 
 
@@ -1733,18 +1735,31 @@ def update_graph_2d_scatter(
 #                         print('col', col)
 #                         name = col["field"]
 #                         if name in sensor_settings["settings"]:
+#                             print('name', name)
 #                             data[name] = sensor_settings["settings"][name]["data"]["actual"]
+#                             print('data', data[name])
 #                         else:
 #                             data[name] = ""
 
-#                         # Check if the setting should be set up as a boolean switch
-#                         if sensor_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
-#                             if sensor_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
-#                                 if sensor_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
-#                                     col["cellRenderer"] = "DBC_Switch"
-#                                     col["cellRendererParams"] = {"color": "success"}
-                        
-#                         # Check if the setting should be set up as 
+#                         # Make sure the settings contain integers or floats
+#                         setting_type = sensor_definition["variables"][name]["attributes"]["valid_min"]["type"]
+#                         if setting_type == "int" or setting_type == "float":
+#                             min_val = sensor_definition["variables"][name]["attributes"]["valid_min"]["data"]
+#                             max_val = sensor_definition["variables"][name]["attributes"]["valid_max"]["data"]
+#                             step_val = sensor_definition["variables"][name]["attributes"]["step_increment"]["data"]
+#                             print('min, max, step', min_val, max_val, step_val)
+
+#                             # Check if the setting should be set up as a boolean switch
+#                             if min_val == 0:
+#                                 if max_val == 1:
+#                                     if step_val == 1:
+#                                         col["cellRenderer"] = "DBC_Switch"
+#                                         col["cellRendererParams"] = {"color": "success"}
+                            
+#                             # Check if the setting should be set up as numeric input
+#                             elif max_val > 1:
+#                                 col["cellRenderer"] = "DCC_Input"
+#                                 col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val} 
 
 #                         new_column_defs.append(col)
 #                     row_data.insert(0, data)

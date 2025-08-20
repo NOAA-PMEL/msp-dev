@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 import json
 import logging
+import traceback
 import socket
 from fastapi import (
     FastAPI,
@@ -863,7 +864,9 @@ async def sensor_data_update(request: Request):
         L.error("dashboard sensor update error", extra={"sensor": ce.data})
         return "bad sensor data", 400
 
-    await manager.broadcast(json.dumps(ce.data), "sensor", sensor_id)
+    msg = {"data-update": ce.data}
+
+    await manager.broadcast(json.dumps(msg), "sensor", sensor_id)
 
     return {"message": "OK"}
     # return "ok", 200
@@ -912,10 +915,13 @@ async def sensor_settings_update(request: Request):
         except KeyError:
             L.error("dashboard sensor settings update error", extra={"sensor": ce.data})
             return "bad sensor data", 400
+            print(traceback.format_exc())
         msg = {"settings-update": ce.data}
         await manager.broadcast(json.dumps(msg), "sensor", sensor_id)
+        print('sensor settings update broadcasted')
     except Exception as e:
         L.error("sensor_settings_update-all", extra={"reason": e})
+        print(traceback.format_exc())
     return {"message": "OK"}
     # return "ok", 200
 
