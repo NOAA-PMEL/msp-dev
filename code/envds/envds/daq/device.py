@@ -113,14 +113,27 @@ class RuntimeSettings(object):
         self.settings[name]["requested"] = requested
         self.settings[name]["actual"] = actual
 
+    def set_requested(self, name: str, requested) -> bool:
+        return self.update_setting(name=name, requested=requested)
+    
+    def set_actual(self, name: str, actual) -> bool:
+        return self.update_setting(name=name, actual=actual)
+
     def update_setting(self, name: str, requested=None, actual=None) -> bool:
+        # print(f"update_setting1: {name}, {requested}, {actual}, {self.settings}")
         if name not in self.settings:
             return False
         
-        if requested:
+        # print(f"update_setting2: {name}, {requested}, {actual}, {self.settings}")
+        if requested is not None:
+            # print(f"update_setting3: {name}, {requested}, {actual}, {self.settings}")
             self.settings[name]["requested"] = requested
-        if actual:
+            # print(f"update_setting4: {name}, {requested}, {actual}, {self.settings}")
+        if actual is not None:
+            # print(f"update_setting5: {name}, {requested}, {actual}, {self.settings}")
             self.settings[name]["actual"] = actual
+            # print(f"update_setting6: {name}, {requested}, {actual}, {self.settings}")
+        # print(f"update_setting7: {name}, {requested}, {actual}, {self.settings}")
         return True
 
     def get_setting(self, name: str):

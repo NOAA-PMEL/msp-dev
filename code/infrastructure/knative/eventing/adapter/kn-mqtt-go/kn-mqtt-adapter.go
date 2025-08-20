@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -73,7 +74,7 @@ func (c *KNMQTTClient) subscribeToMqttTopics() {
 			continue
 		}
 		// The python code uses a shared subscription, so we will replicate that here.
-		fullTopic := fmt.Sprintf("$share/knative/%s", topic)
+		fullTopic := fmt.Sprintf("$share/knative/%s", strings.TrimSpace(topic))
 		if token := c.mqttClient.Subscribe(fullTopic, 1, nil); token.Wait() && token.Error() != nil {
 			log.Printf("Error subscribing to topic %s: %v", fullTopic, token.Error())
 		} else {
@@ -88,26 +89,34 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 	// Convert MQTT payload to a CloudEvent
 	newEvent := event.New() // Renamed 'event' to 'newEvent' for clarity
 	payloadBytes := msg.Payload()
-
-	// Attempt to set the payload as JSON data for the CloudEvent.
-	// If the payloadBytes are not valid JSON, this call will return an error.
-	if err := newEvent.SetData(event.ApplicationJSON, payloadBytes); err != nil {
-		// Log a more specific error including the topic and the problematic payload
-		log.Printf("Failed to set event data from MQTT payload for topic %s: %v. Payload (as string): %s", msg.Topic(), err, string(payloadBytes))
-		return
+	// ce := &event.Event{}
+	err := json.Unmarshal(payloadBytes, &newEvent)
+	if err != nil {
+		log.Printf("failed to unmarshal cloudevent: %s", err)
 	}
+	// // Attempt to set the payload as JSON data for the CloudEvent.
+	// // If the payloadBytes are not valid JSON, this call will return an error.
+	// if err := newEvent.SetData(event.ApplicationJSON, payloadBytes); err != nil {
+	// 	// Log a more specific error including the topic and the problematic payload
+	// 	log.Printf("Failed to set event data from MQTT payload for topic %s: %v. Payload (as string): %s", msg.Topic(), err, string(payloadBytes))
+	// 	return
+	// }
 
-	// Set required CloudEvent attributes
-	newEvent.SetSource("mqtt-source")                                 // Consistent with Python's origin
-	newEvent.SetType("envds.mqtt.message")                            // A type for MQTT-originated messages
-	newEvent.SetID(fmt.Sprintf("mqtt-msg-%d", time.Now().UnixNano())) // Unique ID for the event
+	// // Set required CloudEvent attributes
+	// newEvent.SetSource("mqtt-source")                                 // Consistent with Python's origin
+	// newEvent.SetType("envds.mqtt.message")                            // A type for MQTT-originated messages
+	// newEvent.SetID(fmt.Sprintf("mqtt-msg-%d", time.Now().UnixNano())) // Unique ID for the event
 
 	// Set the 'sourcepath' extension, which was used in the Python version
 	newEvent.SetExtension("sourcepath", msg.Topic())
+	// // Set the 'sourcepath' extension, which was used in the Python version
+	// ce.SetExtension("sourcepath", msg.Topic())
 
 	// Send the constructed CloudEvent to the channel for processing by the Knative sender loop
 	c.toKnativeChannel <- newEvent
-}
+// 	// Send the constructed CloudEvent to the channel for processing by the Knative sender loop
+// 	c.toKnativeChannel <- *ce
+// }
 
 // old
 // // mqttMessageHandler receives messages from MQTT and sends them to the Knative channel.
@@ -126,7 +135,7 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 // 	event.SetExtension("sourcepath", msg.Topic())
 
 // 	c.toKnativeChannel <- event
-// }
+}
 
 // sendToMqttLoop publishes messages from the channel to MQTT.
 func (c *KNMQTTClient) sendToMqttLoop() {
@@ -167,7 +176,7 @@ func (c *KNMQTTClient) sendToKnativeLoop() {
 		if result := client.Send(ctx, ce); !protocol.IsACK(result) {
 			log.Printf("Failed to send CloudEvent to Knative broker: %v", result)
 		} else {
-			log.Printf("Successfully sent CloudEvent to Knative broker")
+			log.Printf("Successfully sent CloudEvent to Knative broker: %s", ce)
 		}
 	}
 }
@@ -204,7 +213,7 @@ func main() {
 	defer client.mqttClient.Disconnect(250)
 
 	// Set up the HTTP server to receive CloudEvents from Knative
-	http.HandleFunc("/mqtt/send", client.mqttSendHandler)
+	http.HandleFunc("/mqtt/send/", client.mqttSendHandler)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "ok")
 	})
