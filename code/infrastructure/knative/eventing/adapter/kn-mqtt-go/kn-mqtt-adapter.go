@@ -73,7 +73,7 @@ func (c *KNMQTTClient) subscribeToMqttTopics() {
 			continue
 		}
 		// The python code uses a shared subscription, so we will replicate that here.
-		fullTopic := fmt.Sprintf("$share/knative/%s", topic)
+		fullTopic := fmt.Sprintf("$share/knative/%s", strings.TrimSpace(topic))
 		if token := c.mqttClient.Subscribe(fullTopic, 1, nil); token.Wait() && token.Error() != nil {
 			log.Printf("Error subscribing to topic %s: %v", fullTopic, token.Error())
 		} else {
