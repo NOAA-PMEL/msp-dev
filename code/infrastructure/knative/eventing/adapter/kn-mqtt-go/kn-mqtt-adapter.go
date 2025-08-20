@@ -86,11 +86,11 @@ func (c *KNMQTTClient) subscribeToMqttTopics() {
 func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) {
 	log.Printf("Received MQTT message on topic: %s", msg.Topic())
 
-	// // Convert MQTT payload to a CloudEvent
-	// newEvent := event.New() // Renamed 'event' to 'newEvent' for clarity
+	// Convert MQTT payload to a CloudEvent
+	newEvent := event.New() // Renamed 'event' to 'newEvent' for clarity
 	payloadBytes := msg.Payload()
-	ce := &event.Event{}
-	err := json.Unmarshal(payloadBytes, ce)
+	// ce := &event.Event{}
+	err := json.Unmarshal(payloadBytes, &newEvent)
 	if err != nil {
 		log.Printf("failed to unmarshal cloudevent: %s", err)
 	}
@@ -107,16 +107,16 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 	// newEvent.SetType("envds.mqtt.message")                            // A type for MQTT-originated messages
 	// newEvent.SetID(fmt.Sprintf("mqtt-msg-%d", time.Now().UnixNano())) // Unique ID for the event
 
-	// // Set the 'sourcepath' extension, which was used in the Python version
-	// newEvent.SetExtension("sourcepath", msg.Topic())
 	// Set the 'sourcepath' extension, which was used in the Python version
-	ce.SetExtension("sourcepath", msg.Topic())
+	newEvent.SetExtension("sourcepath", msg.Topic())
+	// // Set the 'sourcepath' extension, which was used in the Python version
+	// ce.SetExtension("sourcepath", msg.Topic())
 
-	// // Send the constructed CloudEvent to the channel for processing by the Knative sender loop
-	// c.toKnativeChannel <- newEvent
 	// Send the constructed CloudEvent to the channel for processing by the Knative sender loop
-	c.toKnativeChannel <- *ce
-}
+	c.toKnativeChannel <- newEvent
+// 	// Send the constructed CloudEvent to the channel for processing by the Knative sender loop
+// 	c.toKnativeChannel <- *ce
+// }
 
 // old
 // // mqttMessageHandler receives messages from MQTT and sends them to the Knative channel.
@@ -135,7 +135,7 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 // 	event.SetExtension("sourcepath", msg.Topic())
 
 // 	c.toKnativeChannel <- event
-// }
+}
 
 // sendToMqttLoop publishes messages from the channel to MQTT.
 func (c *KNMQTTClient) sendToMqttLoop() {
