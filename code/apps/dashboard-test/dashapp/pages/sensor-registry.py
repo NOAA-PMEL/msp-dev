@@ -468,8 +468,8 @@ def update_sensor_definitions(count, table_data):
     Output("active-sensor-table", "rowData"),
     # Output("active-sensors", "data"),
     Input("table-update-interval", "n_intervals"),
-    # State("active-sensor-table", "rowData"),
-    State("active-sensors", "data")
+    State("active-sensor-table", "rowData"),
+    # State("active-sensors", "data")
 )
 def update_active_sensors(count, table_data):
 

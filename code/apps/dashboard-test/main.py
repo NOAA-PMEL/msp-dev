@@ -868,6 +868,59 @@ async def sensor_data_update(request: Request):
     return {"message": "OK"}
     # return "ok", 200
 
+@app.post("/sensor/settings/update/", status_code=status.HTTP_202_ACCEPTED)
+async def sensor_settings_update(request: Request):
+
+    try:
+        L.info("sensor/settings/update")
+        data = await request.body()
+        L.info(f"headers: {request.headers}, data: {data}")
+        headers = request.headers
+        # headers = dict(request.headers)
+
+        try:
+            ce = from_http(headers=headers, data=data)
+            # to support local testing...
+            if isinstance(ce.data, str):
+                ce.data = json.loads(ce.data)
+        except InvalidStructuredJSON:
+            L.error("not a valid cloudevent")
+            return "not a valid cloudevent", 400
+
+        # parts = Path(ce["source"]).parts
+        L.info(
+            "dashboard sensor settings update",
+            extra={"ce-source": ce["source"], "ce-type": ce["type"], "ce-data": ce.data},
+        )
+
+        try:
+            attributes = ce.data["attributes"]
+            # dimensions = ce.data["dimensions"]
+            # variables = ce.data["variables"]
+
+            make = attributes["make"]["data"]
+            model = attributes["model"]["data"]
+            # # TODO fix serial number in magic data record, tmp workaround for now
+            # serial_number = attributes["serial_number"]
+            serial_number = attributes["serial_number"]["data"]
+            # format_version = attributes["format_version"]["data"]
+            # parts = format_version.split(".")
+            # erddap_version = f"v{parts[0]}"
+            sensor_id = "::".join([make, model, serial_number])
+            # timestamp = ce.data["timestamp"]
+
+        except KeyError:
+            L.error("dashboard sensor settings update error", extra={"sensor": ce.data})
+            return "bad sensor data", 400
+        msg = {"settings-update": ce.data}
+        await manager.broadcast(json.dumps(msg), "sensor", sensor_id)
+    except Exception as e:
+        L.error("sensor_settings_update-all", extra={"reason": e})
+    return {"message": "OK"}
+    # return "ok", 200
+
+
+
 @app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
 async def controller_data_update(request: Request):
 
