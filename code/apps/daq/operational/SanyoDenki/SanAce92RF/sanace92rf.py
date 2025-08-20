@@ -192,8 +192,8 @@ class SanAce92RF(Operational):
             requested = setting["attributes"]["default_value"]["data"]
 
             # override default setting if in config
-            if "settings" in config and name in config["settings"]:
-                requested = config["settings"][name]
+            if "settings" in conf and name in conf["settings"]:
+                requested = conf["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
             self.logger.debug("configure", extra={"setting_name": name, "requested": requested, "settings": self.settings})
