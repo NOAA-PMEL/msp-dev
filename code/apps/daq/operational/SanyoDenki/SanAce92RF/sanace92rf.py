@@ -196,6 +196,7 @@ class SanAce92RF(Operational):
                 requested = config["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
+            self.logger.debug("configure", extra={"setting_name": name, "requested": requested, "settings": self.settings})
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
