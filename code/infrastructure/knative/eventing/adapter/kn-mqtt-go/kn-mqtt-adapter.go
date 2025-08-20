@@ -204,7 +204,7 @@ func main() {
 	defer client.mqttClient.Disconnect(250)
 
 	// Set up the HTTP server to receive CloudEvents from Knative
-	http.HandleFunc("/mqtt/send", client.mqttSendHandler)
+	http.HandleFunc("/mqtt/send/", client.mqttSendHandler)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "ok")
 	})
