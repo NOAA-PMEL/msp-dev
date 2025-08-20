@@ -1357,53 +1357,53 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         # return [dash.no_update, dash.no_update]
 
 
-@callback(
-        Output("sensor-data-buffer", "data"),
-        Input("ws-sensor-instance", "message")
-          )
-def update_sensor_data_buffer(e):
-    if e is not None and "data" in e:
-        try:
-            msg = json.loads(e["data"])
-            print(f"update_sensor_data: {msg}")
-            if msg:
-                return msg
-        except Exception as e:
-            print(f"data buffer update error: {e}")
-            # return dash.no_update
-            # return dash.no_update
-    return dash.no_update
-
-
 # @callback(
 #         Output("sensor-data-buffer", "data"),
-#         Output("sensor-settings-buffer", "data"),
 #         Input("ws-sensor-instance", "message")
 #           )
-# def update_sensor_buffers(event):
-#     if event is not None and "data" in event:
-#         event_data = json.loads(event["data"])
-#         print(f"update_sensor_buffers: {event_data}")
-#         if "data-update" in event_data:
-#             try:
-#                 # msg = json.loads(event["data-update"])
-#                 # print(f"update_controller_data: {event_data}")
-#                 if event_data["data-update"]:
-#                     return [event_data["data-update"], dash.no_update]
-#             except Exception as event:
-#                 print(f"data buffer update error: {event}")
+# def update_sensor_data_buffer(e):
+#     if e is not None and "data" in e:
+#         try:
+#             msg = json.loads(e["data"])
+#             print(f"update_sensor_data: {msg}")
+#             if msg:
+#                 return msg
+#         except Exception as e:
+#             print(f"data buffer update error: {e}")
+#             # return dash.no_update
+#             # return dash.no_update
+#     return dash.no_update
+
+
+@callback(
+        Output("sensor-data-buffer", "data"),
+        Output("sensor-settings-buffer", "data"),
+        Input("ws-sensor-instance", "message")
+          )
+def update_sensor_buffers(event):
+    if event is not None and "data" in event:
+        event_data = json.loads(event["data"])
+        print(f"update_sensor_buffers: {event_data}")
+        if "data-update" in event_data:
+            try:
+                # msg = json.loads(event["data-update"])
+                # print(f"update_controller_data: {event_data}")
+                if event_data["data-update"]:
+                    return [event_data["data-update"], dash.no_update]
+            except Exception as event:
+                print(f"data buffer update error: {event}")
             
-#         elif "settings-update" in event_data:
-#             try:
-#                 # msg = json.loads(event["settings"])
-#                 # print(f"update_controller_settings: {event_data}")
-#                 if event_data["settings-update"]:
-#                     return [dash.no_update,event_data["settings-update"]]
-#             except Exception as e:
-#                 print(f"settings buffer update error: {e}")
-#             # return dash.no_update
-#             # return dash.no_update
-#     return [dash.no_update, dash.no_update]
+        elif "settings-update" in event_data:
+            try:
+                # msg = json.loads(event["settings"])
+                # print(f"update_controller_settings: {event_data}")
+                if event_data["settings-update"]:
+                    return [dash.no_update,event_data["settings-update"]]
+            except Exception as e:
+                print(f"settings buffer update error: {e}")
+            # return dash.no_update
+            # return dash.no_update
+    return [dash.no_update, dash.no_update]
 
 
 @callback(

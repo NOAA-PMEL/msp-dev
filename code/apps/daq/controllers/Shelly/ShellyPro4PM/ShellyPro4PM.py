@@ -467,7 +467,7 @@ class ShellyPro4PM(Controller):
                 extra={"conf": conf, "self.config": self.config},
             )
         except Exception as e:
-            self.logger.debug("ShellyPro3:configure", extra={"error": e})
+            self.logger.debug("ShellyPro4PM:configure", extra={"error": e})
             print(traceback.format_exc())
 
     async def get_status_loop(self):
