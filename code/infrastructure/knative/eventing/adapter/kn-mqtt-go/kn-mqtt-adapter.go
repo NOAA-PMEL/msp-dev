@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -85,28 +86,36 @@ func (c *KNMQTTClient) subscribeToMqttTopics() {
 func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) {
 	log.Printf("Received MQTT message on topic: %s", msg.Topic())
 
-	// Convert MQTT payload to a CloudEvent
-	newEvent := event.New() // Renamed 'event' to 'newEvent' for clarity
+	// // Convert MQTT payload to a CloudEvent
+	// newEvent := event.New() // Renamed 'event' to 'newEvent' for clarity
 	payloadBytes := msg.Payload()
-
-	// Attempt to set the payload as JSON data for the CloudEvent.
-	// If the payloadBytes are not valid JSON, this call will return an error.
-	if err := newEvent.SetData(event.ApplicationJSON, payloadBytes); err != nil {
-		// Log a more specific error including the topic and the problematic payload
-		log.Printf("Failed to set event data from MQTT payload for topic %s: %v. Payload (as string): %s", msg.Topic(), err, string(payloadBytes))
-		return
+	ce := &event.Event{}
+	err := json.Unmarshal(payloadBytes, ce)
+	if err != nil {
+		log.Printf("failed to unmarshal cloudevent: %s", err)
 	}
+	// // Attempt to set the payload as JSON data for the CloudEvent.
+	// // If the payloadBytes are not valid JSON, this call will return an error.
+	// if err := newEvent.SetData(event.ApplicationJSON, payloadBytes); err != nil {
+	// 	// Log a more specific error including the topic and the problematic payload
+	// 	log.Printf("Failed to set event data from MQTT payload for topic %s: %v. Payload (as string): %s", msg.Topic(), err, string(payloadBytes))
+	// 	return
+	// }
 
-	// Set required CloudEvent attributes
-	newEvent.SetSource("mqtt-source")                                 // Consistent with Python's origin
-	newEvent.SetType("envds.mqtt.message")                            // A type for MQTT-originated messages
-	newEvent.SetID(fmt.Sprintf("mqtt-msg-%d", time.Now().UnixNano())) // Unique ID for the event
+	// // Set required CloudEvent attributes
+	// newEvent.SetSource("mqtt-source")                                 // Consistent with Python's origin
+	// newEvent.SetType("envds.mqtt.message")                            // A type for MQTT-originated messages
+	// newEvent.SetID(fmt.Sprintf("mqtt-msg-%d", time.Now().UnixNano())) // Unique ID for the event
 
+	// // Set the 'sourcepath' extension, which was used in the Python version
+	// newEvent.SetExtension("sourcepath", msg.Topic())
 	// Set the 'sourcepath' extension, which was used in the Python version
-	newEvent.SetExtension("sourcepath", msg.Topic())
+	ce.SetExtension("sourcepath", msg.Topic())
 
+	// // Send the constructed CloudEvent to the channel for processing by the Knative sender loop
+	// c.toKnativeChannel <- newEvent
 	// Send the constructed CloudEvent to the channel for processing by the Knative sender loop
-	c.toKnativeChannel <- newEvent
+	c.toKnativeChannel <- *ce
 }
 
 // old
@@ -167,7 +176,7 @@ func (c *KNMQTTClient) sendToKnativeLoop() {
 		if result := client.Send(ctx, ce); !protocol.IsACK(result) {
 			log.Printf("Failed to send CloudEvent to Knative broker: %v", result)
 		} else {
-			log.Printf("Successfully sent CloudEvent to Knative broker")
+			log.Printf("Successfully sent CloudEvent to Knative broker: %s", ce)
 		}
 	}
 }
