@@ -93,6 +93,7 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 	err := json.Unmarshal(payloadBytes, &newEvent)
 	log.Printf("MSG: %s\n", msg.Payload())
 	log.Printf("payloadBytes: %s\n", payloadBytes)
+	log.Printf("newEvent: %s\n", newEvent)
 	if err != nil {
 		log.Printf("MSG: %s\n", msg.Payload())
 		log.Printf("payloadBytes: %s\n", payloadBytes)
