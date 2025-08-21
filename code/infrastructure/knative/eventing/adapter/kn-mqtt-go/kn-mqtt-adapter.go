@@ -97,6 +97,7 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 		log.Printf("MSG: %s\n", msg.Payload())
 		log.Printf("payloadBytes: %s\n", payloadBytes)
 		log.Printf("failed to unmarshal cloudevent: %s\n", err)
+		return
 	}
 	// // Attempt to set the payload as JSON data for the CloudEvent.
 	// // If the payloadBytes are not valid JSON, this call will return an error.
