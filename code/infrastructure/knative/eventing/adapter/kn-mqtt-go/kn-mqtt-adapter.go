@@ -89,10 +89,12 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 	// Convert MQTT payload to a CloudEvent
 	newEvent := event.New() // Renamed 'event' to 'newEvent' for clarity
 	payloadBytes := msg.Payload()
+	fmt.Printf("payload: %s\n", payloadBytes)
 	// ce := &event.Event{}
 	err := json.Unmarshal(payloadBytes, &newEvent)
 	if err != nil {
 		log.Printf("failed to unmarshal cloudevent: %s", err)
+		return
 	}
 	// // Attempt to set the payload as JSON data for the CloudEvent.
 	// // If the payloadBytes are not valid JSON, this call will return an error.
@@ -111,6 +113,12 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 	newEvent.SetExtension("sourcepath", msg.Topic())
 	// // Set the 'sourcepath' extension, which was used in the Python version
 	// ce.SetExtension("sourcepath", msg.Topic())
+    fmt.Printf("Received CloudEvent (structured mode): %+v\n", newEvent)
+    // Access event attributes and data:
+    fmt.Printf("ID: %s\n", newEvent.ID())
+    fmt.Printf("Source: %s\n", newEvent.Source())
+    fmt.Printf("Type: %s\n", newEvent.Type())
+    fmt.Printf("Data: %s\n", newEvent.Data())
 
 	// Send the constructed CloudEvent to the channel for processing by the Knative sender loop
 	c.toKnativeChannel <- newEvent
