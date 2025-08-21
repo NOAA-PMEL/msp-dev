@@ -141,6 +141,9 @@ class SanAce92RF(Operational):
         # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
 
+        # TODO make this configurable
+        self.sampling_mode = "unpolled" 
+
         # self.i2c_address = "28"
 
     def configure(self):
@@ -336,10 +339,12 @@ class SanAce92RF(Operational):
         # }
 
         while True:
-            if self.sampling():
-                await self.interface_send_data(data=data, path_id="default")
-                await asyncio.sleep(time_to_next(self.sampling_interval))
-
+            if self.sampling_mode == "polled":
+                if self.sampling():
+                    await self.interface_send_data(data=data, path_id="default")
+                    await asyncio.sleep(time_to_next(self.sampling_interval))
+            else:
+                await asyncio.sleep(5)
     # async def sampling_monitor(self):
 
     #     # start_command = f"Log,{self.sampling_interval}\n"
