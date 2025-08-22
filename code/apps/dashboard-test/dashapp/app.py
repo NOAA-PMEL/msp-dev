@@ -124,7 +124,8 @@ sidebar = html.Div(
 
 
 # app.layout = get_layout()
-app.layout = html.Div([dcc.Location(id="url"), sidebar, dash.page_container])#, footer])
+app.layout = html.Div([dcc.Location(id="url"), sidebar, dash.page_container,
+                       dcc.Store(id="active-sensors", data=[]),])#, footer])
 # app.layout = html.Div([dcc.Location(id="url"), dash.page_container])
 
 @app.callback(

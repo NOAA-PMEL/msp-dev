@@ -21,19 +21,19 @@ from envds.util.util import (
 
 task_list = []
 
-class ShellyPro3(Controller):
-    """docstring for ShellyPro3."""
+class ShellyPro4PM(Controller):
+    """docstring for ShellyPro4PM."""
 
     metadata = {
         "attributes": {
             "make": {"type": "char", "data": "Shelly"},
-            "model": {"type": "char", "data": "ShellyPro3"},
+            "model": {"type": "char", "data": "ShellyPro4PM"},
             "host": {"type": "char", "data": "localhost"},
             "description": {
                 "type": "char",
-                "data": "Shelly Pro 3 Smart Switch",
+                "data": "Shelly Pro 4 Power Meter Smart Switch",
             },
-            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro3, serial, tcp, ethernet, sensor"},
+            "tags": {"type": "char", "data": "testing, Shelly, ShellyPro4PM, serial, tcp, ethernet, sensor, power"},
             "format_version": {
                 "type": "char",
                 "data": "1.0.0"
@@ -73,6 +73,102 @@ class ShellyPro3(Controller):
                     "units": {
                         "type": "char",
                         "data": "degree_C"
+                    }
+                }
+            },
+            "channel_1_consumption": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 1 Power Consumption"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Watts"
+                    }
+                }
+            },
+            "channel_2_consumption": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 2 Power Consumption"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Watts"
+                    }
+                }
+            },
+            "channel_3_consumption": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 3 Power Consumption"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Watts"
+                    }
+                }
+            },
+            "channel_4_consumption": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 4 Power Consumption"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Watts"
                     }
                 }
             },
@@ -196,11 +292,51 @@ class ShellyPro3(Controller):
                     }
                 }
             },
+            "channel_4_power": {
+                "type": "int",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string", 
+                        "data": "setting"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 4
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 4 Power"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "count"
+                    },
+                    "valid_min": {
+                        "type": "int",
+                        "data": 0
+                    },
+                    "valid_max": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "step_increment": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "default_value": {
+                        "type": "int",
+                        "data": 1
+                    }
+                }
+            },
         }
     }
 
     def __init__(self, config=None, **kwargs):
-        super(ShellyPro3, self).__init__(config=config, **kwargs)
+        super(ShellyPro4PM, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
 
@@ -219,7 +355,7 @@ class ShellyPro3(Controller):
 
         # TODO change to external json definition - this is placeholder
         # self.metadata = ShellyPro3.metadata
-        self.controller_definition_file = "Shelly_ShellyPro3_controller_definition.json"
+        self.controller_definition_file = "Shelly_ShellyPro4PM_controller_definition.json"
 
         try:            
             with open(self.controller_definition_file, "r") as f:
@@ -228,9 +364,10 @@ class ShellyPro3(Controller):
             self.logger.error("controller_definition not found. Exiting")            
             sys.exit(1)
 
+    
     def configure(self):
 
-        super(ShellyPro3, self).configure()
+        super(ShellyPro4PM, self).configure()
 
         try:
             try:
@@ -281,46 +418,6 @@ class ShellyPro3(Controller):
                 if name in attrs:
                     attrs[name]["data"] = val
 
-            # path_map = dict()
-            # for name, val in ShellyPro3.metadata["paths"].items():
-
-
-            #     if "client_module" not in val["attributes"]:
-            #         val["attributes"]["client_module"]["data"] = self.default_client_module
-            #     if "client_class" not in val["attributes"]:
-            #         val["attributes"]["client_class"]["data"] = self.default_client_class
-
-            #     # set path host from controller attributes
-            #     if "host" in attrs:
-            #         val["attributes"]["host"]["data"] = attrs["host"]
-
-            #     client_config = val
-            #     # override values from yaml config
-            #     if "paths" in conf and name in conf["paths"]:
-            #         self.logger.debug("yaml conf", extra={"id": name, "conf['paths']": conf['paths'], })
-            #         for attname, attval in conf["paths"][name].items():
-            #             self.logger.debug("config paths", extra={"id": name, "attname": attname, "attval": attval})
-            #             client_config["attributes"][attname]["data"] = attval
-            #     self.logger.debug("config paths", extra={"client_config": client_config})
-                    
-            #     path_map[name] = {
-            #         "client_id": name,
-            #         "client": None,
-            #         "client_config": client_config,
-            #         "client_module": val["attributes"]["client_module"]["data"],
-            #         "client_class": val["attributes"]["client_class"]["data"],
-            #         # "data_buffer": asyncio.Queue(),
-            #         "recv_handler": self.recv_data_loop(name),
-            #         "recv_task": None,
-            #     }
-
-            # self.config = ControllerConfig(
-            #     type=attrs["type"]["data"],
-            #     name=attrs["name"]["data"],
-            #     uid=conf["uid"],
-            #     paths=path_map
-            # )
-
             settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
             # for name, setting in self.metadata["settings"].items():
             for name, setting in settings_def["variables"].items():
@@ -370,7 +467,7 @@ class ShellyPro3(Controller):
                 extra={"conf": conf, "self.config": self.config},
             )
         except Exception as e:
-            self.logger.debug("ShellyPro3:configure", extra={"error": e})
+            self.logger.debug("ShellyPro4PM:configure", extra={"error": e})
             print(traceback.format_exc())
 
     async def get_status_loop(self):
@@ -378,7 +475,7 @@ class ShellyPro3(Controller):
         pass
 
         while True:
-            for channel in range(0,3):
+            for channel in range(0,4):
 
                 data = {
                     "path": f"{self.controller_id_prefix}/command/switch:{channel}",
@@ -387,6 +484,7 @@ class ShellyPro3(Controller):
                 self.logger.debug("get_status_loop", extra={"payload": data})
                 await self.send_data(data)
             await asyncio.sleep(5)
+    
 
     async def set_channel_power(self, channel, state):
         # self.logger.debug("set_channel_power1", extra={"channeL": channel, "st": state})
@@ -412,7 +510,7 @@ class ShellyPro3(Controller):
 
     async def deal_with_data(self, client, data):
         if data['data']['device'] == 'shelly':
-            toggle_topic = 'shellypro3/command/switch:'
+            toggle_topic = 'shellypro4/command/switch:'
             channel = data['data']['channel']
             toggle_topic = toggle_topic + str(channel)
             complete_message = {'topic': toggle_topic, 'message': data['data']['message']}
@@ -423,6 +521,7 @@ class ShellyPro3(Controller):
                 await asyncio.sleep(1)
         else:
             pass
+    
 
     async def recv_data_loop(self):
         while True:
@@ -437,11 +536,7 @@ class ShellyPro3(Controller):
                         
                         channel = data["data"]["id"]
                         output = data["data"]["output"]
-                        # if output.lower() == "true":
-                        #     output = 1
-                        # elif output.lower() == "false":
-                        #     output = 0 
-                        # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
+
                         if channel == 0:
                             record = self.build_data_record(meta=False)
                             self.logger.debug("recv_data_loop1", extra={"record": record})
@@ -486,22 +581,13 @@ class ShellyPro3(Controller):
 
             except (KeyError, Exception) as e:
                 self.logger.error("recv_data_loop", extra={"error": e})
-                await asyncio.sleep(.1)           
+                await asyncio.sleep(.1) 
+
 
     async def wait_for_ok(self, timeout=0):
         pass
 
-    # async def send_data(self, event: DAQEvent):
-    #         print(f"here:1 {event}")
-    #         try:
-    #             print(f"send_data:1 - {event}")
-    #             client_id = event["path_id"]
-    #             client = self.client_map[client_id]["client"]
-    #             data = event.data["data"]
 
-    #             await client.send(data)
-    #         except KeyError:
-    #             pass
     async def send_data(self, data):
             try:
                 self.logger.debug("send_data", extra={"payload": data})
@@ -510,6 +596,7 @@ class ShellyPro3(Controller):
                     await self.client.send_to_client(data)
             except Exception:
                 pass
+
 
     async def settings_check(self):
         await super().settings_check()
@@ -523,7 +610,7 @@ class ShellyPro3(Controller):
                         setting = self.settings.get_setting(name)
                         # TODO: debug here
                         # self.logger.debug("settings_check", extra={"setting": setting, "setting_name": name})
-                        if name in ["channel_0_power", "channel_1_power", "channel_2_power"]:
+                        if name in ["channel_0_power", "channel_1_power", "channel_2_power", "channel_3_power"]:
                             ch = self.metadata["variables"][name]["attributes"]["channel"]["data"]
                             # self.logger.debug("settings_check:set_channel_power", extra={"ch": ch, "requested": setting["requested"]})
                             await self.set_channel_power(ch, setting["requested"])
@@ -543,13 +630,12 @@ class ServerConfig(BaseModel):
     port: int = 9080
     log_level: str = "info"
 
-
 async def test_task():
     while True:
         await asyncio.sleep(1)
         # print("daq test_task...")
         logger = logging.getLogger("envds.info")
-        logger.info("ShellyPro3_test_task", extra={"test": "ShellyPro3 task"})
+        logger.info("ShellyPro4PM_test_task", extra={"test": "ShellyPro4PM task"})
 
 
 async def shutdown(interface):
@@ -575,17 +661,17 @@ async def main(server_config: ServerConfig = None):
     # task_list.append(asyncio.create_task(test_task()))
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger("interface::ShellyPro3")
+    logger = logging.getLogger("interface::ShellyPro4PM")
 
     # test = envdsBase()
     # task_list.append(asyncio.create_task(test_task()))
 
-    iface = ShellyPro3()
+    iface = ShellyPro4PM()
     iface.run()
     # task_list.append(asyncio.create_task(iface.run()))
     # await asyncio.sleep(2)
     iface.enable()
-    logger.debug("Starting Shelly Pro 3 Controller")
+    logger.debug("Starting Shelly Pro 4PM Controller")
 
 
     event_loop = asyncio.get_event_loop()
@@ -599,7 +685,7 @@ async def main(server_config: ServerConfig = None):
     event_loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
 
     while do_run:
-        logger.debug("ShellyPro3.run", extra={"do_run": do_run})
+        logger.debug("ShellyPro4PM.run", extra={"do_run": do_run})
         await asyncio.sleep(1)
 
 
@@ -644,3 +730,4 @@ if __name__ == "__main__":
         pass
 
     asyncio.run(main(config))
+    

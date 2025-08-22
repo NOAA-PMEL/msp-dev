@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import json
 import logging
 
-from fastapi import FastAPI, Request, Query, status  # , APIRouter
+from fastapi import FastAPI, Request, Query, status, Response  # , APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -303,8 +303,25 @@ async def device_instance_registry_get(
     # return await datastore.device_instance_registry_get(query)
     return results
 
+# from fastapi import FastAPI, Request, Response
+# from starlette import status
+# import logging
 
-@app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
+# app = FastAPI()
+
+# @app.post("/")
+# async def handle_event(request: Request):
+#     try:
+#         event_data = await request.json()
+#         logging.info(f"Received CloudEvent: {event_data}")
+#         # Process the event data here
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
+#     except Exception as e:
+#         logging.error(f"Error processing event: {e}")
+#         return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# @app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/controller/data/update/")
 async def controller_data_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -312,9 +329,11 @@ async def controller_data_update(request: Request):
         L.debug("controller_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         await datastore.controller_data_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as e:
         L.error("controller_data_update", extra={"reason": e})
-        return "", 204
+        # return "", 204
+        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @app.get("/controller/data/get/")
@@ -348,7 +367,8 @@ async def controller_data_get(
     return await datastore.controller_data_get(query)
 
 
-@app.post("/controller/registry/update/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/controller/registry/update/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/controller/registry/update/")
 async def controller_registry_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -358,16 +378,22 @@ async def controller_registry_update(request: Request):
         )
         # await adapter.send_to_mqtt(ce)
         await datastore.controller_instance_registry_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     except Exception as e:
         # L.error("send", extra={"reason": e})
         L.error("controller_registry_update", extra={"reason": e})
         print(traceback.format_exc())
         pass
-        return "", 204
+        # return "", 204
+        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# @app.post(
+#     "/controller-definition/registry/update/", status_code=status.HTTP_202_ACCEPTED
+# )
 @app.post(
-    "/controller-definition/registry/update/", status_code=status.HTTP_202_ACCEPTED
+    "/controller-definition/registry/update/"
 )
 async def controller_definition_registry_update(request: Request):
     try:
@@ -379,12 +405,14 @@ async def controller_definition_registry_update(request: Request):
         )
         # await adapter.send_to_mqtt(ce)
         await datastore.controller_definition_registry_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as e:
         # L.error("send", extra={"reason": e})
         L.error("datastore_register_controller_definition", extra={"reason": e})
         print(traceback.format_exc())
         pass
-        return "", 204
+        # return "", 204
+        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @app.get("/controller-definition/registry/get/")
