@@ -141,6 +141,9 @@ class SanAce92RF(Operational):
         # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
 
+        # TODO make this configurable
+        self.sampling_mode = "unpolled" 
+
         # self.i2c_address = "28"
 
     def configure(self):
@@ -192,10 +195,11 @@ class SanAce92RF(Operational):
             requested = setting["attributes"]["default_value"]["data"]
 
             # override default setting if in config
-            if "settings" in config and name in config["settings"]:
-                requested = config["settings"][name]
+            if "settings" in conf and name in conf["settings"]:
+                requested = conf["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
+            self.logger.debug("configure", extra={"setting_name": name, "requested": requested, "settings": self.settings})
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
@@ -245,6 +249,27 @@ class SanAce92RF(Operational):
         self.logger.debug("check_fan_speed_sp", extra={"fs-data": data})
         # TODO set setting actual if ok
         
+        try:
+            requested_sp = self.settings.get_setting("fan_speed_sp")["requested"]
+            duty_cycle = data["data"]["data"].get("duty_cycle", None)
+            if duty_cycle:
+                sp = (duty_cycle-50.0) * 2
+                self.logger.debug("check_fan_speed_sp", extra={"sp": sp, "minus": (sp-5), "plus": (sp+5)})
+                if (sp > (requested_sp-5)) and (sp < (requested_sp+5)):
+                    self.logger.debug("check_fan_speed_sp: here1")
+                    self.settings.set_actual("fan_speed_sp", actual=requested_sp)
+                    self.logger.debug("check_fan_speed_sp: here2")
+                
+                # self.logger.debug(
+                #     "check_fan_speed_sp",
+                #     extra={
+                #         "setting-name": "fan_speed_sp",
+                #         "setting-value": self.settings.get_setting("fan_speed_sp")
+                #     },
+                # )
+        except Exception as e:
+            self.logger.error("check_fan_speed_sp", extra={"reason": e})
+
     async def handle_interface_data(self, message: Message):
         await super(SanAce92RF, self).handle_interface_data(message)
 
@@ -257,7 +282,7 @@ class SanAce92RF(Operational):
                 pwm_path = self.config.interfaces["fan_speed_sp"]["path"]
                 self.logger.debug(
                     "interface_recv_data",
-                    extra={"path_id": path_id, "iface_path": iface_path},
+                    extra={"path_id": path_id, "iface_path": self.config.interfaces["default"]["path"]},
                 )
                 # if path_id == "default":
                 # if path_id == iface_path:
@@ -314,10 +339,12 @@ class SanAce92RF(Operational):
         # }
 
         while True:
-            if self.sampling():
-                await self.interface_send_data(data=data, path_id="default")
-                await asyncio.sleep(time_to_next(self.sampling_interval))
-
+            if self.sampling_mode == "polled":
+                if self.sampling():
+                    await self.interface_send_data(data=data, path_id="default")
+                    await asyncio.sleep(time_to_next(self.sampling_interval))
+            else:
+                await asyncio.sleep(5)
     # async def sampling_monitor(self):
 
     #     # start_command = f"Log,{self.sampling_interval}\n"
@@ -429,7 +456,7 @@ class SanAce92RF(Operational):
                     )
                     message = event
                     # message = Message(data=event, destpath=destpath)
-                    # self.logger.debug("default_data_loop", extra={"m": message})
+                    self.logger.debug("default_data_loop", extra={"m": message})
                     await self.send_message(message)
 
                 # self.logger.debug("default_data_loop", extra={"record": record})
@@ -521,13 +548,13 @@ class SanAce92RF(Operational):
                                 data=data, path_id="fan_speed_sp"
                             )
 
-                        self.logger.debug(
-                            "settings_check - set setting",
-                            extra={
-                                "setting-name": name,
-                                "setting": self.settings.get_setting(name),
-                            },
-                        )
+                        # self.logger.debug(
+                        #     "settings_check - set setting",
+                        #     extra={
+                        #         "setting-name": name,
+                        #         "setting": self.settings.get_setting(name),
+                        #     },
+                        # )
                     except Exception as e:
                         self.logger.error("settings_check", extra={"reason": e})
 

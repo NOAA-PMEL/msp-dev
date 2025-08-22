@@ -27,6 +27,7 @@ from logfmter import Logfmter
 # import pymongo
 from collections import deque
 import httpx
+import traceback
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -255,6 +256,23 @@ def build_tables(layout_options):
     for ltype, dims in layout_options.items():
         for dim, options in dims.items():
             title = "Data"
+
+            if ltype == "layout-settings":
+                title = f"Device Settings"
+                table_list.append(
+                    dbc.AccordionItem(
+                        [
+                            dag.AgGrid(
+                                id={"type": "settings-table", "index": dim},
+                                rowData=[],
+                                columnDefs=layout_options["layout-settings"][dim]["table-column-defs"],
+                                columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
+                            )
+                        ],
+                        title=title,
+                    )
+                )
+
             if ltype == "layout-1d":
                 title = f"Data 1-D ({dim})"
 
@@ -672,8 +690,8 @@ def layout(sensor_id=None):
         sensor_definition = {}
 
     layout_options = {
+        "layout-settings": {"time": {"table-column-defs": [], "variable-list": []}},
         "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}},
-        # "layout-settings": {"time": {"table-column-defs": [], "variable-list": []}}
     }
     column_defs_1d = []  # deque([], maxlen=10)
     dropdown_list_1d = []
@@ -759,6 +777,33 @@ def layout(sensor_id=None):
                     }
                     layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
                     print(f"layout: {layout_options}")
+            
+            # make settings table
+            for name, var in sensor_definition["variables"].items():
+                if var["attributes"]["variable_type"]["data"] == "setting":
+                    long_name = name
+                    ln = var["attributes"].get("long_name", None)
+                    if ln:
+                        long_name = ln.get("data", name)
+
+                    # get data type
+                    dtype = var.get("type", "unknown")
+                    print(f"dtype = {dtype}")
+                    data_type = "text"
+                    if dtype in ["float", "double", "int"]:
+                        data_type = "number"
+                    elif dtype in ["str", "string", "char"]:
+                        data_type = "text"
+                    elif dtype in ["bool"]:
+                        data_type = "boolean"
+
+                    cd = {
+                        "field": name,
+                        "headerName": long_name,
+                        "filter": False,
+                        "cellDataType": data_type,
+                    }
+                    layout_options["layout-settings"]["time"]["table-column-defs"].append(cd)
 
             for name, var in sensor_definition["variables"].items():
                 # only get the data variables for main
@@ -949,6 +994,7 @@ def layout(sensor_id=None):
             dcc.Store(id="sensor-meta", data=sensor_meta),
             dcc.Store(id="graph-axes", data={}),
             dcc.Store(id="sensor-data-buffer", data={}),
+            dcc.Store(id="sensor-settings-buffer", data={})
             # dcc.Interval(id="test-interval", interval=(10*1000)),
             # dcc.Interval(
             #     id="table-update-interval", interval=(5 * 1000), n_intervals=0
@@ -1311,19 +1357,53 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         # return [dash.no_update, dash.no_update]
 
 
-@callback(Output("sensor-data-buffer", "data"), Input("ws-sensor-instance", "message"))
-def update_sensor_data_buffer(e):
-    if e is not None and "data" in e:
-        try:
-            msg = json.loads(e["data"])
-            print(f"update_sensor_data: {msg}")
-            if msg:
-                return msg
-        except Exception as e:
-            print(f"data buffer update error: {e}")
+# @callback(
+#         Output("sensor-data-buffer", "data"),
+#         Input("ws-sensor-instance", "message")
+#           )
+# def update_sensor_data_buffer(e):
+#     if e is not None and "data" in e:
+#         try:
+#             msg = json.loads(e["data"])
+#             print(f"update_sensor_data: {msg}")
+#             if msg:
+#                 return msg
+#         except Exception as e:
+#             print(f"data buffer update error: {e}")
+#             # return dash.no_update
+#             # return dash.no_update
+#     return dash.no_update
+
+
+@callback(
+        Output("sensor-data-buffer", "data"),
+        Output("sensor-settings-buffer", "data"),
+        Input("ws-sensor-instance", "message")
+          )
+def update_sensor_buffers(event):
+    if event is not None and "data" in event:
+        event_data = json.loads(event["data"])
+        print(f"update_sensor_buffers: {event_data}")
+        if "data-update" in event_data:
+            try:
+                # msg = json.loads(event["data-update"])
+                # print(f"update_controller_data: {event_data}")
+                if event_data["data-update"]:
+                    return [event_data["data-update"], dash.no_update]
+            except Exception as event:
+                print(f"data buffer update error: {event}")
+            
+        elif "settings-update" in event_data:
+            try:
+                # msg = json.loads(event["settings"])
+                # print(f"update_controller_settings: {event_data}")
+                if event_data["settings-update"]:
+                    return [dash.no_update,event_data["settings-update"]]
+            except Exception as e:
+                print(f"settings buffer update error: {e}")
             # return dash.no_update
             # return dash.no_update
-    return dash.no_update
+    return [dash.no_update, dash.no_update]
 
 
 @callback(
@@ -1603,6 +1683,87 @@ def update_graph_2d_scatter(
         # return dash.no_update
     raise PreventUpdate
     # return dash.no_update
+
+
+
+
+
+
+# @callback(
+#     # Output("dbc-switch-value-changed", "children"),
+#     Output("ws-send-instance-buffer", "children"),
+#     Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
+#     State("sensor-meta", "data")
+# )
+# def get_requested_setting(changed_component, sensor_meta):
+#     print('COMPONENT CHANGED', json.dumps(changed_component))
+#     requested_val = int(changed_component[0]["value"])
+#     col_id = changed_component[0]["colId"]
+#     try:
+#         event = {
+#             "source": "testsource",
+#             "data": {"settings": col_id, "requested": requested_val},
+#             "destpath": "envds/sensor/settings/request",
+#             "sensorid": sensor_meta["sensor_id"]
+#         }
+#     except Exception as e:
+#             print(f"data update error: {e}")
+#     return json.dumps(changed_component), json.dumps(event)
+
+
+# @callback(
+#     Output({"type": "settings-table", "index": ALL}, "rowData"), 
+#     Output({"type": "settings-table", "index": ALL}, "columnDefs"),
+#     Input("sensor-settings-buffer", "data"),
+#     [
+#         State({"type": "settings-table", "index": ALL}, "rowData"),
+#         State({"type": "settings-table", "index": ALL}, "columnDefs"),
+#         State("sensor-definition", "data")
+#     ],
+# )
+# def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_definition):
+#     if sensor_settings:
+#             new_row_data_list = []
+#             new_column_defs = []
+#             try:
+#                 for row_data, col_defs in zip(row_data_list, col_defs_list):
+#                     print('col defs', col_defs)
+#                     data = {}
+#                     for col in col_defs:
+#                         print('col', col)
+#                         name = col["field"]
+#                         if name in sensor_settings["settings"]:
+#                             data[name] = sensor_settings["settings"][name]["data"]["actual"]
+#                         else:
+#                             data[name] = ""
+
+#                         # Check if the setting should be set up as a boolean switch
+#                         if sensor_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
+#                             if sensor_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
+#                                 if sensor_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
+#                                     col["cellRenderer"] = "DBC_Switch"
+#                                     col["cellRendererParams"] = {"color": "success"}
+                        
+#                         # Check if the setting should be set up as 
+
+#                         new_column_defs.append(col)
+#                     row_data.insert(0, data)
+#                     new_row_data_list.append(row_data[0:1])
+#                 if len(new_row_data_list) == 0:
+#                     raise PreventUpdate
+#                 return new_row_data_list, [new_column_defs]
+#             except Exception as e:
+#                 print(f"data update error: {e}")
+#                 print(traceback.format_exc())
+#             raise PreventUpdate
+#     else:
+#         raise PreventUpdate
+
+
+
+
+
+
 
 
 @callback(

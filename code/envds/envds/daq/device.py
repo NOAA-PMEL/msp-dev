@@ -113,14 +113,27 @@ class RuntimeSettings(object):
         self.settings[name]["requested"] = requested
         self.settings[name]["actual"] = actual
 
+    def set_requested(self, name: str, requested) -> bool:
+        return self.update_setting(name=name, requested=requested)
+    
+    def set_actual(self, name: str, actual) -> bool:
+        return self.update_setting(name=name, actual=actual)
+
     def update_setting(self, name: str, requested=None, actual=None) -> bool:
+        # print(f"update_setting1: {name}, {requested}, {actual}, {self.settings}")
         if name not in self.settings:
             return False
         
-        if requested:
+        # print(f"update_setting2: {name}, {requested}, {actual}, {self.settings}")
+        if requested is not None:
+            # print(f"update_setting3: {name}, {requested}, {actual}, {self.settings}")
             self.settings[name]["requested"] = requested
-        if actual:
+            # print(f"update_setting4: {name}, {requested}, {actual}, {self.settings}")
+        if actual is not None:
+            # print(f"update_setting5: {name}, {requested}, {actual}, {self.settings}")
             self.settings[name]["actual"] = actual
+            # print(f"update_setting6: {name}, {requested}, {actual}, {self.settings}")
+        # print(f"update_setting7: {name}, {requested}, {actual}, {self.settings}")
         return True
 
     def get_setting(self, name: str):
@@ -558,25 +571,42 @@ class Device(envdsBase):
             except Exception as e:
                 self.logger.error("settings_monitor", extra={"error": e})
 
-            if self.enabled() and send_settings:
-                # send settings every other second
-                event = DAQEvent.create_sensor_settings_update(
-                    # source="device.mockco-mock1-1234", data=record
-                    source=self.get_id_as_source(),
-                    data={"settings": self.settings.get_settings()},
-                )
-                destpath = f"{self.get_id_as_topic()}/settings/update"
-                self.logger.debug(
-                    "settings_monitor", extra={"data": event, "destpath": destpath}
-                )
-                event["destpath"] = destpath
-                # message = Message(data=event, destpath=destpath)
-                message = event
-                # self.logger.debug("default_data_loop", extra={"m": message})
-                await self.send_message(message)
+            try:
+                self.logger.debug("settings_monitor", extra={"enabled": self.enabled(), "send_settings": send_settings})
+                if self.enabled() and send_settings:
 
-            send_settings = not send_settings
+                    record = self.build_settings_record()
+                    current_settings = self.settings.get_settings()
+
+                    for name, setting in record["settings"].items():
+                        if name in current_settings and "data" in setting:
+                            self.logger.debug("settings_monitor", extra={"set_name": name, "set_setting": current_settings[name]})
+                            setting["data"] = current_settings[name]
+                    self.logger.debug("settings_monitor", extra={"settings_record": record})
+
+                    # send settings every other second
+                    event = DAQEvent.create_sensor_settings_update(
+                        # source="device.mockco-mock1-1234", data=record
+                        source=self.get_id_as_source(),
+                        # data={"settings": self.settings.get_settings()},
+                        data = record
+                    )
+                    destpath = f"{self.get_id_as_topic()}/settings/update"
+                    self.logger.debug(
+                        "settings_monitor", extra={"data": event, "destpath": destpath}
+                    )
+                    event["destpath"] = destpath
+                    # message = Message(data=event, destpath=destpath)
+                    message = event
+                    # self.logger.debug("default_data_loop", extra={"m": message})
+                    await self.send_message(message)
+
+                send_settings = not send_settings
+                
+            except Exception as e:
+                self.logger.error("settings_monitor", extra={"reason": e})
             await asyncio.sleep(1)
+            
 
     # each device should handle this as required
     async def settings_check(self):

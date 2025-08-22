@@ -907,7 +907,7 @@ def layout(controller_id=None):
     # print("here:1")
     layout = html.Div(
         [
-            # html.Div(id="dbc-switch-value-changed"),
+            html.Div(id="dbc-switch-value-changed"),
             html.H1(f"Controller: {controller_id}"),
             # get_button,
             # build_tables(layout_options)
@@ -1707,21 +1707,23 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 #     # return dash.no_update
 
 @callback(
-    # Output("dbc-switch-value-changed", "children"),
+    Output("dbc-switch-value-changed", "children"),
     Output("ws-send-instance-buffer", "children"),
     Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
     State("controller-meta", "data")
 )
 def get_requested_setting(changed_component, controller_meta):
     print('COMPONENT CHANGED', json.dumps(changed_component))
+    controller_id = controller_meta["controller_id"]
+    source = f"dashboard-test/{controller_id}"
     requested_val = int(changed_component[0]["value"])
     col_id = changed_component[0]["colId"]
     try:
         event = {
-            "source": "testsource",
+            "source": source,
             "data": {"settings": col_id, "requested": requested_val},
             "destpath": "envds/controller/settings/request",
-            "controllerid": controller_meta["controller_id"]
+            "controllerid": controller_id
         }
     except Exception as e:
             print(f"data update error: {e}")
@@ -1754,14 +1756,33 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                         else:
                             data[name] = ""
 
-                        # Check if the setting should be set up as a boolean switch
-                        if controller_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
-                            if controller_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
-                                if controller_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
-                                    col["cellRenderer"] = "DBC_Switch"
-                                    col["cellRendererParams"] = {"color": "success"}
+                        # # Check if the setting should be set up as a boolean switch
+                        # if controller_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
+                        #     if controller_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
+                        #         if controller_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
+                        #             col["cellRenderer"] = "DBC_Switch"
+                        #             col["cellRendererParams"] = {"color": "success"}
                         
                         # Check if the setting should be set up as 
+
+                        # Make sure the settings contain integers
+                        if controller_definition["variables"][name]["attributes"]["valid_min"]["type"] == "int":
+                            min_val = controller_definition["variables"][name]["attributes"]["valid_min"]["data"]
+                            max_val = controller_definition["variables"][name]["attributes"]["valid_max"]["data"]
+                            step_val = controller_definition["variables"][name]["attributes"]["step_increment"]["data"]
+                            print('min, max, step', min_val, max_val, step_val)
+
+                            # Check if the setting should be set up as a boolean switch
+                            if min_val == 0:
+                                if max_val == 1:
+                                    if step_val == 1:
+                                        col["cellRenderer"] = "DBC_Switch"
+                                        col["cellRendererParams"] = {"color": "success"}
+                            
+                            # Check if the setting should be set up as numeric input
+                            elif max_val > 1:
+                                col["cellRenderer"] = "DCC_Input"
+                                col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val}
 
                         new_column_defs.append(col)
                     row_data.insert(0, data)

@@ -12,6 +12,7 @@ from envds.daq.event import DAQEvent
 from aiomqtt import Client
 from pydantic import BaseModel
 import json
+import re
 
 
 task_list = []
@@ -418,9 +419,9 @@ class NP05B(Controller):
             cmd = 0
             
         message = {"data": f"pset {outlet} {cmd}\r"}
-        message2 = {"data": message}
-        self.logger.debug("set_outlet_power", extra={"payload": message2})
-        await self.send_data(message2)
+        # message2 = {"data": message}
+        self.logger.debug("set_outlet_power", extra={"payload": message})
+        await self.send_data(message)
 
     
     async def recv_data_loop(self):
@@ -428,13 +429,13 @@ class NP05B(Controller):
             try:
                 data = await self.client_recv_buffer.get()
                 self.logger.debug("recv_data_loop", extra={"recv_data": data})
-                print('data', data)
                 if data:
                     if '$A0,' in data["data"]:
                         try:
-                            status_data = data["data"].replace('$A0,', '').replace('$A5\r\n', '')
-                            print('status data', status_data)
+                            init_status_data = data["data"].split(',')[1]
+                            status_data = init_status_data[:5]
                             status_list = [int(digit) for digit in str(status_data)]
+                            status_list.reverse() # right most value is outlet 1
                             self.logger.debug("recv_data_loop", extra={"status_data": status_list})
                             count = 1
                             for outlet_status in status_list:

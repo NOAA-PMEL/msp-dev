@@ -143,7 +143,7 @@ class Registrar:
                 self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
         except Exception as e:
             self.logger.error("send_event", extra={"reason": e})
-        await asyncio.sleep(0.01)
+        # await asyncio.sleep(0.01)
 
     async def submit_request(self, path: str, query: dict):
         try:
@@ -432,15 +432,16 @@ class Registrar:
                 ]
                 self.logger.debug("missing_local", extra={"missing": missing_local})
                 try:
-                    request = DAQEvent.create_registry_sync_request(
-                        source=f"envds.{self.config.daq_id}.registrar",
-                        data={
-                            "device-definition-request": missing_local
-                        },  # just send the dict
-                    )
-                    # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                    request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
-                    await self.send_event(request)
+                    if len(missing_local) > 0:
+                        request = DAQEvent.create_registry_sync_request(
+                            source=f"envds.{self.config.daq_id}.registrar",
+                            data={
+                                "device-definition-request": missing_local
+                            },  # just send the dict
+                        )
+                        # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                        request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+                        await self.send_event(request)
                 except Exception as e:
                     self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
 
@@ -483,15 +484,16 @@ class Registrar:
                 ]
                 self.logger.debug("missing_local", extra={"missing": missing_local})
                 try:
-                    request = DAQEvent.create_registry_sync_request(
-                        source=f"envds.{self.config.daq_id}.registrar",
-                        data={
-                            "controller-definition-request": missing_local
-                        },  # just send the dict
-                    )
-                    # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
-                    request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
-                    await self.send_event(request)
+                    if len(missing_local) > 0:
+                        request = DAQEvent.create_registry_sync_request(
+                            source=f"envds.{self.config.daq_id}.registrar",
+                            data={
+                                "controller-definition-request": missing_local
+                            },  # just send the dict
+                        )
+                        # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+                        request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+                        await self.send_event(request)
                 except Exception as e:
                     self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
             

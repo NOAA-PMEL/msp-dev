@@ -253,48 +253,53 @@ class MQTTMessageClient(MessageClient):
     async def publisher(self):
         reconnect_interval = 5
         while self.do_run:
-            print(f"publish: {self.do_run}, {self.connected}")
-            if self.connected:
-                msg = await self.pub_data.get()
-                # print(f"msg = {msg}")
-                # print(f"publisher:msg: {msg}")
-                # print(f"msg: {msg.destpath}")#, {to_json(msg.data)}")
-                print(f"msg: {msg['destpath']}")#, {to_json(msg.data)}")
-                # print(f"msg: {msg.destpath}, {to_json(msg.data)}")
-                # print(msg.keys())
-                # print(f"msg type: {type(msg.data)}")
-                # bpayload = to_json(msg.data)
-                # print(f"bpayload = {bpayload}")
-                # payload = bpayload.decode()
-                # print(f"payload = {payload}")
-                try:
-                    # destpath = msg.destpath
-                    destpath = msg["destpath"]
-                    # change this to the opposite
-                    # if destpath[0] != "/":
-                    #     destpath = f"/{destpath}"
-                    if destpath.startswith("/"):
-                        destpath = destpath[1:]
-                        msg["destpath"] = destpath
-                    # await self.client.publish(destpath, payload=to_json(msg.data))
-                    await self.client.publish(destpath, payload=to_json(msg))
-                    # self.logger.debug("MQTT.publisher", extra={"destpath": destpath, "payload": to_json(msg.data), "client": self.client})
-                    self.logger.debug("MQTT.publisher", extra={"destpath": destpath, "payload": to_json(msg), "client": self.client})
-                    # await self.client.publish(msg.destpath, payload=payload)
-                except MqttError as error:
-                    self.logger.error("MQTT Client - MQTTError", extra={"error": error})
-                
-                await asyncio.sleep(.0001)
+            try:
+                print(f"publish: {self.do_run}, {self.connected}")
+                if self.connected:
+                    msg = await self.pub_data.get()
+                    # print(f"msg = {msg}")
+                    # print(f"publisher:msg: {msg}")
+                    # print(f"msg: {msg.destpath}")#, {to_json(msg.data)}")
+                    print(f"msg: {msg['destpath']}")#, {to_json(msg.data)}")
+                    # print(f"msg: {msg.destpath}, {to_json(msg.data)}")
+                    # print(msg.keys())
+                    # print(f"msg type: {type(msg.data)}")
+                    # bpayload = to_json(msg.data)
+                    # print(f"bpayload = {bpayload}")
+                    # payload = bpayload.decode()
+                    # print(f"payload = {payload}")
+                    try:
+                        # destpath = msg.destpath
+                        destpath = msg["destpath"]
+                        # change this to the opposite
+                        # if destpath[0] != "/":
+                        #     destpath = f"/{destpath}"
+                        if destpath.startswith("/"):
+                            destpath = destpath[1:]
+                            msg["destpath"] = destpath
+                        # await self.client.publish(destpath, payload=to_json(msg.data))
+                        await self.client.publish(destpath, payload=to_json(msg))
+                        # self.logger.debug("MQTT.publisher", extra={"destpath": destpath, "payload": to_json(msg.data), "client": self.client})
+                        self.logger.debug("MQTT.publisher", extra={"destpath": destpath, "payload": to_json(msg), "client": self.client})
+                        # await self.client.publish(msg.destpath, payload=payload)
+                    except MqttError as error:
+                        self.logger.error("MQTT Client - MQTTError", extra={"error": error})
+                    
+                    await asyncio.sleep(.0001)
 
-            else:
-                self.logger.debug(
-                    "MQTT Client",
-                    extra={
-                        "self.do_run": self.do_run,
-                        "self.connected": self.connected,
-                    },
-                )
-                await asyncio.sleep(1)
+                else:
+                    self.logger.debug(
+                        "MQTT Client",
+                        extra={
+                            "self.do_run": self.do_run,
+                            "self.connected": self.connected,
+                        },
+                    )
+                    await asyncio.sleep(1)
+        
+            except Exception as e:
+                self.logger.error("publisher", extra={"reason": e})
+                await asyncio.sleep(.1)
             # try:
             #     async with Client(self.mqtt_config["hostname"]) as client:
             #         while self.do_run:
