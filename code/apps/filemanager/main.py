@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 # import json
 import logging
 
-from fastapi import FastAPI, Request, Query, status  # , APIRouter
+from fastapi import FastAPI, Request, Query, status, Response  # , APIRouter
 # from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -81,7 +81,8 @@ filemanager = Filemanager()
 async def root():
     return {"message": "Hello World from Datastore"}
 
-@app.post("/device/data/save/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/device/data/save/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/device/data/save/")
 async def device_data_save(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -91,13 +92,15 @@ async def device_data_save(request: Request):
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
         await filemanager.data_save(ce, data_type="device")
-
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as e:
         # print(e)
         L.error("send", extra={"reason": e})
-        return "", 204
+        # return "", 204
+        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@app.post("/controller/data/save/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/controller/data/save/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/controller/data/save/")
 async def controller_data_save(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -107,8 +110,9 @@ async def controller_data_save(request: Request):
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
         await filemanager.data_save(ce, data_type="controller")
-
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as e:
         # print(e)
         L.error("send", extra={"reason": e})
-        return "", 204
+        # return "", 204
+        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)

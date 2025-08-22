@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import json
 import logging
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, Response
 # from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -100,7 +100,8 @@ registrar = Registrar()
 async def root():
     return {"message": "Hello World from Registrar"}
 
-@app.post("/registry-sync/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/registry-sync/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/registry-sync/")
 async def registry_sync(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -108,7 +109,9 @@ async def registry_sync(request: Request):
         L.debug("registry-sync", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         await registrar.handle_registry_sync(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as e:
         L.error("registry-sync", extra={"reason": e})
         pass
-        return "",204
+        # return "",204
+        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
