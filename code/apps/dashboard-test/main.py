@@ -336,6 +336,7 @@ def get_response_event(msg, status):
         return body, status, headers # fastapi converts json
     except Exception as e:
         L.error("get_response_event", extra={"reason": e})
+        return {}, 500, ""
 
 
 async def send_event(ce: CloudEvent):

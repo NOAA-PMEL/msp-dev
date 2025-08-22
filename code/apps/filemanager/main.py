@@ -76,20 +76,22 @@ app = FastAPI()
 #     print("stopping system")
 def get_response_event(msg, status):
     # response_data = {"processed_data": event.data}
+    try:
+        # Construct the response CloudEvent
+        response_event = CloudEvent({
+            "source": "envds.datastore",
+            "type": "envds.response.event",
+            "specversion": "1.0",
+            "datacontenttype": "application/json"
+        }, msg)
 
-    # Construct the response CloudEvent
-    response_event = CloudEvent({
-        "source": "envds.datastore",
-        "type": "envds.response.event",
-        "specversion": "1.0",
-        "datacontenttype": "application/json"
-    }, msg)
-
-    # Return the CloudEvent as a structured HTTP response
-    headers, body = to_structured(response_event)
-    # return jsonify(body), 200, headers
-    return json.dumps(body), status, headers
-
+        # Return the CloudEvent as a structured HTTP response
+        headers, body = to_structured(response_event)
+        # return jsonify(body), 200, headers
+        return body, status, headers # fastapi converts json
+    except Exception as e:
+        L.error("get_response_event", extra={"reason": e})
+        return {}, 500, ""
 
 
 filemanager = Filemanager()
