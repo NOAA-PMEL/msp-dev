@@ -188,10 +188,12 @@ func (c *KNMQTTClient) sendToKnativeLoop() {
 		ctx := cloudevents.ContextWithTarget(context.Background(), c.config.KnativeBroker)
 		if result := client.Send(ctx, ce); !protocol.IsACK(result) {
 			log.Printf("Failed to send CloudEvent to Knative broker: %v", result)
+			continue
 		} else {
-			log.Printf("Successfully sent CloudEvent to Knative broker: %s", ce)
+			log.Printf("Successfully sent CloudEvent to Knative broker")
 		}
 	}
+	log.Printf("Outside of toKnativeChannel loop")
 }
 
 // mqttSendHandler receives HTTP POST requests, converts them to CloudEvents, and
