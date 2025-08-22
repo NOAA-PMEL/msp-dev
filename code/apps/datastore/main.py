@@ -133,7 +133,7 @@ async def root():
 
 
 # @app.post("/device/settings/update/", status_code=status.HTTP_202_ACCEPTED)
-@app.post("/device/settings/update/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/device/settings/update/")
 async def device_settings_update(request: Request):
 
     # attributes = {
