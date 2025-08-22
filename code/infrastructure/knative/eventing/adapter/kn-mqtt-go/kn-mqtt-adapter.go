@@ -89,15 +89,15 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 	// Convert MQTT payload to a CloudEvent
 	newEvent := event.New() // Renamed 'event' to 'newEvent' for clarity
 	payloadBytes := msg.Payload()
-	fmt.Printf("payload: %s\n", payloadBytes)
+	// fmt.Printf("payload: %s\n", payloadBytes)
 	// ce := &event.Event{}
 	err := json.Unmarshal(payloadBytes, &newEvent)
-	log.Printf("MSG: %s\n", msg.Payload())
-	log.Printf("payloadBytes: %s\n", payloadBytes)
-	log.Printf("newEvent: %s\n", newEvent)
+	// log.Printf("MSG: %s\n", msg.Payload())
+	// log.Printf("payloadBytes: %s\n", payloadBytes)
+	// log.Printf("newEvent: %s\n", newEvent)
 	if err != nil {
-		log.Printf("MSG: %s\n", msg.Payload())
-		log.Printf("payloadBytes: %s\n", payloadBytes)
+		// log.Printf("MSG: %s\n", msg.Payload())
+		// log.Printf("payloadBytes: %s\n", payloadBytes)
 		log.Printf("failed to unmarshal cloudevent: %s\n", err)
 		return
 	}
