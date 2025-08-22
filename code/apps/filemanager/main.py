@@ -74,6 +74,23 @@ app = FastAPI()
 # @app.on_event("shutdown")
 # async def start_system():
 #     print("stopping system")
+def get_response_event(msg, status):
+    # response_data = {"processed_data": event.data}
+
+    # Construct the response CloudEvent
+    response_event = CloudEvent({
+        "source": "envds.datastore",
+        "type": "envds.response.event",
+        "specversion": "1.0",
+        "datacontenttype": "application/json"
+    }, msg)
+
+    # Return the CloudEvent as a structured HTTP response
+    headers, body = to_structured(response_event)
+    # return jsonify(body), 200, headers
+    return json.dumps(body), status, headers
+
+
 
 filemanager = Filemanager()
 
@@ -92,12 +109,17 @@ async def device_data_save(request: Request):
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
         await filemanager.data_save(ce, data_type="device")
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # return Response(status_code=status.HTTP_204_NO_CONTENT)
+        msg = {"result": "OK"}
+        return get_response_event(msg, 202)
+
     except Exception as e:
         # print(e)
         L.error("send", extra={"reason": e})
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        msg = {"result": "NOTOK"}
+        return get_response_event(msg, 500)
 
 # @app.post("/controller/data/save/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/controller/data/save/")
@@ -110,9 +132,13 @@ async def controller_data_save(request: Request):
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
         await filemanager.data_save(ce, data_type="controller")
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # return Response(status_code=status.HTTP_204_NO_CONTENT)
+        msg = {"result": "OK"}
+        return get_response_event(msg, 202)
     except Exception as e:
         # print(e)
         L.error("send", extra={"reason": e})
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        msg = {"result": "NOTOK"}
+        return get_response_event(msg, 500)
