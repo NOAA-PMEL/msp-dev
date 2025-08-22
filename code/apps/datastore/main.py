@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import json
 import logging
 
-from fastapi import FastAPI, Request, Query, status  # , APIRouter
+from fastapi import FastAPI, Request, Query, status, Response  # , APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -303,8 +303,25 @@ async def device_instance_registry_get(
     # return await datastore.device_instance_registry_get(query)
     return results
 
+# from fastapi import FastAPI, Request, Response
+# from starlette import status
+# import logging
 
-@app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
+# app = FastAPI()
+
+# @app.post("/")
+# async def handle_event(request: Request):
+#     try:
+#         event_data = await request.json()
+#         logging.info(f"Received CloudEvent: {event_data}")
+#         # Process the event data here
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
+#     except Exception as e:
+#         logging.error(f"Error processing event: {e}")
+#         return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# @app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/controller/data/update/")
 async def controller_data_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -312,9 +329,11 @@ async def controller_data_update(request: Request):
         L.debug("controller_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         await datastore.controller_data_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as e:
         L.error("controller_data_update", extra={"reason": e})
-        return "", 204
+        # return "", 204
+        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @app.get("/controller/data/get/")

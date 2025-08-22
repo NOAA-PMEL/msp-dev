@@ -10,7 +10,8 @@ from fastapi import (
     Request,
     WebSocket,
     WebSocketDisconnect,
-    status
+    status,
+    Response
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.wsgi import WSGIMiddleware
@@ -921,7 +922,8 @@ async def sensor_settings_update(request: Request):
 
 
 
-@app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/controller/data/update/")
 async def controller_data_update(request: Request):
 
     L.info("controller/data/update")
@@ -963,14 +965,15 @@ async def controller_data_update(request: Request):
 
     except KeyError:
         L.error("controller sensor update error", extra={"sensor": ce.data})
-        return "bad sensor data", 400
+        # return "bad sensor data", 400
+        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     print(f"json_data: {json.dumps(ce.data)}")
     msg = {"data-update": ce.data}
     print(f"json_data2: {json.dumps(msg)}")
     await manager.broadcast(json.dumps(msg), "controller", controller_id)
-
-    return {"message": "OK"}
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    # return {"message": "OK"}
     # return "ok", 200
 
 @app.post("/controller/settings/update/", status_code=status.HTTP_202_ACCEPTED)
