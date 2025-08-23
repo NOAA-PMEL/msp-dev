@@ -5,6 +5,7 @@ import signal
 import sys
 import os
 import logging
+import traceback
 import yaml
 from envds.core import envdsLogger
 from envds.daq.controller import Controller, ControllerMetadata, ControllerConfig #, InterfacePath
@@ -370,7 +371,7 @@ class ShellyMock(Controller):
                 extra={"conf": conf, "self.config": self.config},
             )
         except Exception as e:
-            self.logger.debug("ShellyPro3:configure", extra={"error": e})
+            self.logger.error("ShellyPro3:configure", extra={"error": e})
             print(traceback.format_exc())
 
     async def get_status_loop(self):
