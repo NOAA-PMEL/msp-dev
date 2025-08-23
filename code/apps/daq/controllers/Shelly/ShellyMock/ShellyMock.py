@@ -5,6 +5,7 @@ import signal
 import sys
 import os
 import logging
+import traceback
 import yaml
 from envds.core import envdsLogger
 from envds.daq.controller import Controller, ControllerMetadata, ControllerConfig #, InterfacePath
@@ -12,13 +13,14 @@ from envds.daq.event import DAQEvent
 from pydantic import BaseModel
 from envds.util.util import (
     # get_datetime_format,
-    # time_to_next,
+    time_to_next,
     # get_datetime,
     get_datetime_string,
 )
 
 
 task_list = []
+
 
 class ShellyMock(Controller):
     """docstring for ShellyPro3."""
@@ -370,7 +372,7 @@ class ShellyMock(Controller):
                 extra={"conf": conf, "self.config": self.config},
             )
         except Exception as e:
-            self.logger.debug("ShellyPro3:configure", extra={"error": e})
+            self.logger.error("ShellyPro3:configure", extra={"error": e})
             print(traceback.format_exc())
 
     async def get_status_loop(self):
@@ -386,7 +388,7 @@ class ShellyMock(Controller):
                 }
                 self.logger.debug("get_status_loop", extra={"payload": data})
                 await self.send_data(data)
-            await asyncio.sleep(5)
+            await asyncio.sleep(time_to_next(5))
 
     async def set_channel_power(self, channel, state):
         # self.logger.debug("set_channel_power1", extra={"channeL": channel, "st": state})
@@ -495,9 +497,9 @@ class ShellyMock(Controller):
                         except KeyError as e:
                             self.logger.error("unknown response", extra={"reason": e})
                             pass
-                    await asyncio.sleep(.2)
+                    await asyncio.sleep(.01)
 
-                await asyncio.sleep(2)
+                await asyncio.sleep(time_to_next(2))
 
             except (KeyError, Exception) as e:
                 self.logger.error("recv_data_loop", extra={"error": e})
