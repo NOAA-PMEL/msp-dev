@@ -497,9 +497,9 @@ class ShellyMock(Controller):
                         except KeyError as e:
                             self.logger.error("unknown response", extra={"reason": e})
                             pass
-                    await asyncio.sleep(.2)
+                    await asyncio.sleep(.01)
 
-                await asyncio.sleep(2)
+                await asyncio.sleep(time_to_next(2))
 
             except (KeyError, Exception) as e:
                 self.logger.error("recv_data_loop", extra={"error": e})
