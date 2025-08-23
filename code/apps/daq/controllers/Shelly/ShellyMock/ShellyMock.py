@@ -21,6 +21,7 @@ from envds.util.util import (
 
 task_list = []
 
+
 class ShellyMock(Controller):
     """docstring for ShellyPro3."""
 
