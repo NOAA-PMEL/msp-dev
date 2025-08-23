@@ -12,7 +12,7 @@ from envds.daq.event import DAQEvent
 from pydantic import BaseModel
 from envds.util.util import (
     # get_datetime_format,
-    # time_to_next,
+    time_to_next,
     # get_datetime,
     get_datetime_string,
 )
@@ -386,7 +386,7 @@ class ShellyMock(Controller):
                 }
                 self.logger.debug("get_status_loop", extra={"payload": data})
                 await self.send_data(data)
-            await asyncio.sleep(5)
+            await asyncio.sleep(time_to_next(5))
 
     async def set_channel_power(self, channel, state):
         # self.logger.debug("set_channel_power1", extra={"channeL": channel, "st": state})
