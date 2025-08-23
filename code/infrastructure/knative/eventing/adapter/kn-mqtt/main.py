@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import logging
 # import socket
 
-from fastapi import FastAPI, Request, status, Request  # , APIRouter
+from fastapi import FastAPI, Request, status, Response  # , APIRouter
 # from fastapi.middleware.cors import CORSMiddleware
 
 from cloudevents.http import from_http
