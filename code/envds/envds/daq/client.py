@@ -125,6 +125,7 @@ class DAQClient(abc.ABC):
         self.client = None
 
     async def send(self, data: dict):
+        self.logger.debug("send", extra={"send-data": data})
         await self.send_buffer.put(data)
 
     async def recv(self) -> dict:

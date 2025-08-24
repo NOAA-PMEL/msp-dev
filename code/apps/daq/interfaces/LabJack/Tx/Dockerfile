@@ -12,7 +12,7 @@ WORKDIR $APP_HOME
 # Declare TARGETARCH as a build argument in the local scope
 ARG TARGETARCH
 
-RUN apt-get update && apt-get install -y unzip wget
+RUN apt-get update && apt-get install -y unzip wget && apt-get install -y libusb-1.0-0 && apt-get install udev -y
 
 ARG LJ_FILE=LabJack-LJM_2025-05-07.zip
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
@@ -39,8 +39,9 @@ RUN pip3 install -r requirements.txt
 # for fastapi/uvicorn
 # COPY . .
 # without fastapi/uvicorn
-COPY ./LabJack_Tx_interface_definition.json .
+# COPY ./LabJack_Tx_interface_definition.json .
 COPY ./tx.py .
+COPY ./labjack_client.py .
 
 
 # WORKDIR $APP_HOME/envds

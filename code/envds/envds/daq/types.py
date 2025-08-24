@@ -7,6 +7,7 @@ class DAQEventType(BaseEventType):
 
     TYPE_DEVICE = "device"
     TYPE_SENSOR = "sensor"
+    TYPE_OPERATIONAL = "operational"
     TYPE_DEVICE_DEFINITION = "device-definition"
     TYPE_SETTINGS = "settings"
     TYPE_INTERFACE = "interface"

@@ -50,7 +50,7 @@ class USCDR301(Interface):
         self.default_client_module = "envds.daq.clients.tcp_client"
         self.default_client_class = "TCPClient"
 
-        self.metadata = self.metadata
+        self.metadata = USCDR301.metadata
         self.data_loop_task = None
 
     def configure(self):

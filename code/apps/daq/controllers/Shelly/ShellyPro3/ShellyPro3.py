@@ -528,7 +528,6 @@ class ShellyPro3(Controller):
                             # self.logger.debug("settings_check:set_channel_power", extra={"ch": ch, "requested": setting["requested"]})
                             await self.set_channel_power(ch, setting["requested"])
 
-
                         self.logger.debug(
                             "settings_check - set setting",
                             extra={
@@ -550,7 +549,7 @@ async def test_task():
         await asyncio.sleep(1)
         # print("daq test_task...")
         logger = logging.getLogger("envds.info")
-        logger.info("USCDR301_test_task", extra={"test": "USCDR301 task"})
+        logger.info("ShellyPro3_test_task", extra={"test": "ShellyPro3 task"})
 
 
 async def shutdown(interface):
@@ -576,7 +575,7 @@ async def main(server_config: ServerConfig = None):
     # task_list.append(asyncio.create_task(test_task()))
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger("interface::USCDR301")
+    logger = logging.getLogger("interface::ShellyPro3")
 
     # test = envdsBase()
     # task_list.append(asyncio.create_task(test_task()))

@@ -5,7 +5,9 @@ import uuid
 from ulid import ULID
 import asyncio
 import logging
+import logging.config
 from logfmter import Logfmter
+import traceback
 
 
 # from typing import Union
@@ -771,6 +773,7 @@ class envdsBase(abc.ABC):
                     # extra={"data": msg.data, "message_error": e}
                     extra={"data": msg, "message_error": e}
                 )
+                print(traceback.format_exc())
             await asyncio.sleep(0.0001)
 
     async def update_registry(self):
