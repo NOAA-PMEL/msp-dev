@@ -118,7 +118,7 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 	newEvent.SetExtension("sourcepath", msg.Topic())
 	// // Set the 'sourcepath' extension, which was used in the Python version
 	// ce.SetExtension("sourcepath", msg.Topic())
-    fmt.Printf("Received CloudEvent (structured mode): %+v\n", newEvent)
+    // fmt.Printf("Received CloudEvent (structured mode): %+v\n", newEvent)
     // Access event attributes and data:
     fmt.Printf("ID: %s\n", newEvent.ID())
     fmt.Printf("Source: %s\n", newEvent.Source())
