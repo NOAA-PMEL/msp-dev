@@ -7,6 +7,7 @@ import signal
 import sys
 import os
 import logging
+import json
 
 # from logfmter import Logfmter
 import logging.config
@@ -24,7 +25,8 @@ from envds.util.util import (
     get_datetime,
     get_datetime_string,
 )
-from envds.daq.sensor import Sensor, SensorConfig, SensorVariable, SensorMetadata
+from envds.daq.sensor import Sensor
+from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
@@ -481,6 +483,15 @@ class POPS1100(Sensor):
 
         self.default_data_buffer = asyncio.Queue()
 
+        self.sensor_definition_file = "Handix_POPS1100_sensor_definition.json"
+
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
+
         self.lower_dp_bound = [
             115.,
             125.,
@@ -591,15 +602,15 @@ class POPS1100(Sensor):
 
             self.settings.set_setting(name, requested=requested)
 
-        meta = SensorMetadata(
-            attributes=POPS1100.metadata["attributes"],
-            variables=POPS1100.metadata["variables"],
-            settings=POPS1100.metadata["settings"],
+        meta = DeviceMetadata(
+            attributes=self.metadata["attributes"],
+            variables=self.metadata["variables"],
+            settings=self.metadata["settings"],
         )
 
-        self.config = SensorConfig(
-            make=POPS1100.metadata["attributes"]["make"]["data"],
-            model=POPS1100.metadata["attributes"]["model"]["data"],
+        self.config = DeviceConfig(
+            make=self.metadata["attributes"]["make"]["data"],
+            model=self.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
             metadata=meta,
             interfaces=conf["interfaces"],

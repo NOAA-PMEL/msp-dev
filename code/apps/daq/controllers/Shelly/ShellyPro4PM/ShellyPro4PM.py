@@ -76,7 +76,7 @@ class ShellyPro4PM(Controller):
                     }
                 }
             },
-            "channel_1_consumption": {
+            "channel_1_voltage": {
                 "type": "float",
                 "shape": [
                     "time"
@@ -92,7 +92,199 @@ class ShellyPro4PM(Controller):
                     },
                     "long_name": {
                         "type": "char",
-                        "data": "Channel 1 Power Consumption"
+                        "data": "Channel 1 Voltage"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Volts"
+                    }
+                }
+            },
+            "channel_2_voltage": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 2
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 2 Voltage"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Volts"
+                    }
+                }
+            },
+            "channel_3_voltage": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 3
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 3 Voltage"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Volts"
+                    }
+                }
+            },
+            "channel_4_voltage": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 4
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 4 Voltage"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Volts"
+                    }
+                }
+            },
+            "channel_1_current": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 1 Current"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Amperes"
+                    }
+                }
+            },
+            "channel_2_current": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 2
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 2 Current"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Amperes"
+                    }
+                }
+            },
+            "channel_3_current": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 3
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 3 Current"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Amperes"
+                    }
+                }
+            },
+            "channel_4_current": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 4
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 4 Current"
+                    },
+                    "units": {
+                        "type": "char",
+                        "data": "Amperes"
+                    }
+                }
+            },
+            "channel_1_power_meas": {
+                "type": "float",
+                "shape": [
+                    "time"
+                ],
+                "attributes": {
+                    "variable_type": {
+                        "type": "string",
+                        "data": "main"
+                    },
+                    "channel": {
+                        "type": "int",
+                        "data": 1
+                    },
+                    "long_name": {
+                        "type": "char",
+                        "data": "Channel 1 Instantaneous Active Power"
                     },
                     "units": {
                         "type": "char",
@@ -100,7 +292,7 @@ class ShellyPro4PM(Controller):
                     }
                 }
             },
-            "channel_2_consumption": {
+            "channel_2_power_meas": {
                 "type": "float",
                 "shape": [
                     "time"
@@ -116,7 +308,7 @@ class ShellyPro4PM(Controller):
                     },
                     "long_name": {
                         "type": "char",
-                        "data": "Channel 2 Power Consumption"
+                        "data": "Channel 2 Instantaneous Active Power"
                     },
                     "units": {
                         "type": "char",
@@ -124,7 +316,7 @@ class ShellyPro4PM(Controller):
                     }
                 }
             },
-            "channel_3_consumption": {
+            "channel_3_power_meas": {
                 "type": "float",
                 "shape": [
                     "time"
@@ -140,7 +332,7 @@ class ShellyPro4PM(Controller):
                     },
                     "long_name": {
                         "type": "char",
-                        "data": "Channel 3 Power Consumption"
+                        "data": "Channel 3 Instantaneous Active Power"
                     },
                     "units": {
                         "type": "char",
@@ -148,7 +340,7 @@ class ShellyPro4PM(Controller):
                     }
                 }
             },
-            "channel_4_consumption": {
+            "channel_4_power_meas": {
                 "type": "float",
                 "shape": [
                     "time"
@@ -164,7 +356,7 @@ class ShellyPro4PM(Controller):
                     },
                     "long_name": {
                         "type": "char",
-                        "data": "Channel 4 Power Consumption"
+                        "data": "Channel 4 Instantaneous Active Power"
                     },
                     "units": {
                         "type": "char",
@@ -346,7 +538,7 @@ class ShellyPro4PM(Controller):
         self.default_client_port = 1883        
 
 
-        self.controller_id_prefix = "shellypro3"
+        self.controller_id_prefix = "shellypro4pm"
 
         self.data_loop_task = None
         self.enable_task_list.append(self.recv_data_loop())
@@ -404,7 +596,8 @@ class ShellyPro4PM(Controller):
             else:
                 client_subscriptions = client_subscriptions_list.split(",")
 
-            status_sub = f"{self.controller_id_prefix}/status/#"
+            # status_sub = f"{self.controller_id_prefix}/status/#"
+            status_sub = f"{self.controller_id_prefix}/status"
             if status_sub not in client_subscriptions:
                 client_subscriptions.append(status_sub)
 
@@ -475,14 +668,21 @@ class ShellyPro4PM(Controller):
         pass
 
         while True:
-            for channel in range(0,4):
-
-                data = {
-                    "path": f"{self.controller_id_prefix}/command/switch:{channel}",
+            data = {
+                    "path": f"{self.controller_id_prefix}/command",
                     "message": "status_update"
                 }
-                self.logger.debug("get_status_loop", extra={"payload": data})
-                await self.send_data(data)
+            self.logger.debug("get_status_loop", extra={"payload": data})
+            await self.send_data(data)
+
+            # for channel in range(0,4):
+
+            #     data = {
+            #         "path": f"{self.controller_id_prefix}/command/switch:{channel}",
+            #         "message": "status_update"
+            #     }
+            #     self.logger.debug("get_status_loop", extra={"payload": data})
+            #     await self.send_data(data)
             await asyncio.sleep(5)
     
 
@@ -510,7 +710,7 @@ class ShellyPro4PM(Controller):
 
     async def deal_with_data(self, client, data):
         if data['data']['device'] == 'shelly':
-            toggle_topic = 'shellypro4/command/switch:'
+            toggle_topic = 'shellypro4pm/command/switch:'
             channel = data['data']['channel']
             toggle_topic = toggle_topic + str(channel)
             complete_message = {'topic': toggle_topic, 'message': data['data']['message']}
@@ -533,23 +733,37 @@ class ShellyPro4PM(Controller):
                 # the only data coming from Shelly should be status
                 if data and "timestamp" in data:
                     try:
+                        record = self.build_data_record(meta=False)
+                        self.logger.debug("recv_data_loop1", extra={"record": record})
+                        record["timestamp"] = data["timestamp"]
+                        record["variables"]["time"]["data"] = data["timestamp"]
+                        self.logger.debug("recv_data_loop2", extra={"ts": data["timestamp"], "record": record})
                         
-                        channel = data["data"]["id"]
-                        output = data["data"]["output"]
+                        for input in ["input:0", "input:1", "input:2", "input:3"]:
 
-                        if channel == 0:
-                            record = self.build_data_record(meta=False)
-                            self.logger.debug("recv_data_loop1", extra={"record": record})
-                            record["timestamp"] = data["timestamp"]
-                            record["variables"]["time"]["data"] = data["timestamp"]
-                            self.logger.debug("recv_data_loop2", extra={"ts": data["timestamp"], "record": record})
+                            if input in data["data"]:
+                                channel = data["data"][input]["id"]
+                                output = data["data"][input]["output"]
+                                voltage = data["data"][input]["voltage"]
+                                current = data["data"][input]["current"]
+                                power = data["data"][input]["apower"]
 
-                            temperature = data["data"]["temperature"]["tC"]
-                            # record = self.build_data_record(meta=False)
-                            record["variables"]["temperature"]["data"] = temperature
-                            # channel 0 temperature data record
-                            self.logger.debug("recv_data_loop3", extra={"record": record})
-                            if record:
+                                if channel == 0:
+                                    temperature = data["data"][input]["temperature"]["tC"]
+                                    record["variables"]["temperature"]["data"] = temperature
+
+                                record["variables"][f"channel_{channel}_voltage"]["data"] = voltage
+                                record["variables"][f"channel_{channel}_current"]["data"] = current
+                                record["variables"][f"channel_{channel}_power_meas"]["data"] = power
+
+                                # update actual state of channel output
+                                name = f"channel_{channel}_power"
+                                actual = int(output)
+                                self.settings.set_actual(name=name, actual=actual)
+                                self.logger.debug("recv_data_loop", extra={"setting_name": name, "actual": actual, "settings": self.settings.get_settings()})
+                        
+                        self.logger.debug("recv_data_loop3", extra={"record": record})
+                        if record:
                                 event = DAQEvent.create_controller_data_update(
                                     # source="sensor.mockco-mock1-1234", data=record
                                     source=self.get_id_as_source(),
@@ -567,12 +781,6 @@ class ShellyPro4PM(Controller):
                                 # self.logger.debug("default_data_loop", extra={"m": message})
                                 await self.send_message(message)
 
-
-                        # update actual state of channel output
-                        name = f"channel_{channel}_power"
-                        actual = int(output)
-                        self.settings.set_actual(name=name, actual=actual)
-                        self.logger.debug("recv_data_loop", extra={"setting_name": name, "actual": actual, "settings": self.settings.get_settings()})
                     except KeyError as e:
                         self.logger.error("unknown response", extra={"reason": e})
                         pass
@@ -612,7 +820,6 @@ class ShellyPro4PM(Controller):
                         # self.logger.debug("settings_check", extra={"setting": setting, "setting_name": name})
                         if name in ["channel_0_power", "channel_1_power", "channel_2_power", "channel_3_power"]:
                             ch = self.metadata["variables"][name]["attributes"]["channel"]["data"]
-                            # self.logger.debug("settings_check:set_channel_power", extra={"ch": ch, "requested": setting["requested"]})
                             await self.set_channel_power(ch, setting["requested"])
 
                         self.logger.debug(
