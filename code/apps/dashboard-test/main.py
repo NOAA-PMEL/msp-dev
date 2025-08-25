@@ -890,7 +890,8 @@ async def sensor_data_update(request: Request):
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
-    await manager.broadcast(json.dumps(ce.data), "sensor", sensor_id)
+    msg = {"data-update": ce.data}
+    await manager.broadcast(json.dumps(msg), "sensor", sensor_id)
 
     # return {"message": "OK"}
     # return "ok", 200
