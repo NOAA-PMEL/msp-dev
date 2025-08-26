@@ -36,7 +36,7 @@ class ShellyPro4PM(Controller):
             "tags": {"type": "char", "data": "testing, Shelly, ShellyPro4PM, serial, tcp, ethernet, sensor, power"},
             "format_version": {
                 "type": "char",
-                "data": "1.0.0"
+                "data": "1.1.0"
             },
             "variable_types": {
                 "type": "string",
@@ -116,7 +116,7 @@ class ShellyPro4PM(Controller):
                     },
                     "long_name": {
                         "type": "char",
-                        "data": "Channel 2 Voltage"
+                        "data": "Channel 5 Voltage"
                     },
                     "units": {
                         "type": "char",
@@ -672,8 +672,8 @@ class ShellyPro4PM(Controller):
                     "path": f"{self.controller_id_prefix}/command",
                     "message": "status_update"
                 }
-                self.logger.debug("get_status_loop", extra={"payload": data})
-                await self.send_data(data)
+            self.logger.debug("get_status_loop", extra={"payload": data})
+            await self.send_data(data)
             await asyncio.sleep(time_to_next(5))
     
 
