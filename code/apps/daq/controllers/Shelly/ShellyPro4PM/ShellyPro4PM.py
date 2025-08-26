@@ -748,12 +748,12 @@ class ShellyPro4PM(Controller):
                                 current = data["data"][input]["current"]
                                 power = data["data"][input]["apower"]
 
-                                if channel == 0:
-                                    temperature = data["data"][input]["temperature"]["tC"]
-                                    record["variables"]["temperature"]["data"] = temperature
+                                # if channel == 0:
+                                temperature = data["data"][input]["temperature"]["tC"]
+                                record["variables"]["temperature"]["data"] = temperature
                                 
-                                else:
-                                    pass
+                                # else:
+                                #     pass
 
                                 record["variables"][f"channel_{channel}_voltage"]["data"] = voltage
                                 record["variables"][f"channel_{channel}_current"]["data"] = current

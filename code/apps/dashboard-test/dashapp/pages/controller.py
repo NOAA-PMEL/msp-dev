@@ -1821,10 +1821,12 @@ def update_table_1d(
     # print(f"row_data: {type(row_data)}, {row_data}, col_defs: {col_defs}")
     # if e is not None and "data" in e:
     if controller_data:
+        print('controller data', controller_data)
         new_row_data_list = []
         try:
             # sensor_data = json.loads(e["data"])
             for row_data, col_defs in zip(row_data_list, col_defs_list):
+                print('col-defs', col_defs)
                 data = {}
                 # print(f"row, col: {row_data}, {col_defs}")
                 for col in col_defs:
@@ -1858,6 +1860,7 @@ def update_table_1d(
             # print(f"row_data_list: {row_data_list}")
             if len(new_row_data_list) == 0:
                 raise PreventUpdate
+            print('row data', new_row_data_list)
             return new_row_data_list
 
         except Exception as e:
