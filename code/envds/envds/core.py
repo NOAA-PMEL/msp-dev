@@ -5,6 +5,7 @@ import uuid
 from ulid import ULID
 import asyncio
 import logging
+import logging.config
 from logfmter import Logfmter
 import traceback
 

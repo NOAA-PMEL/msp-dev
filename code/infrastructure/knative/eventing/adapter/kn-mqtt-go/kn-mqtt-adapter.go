@@ -89,14 +89,15 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 	// Convert MQTT payload to a CloudEvent
 	newEvent := event.New() // Renamed 'event' to 'newEvent' for clarity
 	payloadBytes := msg.Payload()
+	// fmt.Printf("payload: %s\n", payloadBytes)
 	// ce := &event.Event{}
 	err := json.Unmarshal(payloadBytes, &newEvent)
-	log.Printf("MSG: %s\n", msg.Payload())
-	log.Printf("payloadBytes: %s\n", payloadBytes)
-	log.Printf("newEvent: %s\n", newEvent)
+	// log.Printf("MSG: %s\n", msg.Payload())
+	// log.Printf("payloadBytes: %s\n", payloadBytes)
+	// log.Printf("newEvent: %s\n", newEvent)
 	if err != nil {
-		log.Printf("MSG: %s\n", msg.Payload())
-		log.Printf("payloadBytes: %s\n", payloadBytes)
+		// log.Printf("MSG: %s\n", msg.Payload())
+		// log.Printf("payloadBytes: %s\n", payloadBytes)
 		log.Printf("failed to unmarshal cloudevent: %s\n", err)
 		return
 	}
@@ -117,6 +118,12 @@ func (c *KNMQTTClient) mqttMessageHandler(client mqtt.Client, msg mqtt.Message) 
 	newEvent.SetExtension("sourcepath", msg.Topic())
 	// // Set the 'sourcepath' extension, which was used in the Python version
 	// ce.SetExtension("sourcepath", msg.Topic())
+    // fmt.Printf("Received CloudEvent (structured mode): %+v\n", newEvent)
+    // Access event attributes and data:
+    fmt.Printf("ID: %s\n", newEvent.ID())
+    fmt.Printf("Source: %s\n", newEvent.Source())
+    fmt.Printf("Type: %s\n", newEvent.Type())
+    fmt.Printf("Data: %s\n", newEvent.Data())
 
 	// Send the constructed CloudEvent to the channel for processing by the Knative sender loop
 	c.toKnativeChannel <- newEvent
@@ -181,10 +188,12 @@ func (c *KNMQTTClient) sendToKnativeLoop() {
 		ctx := cloudevents.ContextWithTarget(context.Background(), c.config.KnativeBroker)
 		if result := client.Send(ctx, ce); !protocol.IsACK(result) {
 			log.Printf("Failed to send CloudEvent to Knative broker: %v", result)
+			continue
 		} else {
-			log.Printf("Successfully sent CloudEvent to Knative broker: %s", ce)
+			log.Printf("Successfully sent CloudEvent to Knative broker")
 		}
 	}
+	log.Printf("Outside of toKnativeChannel loop")
 }
 
 // mqttSendHandler receives HTTP POST requests, converts them to CloudEvents, and
