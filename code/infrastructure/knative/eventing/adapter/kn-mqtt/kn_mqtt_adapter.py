@@ -179,8 +179,10 @@ class KNMQTTClient():
         while True:
             try:
                 L.debug("listen", extra={"config": self.config})
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as self.client:
-                    for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+                client_id=str(ULID())
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port,identifier=client_id) as self.client:
+                    # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+                    for topic in self.config.mqtt_topic_subscriptions.split(","):
                         # print(f"run - topic: {topic.strip()}")
                         # L.debug("run", extra={"topic": topic})
                         if topic.strip():
