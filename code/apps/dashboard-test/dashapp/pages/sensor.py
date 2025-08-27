@@ -779,6 +779,8 @@ def layout(sensor_id=None):
                     print(f"layout: {layout_options}")
             
             # make settings table
+            layout_options["layout-settings"]["time"]["table-column-defs"].append({"field": "Type"})
+
             for name, var in sensor_definition["variables"].items():
                 if var["attributes"]["variable_type"]["data"] == "setting":
                     long_name = name
