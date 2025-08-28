@@ -1894,7 +1894,7 @@ def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_
                             # col["cellRenderer"] = "DCC_Input"
                             # col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val} 
                             col["editable"] = True
-                            col["cellEditor"] = "agNumberCelEditor"
+                            col["cellEditor"] = "agNumberCellEditor"
                             col["cellEditorParams"] = {
                                 "min": min_val,
                                 "max": max_val,
