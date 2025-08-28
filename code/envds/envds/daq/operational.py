@@ -104,7 +104,7 @@ class Operational(Device):
                     "handle_settings", extra={"ce_mess": message}
                 )
         if message["type"] == det.sensor_settings_request():
-            if message["device_id"] == self.build_app_uid():
+            if message["deviceid"] == self.build_app_uid():
                 try:
                     src = message["source"]
                     setting = message.data.get("settings", None)
