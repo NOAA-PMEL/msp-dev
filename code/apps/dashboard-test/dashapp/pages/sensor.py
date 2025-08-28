@@ -1798,37 +1798,44 @@ def update_graph_2d_scatter(
 @callback(
     # Output("dbc-switch-value-changed", "children"),
     Output("ws-send-instance-buffer", "children"),
-    # Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
+    Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
     Input({"type": "settings-table", "index": ALL}, "cellValueChanged"),
     State("sensor-meta", "data"),
     State({"type": "settings-table", "index": ALL}, "rowData")
 )
-def get_requested_setting(changed_component, sensor_meta, test):
-    print('changed val', changed_component)
-    print('sensor meta', sensor_meta)
-    if changed_component:
-        requested_val = int(changed_component[0][0]['value'])
-        print('requested_val', requested_val)
-        # print('COMPONENT CHANGED', json.dumps(changed_component))
-        # requested_val = int(changed_component[0]["value"])
-        col_id = changed_component[0][0]["colId"]
-        print('col id', col_id)
-        try:
-            event = {
-                "source": "testsource",
-                "data": {"settings": col_id, "requested": requested_val},
-                "destpath": "envds/sensor/settings/request",
-                # "sensorid": sensor_meta["device_id"]
-                "deviceid": sensor_meta["device_id"]
-            }
-        except Exception as e:
-                print(f"data update error: {e}")
-                print(traceback.format_exc())
-        # return json.dumps(changed_component), json.dumps(event)
-        return json.dumps(event)
-    else:
-        raise PreventUpdate
+def get_requested_setting(changed_component, changed_input, sensor_meta, test):
+    print('changed component', changed_component)
+    print('changed input', changed_input)
+    try:
+        if changed_component:
+            print('component was changed here')
+            requested_val = int(changed_component[0]["value"])
+        if changed_input:
+            requested_val = int(changed_input[0][0]['value'])
+            print('requested_val', requested_val)
+            # print('COMPONENT CHANGED', json.dumps(changed_component))
+            # requested_val = int(changed_component[0]["value"])
+            col_id = changed_input[0][0]["colId"]
+            print('col id', col_id)
+            try:
+                event = {
+                    "source": "testsource",
+                    "data": {"settings": col_id, "requested": requested_val},
+                    "destpath": "envds/sensor/settings/request",
+                    # "sensorid": sensor_meta["device_id"]
+                    "deviceid": sensor_meta["device_id"]
+                }
+            except Exception as e:
+                    print(f"data update error: {e}")
+                    print(traceback.format_exc())
+            # return json.dumps(changed_component), json.dumps(event)
+            return json.dumps(event)
+        else:
+            raise PreventUpdate
 
+    except Exception as e:
+        print(f"requested setting error: {e}")
+        print(traceback.format_exc())
 
 
 
@@ -1837,9 +1844,6 @@ def get_requested_setting(changed_component, sensor_meta, test):
     Output({"type": "settings-table", "index": ALL}, "rowData"), 
     Output({"type": "settings-table", "index": ALL}, "columnDefs"),
     Input("sensor-settings-buffer", "data"),
-    # running=[
-    #     (Output())
-    # ]
     [
         State({"type": "settings-table", "index": ALL}, "rowData"),
         State({"type": "settings-table", "index": ALL}, "columnDefs"),
@@ -1885,8 +1889,8 @@ def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_
                             if max_val == 1:
                                 if step_val == 1:
                                     print('one')
-                                    # col["cellRenderer"] = "DBC_Switch"
-                                    # col["cellRendererParams"] = {"color": "success"}
+                                    col["cellRenderer"] = "DBC_Switch"
+                                    col["cellRendererParams"] = {"color": "success"}
                         
                         # Check if the setting should be set up as numeric input
                         elif max_val > 1:
