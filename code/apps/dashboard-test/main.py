@@ -492,7 +492,7 @@ async def sensor_ws_endpoint(
                 )
                 event['destpath'] = message['destpath']
                 # event["device_id"] = message["device_id"]
-                even["deviceid"] = message["deviceid"]
+                event["deviceid"] = message["deviceid"]
                 print('EVENT', event)
                 await send_event(event)
                 print('event sent')
