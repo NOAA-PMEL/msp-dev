@@ -779,7 +779,7 @@ def layout(sensor_id=None):
                     print(f"layout: {layout_options}")
             
             # make settings table
-            layout_options["layout-settings"]["time"]["table-column-defs"].append({"field": "Type"})
+            # layout_options["layout-settings"]["time"]["table-column-defs"].append({"field": "Type"})
 
             for name, var in sensor_definition["variables"].items():
                 if var["attributes"]["variable_type"]["data"] == "setting":
@@ -804,6 +804,7 @@ def layout(sensor_id=None):
                         "headerName": long_name,
                         "filter": False,
                         "cellDataType": data_type,
+                        # "cellRendererSelector": {'function': 'component_selector(params)'}
                     }
                     layout_options["layout-settings"]["time"]["table-column-defs"].append(cd)
 
@@ -1794,27 +1795,131 @@ def update_graph_2d_scatter(
 
 
 
-# @callback(
-#     # Output("dbc-switch-value-changed", "children"),
-#     Output("ws-send-instance-buffer", "children"),
-#     Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
-#     State("sensor-meta", "data")
-# )
-# def get_requested_setting(changed_component, sensor_meta):
-#     print('COMPONENT CHANGED', json.dumps(changed_component))
-#     requested_val = int(changed_component[0]["value"])
-#     col_id = changed_component[0]["colId"]
-#     try:
-#         event = {
-#             "source": "testsource",
-#             "data": {"settings": col_id, "requested": requested_val},
-#             "destpath": "envds/sensor/settings/request",
-#             "sensorid": sensor_meta["sensor_id"]
-#         }
-#     except Exception as e:
-#             print(f"data update error: {e}")
-#             print(traceback.format_exc())
-#     return json.dumps(changed_component), json.dumps(event)
+@callback(
+    # Output("dbc-switch-value-changed", "children"),
+    Output("ws-send-instance-buffer", "children"),
+    # Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
+    Input({"type": "settings-table", "index": ALL}, "cellValueChanged"),
+    State("sensor-meta", "data"),
+    State({"type": "settings-table", "index": ALL}, "rowData")
+)
+def get_requested_setting(changed_component, sensor_meta, test):
+    print('changed val', changed_component)
+    print('sensor meta', sensor_meta)
+    if changed_component:
+        requested_val = int(changed_component[0][0]['value'])
+        print('requested_val', requested_val)
+        # print('COMPONENT CHANGED', json.dumps(changed_component))
+        # requested_val = int(changed_component[0]["value"])
+        col_id = changed_component[0][0]["colId"]
+        print('col id', col_id)
+        try:
+            event = {
+                "source": "testsource",
+                "data": {"settings": col_id, "requested": requested_val},
+                "destpath": "envds/sensor/settings/request",
+                # "sensorid": sensor_meta["device_id"]
+                "device_id": sensor_meta["device_id"]
+            }
+        except Exception as e:
+                print(f"data update error: {e}")
+                print(traceback.format_exc())
+        # return json.dumps(changed_component), json.dumps(event)
+        return json.dumps(event)
+    else:
+        raise PreventUpdate
+
+
+
+
+
+@callback(
+    Output({"type": "settings-table", "index": ALL}, "rowData"), 
+    Output({"type": "settings-table", "index": ALL}, "columnDefs"),
+    Input("sensor-settings-buffer", "data"),
+    # running=[
+    #     (Output())
+    # ]
+    [
+        State({"type": "settings-table", "index": ALL}, "rowData"),
+        State({"type": "settings-table", "index": ALL}, "columnDefs"),
+        State("sensor-definition", "data")
+    ],
+)
+def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_definition):
+    if sensor_settings:
+        new_row_data_list = []
+        new_column_defs = []
+        try:
+            for row_data, col_defs in zip(row_data_list, col_defs_list):
+                print('col defs', col_defs)
+                print('row data', row_data)
+                data = {}
+                # data["Type"] = "Actual"
+                for col in col_defs:
+                    print('col', col)
+                    name = col["field"]
+                    if name == 'Type':
+                        continue
+                    if name in sensor_settings["settings"]:
+                        print('name', name)
+                        data[name] = sensor_settings["settings"][name]["data"]["actual"]
+                        print('data', data[name])
+                    else:
+                        data[name] = ""
+                    
+                    if row_data:
+                        if row_data[0][col['field']] == data[name]:
+                            raise PreventUpdate 
+
+                    # Make sure the settings contain integers or floats
+                    setting_type = sensor_definition["variables"][name]["attributes"]["valid_min"]["type"]
+                    if setting_type == "int" or setting_type == "float":
+                        min_val = sensor_definition["variables"][name]["attributes"]["valid_min"]["data"]
+                        max_val = sensor_definition["variables"][name]["attributes"]["valid_max"]["data"]
+                        step_val = sensor_definition["variables"][name]["attributes"]["step_increment"]["data"]
+                        print('min, max, step', min_val, max_val, step_val)
+
+                        # Check if the setting should be set up as a boolean switch
+                        if min_val == 0:
+                            if max_val == 1:
+                                if step_val == 1:
+                                    print('one')
+                                    # col["cellRenderer"] = "DBC_Switch"
+                                    # col["cellRendererParams"] = {"color": "success"}
+                        
+                        # Check if the setting should be set up as numeric input
+                        elif max_val > 1:
+                            print('two')
+                            # col["cellRenderer"] = "DCC_Input"
+                            # col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val} 
+                            col["editable"] = True
+                            col["cellEditor"] = "agNumberCelEditor"
+                            col["cellEditorParams"] = {
+                                "min": min_val,
+                                "max": max_val,
+                                "step": step_val,
+                                "showStepperButtons": True
+                            }
+
+                    new_column_defs.append(col)
+                row_data.insert(0, data)
+                print('row data 2', row_data)
+                new_row_data_list.append(row_data[0:1])
+                print('new data list', new_row_data_list)
+            if len(new_row_data_list) == 0:
+                raise PreventUpdate
+            return new_row_data_list, [new_column_defs]
+            # return new_row_data_list
+            # return dash.no_update
+        except Exception as e:
+            print(f"data update error: {e}")
+            print(traceback.format_exc())
+        raise PreventUpdate
+    else:
+        raise PreventUpdate
+
+
 
 
 
@@ -1822,7 +1927,7 @@ def update_graph_2d_scatter(
 
 # @callback(
 #     Output({"type": "settings-table", "index": ALL}, "rowData"), 
-#     Output({"type": "settings-table", "index": ALL}, "columnDefs"),
+#     # Output({"type": "settings-table", "index": ALL}, "columnDefs"),
 #     Input("sensor-settings-buffer", "data"),
 #     [
 #         State({"type": "settings-table", "index": ALL}, "rowData"),
@@ -1830,58 +1935,44 @@ def update_graph_2d_scatter(
 #         State("sensor-definition", "data")
 #     ],
 # )
-# def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_definition):
+# def update_settings_table_actual(sensor_settings, row_data_list, col_defs_list, sensor_definition):
 #     if sensor_settings:
-#             new_row_data_list = []
-#             new_column_defs = []
-#             try:
-#                 for row_data, col_defs in zip(row_data_list, col_defs_list):
-#                     print('col defs', col_defs)
-#                     print('row data', row_data)
-#                     data = {}
-#                     for col in col_defs:
-#                         print('col', col)
-#                         name = col["field"]
-#                         if name in sensor_settings["settings"]:
-#                             print('name', name)
-#                             data[name] = sensor_settings["settings"][name]["data"]["actual"]
-#                             print('data', data[name])
-#                         else:
-#                             data[name] = ""
+#         new_row_data_list = []
+#         new_column_defs = []
+#         try:
+#             for row_data, col_defs in zip(row_data_list, col_defs_list):
+#                 print('col defs', col_defs)
+#                 print('row data', row_data)
+#                 data = {}
+#                 data["Type"] = "Actual"
+#                 for col in col_defs:
+#                     print('col', col)
+#                     name = col["field"]
+#                     if name == 'Type':
+#                         continue
+#                     if name in sensor_settings["settings"]:
+#                         print('name', name)
+#                         data[name] = sensor_settings["settings"][name]["data"]["actual"]
+#                         print('data', data[name])
+#                     else:
+#                         data[name] = ""
 
-#                         # Make sure the settings contain integers or floats
-#                         setting_type = sensor_definition["variables"][name]["attributes"]["valid_min"]["type"]
-#                         if setting_type == "int" or setting_type == "float":
-#                             min_val = sensor_definition["variables"][name]["attributes"]["valid_min"]["data"]
-#                             max_val = sensor_definition["variables"][name]["attributes"]["valid_max"]["data"]
-#                             step_val = sensor_definition["variables"][name]["attributes"]["step_increment"]["data"]
-#                             print('min, max, step', min_val, max_val, step_val)
 
-#                             # Check if the setting should be set up as a boolean switch
-#                             if min_val == 0:
-#                                 if max_val == 1:
-#                                     if step_val == 1:
-#                                         col["cellRenderer"] = "DBC_Switch"
-#                                         col["cellRendererParams"] = {"color": "success"}
-                            
-#                             # Check if the setting should be set up as numeric input
-#                             elif max_val > 1:
-#                                 col["cellRenderer"] = "DCC_Input"
-#                                 col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val} 
-
-#                         new_column_defs.append(col)
-#                     row_data.insert(0, data)
-#                     new_row_data_list.append(row_data[0:1])
-#                 if len(new_row_data_list) == 0:
-#                     raise PreventUpdate
-#                 return new_row_data_list, [new_column_defs]
-#             except Exception as e:
-#                 print(f"data update error: {e}")
-#                 print(traceback.format_exc())
-#             raise PreventUpdate
+#                 row_data.insert(0, data)
+#                 print('row data 2', row_data)
+#                 new_row_data_list.append(row_data[0:1])
+#                 print('new data list', new_row_data_list)
+#             if len(new_row_data_list) == 0:
+#                 raise PreventUpdate
+#             # return new_row_data_list, [new_column_defs]
+#             return new_row_data_list
+#             # return dash.no_update
+#         except Exception as e:
+#             print(f"data update error: {e}")
+#             print(traceback.format_exc())
+#         raise PreventUpdate
 #     else:
 #         raise PreventUpdate
-
 
 
 

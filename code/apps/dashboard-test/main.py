@@ -483,6 +483,18 @@ async def sensor_ws_endpoint(
             data = await websocket.receive_text()
             print(f"sensor data: {data}")
             message = json.loads(data)
+
+            if 'sensor/settings/request' in message['destpath']:
+                event = DAQEvent.create_sensor_settings_request(
+                    source = message['source'],
+                    data = message['data']
+                )
+                event['destpath'] = message['destpath']
+                event["device_id"] = message["device_id"]
+                print('EVENT', event)
+                await send_event(event)
+                print('event sent')
+
             if "client-request" in message:
                 # await manager.broadcast(json.dumps(message), "sensor", client_id)
                 if message['client-request'] == "start-updates":
