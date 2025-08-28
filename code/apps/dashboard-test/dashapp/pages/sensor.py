@@ -1819,7 +1819,7 @@ def get_requested_setting(changed_component, sensor_meta, test):
                 "data": {"settings": col_id, "requested": requested_val},
                 "destpath": "envds/sensor/settings/request",
                 # "sensorid": sensor_meta["device_id"]
-                "device_id": sensor_meta["device_id"]
+                "deviceid": sensor_meta["device_id"]
             }
         except Exception as e:
                 print(f"data update error: {e}")

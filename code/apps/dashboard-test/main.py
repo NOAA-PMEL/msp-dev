@@ -369,6 +369,7 @@ async def send_event(ce: CloudEvent):
             L.error(f"HTTP Timeout: {ce}")
             pass
         except httpx.HTTPError as e:
+            print('this error here')
             L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
     except Exception as e:
         L.error("send_event", extra={"reason": e})
@@ -490,7 +491,8 @@ async def sensor_ws_endpoint(
                     data = message['data']
                 )
                 event['destpath'] = message['destpath']
-                event["device_id"] = message["device_id"]
+                # event["device_id"] = message["device_id"]
+                even["deviceid"] = message["deviceid"]
                 print('EVENT', event)
                 await send_event(event)
                 print('event sent')
