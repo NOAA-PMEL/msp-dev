@@ -58,7 +58,8 @@ class Sensor(Device):
 
         topic_base = self.get_id_as_topic()
         self.set_route(
-            subscription=f"{topic_base}/settings/request",
+            # subscription=f"{topic_base}/settings/request",
+            subscription = "envds/sensor/settings/request",
             route_key=det.sensor_settings_request(),
             route=self.handle_settings,
             enable=enable
