@@ -98,6 +98,31 @@ class Operational(Device):
                     except envdsRunTransitionException:
                         pass
 
+
+    async def handle_settings(self, message: CloudEvent):
+        self.logger.debug(
+                    "handle_settings", extra={"ce_mess": message}
+                )
+        if message["type"] == det.sensor_settings_request():
+            if message["device_id"] == self.build_app_uid():
+                try:
+                    src = message["source"]
+                    setting = message.data.get("settings", None)
+                    requested = message.data.get("requested", None)
+                    self.logger.debug(
+                        "handle_settings", extra={"source": src, "setting": setting, "requested": requested}
+                    )
+                    if (setting is not None) and (requested is not None):
+                        self.settings.set_requested(
+                            name=setting, requested=requested
+                        )
+
+                except (KeyError, Exception) as e:
+                    self.logger.error("databuffer save error", extra={"error": e})
+            else:
+                pass          
+
+
     # async def register_device(self):
         
     #     while True:
