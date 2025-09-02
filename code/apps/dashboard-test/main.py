@@ -933,7 +933,7 @@ async def sensor_settings_update(request: Request):
         except InvalidStructuredJSON:
             L.error("not a valid cloudevent")
             # return "not a valid cloudevent", 400
-            return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
             # msg = {"result": "NOTOK"}
             # return get_response_event(msg, 500)
 
@@ -962,7 +962,7 @@ async def sensor_settings_update(request: Request):
         except KeyError:
             L.error("dashboard sensor settings update error", extra={"sensor": ce.data})
             # return "bad sensor data", 400
-            return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
             # msg = {"result": "NOTOK"}
             # return get_response_event(msg, 500)
 
@@ -971,7 +971,7 @@ async def sensor_settings_update(request: Request):
         print('sensor settings update broadcasted')
     except Exception as e:
         L.error("sensor_settings_update-all", extra={"reason": e})
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
@@ -1065,7 +1065,7 @@ async def controller_settings_update(request: Request):
         except InvalidStructuredJSON:
             L.error("not a valid cloudevent")
             # return "not a valid cloudevent", 400
-            return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
             # msg = {"result": "NOTOK"}
             # return get_response_event(msg, 500)
 
@@ -1094,14 +1094,14 @@ async def controller_settings_update(request: Request):
         except KeyError:
             L.error("dashboard controller settings update error", extra={"sensor": ce.data})
             # return "bad sensor data", 400
-            return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
             # msg = {"result": "NOTOK"}
             # return get_response_event(msg, 500)
         msg = {"settings-update": ce.data}
         await manager.broadcast(json.dumps(msg), "controller", controller_id)
     except Exception as e:
         L.error("controller_settings_update-all", extra={"reason": e})
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
     # return {"message": "OK"}
