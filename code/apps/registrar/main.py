@@ -136,6 +136,6 @@ async def registry_sync(request: Request):
         L.error("registry-sync", extra={"reason": e})
         pass
         # return "",204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)

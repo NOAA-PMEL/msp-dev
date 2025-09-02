@@ -873,7 +873,7 @@ async def sensor_data_update(request: Request):
     except InvalidStructuredJSON:
         L.error("not a valid cloudevent")
         # return "not a valid cloudevent", 400
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
     # parts = Path(ce["source"]).parts
@@ -901,7 +901,7 @@ async def sensor_data_update(request: Request):
     except KeyError:
         L.error("dashboard sensor update error", extra={"sensor": ce.data})
         # return "bad sensor data", 400
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
@@ -1001,7 +1001,7 @@ async def controller_data_update(request: Request):
     except InvalidStructuredJSON:
         L.error("not a valid cloudevent")
         # return "not a valid cloudevent", 400
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
@@ -1030,7 +1030,7 @@ async def controller_data_update(request: Request):
     except KeyError:
         L.error("controller sensor update error", extra={"sensor": ce.data})
         # return "bad sensor data", 400
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
