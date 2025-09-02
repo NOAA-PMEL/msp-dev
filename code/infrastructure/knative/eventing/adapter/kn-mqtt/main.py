@@ -139,4 +139,4 @@ async def mqtt_send(request: Request):
         # pass
         # # return {"message": "OK"}
         # return "",204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)

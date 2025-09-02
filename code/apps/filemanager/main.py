@@ -119,7 +119,7 @@ async def device_data_save(request: Request):
         # print(e)
         L.error("send", extra={"reason": e})
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
@@ -141,7 +141,7 @@ async def controller_data_save(request: Request):
         # print(e)
         L.error("send", extra={"reason": e})
         # return "", 204
-        # return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # return Response(status_code=status.HTTP_204_NO_CONTENT)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
