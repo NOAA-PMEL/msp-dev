@@ -1716,18 +1716,17 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
     Output("controller-ws-send-instance-buffer", "children"),
     Input({"type": "controller-settings-table", "index": ALL}, "cellRendererData"),
     Input({"type": "controller-settings-table", "index": ALL}, "cellValueChanged"),
-    State("controller-meta", "data"),
-    State({"type": "controller-settings-table", "index": ALL}, "rowData")
+    State("controller-meta", "data")
 )
-def get_requested_setting(changed_component, changed_input, controller_meta, test):
+def get_requested_setting(changed_component, changed_input, controller_meta):
     print('changed component', changed_component)
     print('changed input', changed_input)
     try:
-        if changed_component is not None:
+        if any(component is not None for component in changed_component):
             print('component was changed here')
             requested_val = int(changed_component[0]["value"])
             col_id = changed_component[0]["colId"]
-        elif changed_input is not None:
+        elif any(component is not None for component in changed_input):
             requested_val = int(changed_input[0][0]['value'])
             print('requested_val', requested_val)
             col_id = changed_input[0][0]["colId"]
@@ -1772,12 +1771,9 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                 print('col defs', col_defs)
                 print('row data', row_data)
                 data = {}
-                # data["Type"] = "Actual"
                 for col in col_defs:
                     print('col', col)
                     name = col["field"]
-                    if name == 'Type':
-                        continue
                     if name in controller_settings["settings"]:
                         print('name', name)
                         data[name] = controller_settings["settings"][name]["data"]["actual"]
@@ -1785,11 +1781,13 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                     else:
                         data[name] = ""
                     
-                    # if row_data:
-                    #     print('current row data', row_data[0][col['field']])
-                    #     print('actual data', data[name])
-                    #     if row_data[0][col['field']] == data[name]:
-                    #         continue 
+                    if row_data:
+                        if row_data[0][col['field']] == data[name]:
+                            # Check if we've looped through all the columns
+                            if col == col_defs[-1]:
+                                return dash.no_update
+                            else:
+                                continue
 
                     # Make sure the settings contain integers or floats
                     setting_type = controller_definition["variables"][name]["attributes"]["valid_min"]["type"]
@@ -1803,15 +1801,11 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                         if min_val == 0:
                             if max_val == 1:
                                 if step_val == 1:
-                                    print('one')
                                     col["cellRenderer"] = "DBC_Switch"
                                     col["cellRendererParams"] = {"color": "success"}
                         
                         # Check if the setting should be set up as numeric input
                         elif max_val > 1:
-                            print('two')
-                            # col["cellRenderer"] = "DCC_Input"
-                            # col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val} 
                             col["editable"] = True
                             col["cellEditor"] = "agNumberCellEditor"
                             col["cellEditorParams"] = {
@@ -1829,8 +1823,6 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
             if len(new_row_data_list) == 0:
                 raise PreventUpdate
             return new_row_data_list, [new_column_defs]
-            # return new_row_data_list
-            # return dash.no_update
         except Exception as e:
             print(f"data update error: {e}")
             print(traceback.format_exc())

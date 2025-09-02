@@ -267,6 +267,8 @@ def build_tables(layout_options):
                                 rowData=[],
                                 columnDefs=layout_options["layout-settings"][dim]["table-column-defs"],
                                 columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
+                                dashGridOptions={"domLayout": "autoHeight"},
+                                style={"height": None, "maxHeight": "400px", "overflow": "auto"}
                             )
                         ],
                         title=title,
@@ -1800,39 +1802,38 @@ def update_graph_2d_scatter(
     Output("ws-send-instance-buffer", "children"),
     Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
     Input({"type": "settings-table", "index": ALL}, "cellValueChanged"),
-    State("sensor-meta", "data"),
-    State({"type": "settings-table", "index": ALL}, "rowData")
+    State("sensor-meta", "data")
 )
-def get_requested_setting(changed_component, changed_input, sensor_meta, test):
+def get_requested_setting(changed_component, changed_input, sensor_meta):
     print('changed component', changed_component)
     print('changed input', changed_input)
     try:
-        if changed_component:
+        if any(component is not None for component in changed_component):
             print('component was changed here')
             requested_val = int(changed_component[0]["value"])
-        if changed_input:
+            col_id = changed_component[0]["colId"]
+        elif any(component is not None for component in changed_input):
             requested_val = int(changed_input[0][0]['value'])
             print('requested_val', requested_val)
             # print('COMPONENT CHANGED', json.dumps(changed_component))
             # requested_val = int(changed_component[0]["value"])
             col_id = changed_input[0][0]["colId"]
             print('col id', col_id)
-            try:
-                event = {
-                    "source": "testsource",
-                    "data": {"settings": col_id, "requested": requested_val},
-                    "destpath": "envds/sensor/settings/request",
-                    # "sensorid": sensor_meta["device_id"]
-                    "deviceid": sensor_meta["device_id"]
-                }
-            except Exception as e:
-                    print(f"data update error: {e}")
-                    print(traceback.format_exc())
-            # return json.dumps(changed_component), json.dumps(event)
-            return json.dumps(event)
         else:
             raise PreventUpdate
-
+        try:
+            event = {
+                "source": "testsource",
+                "data": {"settings": col_id, "requested": requested_val},
+                "destpath": "envds/sensor/settings/request",
+                "deviceid": sensor_meta["device_id"]
+            }
+        except Exception as e:
+                print(f"data update error: {e}")
+                print(traceback.format_exc())
+        # return json.dumps(changed_component), json.dumps(event)
+        return json.dumps(event)
+    
     except Exception as e:
         print(f"requested setting error: {e}")
         print(traceback.format_exc())
@@ -1859,12 +1860,9 @@ def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_
                 print('col defs', col_defs)
                 print('row data', row_data)
                 data = {}
-                # data["Type"] = "Actual"
                 for col in col_defs:
                     print('col', col)
                     name = col["field"]
-                    if name == 'Type':
-                        continue
                     if name in sensor_settings["settings"]:
                         print('name', name)
                         data[name] = sensor_settings["settings"][name]["data"]["actual"]
@@ -1872,6 +1870,8 @@ def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_
                     else:
                         data[name] = ""
                     
+                    # This only works right now because there's only one row in any of the sensors for settings
+                    # Needs to be updated to work when there is more than one row
                     if row_data:
                         if row_data[0][col['field']] == data[name]:
                             raise PreventUpdate 
@@ -1888,15 +1888,11 @@ def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_
                         if min_val == 0:
                             if max_val == 1:
                                 if step_val == 1:
-                                    print('one')
                                     col["cellRenderer"] = "DBC_Switch"
                                     col["cellRendererParams"] = {"color": "success"}
                         
                         # Check if the setting should be set up as numeric input
                         elif max_val > 1:
-                            print('two')
-                            # col["cellRenderer"] = "DCC_Input"
-                            # col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val} 
                             col["editable"] = True
                             col["cellEditor"] = "agNumberCellEditor"
                             col["cellEditorParams"] = {
@@ -1914,70 +1910,12 @@ def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_
             if len(new_row_data_list) == 0:
                 raise PreventUpdate
             return new_row_data_list, [new_column_defs]
-            # return new_row_data_list
-            # return dash.no_update
         except Exception as e:
             print(f"data update error: {e}")
             print(traceback.format_exc())
         raise PreventUpdate
     else:
         raise PreventUpdate
-
-
-
-
-
-
-
-# @callback(
-#     Output({"type": "settings-table", "index": ALL}, "rowData"), 
-#     # Output({"type": "settings-table", "index": ALL}, "columnDefs"),
-#     Input("sensor-settings-buffer", "data"),
-#     [
-#         State({"type": "settings-table", "index": ALL}, "rowData"),
-#         State({"type": "settings-table", "index": ALL}, "columnDefs"),
-#         State("sensor-definition", "data")
-#     ],
-# )
-# def update_settings_table_actual(sensor_settings, row_data_list, col_defs_list, sensor_definition):
-#     if sensor_settings:
-#         new_row_data_list = []
-#         new_column_defs = []
-#         try:
-#             for row_data, col_defs in zip(row_data_list, col_defs_list):
-#                 print('col defs', col_defs)
-#                 print('row data', row_data)
-#                 data = {}
-#                 data["Type"] = "Actual"
-#                 for col in col_defs:
-#                     print('col', col)
-#                     name = col["field"]
-#                     if name == 'Type':
-#                         continue
-#                     if name in sensor_settings["settings"]:
-#                         print('name', name)
-#                         data[name] = sensor_settings["settings"][name]["data"]["actual"]
-#                         print('data', data[name])
-#                     else:
-#                         data[name] = ""
-
-
-#                 row_data.insert(0, data)
-#                 print('row data 2', row_data)
-#                 new_row_data_list.append(row_data[0:1])
-#                 print('new data list', new_row_data_list)
-#             if len(new_row_data_list) == 0:
-#                 raise PreventUpdate
-#             # return new_row_data_list, [new_column_defs]
-#             return new_row_data_list
-#             # return dash.no_update
-#         except Exception as e:
-#             print(f"data update error: {e}")
-#             print(traceback.format_exc())
-#         raise PreventUpdate
-#     else:
-#         raise PreventUpdate
-
 
 
 
