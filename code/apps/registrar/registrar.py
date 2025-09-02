@@ -143,7 +143,7 @@ class Registrar:
                 self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
         except Exception as e:
             self.logger.error("send_event", extra={"reason": e})
-        # await asyncio.sleep(0.01)
+        await asyncio.sleep(0.01)
 
     async def submit_request(self, path: str, query: dict):
         try:
@@ -369,6 +369,7 @@ class Registrar:
                 # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
                 update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
                 await self.send_event(update)
+                await asyncio.sleep(0.1) # throttle outgoing 
         except Exception as e:
             self.logger.error("send_device_definition_update", extra={"reason": e})
 
@@ -389,6 +390,7 @@ class Registrar:
                 # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
                 update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
                 await self.send_event(update)
+                await asyncio.sleep(0.1) # throttle outgoing 
         except Exception as e:
             self.logger.error("send_controller_definition_update", extra={"reason": e})
 
