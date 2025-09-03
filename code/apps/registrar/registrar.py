@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     port: int = 8787
     debug: bool = False
     daq_id: str | None = None
+    mqtt_bridge_prefix: str | None = None
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
@@ -146,7 +147,7 @@ class Registrar:
                 self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
         except Exception as e:
             self.logger.error("send_event", extra={"reason": e})
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.1)
 
     async def submit_request(self, path: str, query: dict):
         try:
@@ -185,14 +186,20 @@ class Registrar:
                         source=f"envds.{self.config.daq_id}.registrar", data=reg
                     )
                     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                    bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+
+                    destpath = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    if self.config.mqtt_bridge_prefix:
+                        destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                    
+                    # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    bcast["destpath"] = destpath
                     await self.send_event(bcast)
 
                 # source=f"envds.{self.config.daq_id}.datastore",
             except Exception as e:
                 self.logger.error("get_device_definitions_loop", extra={"reason": e})
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(15)
 
     async def get_device_instance(self, devices: list[str]) -> list:
         pass
@@ -229,14 +236,20 @@ class Registrar:
                         source=f"envds.{self.config.daq_id}.registrar", data=reg
                     )
                     # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
-                    bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    destpath = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    if self.config.mqtt_bridge_prefix:
+                        destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                    
+                    # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    bcast["destpath"] = destpath
+                    # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
                     await self.send_event(bcast)
 
                 # source=f"envds.{self.config.daq_id}.datastore",
             except Exception as e:
                 self.logger.error("get_controller_definitions_loop", extra={"reason": e})
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(15)
 
     async def get_controller_instance(self, controllers: list[str]) -> list:
         pass
@@ -244,7 +257,7 @@ class Registrar:
     async def get_controller_instances_loop(self):
         while True:
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(15)
 
     async def handle_registry_sync_loop(self):
         while True:
@@ -378,7 +391,15 @@ class Registrar:
                     },  # just send the dict
                 )
                 # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                
+                # update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                destpath = f"envds/{self.config.daq_id}/registry/sync-update"
+                if self.config.mqtt_bridge_prefix:
+                    destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                
+                # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                update["destpath"] = destpath
+
                 await self.send_event(update)
                 await asyncio.sleep(0.1) # throttle outgoing 
         except Exception as e:
@@ -399,7 +420,14 @@ class Registrar:
                     },  # just send the dict
                 )
                 # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
-                update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                
+                # update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                destpath = f"envds/{self.config.daq_id}/registry/sync-update"
+                if self.config.mqtt_bridge_prefix:
+                    destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                
+                # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                update["destpath"] = destpath
                 await self.send_event(update)
                 await asyncio.sleep(0.1) # throttle outgoing 
         except Exception as e:
@@ -422,20 +450,28 @@ class Registrar:
                     if len(missing_remote) > 0:
                         for id in missing_remote:
                             await self.send_device_definition_update(id)
-                            # query = {"device_definition_id": id}
-                            # results = await self.submit_request(
-                            #     path="device-definition/registry/get", query=query
-                            # )
-                            # if results:
-                            #     update = DAQEvent.create_registry_sync_update(
-                            #         source=f"envds.{self.config.daq_id}.registrar",
-                            #         data={
-                            #             "device-definition-update": results[0]
-                            #         },  # just send the dict
-                            #     )
-                            #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                            #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
-                            #     await self.send_event(update)
+                            query = {"device_definition_id": id}
+                            results = await self.submit_request(
+                                path="device-definition/registry/get", query=query
+                            )
+                            if results:
+                                update = DAQEvent.create_registry_sync_update(
+                                    source=f"envds.{self.config.daq_id}.registrar",
+                                    data={
+                                        "device-definition-update": results[0]
+                                    },  # just send the dict
+                                )
+                                # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+
+                                # update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                                destpath = f"envds/{self.config.daq_id}/registry/sync-update"
+                                if self.config.mqtt_bridge_prefix:
+                                    destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                                
+                                # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                                update["destpath"] = destpath
+
+                                await self.send_event(update)
                 except Exception as e:
                     self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
 
@@ -454,7 +490,15 @@ class Registrar:
                             },  # just send the dict
                         )
                         # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                        request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+
+                        # request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+                        destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+                        if self.config.mqtt_bridge_prefix:
+                            destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                        
+                        # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                        request["destpath"] = destpath
+
                         await self.send_event(request)
                 except Exception as e:
                     self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
@@ -507,7 +551,15 @@ class Registrar:
                             },  # just send the dict
                         )
                         # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
-                        request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+
+                        # request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+                        destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+                        if self.config.mqtt_bridge_prefix:
+                            destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                        
+                        # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                        request["destpath"] = destpath
+
                         await self.send_event(request)
                 except Exception as e:
                     self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
