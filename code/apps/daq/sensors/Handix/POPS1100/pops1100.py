@@ -587,7 +587,7 @@ class POPS1100(Sensor):
                 "pops1100.configure", extra={"interfaces": conf["interfaces"]}
             )
 
-        settings_def = self.get_definition_by_variable_type(APS3321.metadata, variable_type="setting")
+        settings_def = self.get_definition_by_variable_type(POPS1100.metadata, variable_type="setting")
 
         for name, setting in settings_def["variables"].items():
         
