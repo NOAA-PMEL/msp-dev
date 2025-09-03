@@ -24,7 +24,9 @@ from envds.util.util import (
     get_datetime,
     get_datetime_string,
 )
-from envds.daq.sensor import Sensor, SensorConfig, SensorVariable, SensorMetadata
+from envds.daq.sensor import Sensor
+from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
+
 
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
@@ -64,6 +66,7 @@ class POPS1100(Sensor):
             "format_version": {"type": "char", "data": "1.0.0"},
             "variable_types": {"type": "string", "data": "main, setting, calibration"}
         },
+        "dimensions": {"time": 0},
         "variables": {
             "time": {
                 "type": "str",
@@ -584,20 +587,24 @@ class POPS1100(Sensor):
                 "pops1100.configure", extra={"interfaces": conf["interfaces"]}
             )
 
-        for name, setting in POPS1100.metadata["settings"].items():
+        settings_def = self.get_definition_by_variable_type(APS3321.metadata, variable_type="setting")
+
+        for name, setting in settings_def["variables"].items():
+        
             requested = setting["attributes"]["default_value"]["data"]
             if "settings" in config and name in config["settings"]:
                 requested = config["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
 
-        meta = SensorMetadata(
+        meta = DeviceMetadata(
             attributes=POPS1100.metadata["attributes"],
+            dimensions=POPS1100.metdata["dimensions"],
             variables=POPS1100.metadata["variables"],
-            settings=POPS1100.metadata["settings"],
+            settings=settings_def["variables"]
         )
 
-        self.config = SensorConfig(
+        self.config = DeviceConfig(
             make=POPS1100.metadata["attributes"]["make"]["data"],
             model=POPS1100.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
@@ -754,15 +761,6 @@ class POPS1100(Sensor):
 
             await asyncio.sleep(0.1)
 
-    # async def start_command(self):
-    #     pass # Log,{sampling interval}
-
-    # async def stop_command(self):
-    #     pass # Log,0
-
-    # def stop(self):
-    #     asyncio.create_task(self.stop_sampling())
-    #     super().start()
 
     async def default_data_loop(self):
 
