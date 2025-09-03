@@ -88,7 +88,7 @@ class Registrar:
         self.task_list.append(self.get_device_instances_loop())
         self.task_list.append(self.get_controller_definitions_loop())
         self.task_list.append(self.get_controller_instances_loop())
-        self.task.list.append(self.handle_registry_sync_loop())
+        self.task_list.append(self.handle_registry_sync_loop())
         for task in self.task_list:
             asyncio.create_task(task)
 
