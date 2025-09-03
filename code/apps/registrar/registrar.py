@@ -88,11 +88,14 @@ class Registrar:
         self.task_list.append(self.get_device_instances_loop())
         self.task_list.append(self.get_controller_definitions_loop())
         self.task_list.append(self.get_controller_instances_loop())
+        self.task.list.append(self.handle_registry_sync_loop())
         for task in self.task_list:
             asyncio.create_task(task)
 
         self.current_device_definition_list = []
         self.current_controller_definition_list = []
+
+        self.sync_bcast_buffer = asyncio.Queue(maxsize=100)
 
         self.http_client = None
 
@@ -243,6 +246,14 @@ class Registrar:
 
             await asyncio.sleep(5)
 
+    async def handle_registry_sync_loop(self):
+        while True:
+            try:
+                message = await self.sync_bcast_buffer.get()
+                await self.handle_registry_sync(message)
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                self.logger.error("handle_registry_sync_loop", extra={"reason": e})
 
     async def handle_registry_sync(self, message: CloudEvent):
 
@@ -268,7 +279,7 @@ class Registrar:
             )
             # respond with requested information
             await self.registry_send_update(message)
-    
+
     async def registry_do_update(self, message: CloudEvent):
         try:
 
