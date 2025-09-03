@@ -47,7 +47,6 @@ from datetime import datetime
 
 task_list = []
 
-
 class APS3321(Sensor):
     """docstring for APS3321."""
 
