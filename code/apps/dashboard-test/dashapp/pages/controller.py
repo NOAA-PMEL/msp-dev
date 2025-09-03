@@ -1771,6 +1771,15 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                 print('col defs', col_defs)
                 print('row data', row_data)
                 data = {}
+                i = 0
+                for col in col_defs:
+                    i += 1
+                    if row_data:
+                        if controller_settings["settings"][name]["data"]["actual"] != row_data[0][col['field']]:
+                            break
+                        elif i == len(col_defs):
+                            return dash.no_update
+
                 for col in col_defs:
                     print('col', col)
                     name = col["field"]
@@ -1781,13 +1790,13 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                     else:
                         data[name] = ""
                     
-                    if row_data:
-                        if row_data[0][col['field']] == data[name]:
-                            # Check if we've looped through all the columns
-                            if col == col_defs[-1]:
-                                return dash.no_update
-                            else:
-                                continue
+                    # if row_data:
+                    #     if row_data[0][col['field']] == data[name]:
+                    #         # Check if we've looped through all the columns
+                    #         if (col == col_defs[-1]) and (i == len(col_defs)):
+                    #             return dash.no_update
+                    #         else:
+                    #             pass
 
                     # Make sure the settings contain integers or floats
                     setting_type = controller_definition["variables"][name]["attributes"]["valid_min"]["type"]
