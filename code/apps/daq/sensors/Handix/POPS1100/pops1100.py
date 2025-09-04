@@ -662,9 +662,9 @@ class POPS1100(Sensor):
                 # if path_id == "default":
                 if path_id == iface_path:
                     self.logger.debug(
-                        "interface_recv_data", extra={"data": message.data.data}
+                        "interface_recv_data", extra={"data": message.data}
                     )
-                    await self.default_data_buffer.put(message.data)
+                    await self.default_data_buffer.put(message)
             except KeyError:
                 pass
 
