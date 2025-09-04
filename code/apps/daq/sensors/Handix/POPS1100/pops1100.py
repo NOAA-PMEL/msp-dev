@@ -27,10 +27,6 @@ from envds.util.util import (
 )
 from envds.daq.sensor import Sensor
 from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
-<<<<<<< HEAD
-
-=======
->>>>>>> controller-dashboard
 
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
@@ -612,14 +608,9 @@ class POPS1100(Sensor):
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
-<<<<<<< HEAD
             dimensions=self.metadata["dimensions"],
             variables=self.metadata["variables"],
             settings=settings_def["variables"]
-=======
-            variables=self.metadata["variables"],
-            settings=self.metadata["settings"],
->>>>>>> controller-dashboard
         )
 
         self.config = DeviceConfig(
