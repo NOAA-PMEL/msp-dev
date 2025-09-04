@@ -7,6 +7,7 @@ import signal
 import sys
 import os
 import logging
+import json
 
 # from logfmter import Logfmter
 import logging.config
@@ -484,6 +485,15 @@ class POPS1100(Sensor):
 
         self.default_data_buffer = asyncio.Queue()
 
+        self.sensor_definition_file = "Handix_POPS1100_sensor_definition.json"
+
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
+
         self.lower_dp_bound = [
             115.,
             125.,
@@ -587,7 +597,7 @@ class POPS1100(Sensor):
                 "pops1100.configure", extra={"interfaces": conf["interfaces"]}
             )
 
-        settings_def = self.get_definition_by_variable_type(POPS1100.metadata, variable_type="setting")
+        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
 
         for name, setting in settings_def["variables"].items():
         
@@ -598,15 +608,15 @@ class POPS1100(Sensor):
             self.settings.set_setting(name, requested=requested)
 
         meta = DeviceMetadata(
-            attributes=POPS1100.metadata["attributes"],
-            dimensions=POPS1100.metadata["dimensions"],
-            variables=POPS1100.metadata["variables"],
+            attributes=self.metadata["attributes"],
+            dimensions=self.metadata["dimensions"],
+            variables=self.metadata["variables"],
             settings=settings_def["variables"]
         )
 
         self.config = DeviceConfig(
-            make=POPS1100.metadata["attributes"]["make"]["data"],
-            model=POPS1100.metadata["attributes"]["model"]["data"],
+            make=self.metadata["attributes"]["make"]["data"],
+            model=self.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
             metadata=meta,
             interfaces=conf["interfaces"],

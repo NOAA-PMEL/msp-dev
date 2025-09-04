@@ -7,6 +7,7 @@ import traceback
 import sys
 import os
 import logging
+import json
 
 # from logfmter import Logfmter
 import logging.config
@@ -281,6 +282,23 @@ class APS3321(Sensor):
                     "units": {"type": "char", "data": "V"},
                 },
             },
+            "diameter": {
+            "type": "int",
+            "shape": ["time", "diameter"],
+            "attributes": {
+                "variable_type": {"type": "string", "data": "main"},
+                "long_name": {"type": "char", "data": "Diameter"},
+                "units": {"type": "char", "data": "nm"}
+                }
+            },
+            "channel": {
+                "type": "int",
+                "shape": ["time", "channel"],
+                "attributes": {
+                "variable_type": {"type": "string", "data": "main"},
+                "long_name": {"type": "char", "data": "Side Scatter Channel"}
+                }
+            }
         },
     }
 
@@ -301,15 +319,15 @@ class APS3321(Sensor):
         self.S_counter = 0
 
         # TODO Replace with json file
-        self.metadata = APS3321.metadata
-        # self.sensor_definition_file = "AerosolDynamics_MAGIC250_sensor_definition.json"
+        # self.metadata = APS3321.metadata
+        self.sensor_definition_file = "TSI_APS3321_sensor_definition.json"
 
-        # try:            
-        #     with open(self.sensor_definition_file, "r") as f:
-        #         self.metadata = json.load(f)
-        # except FileNotFoundError:
-        #     self.logger.error("sensor_definition not found. Exiting")            
-        #     sys.exit(1)
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
 
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
@@ -548,6 +566,8 @@ class APS3321(Sensor):
                         if var != 'time':
                             if record2["variables"][var]["data"]:
                                 record1["variables"][var]["data"] = record2["variables"][var]["data"]
+                    record1["variables"]["diameter"]["data"] = [None]*52
+                    record1["variables"]["channel"]["data"] = [None]*64
 
                 else:
                     record2 = self.default_parse(data)
