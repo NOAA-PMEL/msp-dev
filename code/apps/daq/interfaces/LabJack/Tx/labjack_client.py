@@ -378,7 +378,7 @@ class PWMClient(LabJackClient):
 
         # TODO turn off pwm on stop/disable
 
-            await asyncio.sleep(1)
+            # await asyncio.sleep(1)
             dataRead = ljm.eReadName(
                 self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A"
             )  
