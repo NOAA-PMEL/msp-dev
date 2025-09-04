@@ -348,6 +348,12 @@ class PWMClient(LabJackClient):
                 self.labjack, f"DIO_EF_CLOCK{clock_channel}_ROLL_VALUE", int(clockRollValue)
             )  # Set calculated Clock Roll Value.
 
+            self.logger.debug("send_to_client: clock enable", extra={"clock_channel": clock_channel})
+            ljm.eWriteName(
+                self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 1
+            )  # Enable Clock#, this will start the PWM signal.
+            self.logger.debug("send_to_client:done")
+
             # Configure PWM Registers
             self.logger.debug("send_to_client:pwm disable", extra={"pwm_channel": pwm_channel})
             ljm.eWriteName(
@@ -369,11 +375,6 @@ class PWMClient(LabJackClient):
                 self.labjack, f"DIO{pwm_channel}_EF_ENABLE", 1
             )  # Enable the DIO#_EF Mode, PWM signal will not start until DIO_EF and CLOCK are enabled.
 
-            self.logger.debug("send_to_client: clock enable", extra={"clock_channel": clock_channel})
-            ljm.eWriteName(
-                self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 1
-            )  # Enable Clock#, this will start the PWM signal.
-            self.logger.debug("send_to_client:done")
 
         # TODO turn off pwm on stop/disable
 
