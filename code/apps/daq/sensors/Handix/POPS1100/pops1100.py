@@ -570,7 +570,7 @@ class POPS1100(Sensor):
 
         sensor_iface_properties = {
             "default": {
-                "sensor-interface-properties": {
+                "device-interface-properties": {
                     "connection-properties": {
                         "baudrate": 115200,
                         "bytesize": 8,
