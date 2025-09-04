@@ -655,7 +655,7 @@ class POPS1100(Sensor):
         await super(POPS1100, self).handle_interface_data(message)
 
         # self.logger.debug("interface_recv_data", extra={"data": message.data})
-        if message.data["type"] == det.interface_data_recv():
+        if message["type"] == det.interface_data_recv():
             try:
                 path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
