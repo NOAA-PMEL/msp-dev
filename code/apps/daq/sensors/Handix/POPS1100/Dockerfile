@@ -32,3 +32,4 @@ COPY ./pops1100.py .
 # CMD ["uvicorn", "envds.main:app", "--host", "0.0.0.0", "--port", "8080"]
 CMD ["python", "pops1100.py", "--host", "0.0.0.0"]
 # CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+

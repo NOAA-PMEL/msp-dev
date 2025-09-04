@@ -599,7 +599,7 @@ class POPS1100(Sensor):
 
         meta = DeviceMetadata(
             attributes=POPS1100.metadata["attributes"],
-            dimensions=POPS1100.metdata["dimensions"],
+            dimensions=POPS1100.metadata["dimensions"],
             variables=POPS1100.metadata["variables"],
             settings=settings_def["variables"]
         )
