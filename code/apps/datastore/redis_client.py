@@ -109,6 +109,7 @@ class RedisClient(DBClient):
                 TagField("$.registration.make", as_name="make"),
                 TagField("$.registration.model", as_name="model"),
                 TagField("$.registration.serial_number", as_name="serial_number"),
+                TagField("$.registration.version", as_name="version"),
                 TextField("$.registration.device_type", as_name="device_type"),
             )
             definition = IndexDefinition(
@@ -153,6 +154,7 @@ class RedisClient(DBClient):
                 TagField("$.registration.make", as_name="make"),
                 TagField("$.registration.model", as_name="model"),
                 TagField("$.registration.serial_number", as_name="serial_number"),
+                TagField("$.registration.version", as_name="version"),
                 # TextField("$.registration.controller_type", as_name="controller_type"),
             )
             definition = IndexDefinition(

@@ -248,7 +248,7 @@ link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 # websocket = WebSocket(
 #     id="ws-sensor", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/main"
 # )
-ws_send_buffer = html.Div(id="ws-send-instance-buffer", style={"display": "none"})
+ws_send_buffer = html.Div(id="controller-ws-send-instance-buffer", style={"display": "none"})
 
 
 def build_tables(layout_options):
@@ -265,7 +265,7 @@ def build_tables(layout_options):
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
-                                id={"type": "settings-table", "index": dim},
+                                id={"type": "controller-settings-table", "index": dim},
                                 rowData=[],
                                 columnDefs=layout_options["layout-settings"][dim]["table-column-defs"],
                                 columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
@@ -1706,96 +1706,143 @@ def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
 #     raise PreventUpdate
 #     # return dash.no_update
 
+# 
+
+
+
+
 @callback(
-    Output("dbc-switch-value-changed", "children"),
-    Output("ws-send-instance-buffer", "children"),
-    Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
+    # Output("dbc-switch-value-changed", "children"),
+    Output("controller-ws-send-instance-buffer", "children"),
+    Input({"type": "controller-settings-table", "index": ALL}, "cellRendererData"),
+    Input({"type": "controller-settings-table", "index": ALL}, "cellValueChanged"),
     State("controller-meta", "data")
 )
-def get_requested_setting(changed_component, controller_meta):
-    print('COMPONENT CHANGED', json.dumps(changed_component))
-    controller_id = controller_meta["controller_id"]
-    source = f"dashboard-test/{controller_id}"
-    requested_val = int(changed_component[0]["value"])
-    col_id = changed_component[0]["colId"]
+def get_requested_setting(changed_component, changed_input, controller_meta):
+    print('changed component', changed_component)
+    print('changed input', changed_input)
     try:
-        event = {
-            "source": source,
-            "data": {"settings": col_id, "requested": requested_val},
-            "destpath": "envds/controller/settings/request",
-            "controllerid": controller_id
-        }
+        if any(component is not None for component in changed_component):
+            print('component was changed here')
+            requested_val = int(changed_component[0]["value"])
+            col_id = changed_component[0]["colId"]
+        elif any(component is not None for component in changed_input):
+            requested_val = int(changed_input[0][0]['value'])
+            print('requested_val', requested_val)
+            col_id = changed_input[0][0]["colId"]
+            print('col id', col_id)
+        else:
+            raise PreventUpdate
+        try:
+            event = {
+                "source": "testsource",
+                "data": {"settings": col_id, "requested": requested_val},
+                "destpath": "envds/controller/settings/request",
+                "controllerid": controller_meta["controller_id"]
+            }
+        except Exception as e:
+                print(f"data update error: {e}")
+                print(traceback.format_exc())
+        return json.dumps(event)
+
     except Exception as e:
-            print(f"data update error: {e}")
-    return json.dumps(changed_component), json.dumps(event)
+        print(f"requested setting error: {e}")
+        print(traceback.format_exc())
+
+
 
 
 @callback(
-    Output({"type": "settings-table", "index": ALL}, "rowData"), 
-    Output({"type": "settings-table", "index": ALL}, "columnDefs"),
+    Output({"type": "controller-settings-table", "index": ALL}, "rowData"), 
+    Output({"type": "controller-settings-table", "index": ALL}, "columnDefs"),
     Input("controller-settings-buffer", "data"),
     [
-        State({"type": "settings-table", "index": ALL}, "rowData"),
-        State({"type": "settings-table", "index": ALL}, "columnDefs"),
+        State({"type": "controller-settings-table", "index": ALL}, "rowData"),
+        State({"type": "controller-settings-table", "index": ALL}, "columnDefs"),
         State("controller-definition", "data")
     ],
 )
 def update_settings_table(controller_settings, row_data_list, col_defs_list, controller_definition):
     if controller_settings:
-            new_row_data_list = []
-            new_column_defs = []
-            try:
-                for row_data, col_defs in zip(row_data_list, col_defs_list):
-                    print('col defs', col_defs)
-                    data = {}
-                    for col in col_defs:
-                        print('col', col)
-                        name = col["field"]
-                        if name in controller_settings["settings"]:
-                            data[name] = controller_settings["settings"][name]["data"]["actual"]
-                        else:
-                            data[name] = ""
+        new_row_data_list = []
+        new_column_defs = []
+        try:
+            for row_data, col_defs in zip(row_data_list, col_defs_list):
+                print('col defs', col_defs)
+                print('row data', row_data)
+                data = {}
+                i = 0
+                for col in col_defs:
+                    i += 1
+                    if row_data:
+                        if controller_settings["settings"][name]["data"]["actual"] != row_data[0][col['field']]:
+                            break
+                        elif i == len(col_defs):
+                            return dash.no_update
 
-                        # # Check if the setting should be set up as a boolean switch
-                        # if controller_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
-                        #     if controller_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
-                        #         if controller_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
-                        #             col["cellRenderer"] = "DBC_Switch"
-                        #             col["cellRendererParams"] = {"color": "success"}
+                for col in col_defs:
+                    print('col', col)
+                    name = col["field"]
+                    if name in controller_settings["settings"]:
+                        print('name', name)
+                        data[name] = controller_settings["settings"][name]["data"]["actual"]
+                        print('data', data[name])
+                    else:
+                        data[name] = ""
+                    
+                    # if row_data:
+                    #     if row_data[0][col['field']] == data[name]:
+                    #         # Check if we've looped through all the columns
+                    #         if (col == col_defs[-1]) and (i == len(col_defs)):
+                    #             return dash.no_update
+                    #         else:
+                    #             pass
+
+                    # Make sure the settings contain integers or floats
+                    setting_type = controller_definition["variables"][name]["attributes"]["valid_min"]["type"]
+                    if setting_type == "int" or setting_type == "float":
+                        min_val = controller_definition["variables"][name]["attributes"]["valid_min"]["data"]
+                        max_val = controller_definition["variables"][name]["attributes"]["valid_max"]["data"]
+                        step_val = controller_definition["variables"][name]["attributes"]["step_increment"]["data"]
+                        print('min, max, step', min_val, max_val, step_val)
+
+                        # Check if the setting should be set up as a boolean switch
+                        if min_val == 0:
+                            if max_val == 1:
+                                if step_val == 1:
+                                    col["cellRenderer"] = "DBC_Switch"
+                                    col["cellRendererParams"] = {"color": "success"}
                         
-                        # Check if the setting should be set up as 
+                        # Check if the setting should be set up as numeric input
+                        elif max_val > 1:
+                            col["editable"] = True
+                            col["cellEditor"] = "agNumberCellEditor"
+                            col["cellEditorParams"] = {
+                                "min": min_val,
+                                "max": max_val,
+                                "step": step_val,
+                                "showStepperButtons": True
+                            }
 
-                        # Make sure the settings contain integers
-                        if controller_definition["variables"][name]["attributes"]["valid_min"]["type"] == "int":
-                            min_val = controller_definition["variables"][name]["attributes"]["valid_min"]["data"]
-                            max_val = controller_definition["variables"][name]["attributes"]["valid_max"]["data"]
-                            step_val = controller_definition["variables"][name]["attributes"]["step_increment"]["data"]
-                            print('min, max, step', min_val, max_val, step_val)
-
-                            # Check if the setting should be set up as a boolean switch
-                            if min_val == 0:
-                                if max_val == 1:
-                                    if step_val == 1:
-                                        col["cellRenderer"] = "DBC_Switch"
-                                        col["cellRendererParams"] = {"color": "success"}
-                            
-                            # Check if the setting should be set up as numeric input
-                            elif max_val > 1:
-                                col["cellRenderer"] = "DCC_Input"
-                                col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val}
-
-                        new_column_defs.append(col)
-                    row_data.insert(0, data)
-                    new_row_data_list.append(row_data[0:1])
-                if len(new_row_data_list) == 0:
-                    raise PreventUpdate
-                return new_row_data_list, [new_column_defs]
-            except Exception as e:
-                print(f"data update error: {e}")
-                print(traceback.format_exc())
-            raise PreventUpdate
+                    new_column_defs.append(col)
+                row_data.insert(0, data)
+                print('row data 2', row_data)
+                new_row_data_list.append(row_data[0:1])
+                print('new data list', new_row_data_list)
+            if len(new_row_data_list) == 0:
+                raise PreventUpdate
+            return new_row_data_list, [new_column_defs]
+        except Exception as e:
+            print(f"data update error: {e}")
+            print(traceback.format_exc())
+        raise PreventUpdate
     else:
         raise PreventUpdate
+
+
+
+
+
 
 
 @callback(
@@ -1820,10 +1867,12 @@ def update_table_1d(
     # print(f"row_data: {type(row_data)}, {row_data}, col_defs: {col_defs}")
     # if e is not None and "data" in e:
     if controller_data:
+        print('controller data', controller_data)
         new_row_data_list = []
         try:
             # sensor_data = json.loads(e["data"])
             for row_data, col_defs in zip(row_data_list, col_defs_list):
+                print('col-defs', col_defs)
                 data = {}
                 # print(f"row, col: {row_data}, {col_defs}")
                 for col in col_defs:
@@ -1857,6 +1906,7 @@ def update_table_1d(
             # print(f"row_data_list: {row_data_list}")
             if len(new_row_data_list) == 0:
                 raise PreventUpdate
+            print('row data', new_row_data_list)
             return new_row_data_list
 
         except Exception as e:
@@ -2045,7 +2095,7 @@ def update_table_1d(
 
 @callback(
     Output("ws-controller-instance", "send"),
-    Input("ws-send-instance-buffer", "children"),
+    Input("controller-ws-send-instance-buffer", "children"),
 )
 def send_to_instance(value):
     print(f"sending: {value}")
