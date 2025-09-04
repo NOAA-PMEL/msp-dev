@@ -153,7 +153,9 @@ class LabJackClient(DAQClient):
                 data = {}
                 if "unpolled_data" in self.config.properties:
                     data = self.config.properties["unpolled_data"]["data"]
-                await self.send_to_client(data)
+                # await self.send_to_client(data)
+                # add request to queue with everyone else
+                await self.send(data)
                 await asyncio.sleep(time_to_next(self.config.properties["unpolled_sample_frequency_sec"]["data"]))
             except Exception as e:
                 self.logger.error("unpolled_sample_loop", extra={"reason": e})
