@@ -798,6 +798,8 @@ class POPS1100(Sensor):
                         print(diam)
                     record["variables"]["diameter"]["data"] = diams
 
+                    print('RECORD 2', record)
+
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
