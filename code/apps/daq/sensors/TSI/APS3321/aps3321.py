@@ -496,8 +496,8 @@ class APS3321(Sensor):
         # start_command = f"Log,{self.sampling_interval}\n"
         # start_command = "Log,1\n"
         # stop_command = "Log,0\n"
-        # start_commands = ['S0\r', 'SMT2,5\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
-        start_commands = ['S1\r']
+        start_commands = ['S0\r', 'SMT2,10\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
+        # start_commands = ['S1\r']
         stop_command = 'S0\r'
 
         need_start = True
@@ -517,9 +517,10 @@ class APS3321(Sensor):
                             self.collecting = False
                             continue
                         else:
-                            # for start_command in start_commands:
-                            #     await self.interface_send_data(data={"data": start_command})
-                            await self.interface_send_data(data={"data": start_commands[0]})
+                            for start_command in start_commands:
+                                await self.interface_send_data(data={"data": start_command})
+                                await asyncio.sleep(.5)
+                            # await self.interface_send_data(data={"data": start_commands[0]})
                             need_start = False
                             start_requested = True
                             await asyncio.sleep(2)
@@ -528,9 +529,10 @@ class APS3321(Sensor):
                         if self.collecting:
                             start_requested = False
                         else:
-                            # for start_command in start_commands:
-                            #     await self.interface_send_data(data={"data": start_command})
-                            await self.interface_send_data(data={"data": start_commands[0]})
+                            for start_command in start_commands:
+                                await self.interface_send_data(data={"data": start_command})
+                                await asyncio.sleep(.5)
+                            # await self.interface_send_data(data={"data": start_commands[0]})
                             await asyncio.sleep(2)
                             continue
                 else:
@@ -539,12 +541,12 @@ class APS3321(Sensor):
                         await asyncio.sleep(2)
                         self.collecting = False
 
-                await asyncio.sleep(0.0001)
+                await asyncio.sleep(1)
 
             except Exception as e:
                 print(f"sampling monitor error: {e}")
 
-            await asyncio.sleep(0.0001)
+            await asyncio.sleep(1)
 
 
     async def default_data_loop(self):
@@ -609,7 +611,7 @@ class APS3321(Sensor):
                 self.logger.debug("default_data_loop", extra={"record": record})
             except Exception as e:
                 print(f"default_data_loop error: {e}")
-            await asyncio.sleep(0.0001)
+            await asyncio.sleep(0.001)
 
 
     def check_array_buffer(self, data, array_cond = False):
@@ -637,16 +639,16 @@ class APS3321(Sensor):
 
                     if ',C,' in data.data["data"]:
                         if ',C,0' in data.data["data"]:
-                            parts = data.data["data"].split(",")
+                            parts = data.data["data"].strip().split(",")
                             parts = parts[5:]
-                            parts = [x.replace("\r", "") for x in parts]
+                            # parts = [x.replace("\r", "") for x in parts]
                             self.var_name = ['ffff', 'stime', 'dtime', 'evt1', 'evt3', 'evt4', 'total']
                             compiled_record = parts
                             self.C_counter = 0
                         else:
-                            parts = data.data["data"].split(",")
+                            parts = data.data["data"].strip().split(",")
                             parts = parts[3:]
-                            parts = [x.replace("\r", "") for x in parts]
+                            # parts = [x.replace("\r", "") for x in parts]
                             # Replace all empty strings with values of 0
                             parts = [int(x) if x else 0 for x in parts]
                             # Add zeros to the end of the list until the list length reaches 64
@@ -665,9 +667,9 @@ class APS3321(Sensor):
                                 self.C_counter = 0
                     
                     if ',D,' in data.data["data"]:
-                        parts = data.data["data"].split(",")
+                        parts = data.data["data"].strip().split(",")
                         parts = parts[11:]
-                        parts = [x.replace("\r", "") for x in parts]
+                        # parts = [x.replace("\r", "") for x in parts]
                         # Replace all empty list items with values of 0
                         parts = [int(x) if x else 0 for x in parts]
                         # Add zeros to the end of the list until the list length reaches 52
@@ -681,9 +683,9 @@ class APS3321(Sensor):
                             self.S_counter = 0
                             return
                         else:
-                            parts = data.data["data"].split(",")
+                            parts = data.data["data"].strip().split(",")
                             parts = parts[3:]
-                            parts = [x.replace("\r", "") for x in parts]
+                            # parts = [x.replace("\r", "") for x in parts]
                             # Replace all empty strings with values of 0
                             parts = [int(x) if x else 0 for x in parts]
                             # Add zeros to the end of the list until the list length reaches 52
@@ -702,9 +704,9 @@ class APS3321(Sensor):
                                 self.S_counter = 0
                     
                     if ',Y,' in data.data["data"]:
-                        parts = data.data["data"].split(",")
+                        parts = data.data["data"].strip().split(",")
                         parts = parts[2:]
-                        parts = [x.replace("\r", "") for x in parts]
+                        # parts = [x.replace("\r", "") for x in parts]
                         # Remove the analog and digital input voltage levels from the middle of the list
                         del parts[3:8]
                         compiled_record = parts
