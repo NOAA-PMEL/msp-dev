@@ -819,17 +819,7 @@ class POPS1100(Sensor):
     def default_parse(self, data):
         if data:
             try:
-                # variables = [
-                #     "time",
-                #     "temperature",
-                #     "rh",
-                #     "pressure",
-                #     "wind_speed",
-                #     "wind_direction",
-                # ]
-                # variables = list(self.config.variables.keys())
                 variables = list(self.config.metadata.variables.keys())
-                # print(f"variables: \n{variables}\n{variables2}")
                 variables.remove("time")
                 variables.remove("diameter")
                 variables.remove("diameter_bnd_lower")
@@ -839,7 +829,7 @@ class POPS1100(Sensor):
 
                 # print(f"include metadata: {self.include_metadata}")
                 record = self.build_data_record(meta=self.include_metadata)
-                # print(f"default_parse: data: {data}, record: {record}")
+                print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
                 try:
                     record["timestamp"] = data.data["timestamp"]
@@ -867,7 +857,7 @@ class POPS1100(Sensor):
                     if fname_idx>0:
                         parts.pop(fname_idx)
 
-                    # print(f"parts: {parts}, {variables}")
+                    print(f"parts: {parts}, {variables}")
                     dist_index = None
                     
                     if len(parts) < 37:
@@ -901,6 +891,7 @@ class POPS1100(Sensor):
                         bin_counts.append(int(val.strip()))
                     record["variables"]["bin_count"]["data"] = bin_counts
 
+                    print("RECORD", record)
                     return record
                 except KeyError:
                     pass
