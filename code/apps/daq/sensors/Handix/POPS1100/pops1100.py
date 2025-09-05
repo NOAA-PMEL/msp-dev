@@ -793,6 +793,9 @@ class POPS1100(Sensor):
                     diams = []
                     for lower,upper in zip(self.lower_dp_bound, self.upper_dp_bound):
                         diams.append(round(math.sqrt(lower*upper), 1))
+                    self.logger.debug("diams", extra={"diams": diams})
+                    for diam in diams:
+                        print(diam)
                     record["variables"]["diameter"]["data"] = diams
 
                     event = DAQEvent.create_data_update(
