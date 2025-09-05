@@ -496,7 +496,7 @@ class APS3321(Sensor):
         # start_command = f"Log,{self.sampling_interval}\n"
         # start_command = "Log,1\n"
         # stop_command = "Log,0\n"
-        start_commands = ['S0\r', 'SMT2,10\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
+        start_commands = ['S0\r', 'SMT2,30\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
         # start_commands = ['S1\r']
         stop_command = 'S0\r'
 
