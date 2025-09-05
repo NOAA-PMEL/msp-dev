@@ -756,7 +756,7 @@ class POPS1100(Sensor):
                         await asyncio.sleep(2)
                         self.collecting = False
 
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(1)
 
                 # if self.collecting:
                 #     # await self.stop_command()
@@ -768,7 +768,7 @@ class POPS1100(Sensor):
             except Exception as e:
                 print(f"sampling monitor error: {e}")
 
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(1)
 
 
     async def default_data_loop(self):

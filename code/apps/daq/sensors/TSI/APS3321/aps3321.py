@@ -539,12 +539,12 @@ class APS3321(Sensor):
                         await asyncio.sleep(2)
                         self.collecting = False
 
-                await asyncio.sleep(0.0001)
+                await asyncio.sleep(1)
 
             except Exception as e:
                 print(f"sampling monitor error: {e}")
 
-            await asyncio.sleep(0.0001)
+            await asyncio.sleep(1)
 
 
     async def default_data_loop(self):
