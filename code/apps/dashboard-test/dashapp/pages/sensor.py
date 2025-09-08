@@ -1274,7 +1274,7 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
             "serial_number": sensor_meta["serial_number"],
         }
         sort = {"variables.time.data": 1}
-        results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
+        results = httpx.get(f"http://{datastore_url}/sensor/data/get", params=query)
         # results = db_data_client.find("data", "sensor", query, sort, refresh=False)
         print(f"2d results: {results}")
         if results is None or len(results) == 0:
