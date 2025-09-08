@@ -317,6 +317,19 @@ class APS3321(Sensor):
         self.array_buffer = []
         self.C_counter = 0
         self.S_counter = 0
+        self.diams = [
+            0.50468, 0.54215,
+            0.58166, 0.62506, 0.67305, 0.72353, 0.7775,
+            0.83546, 0.89791, 0.96488, 1.0368, 1.1143,
+            1.1972, 1.2867, 1.3826, 1.4855, 1.5965,
+            1.7154, 1.8433, 1.9812, 2.1291, 2.2875,
+            2.4579, 2.6413, 2.8387, 3.0505, 3.2779,
+            3.5227, 3.7856, 4.0679, 4.3717, 4.698,
+            5.0482, 5.4245, 5.8292, 6.2644, 6.7317,
+            7.2338, 7.7735, 8.3536, 8.9772, 9.6468,
+            10.366, 11.14, 11.971, 12.864, 13.824,
+            14.855, 15.963, 17.154, 18.435, 19.81
+        ]
 
         # TODO Replace with json file
         # self.metadata = APS3321.metadata
@@ -568,7 +581,8 @@ class APS3321(Sensor):
                         if var != 'time':
                             if record2["variables"][var]["data"]:
                                 record1["variables"][var]["data"] = record2["variables"][var]["data"]
-                    record1["variables"]["diameter"]["data"] = [None]*52
+                    # record1["variables"]["diameter"]["data"] = [None]*52
+                    record1["variables"]["diameter"]["data"] = self.diams
                     record1["variables"]["channel"]["data"] = [None]*64
                     record1["variables"]["dN"]["data"] = [None]*52
                     record1["variables"]["dlogDp"]["data"] = [None]*52

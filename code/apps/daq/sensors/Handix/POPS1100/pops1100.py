@@ -509,7 +509,7 @@ class POPS1100(Sensor):
             1220.,
             1530.,
             1990.,
-            2585.,
+            2585.
         ]
 
         self.upper_dp_bound = [
@@ -528,7 +528,7 @@ class POPS1100(Sensor):
             1530.,
             1990.,
             2585.,
-            3370.,
+            3370.
         ]
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
