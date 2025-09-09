@@ -317,6 +317,7 @@ class APS3321(Sensor):
         self.array_buffer = []
         self.C_counter = 0
         self.S_counter = 0
+        self.dlogdp =  0.0337
         self.diams = [
             0.50468, 0.54215,
             0.58166, 0.62506, 0.67305, 0.72353, 0.7775,
@@ -366,6 +367,7 @@ class APS3321(Sensor):
         # self.enable_task_list.append(self.register_sensor())
         # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
+        self.sampling_frequency = 30 # default sampling freq in seconds
 
     def configure(self):
         super(APS3321, self).configure()
@@ -440,6 +442,10 @@ class APS3321(Sensor):
             interfaces=conf["interfaces"],
             daq_id=conf["daq_id"],
         )
+
+        self.sampling_frequency = 30
+        if "sampling_frequency_sec" in conf:
+            self.sampling_frequency = conf["sampling_frequency_sec"]
 
         print(f"self.config: {self.config}")
 
@@ -585,7 +591,7 @@ class APS3321(Sensor):
                     record1["variables"]["diameter"]["data"] = self.diams
                     record1["variables"]["channel"]["data"] = [None]*64
                     record1["variables"]["dN"]["data"] = [None]*52
-                    record1["variables"]["dlogDp"]["data"] = [None]*52
+                    record1["variables"]["dlogDp"]["data"] = [self.dlogdp]*52
                     record1["variables"]["dNdlogDp"]["data"] = [None]*52
                     record1["variables"]["intN"]["data"] = None
 
@@ -606,6 +612,19 @@ class APS3321(Sensor):
 
 
                 if record and self.sampling():
+                    dN = []
+                    dNdlogDp = []
+                    intN = 0
+                    sample_flow_lpm = record["variables"]["sflow"]["data"] # lpm
+                    sample_flow_ccs = sample_flow_lpm / (1000./60.)
+                    for i,cnt in enumerate(record["variables"]["particle_counts"]["data"]):
+                        conc = cnt/(sample_flow_ccs * self.sampling_frequency)
+                        intN += conc
+                        dN.append(round(conc,3))
+                        dNdlogDp.append(round(conc/self.dlogDp[i],3))
+
+
+                    
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
