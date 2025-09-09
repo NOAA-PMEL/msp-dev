@@ -720,6 +720,7 @@ class RedisClient(DBClient):
             #         {"registration": document}
             #     )
 
+            # update instance every time to keep up to date
             result = self.client.json().set(
                 key,
                 "$",
