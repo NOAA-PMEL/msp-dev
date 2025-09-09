@@ -716,10 +716,10 @@ class APS3321(Sensor):
                         # Add zeros to the end of the list until the list length reaches 52
                         zeros_to_add = 52 - len(parts)
                         parts.extend([0] * zeros_to_add)
-                        print(f"default_parse:D {parts}")
+                        self.logger.debug("default_parse:D", extra={"parts": parts})
                         self.var_name =['particle_counts']
                         compiled_record = parts
-                        self.logger.debug("default_parse:D", extra={"compiled_record": compiled_record})
+                        self.logger.debug("default_parse:D", extra={"len": len(compiled_record), "compiled_record": compiled_record})
 
                     if ',S,' in data.data["data"]:
                         if ',S,C' in data.data["data"]:
