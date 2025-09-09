@@ -450,28 +450,28 @@ class Registrar:
                     if len(missing_remote) > 0:
                         for id in missing_remote:
                             await self.send_device_definition_update(id)
-                            query = {"device_definition_id": id}
-                            results = await self.submit_request(
-                                path="device-definition/registry/get", query=query
-                            )
-                            if results:
-                                update = DAQEvent.create_registry_sync_update(
-                                    source=f"envds.{self.config.daq_id}.registrar",
-                                    data={
-                                        "device-definition-update": results[0]
-                                    },  # just send the dict
-                                )
-                                # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                            # query = {"device_definition_id": id}
+                            # results = await self.submit_request(
+                            #     path="device-definition/registry/get", query=query
+                            # )
+                            # if results:
+                            #     update = DAQEvent.create_registry_sync_update(
+                            #         source=f"envds.{self.config.daq_id}.registrar",
+                            #         data={
+                            #             "device-definition-update": results[0]
+                            #         },  # just send the dict
+                            #     )
+                            #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
 
-                                # update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
-                                destpath = f"envds/{self.config.daq_id}/registry/sync-update"
-                                if self.config.mqtt_bridge_prefix:
-                                    destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                            #     # update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                            #     destpath = f"envds/{self.config.daq_id}/registry/sync-update"
+                            #     if self.config.mqtt_bridge_prefix:
+                            #         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
                                 
-                                # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
-                                update["destpath"] = destpath
+                            #     # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                            #     update["destpath"] = destpath
 
-                                await self.send_event(update)
+                            #     await self.send_event(update)
                 except Exception as e:
                     self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
 

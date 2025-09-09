@@ -791,12 +791,30 @@ class POPS1100(Sensor):
                     record["variables"]["diameter_bnd_lower"]["data"] = self.lower_dp_bound
                     record["variables"]["diameter_bnd_upper"]["data"] = self.upper_dp_bound
                     diams = []
+                    dlogDp = []
                     for lower,upper in zip(self.lower_dp_bound, self.upper_dp_bound):
                         diams.append(round(math.sqrt(lower*upper), 1))
+                        dlogDp.append(round(math.log10(upper/lower),3))
+
                     self.logger.debug("diams", extra={"diams": diams})
                     for diam in diams:
                         print(diam)
                     record["variables"]["diameter"]["data"] = diams
+
+                    # TODO add dlogDp
+
+                    flow = record["variables"]["POPS_Flow"]["data"]
+                    # TODO create dN, dNdlogDp, intN when variables are added
+                    
+                    dN = []
+                    dNdlogDp = []
+                    intN = 0
+                    for i,cnt in enumerate(record["variables"]["bin_count"]["data"]):
+                        conc = cnt/flow/1.0 # 1s
+                        intN += conc
+                        dN.append(round(conc,3))
+                        dNdlogDp.append(round(conc/dlogDp[i],3))
+                    self.logger.debug("default_data_loop", extra={"dlogDp": dlogDp, "dN": dN, "dNdlogDp": dNdlogDp, "intN": intN})
 
                     print('RECORD 2', record)
 
@@ -893,7 +911,8 @@ class POPS1100(Sensor):
                     # get distribution
                     bin_counts = []
                     for val in parts[index:]:
-                        bin_counts.append(int(val.strip()))
+                        cnt = int(val.strip())
+                        bin_counts.append(cnt)
                     record["variables"]["bin_count"]["data"] = bin_counts
 
                     print("RECORD", record)
