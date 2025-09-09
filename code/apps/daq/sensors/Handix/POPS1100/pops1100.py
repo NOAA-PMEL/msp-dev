@@ -809,13 +809,13 @@ class POPS1100(Sensor):
                     dN = []
                     dNdlogDp = []
                     intN = 0
-                    for i,cnt in enumerate(record["variables"]["bin_counts"]["data"]):
+                    for i,cnt in enumerate(record["variables"]["bin_count"]["data"]):
                         conc = cnt/flow/1.0 # 1s
                         intN += conc
                         dN.append(round(conc,3))
                         dNdlogDp.append(round(conc/dlogDp[i]),3)
                     self.logger.debug("default_data_loop", extra={"dlogDp": dlogDp, "dN": dN, "dNdlogDp": dNdlogDp, "intN": intN})
-                    
+
                     print('RECORD 2', record)
 
                     event = DAQEvent.create_data_update(
