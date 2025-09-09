@@ -621,7 +621,7 @@ class APS3321(Sensor):
                         conc = cnt/(sample_flow_ccs * self.sampling_frequency)
                         intN += conc
                         dN.append(round(conc,3))
-                        dNdlogDp.append(round(conc/self.dlogDp[i],3))
+                        dNdlogDp.append(round(conc/self.dlogDp,3))
 
                     self.logger.debug("default_data_loop", extra={"intN": intN, "dN": dN, "dNdlogDp": dNdlogDp})
                     record["variables"]["intN"]["data"] = intN
