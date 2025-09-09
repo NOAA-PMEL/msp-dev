@@ -591,7 +591,7 @@ class APS3321(Sensor):
                     record1["variables"]["diameter"]["data"] = self.diams
                     record1["variables"]["channel"]["data"] = [None]*64
                     record1["variables"]["dN"]["data"] = [None]*52
-                    record1["variables"]["dlogDp"]["data"] = [self.dlogdp]*52
+                    record1["variables"]["dlogDp"]["data"] = [self.dlogDp]*52
                     record1["variables"]["dNdlogDp"]["data"] = [None]*52
                     record1["variables"]["intN"]["data"] = None
 
@@ -704,14 +704,19 @@ class APS3321(Sensor):
                         self.logger.debug("default_parse:C", extra={"compiled_record": compiled_record})
 
                     if ',D,' in data.data["data"]:
+                        self.logger.debug("default_parse:D", extra={"raw": data.data["data"]})
                         parts = data.data["data"].strip().split(",")
+                        self.logger.debug("default_parse:D", extra={"parts": parts})
                         parts = parts[11:]
+                        self.logger.debug("default_parse:D", extra={"parts": parts})
                         # parts = [x.replace("\r", "") for x in parts]
                         # Replace all empty list items with values of 0
                         parts = [int(x) if x else 0 for x in parts]
+                        self.logger.debug("default_parse:D", extra={"parts": parts})
                         # Add zeros to the end of the list until the list length reaches 52
                         zeros_to_add = 52 - len(parts)
                         parts.extend([0] * zeros_to_add)
+                        self.logger.debug("default_parse:D", extra={"parts": parts})
                         self.var_name =['particle_counts']
                         compiled_record = parts
                         self.logger.debug("default_parse:D", extra={"compiled_record": compiled_record})
