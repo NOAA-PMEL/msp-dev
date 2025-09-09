@@ -587,7 +587,7 @@ class APS3321(Sensor):
                     record1["variables"]["dN"]["data"] = [None]*52
                     record1["variables"]["dlogDp"]["data"] = [None]*52
                     record1["variables"]["dNdlogDp"]["data"] = [None]*52
-                    record1["variables"]["intN"]["data"] = [None]*52
+                    record1["variables"]["intN"]["data"] = None
 
                 else:
                     record2 = self.default_parse(data)
@@ -679,7 +679,8 @@ class APS3321(Sensor):
                                 compiled_record = self.check_array_buffer(parts, array_cond=True)
                                 self.array_buffer = []
                                 self.C_counter = 0
-                    
+                        self.logger.debug("default_parse:C", extra={"compiled_record": compiled_record})
+
                     if ',D,' in data.data["data"]:
                         parts = data.data["data"].strip().split(",")
                         parts = parts[11:]
@@ -691,7 +692,8 @@ class APS3321(Sensor):
                         parts.extend([0] * zeros_to_add)
                         self.var_name =['particle_counts']
                         compiled_record = parts
-                    
+                        self.logger.debug("default_parse:D", extra={"compiled_record": compiled_record})
+
                     if ',S,' in data.data["data"]:
                         if ',S,C' in data.data["data"]:
                             self.S_counter = 0
@@ -716,6 +718,7 @@ class APS3321(Sensor):
                                 compiled_record = self.check_array_buffer(parts, array_cond=True)
                                 self.array_buffer = []
                                 self.S_counter = 0
+                        self.logger.debug("default_parse:S", extra={"compiled_record": compiled_record})
                     
                     if ',Y,' in data.data["data"]:
                         parts = data.data["data"].strip().split(",")
@@ -725,7 +728,7 @@ class APS3321(Sensor):
                         del parts[3:8]
                         compiled_record = parts
                         self.var_name = ['bpress', 'tflow', 'sflow', 'lpower', 'lcur', 'spumpv', 'tpumpv', 'itemp', 'btemp', 'dtemp', 'Vop']
-
+                        self.logger.debug("default_parse:Y", extra={"compiled_record": compiled_record})
 
                     for index, name in enumerate(self.var_name):
                     # for index, name in enumerate(variables):
@@ -746,6 +749,7 @@ class APS3321(Sensor):
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
+                    self.logger.debug("default_parse:record", extra={"record": record})
                     return record
                 except KeyError:
                     pass
