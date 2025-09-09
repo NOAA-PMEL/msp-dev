@@ -703,7 +703,8 @@ def layout(sensor_id=None):
         try:
             dimensions = sensor_definition["dimensions"]
             is_2d = False
-            if len(dimensions.keys()) > 1:
+            is_3d = False
+            if len(dimensions.keys()) == 2:
                 is_2d = True
                 if "layout-2d" not in layout_options:
                     layout_options["layout-2d"] = (
@@ -716,6 +717,8 @@ def layout(sensor_id=None):
                 #     if "columns_2d" not in graph_options:
                 #         graph_options["columns_2d"] = dict()
                 #     graph_options["columns_2d"] = {d:[]}
+            elif len(dimensions.keys()) == 3:
+                is_3d = True
 
             print(f"layout: {layout_options}")
             if is_2d:
@@ -767,6 +770,9 @@ def layout(sensor_id=None):
                         }
                         layout_options["layout-2d"][d]["table-column-defs"].append(cd)
                         print(f"layout: {layout_options}")
+            if is_3d:
+                pass
+
             else:
                 if "time" in dimensions:
                     # column_defs_1d.append(
@@ -851,6 +857,8 @@ def layout(sensor_id=None):
                 if is_2d and len(var["shape"]) == 2:
                     dim_2d = [d for d in var["shape"] if d != "time"][0]
                     layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
+                elif is_3d:
+                    pass
                 else:
                     layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
 
