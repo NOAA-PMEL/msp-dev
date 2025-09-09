@@ -515,7 +515,7 @@ class APS3321(Sensor):
         # start_command = f"Log,{self.sampling_interval}\n"
         # start_command = "Log,1\n"
         # stop_command = "Log,0\n"
-        start_commands = ['S0\r', 'SMT2,30\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
+        start_commands = ['S0\r', f'SMT2,{self.sampling_frequency}\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
         # start_commands = ['S1\r']
         stop_command = 'S0\r'
 
@@ -616,7 +616,7 @@ class APS3321(Sensor):
                     dNdlogDp = []
                     intN = 0
                     sample_flow_lpm = record["variables"]["sflow"]["data"] # lpm
-                    sample_flow_ccs = sample_flow_lpm / (1000./60.)
+                    sample_flow_ccs = sample_flow_lpm * (1000./60.)
                     for i,cnt in enumerate(record["variables"]["particle_counts"]["data"]):
                         conc = cnt/(sample_flow_ccs * self.sampling_frequency)
                         intN += conc

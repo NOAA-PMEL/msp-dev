@@ -469,7 +469,7 @@ class RedisClient(DBClient):
             if result:
                 self.client.expire(key, ttl)
 
-            self.logger.debug("device_instance_registry_update", extra={"check_request": check_request, "result": result})
+            # self.logger.debug("device_instance_registry_update", extra={"check_request": check_request, "result": result})
             return result
         
         except Exception as e:
@@ -729,7 +729,7 @@ class RedisClient(DBClient):
             if result:
                 self.client.expire(key, ttl)
 
-            self.logger.debug("controller_instance_registry_update", extra={"check_request": check_request, "result": result})
+            # self.logger.debug("controller_instance_registry_update", extra={"check_request": check_request, "result": result})
             return result
         
         except Exception as e:
