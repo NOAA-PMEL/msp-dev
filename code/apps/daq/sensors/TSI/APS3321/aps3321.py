@@ -317,7 +317,7 @@ class APS3321(Sensor):
         self.array_buffer = []
         self.C_counter = 0
         self.S_counter = 0
-        self.dlogdp =  0.0337
+        self.dlogDp =  0.0337
         self.diams = [
             0.50468, 0.54215,
             0.58166, 0.62506, 0.67305, 0.72353, 0.7775,
@@ -623,8 +623,11 @@ class APS3321(Sensor):
                         dN.append(round(conc,3))
                         dNdlogDp.append(round(conc/self.dlogDp[i],3))
 
+                    self.logger.debug("default_data_loop", extra={"intN": intN, "dN": dN, "dNdlogDp": dNdlogDp})
+                    record["variables"]["intN"]["data"] = intN
+                    record["variables"]["dN"]["data"] = dN
+                    record["variables"]["dNdlogDp"]["data"] = dNdlogDp
 
-                    
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
