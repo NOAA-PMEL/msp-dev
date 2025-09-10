@@ -826,6 +826,15 @@ class SpiderMagic810(Sensor):
                     self.collecting = True
 
                 if record and self.sampling():
+
+                    # this is a temp calc for diameters based on table in manual
+                    # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
+                    voltages = record["variables"]["read_V"]["data"]
+                    diameters = []
+                    for v in voltages:
+                        diameters.append(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4)
+                    record["variables"]["diamter"]["data"] = diameters
+
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
