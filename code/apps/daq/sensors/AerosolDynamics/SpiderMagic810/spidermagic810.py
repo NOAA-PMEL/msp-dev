@@ -724,6 +724,9 @@ class SpiderMagic810(Sensor):
 
         # start_command = f"Log,{self.sampling_interval}\n"
         start_command = "hvgo\r"
+        v1_setting = "v1,5\r" # these can be config values 
+        v2_setting = "v2,5000\r"
+        start_commands = [v1_setting, v2_setting, start_command]
         stop_command = "stop\r"
 
         need_start = True
@@ -749,7 +752,11 @@ class SpiderMagic810(Sensor):
                             self.collecting = False
                             continue
                         else:
-                            await self.interface_send_data(data={"data": start_command})
+                            for cmd in start_commands:
+                                await self.interface_send_data(data={"data": cmd})
+                                await asyncio.sleep(.5)
+
+                            # await self.interface_send_data(data={"data": start_command})
                             # await self.interface_send_data(data={"data": "\n"})
                             need_start = False
                             start_requested = True
@@ -759,7 +766,11 @@ class SpiderMagic810(Sensor):
                         if self.collecting:
                             start_requested = False
                         else:
-                            await self.interface_send_data(data={"data": start_command})
+                            for cmd in start_commands:
+                                await self.interface_send_data(data={"data": cmd})
+                                await asyncio.sleep(.5)
+
+                            # await self.interface_send_data(data={"data": start_command})
                             # await self.interface_send_data(data={"data": "\n"})
                             await asyncio.sleep(2)
                             continue
@@ -827,11 +838,19 @@ class SpiderMagic810(Sensor):
 
                 if record and self.sampling():
 
+                    # check if scanning in "down" direction and reverse data
+                    vp_rd = record["variables"]["pv_rd"]["data"]
+                    if vp_rd == "pd" or vp_rd == "nd":
+                        for name,variable in self.metadata["variables"].items():
+                            if var["shape"] == ["time", "diameter"]:
+                                record["variables"][name]["data"] = record["variables"][name]["data"].reverse()
+
                     # this is a temp calc for diameters based on table in manual
                     # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
                     voltages = record["variables"]["read_V"]["data"]
                     diameters = []
                     for v in voltages:
+                        v = abs(v)
                         diameters.append(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4)
                     record["variables"]["diameter"]["data"] = diameters
                     self.logger.debug("default_data_loop:diameter", extra={"volts": voltages, "diameter": diameters})
