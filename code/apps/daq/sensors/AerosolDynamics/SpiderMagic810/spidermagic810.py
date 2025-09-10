@@ -839,7 +839,7 @@ class SpiderMagic810(Sensor):
                 if record and self.sampling():
 
                     # check if scanning in "down" direction and reverse data
-                    vp_rd = record["variables"]["pv_rd"]["data"]
+                    vp_rd = record["variables"]["vp_rd"]["data"]
                     if vp_rd == "pd" or vp_rd == "nd":
                         for name,variable in self.metadata["variables"].items():
                             if variable["shape"] == ["time", "diameter"]:
