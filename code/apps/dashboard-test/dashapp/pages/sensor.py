@@ -777,11 +777,42 @@ def layout(sensor_id=None):
                         )  # {dim_2d: {"table-column-defs": [], "variable-list": []}}
 
                     dim_2d = [d for d in var["shape"] if d != "time"][0]
+
+                    # if no entry for second dim, create
                     if dim_2d not in layout_options["layout-2d"]:
                         layout_options["layout-2d"][dim_2d] = {
                             "table-column-defs": [],
                             "variable-list": [],
                         }
+                        dln = dim_2d
+                        try:
+                            dln = sensor_definition["attributes"][dim_2d]["long_name"]["data"]
+                        except KeyError:
+                            pass
+
+                        # print(f"layout: {ln}")
+                        data_type = "text"
+                        try:
+                            dtype = sensor_definition["variables"][dim_2d]["type"]
+                            if dtype in ["float", "double", "int"]:
+                                data_type = "number"
+                            elif dtype in ["str", "string", "char"]:
+                                data_type = "text"
+                            elif dtype in ["bool"]:
+                                data_type = "boolean"
+                        except KeyError:
+                            pass
+                        # print(f"layout: {data_type}")
+
+                        dcd = {
+                            "field": dim_2d,
+                            "headerName": ln,
+                            "filter": False,
+                            "cellDataType": data_type,
+                            "pinned": "left",
+                        }
+                        layout_options["layout-2d"][dim_2d]["table-column-defs"].append(dcd)
+
                     layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
                 elif multi_dim and len(var["shape"]) == 3:
                     continue
