@@ -806,7 +806,7 @@ def layout(sensor_id=None):
 
                         dcd = {
                             "field": dim_2d,
-                            "headerName": ln,
+                            "headerName": dln,
                             "filter": False,
                             "cellDataType": data_type,
                             "pinned": "left",
