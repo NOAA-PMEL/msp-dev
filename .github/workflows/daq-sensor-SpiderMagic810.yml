@@ -3,7 +3,7 @@ name: Build and Push aerosoldynamics-spidermagic810
 on:
 
   push:
-    branches: [ dev-* , add-SCX21-and-spider-magic-drivers']
+    branches: [ dev-* , add-SCX21-and-spider-magic-drivers', aps-dndlogdp]
     paths:
       - 'code/apps/daq/sensors/AerosolDynamics/SpiderMagic810/**'
   
