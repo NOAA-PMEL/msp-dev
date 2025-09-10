@@ -900,6 +900,7 @@ class SpiderMagic810(Sensor):
                 record = self.build_data_record(meta=self.include_metadata)
                 self.include_metadata = False
                 try:
+                    self.logger.debug("default_parse", extra={"data.data": data.data["data"]})
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
@@ -909,11 +910,14 @@ class SpiderMagic810(Sensor):
                         parts = parts[2:3] + parts[4:8]
                         parts = [item.replace('Hz', '').replace('tau=', '') for item in parts]
                         self.var_name = variables[0:5]
+                        self.logger.debug("default_parse:v1", extra={"var_name": self.var_name, "parts": parts})
 
                     elif (datavar := 'STARTING') in data.data["data"]:
                         parts = parts[1:3] + parts[4:25]
                         parts = [item.replace('V', '') for item in parts]
                         self.var_name = variables[5:28]
+                        self.logger.debug("default_parse:STARTING", extra={"var_name": self.var_name, "parts": parts})
+
 
                     elif (datavar := 'Vi') in data.data["data"]:
                         parts = parts[0:4]
@@ -921,15 +925,18 @@ class SpiderMagic810(Sensor):
                         elapsed_time = abs(round((np.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
                         parts.append(elapsed_time)
                         self.var_name = variables[28:33]
+                        self.logger.debug("default_parse:vi", extra={"var_name": self.var_name, "parts": parts})
 
                     elif (datavar := 'START SEQ') in data.data["data"]:
                         self.sequence_start = True
                         self.seq_counter = 0
+                        self.logger.debug("default_parse:START SEQ", extra={"vdata": data.data["data"]})
                         return None
                     
                     elif (datavar := 'END SEQ') in data.data["data"]:
                         self.sequence_end = True
                         self.sequence_start = False
+                        self.logger.debug("default_parse:END SEQ", extra={"vdata": data.data["data"]})
                         return None
                     
                     elif self.sequence_start:
@@ -942,11 +949,14 @@ class SpiderMagic810(Sensor):
                         
                         else:
                             parts = self.check_array_buffer(parts, array_cond=True)
+                            self.logger.debug("default_parse:check_array", extra={"parts": parts})
                             self.seq_counter = 0
                             parts = np.array(list(parts), dtype=object)
                             transposed = np.transpose(parts)
                             parts = transposed.tolist()
                             self.array_buffer = []
+                            self.logger.debug("default_parse:check_array", extra={"parts": parts})
+
                         pass
 
                     else:
@@ -976,6 +986,7 @@ class SpiderMagic810(Sensor):
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
+                    self.logger.debug("default_parse:record", extra={"record": record})
                     return record
                 except KeyError:
                     pass
