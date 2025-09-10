@@ -842,8 +842,8 @@ class SpiderMagic810(Sensor):
                     vp_rd = record["variables"]["pv_rd"]["data"]
                     if vp_rd == "pd" or vp_rd == "nd":
                         for name,variable in self.metadata["variables"].items():
-                            if var["shape"] == ["time", "diameter"]:
-                                record["variables"][name]["data"] = record["variables"][name]["data"].reverse()
+                            if variable["shape"] == ["time", "diameter"]:
+                                variable["data"] = variable["data"].reverse()
 
                     # this is a temp calc for diameters based on table in manual
                     # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
