@@ -833,8 +833,8 @@ class SpiderMagic810(Sensor):
                     diameters = []
                     for v in voltages:
                         diameters.append(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4)
-                    record["variables"]["diamter"]["data"] = diameters
-
+                    record["variables"]["diameter"]["data"] = diameters
+                    self.logger.debug("default_data_loop:diameter", extra={"volts": voltages, "diameter": diameters})
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
