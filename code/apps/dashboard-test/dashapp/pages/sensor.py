@@ -783,7 +783,7 @@ def layout(sensor_id=None):
                             "variable-list": [],
                         }
                     layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
-                elif is_3d:
+                elif multi_dim and len(var["shape"]) == 3:
                     continue
                 else:
                     layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
