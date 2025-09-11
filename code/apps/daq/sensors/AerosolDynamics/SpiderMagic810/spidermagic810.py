@@ -850,6 +850,11 @@ class SpiderMagic810(Sensor):
                 #     ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
                 #     ongoing_record["variables"]['intN']["data"] = [None]*53
 
+                    # TODO make this (127) a config variable?
+                    if len(record["variables"]["read_V"]["data"]) != 127:
+                        self.logger.info("Incorrect number of scan readings", extra={"expected": 127, "actual": len(record["variables"]["read_V"]["data"])})
+                        continue
+
                     #TODO do inversion when available
 
                     # check if scanning in "down" direction and reverse data
