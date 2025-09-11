@@ -857,13 +857,13 @@ class SpiderMagic810(Sensor):
                     self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
                     if vp_rd == "pd" or vp_rd == "nd":
                         for name,variable in self.metadata["variables"].items():
-                            if name == "time": # or name == "diameter":
+                            if name == "time" or name == "diameter":
                                 continue
                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
                             if variable["shape"] == ["time", "diameter"]:
-                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
-                                variable["data"].reverse()
-                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
+                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": record["variables"][name]["data"]})
+                                record["variables"][name]["data"].reverse()
+                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": record["variables"][name]["data"]})
 
                     # this is a temp calc for diameters based on table in manual
                     # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
