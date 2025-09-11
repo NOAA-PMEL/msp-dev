@@ -850,13 +850,14 @@ class SpiderMagic810(Sensor):
                 #     ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
                 #     ongoing_record["variables"]['intN']["data"] = [None]*53
 
+                    #TODO do inversion when available
 
                     # check if scanning in "down" direction and reverse data
-                    vp_rd = record["variables"]["vp_rd"]["data"]
+                    vp_rd = record["variables"]["vp_rd"]["data"].strip()
                     self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
                     if vp_rd == "pd" or vp_rd == "nd":
                         for name,variable in self.metadata["variables"].items():
-                            if name == "time" or name == "diameter":
+                            if name == "time": # or name == "diameter":
                                 continue
                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
                             if variable["shape"] == ["time", "diameter"]:
@@ -870,7 +871,7 @@ class SpiderMagic810(Sensor):
                     diameters = []
                     for v in voltages:
                         v = abs(v)
-                        diameters.append(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4)
+                        diameters.append(round(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4, 3))
                     record["variables"]["diameter"]["data"] = diameters
                     self.logger.debug("default_data_loop:diameter", extra={"scan_length": len(diameters), "volts": voltages, "diameter": diameters})
 
