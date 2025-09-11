@@ -240,8 +240,8 @@ config = Settings()
 # db_data_client = DBClient(connection=config.mongodb_data_connection)
 # db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 
-# datastore_url = f"datastore.{config.daq_id}-system"
-datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
+datastore_url = f"datastore.{config.daq_id}-system"
+# datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 
 # websocket = WebSocket(
