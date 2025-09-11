@@ -1057,7 +1057,7 @@ class SpiderMagic810(Sensor):
 
                     if (datavar := 'v1') in data.data["data"]:
                         parts = parts[2:3] + parts[4:8]
-                        parts = [item.replace('Hz', '').replace('tau=', '') for item in parts]
+                        parts = [item.replace('Hz', '').replace('tau=', '').strip() for item in parts]
                         self.var_name = variables[0:5]
                         self.extra_var_names = variables[0:5]
                         self.extra_vars = parts
@@ -1068,7 +1068,7 @@ class SpiderMagic810(Sensor):
                     elif (datavar := 'STARTING') in data.data["data"]:
 
                         parts = parts[1:3] + parts[4:25]
-                        parts = [item.replace('V', '') for item in parts]
+                        parts = [item.replace('V', '').strip() for item in parts]
                         self.var_name = variables[5:28]
                         self.extra_var_names += variables[5:28]
                         self.extra_vars += parts
@@ -1077,7 +1077,7 @@ class SpiderMagic810(Sensor):
 
                     elif (datavar := 'Vi') in data.data["data"]:
                         parts = parts[0:4]
-                        parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '') for item in parts]
+                        parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '').strip() for item in parts]
                         elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
                         parts.append(elapsed_time)
                         self.var_name = variables[28:33]
