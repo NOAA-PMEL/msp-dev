@@ -857,7 +857,7 @@ class SpiderMagic810(Sensor):
                     self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
                     if vp_rd == "pd" or vp_rd == "nd":
                         for name,variable in self.metadata["variables"].items():
-                            if name == "time" or name == "diameter":
+                            if name in ["time", "diameter", "dN", "dlogDp", "dNdlogDp"]:
                                 continue
                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
                             if variable["shape"] == ["time", "diameter"]:
@@ -878,7 +878,7 @@ class SpiderMagic810(Sensor):
                     record["variables"]['dN']["data"] = [None]*len(diameters)
                     record["variables"]['dlogDp']["data"] = [None]*len(diameters)
                     record["variables"]['dNdlogDp']["data"] = [None]*len(diameters)
-                    record["variables"]['intN']["data"] = [None]*len(diameters)
+                    record["variables"]['intN']["data"] = None
 
 
 
