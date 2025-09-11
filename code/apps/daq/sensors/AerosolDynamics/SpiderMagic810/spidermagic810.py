@@ -862,7 +862,7 @@ class SpiderMagic810(Sensor):
                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
                             if variable["shape"] == ["time", "diameter"]:
                                 self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
-                                variable["data"] = variable["data"].reverse()
+                                variable["data"].reverse()
                                 self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
 
                     # this is a temp calc for diameters based on table in manual
@@ -902,7 +902,7 @@ class SpiderMagic810(Sensor):
             except Exception as e:
                 print(f"default_data_loop error: {e}")
                 print(traceback.format_exc())
-            await asyncio.sleep(0.0001)
+            await asyncio.sleep(0.001)
 
     async def default_data_loop_bak(self):
 
