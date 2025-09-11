@@ -348,6 +348,7 @@ class RedisClient(DBClient):
         results = []
         for doc in docs:
             try:
+                self.logger.debug("device_data_get", extra={'has_attr':hasattr(doc, 'json'), "jdoc": doc})
                 if doc.json:
                     record = json.loads(doc.json)
                     results.append(record["record"])
