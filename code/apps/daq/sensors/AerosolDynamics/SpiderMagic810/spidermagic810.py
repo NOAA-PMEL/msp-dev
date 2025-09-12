@@ -1,4 +1,5 @@
 import asyncio
+import math
 import signal
 
 # import uvicorn
@@ -523,14 +524,21 @@ class SpiderMagic810(Sensor):
 
         self.default_data_buffer = asyncio.Queue()
 
-        # self.sensor_definition_file = "AerosolDynamics_SpiderMagic810_sensor_definition.json"
+        self.sensor_definition_file = "AerosolDynamics_SPIDERMAGIC810_sensor_definition.json"
 
-        # try:            
-        #     with open(self.sensor_definition_file, "r") as f:
-        #         self.metadata = json.load(f)
-        # except FileNotFoundError:
-        #     self.logger.error("sensor_definition not found. Exiting")            
-        #     sys.exit(1)
+        try:            
+            if os.path.exists(self.sensor_definition_file):
+                self.logger.debug(f"'{self.sensor_definition_file}' exists.")
+            if os.path.isfile(self.sensor_definition_file):
+                self.logger.debug(f"'{self.sensor_definition_file}' is a file.")
+            if os.path.isdir(self.sensor_definition_file):
+                self.logger.debug(f"'{self.sensor_definition_file}' is a directory.")
+
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
@@ -717,6 +725,9 @@ class SpiderMagic810(Sensor):
 
         # start_command = f"Log,{self.sampling_interval}\n"
         start_command = "hvgo\r"
+        v1_setting = "v1,5\r" # these can be config values 
+        v2_setting = "v2,5000\r"
+        start_commands = [v1_setting, v2_setting, start_command]
         stop_command = "stop\r"
 
         need_start = True
@@ -742,7 +753,11 @@ class SpiderMagic810(Sensor):
                             self.collecting = False
                             continue
                         else:
-                            await self.interface_send_data(data={"data": start_command})
+                            for cmd in start_commands:
+                                await self.interface_send_data(data={"data": cmd})
+                                await asyncio.sleep(.5)
+
+                            # await self.interface_send_data(data={"data": start_command})
                             # await self.interface_send_data(data={"data": "\n"})
                             need_start = False
                             start_requested = True
@@ -752,7 +767,11 @@ class SpiderMagic810(Sensor):
                         if self.collecting:
                             start_requested = False
                         else:
-                            await self.interface_send_data(data={"data": start_command})
+                            for cmd in start_commands:
+                                await self.interface_send_data(data={"data": cmd})
+                                await asyncio.sleep(.5)
+
+                            # await self.interface_send_data(data={"data": start_command})
                             # await self.interface_send_data(data={"data": "\n"})
                             await asyncio.sleep(2)
                             continue
@@ -771,6 +790,126 @@ class SpiderMagic810(Sensor):
 
 
     async def default_data_loop(self):
+
+        while True:
+            try:
+                data = await self.default_data_buffer.get()
+                if data:
+                    self.collecting = True
+
+                # if "v1" in data.data['data']:
+                #     record_heading = self.default_parse(data)
+                #     continue
+
+                # elif self.sequence_end:
+                #     self.sequence_end = False
+                #     for var in record_heading["variables"]:
+                #         if record_heading["variables"][var]["data"]:
+                #             ongoing_record["variables"][var]["data"] = record_heading["variables"][var]["data"]
+                    
+                #     # THIS WILL CHANGE WHEN AN INVERSION ROUTINE IS IMPLEMENTED
+                #     ongoing_record["variables"]['diameter']["data"] = [None]*53
+                #     ongoing_record["variables"]['dN']["data"] = [None]*53
+                #     ongoing_record["variables"]['dlogDp']["data"] = [None]*53
+                #     ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
+                #     ongoing_record["variables"]['intN']["data"] = [None]*53
+                
+                # elif "STARTING" in data.data['data']:
+                #     ongoing_record = self.default_parse(data)
+                #     continue
+
+                # else:
+                #     record2 = self.default_parse(data)
+                #     if not record2:
+                #         continue
+                #     else:
+                #         for var in record2["variables"]:
+                #             if var != 'time':
+                #                 try:
+                #                     if record2["variables"][var]["data"].any():
+                #                         ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
+                #                 except Exception:
+                #                     if record2["variables"][var]["data"]:
+                #                         ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
+                #         continue
+                # record = ongoing_record
+                # print('FINAL RECORD', record)
+
+                record = self.default_parse(data)
+                if not record:
+                    continue
+
+                if record:
+                    self.collecting = True
+
+                if record and self.sampling():
+
+                #     ongoing_record["variables"]['diameter']["data"] = [None]*53
+                #     ongoing_record["variables"]['dN']["data"] = [None]*53
+                #     ongoing_record["variables"]['dlogDp']["data"] = [None]*53
+                #     ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
+                #     ongoing_record["variables"]['intN']["data"] = [None]*53
+
+                    # TODO make this (127) a config variable?
+                    if len(record["variables"]["read_V"]["data"]) != 127:
+                        self.logger.info("Incorrect number of scan readings", extra={"expected": 127, "actual": len(record["variables"]["read_V"]["data"])})
+                        continue
+
+                    #TODO do inversion when available
+
+                    # check if scanning in "down" direction and reverse data
+                    vp_rd = record["variables"]["vp_rd"]["data"].strip()
+                    self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
+                    if vp_rd == "pd" or vp_rd == "nd":
+                        for name,variable in self.metadata["variables"].items():
+                            if name in ["time", "diameter", "dN", "dlogDp", "dNdlogDp"]:
+                                continue
+                            self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
+                            if variable["shape"] == ["time", "diameter"]:
+                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": record["variables"][name]["data"]})
+                                record["variables"][name]["data"].reverse()
+                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": record["variables"][name]["data"]})
+
+                    # this is a temp calc for diameters based on table in manual
+                    # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
+                    voltages = record["variables"]["read_V"]["data"]
+                    diameters = []
+                    for v in voltages:
+                        v = abs(v)
+                        diameters.append(round(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4, 3))
+                    record["variables"]["diameter"]["data"] = diameters
+                    self.logger.debug("default_data_loop:diameter", extra={"scan_length": len(diameters), "volts": voltages, "diameter": diameters})
+
+                    record["variables"]['dN']["data"] = [None]*len(diameters)
+                    record["variables"]['dlogDp']["data"] = [None]*len(diameters)
+                    record["variables"]['dNdlogDp']["data"] = [None]*len(diameters)
+                    record["variables"]['intN']["data"] = None
+
+
+
+                    event = DAQEvent.create_data_update(
+                        # source="sensor.mockco-mock1-1234", data=record
+                        source=self.get_id_as_source(),
+                        data=record,
+                    )
+                    destpath = f"{self.get_id_as_topic()}/data/update"
+                    event["destpath"] = destpath
+                    self.logger.debug(
+                        "default_data_loop",
+                        extra={"data": event, "destpath": destpath},
+                    )
+                    # message = Message(data=event, destpath=destpath)
+                    message = event
+                    # self.logger.debug("default_data_loop", extra={"m": message})
+                    await self.send_message(message)
+
+                self.logger.debug("default_data_loop", extra={"record": record})
+            except Exception as e:
+                print(f"default_data_loop error: {e}")
+                print(traceback.format_exc())
+            await asyncio.sleep(0.001)
+
+    async def default_data_loop_bak(self):
 
         while True:
             try:
@@ -819,6 +958,29 @@ class SpiderMagic810(Sensor):
                     self.collecting = True
 
                 if record and self.sampling():
+
+                    # check if scanning in "down" direction and reverse data
+                    vp_rd = record["variables"]["vp_rd"]["data"]
+                    self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
+                    if vp_rd == "pd" or vp_rd == "nd":
+                        for name,variable in self.metadata["variables"].items():
+                            if name == "time" or name == "diameter":
+                                continue
+                            self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
+                            if variable["shape"] == ["time", "diameter"]:
+                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
+                                variable["data"] = variable["data"].reverse()
+                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
+
+                    # this is a temp calc for diameters based on table in manual
+                    # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
+                    voltages = record["variables"]["read_V"]["data"]
+                    diameters = []
+                    for v in voltages:
+                        v = abs(v)
+                        diameters.append(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4)
+                    record["variables"]["diameter"]["data"] = diameters
+                    self.logger.debug("default_data_loop:diameter", extra={"volts": voltages, "diameter": diameters})
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
@@ -841,13 +1003,41 @@ class SpiderMagic810(Sensor):
                 print(traceback.format_exc())
             await asyncio.sleep(0.0001)
 
-
     def check_array_buffer(self, data, array_cond = False):
         self.array_buffer.append(data)
         if array_cond:
             return self.array_buffer
         else:
             return
+
+    def add_to_record(self, record, names, data):
+        # for index, name in enumerate(self.var_name):
+        for name, v in zip(names, data):
+            if name in record["variables"]:
+                instvar = self.config.metadata.variables[name]
+                try:
+                    if instvar.type == "int":
+                        if isinstance(v, list):
+                            record["variables"][name]["data"] = [int(item) for item in v]
+                        else:
+                            record["variables"][name]["data"] = int(v)
+
+                    elif instvar.type == "float":
+                        if isinstance(v, list):
+                            record["variables"][name]["data"] = [float(item) for item in v]
+                        else:
+                            record["variables"][name]["data"] = float(v)
+                            
+                    else:
+                        record["variables"][name]["data"] = v
+
+                except ValueError:
+                    if instvar.type == "str" or instvar.type == "char":
+                        record["variables"][name]["data"] = ""
+                    else:
+                        record["variables"][name]["data"] = None
+        self.logger.debug("default_parse:add_to_record", extra={"record": record})
+        # return record
 
 
     def default_parse(self, data):
@@ -856,39 +1046,185 @@ class SpiderMagic810(Sensor):
                 variables = list(self.config.metadata.variables.keys())
                 variables.remove("time")
 
+                # record = self.build_data_record(meta=self.include_metadata)
+                self.include_metadata = False
+                try:
+                    self.logger.debug("default_parse", extra={"data.data": data.data["data"]})
+                    # record["timestamp"] = data.data["timestamp"]
+                    # record["variables"]["time"]["data"] = data.data["timestamp"]
+                    parts = data.data["data"].strip().split(",")
+                    # parts = [item.replace('\r\n', '').strip() for item in parts]
+
+                    if (datavar := 'v1') in data.data["data"]:
+                        parts = parts[2:3] + parts[4:8]
+                        parts = [item.replace('Hz', '').replace('tau=', '').strip() for item in parts]
+                        self.var_name = variables[0:5]
+                        self.extra_var_names = variables[0:5]
+                        self.extra_vars = parts
+                        self.logger.debug("default_parse:v1", extra={"var_name": self.var_name, "parts": parts})
+                        return None
+                    
+                    # starts scan
+                    elif (datavar := 'STARTING') in data.data["data"]:
+
+                        parts = parts[1:3] + parts[4:25]
+                        parts = [item.replace('V', '').strip() for item in parts]
+                        self.var_name = variables[5:28]
+                        self.extra_var_names += variables[5:28]
+                        self.extra_vars += parts
+                        self.logger.debug("default_parse:STARTING", extra={"var_name": self.var_name, "parts": parts})
+                        return None
+
+                    elif (datavar := 'Vi') in data.data["data"]:
+                        parts = parts[0:4]
+                        parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '').strip() for item in parts]
+                        elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
+                        parts.append(elapsed_time)
+                        self.var_name = variables[28:33]
+                        self.extra_var_names += variables[28:33]
+                        self.extra_vars += parts
+                        self.logger.debug("default_parse:vi", extra={"var_name": self.var_name, "parts": parts})
+                        return None
+                    
+                    # actual start of scan, use this for timestamp
+                    elif (datavar := 'START SEQ') in data.data["data"]:
+
+                        self.current_record = self.build_data_record(meta=self.include_metadata)
+                        self.current_record["timestamp"] = data.data["timestamp"]
+                        self.current_record["variables"]["time"]["data"] = data.data["timestamp"]
+
+                        # add extra_vars
+                        self.add_to_record(self.current_record, self.extra_var_names, self.extra_vars)
+                        self.sequence_start = True
+                        self.seq_counter = 0
+                        self.logger.debug("default_parse:START SEQ", extra={"vdata": data.data["data"]})
+                        return None
+                    
+                    # done with scan, complete record and return
+                    elif (datavar := 'END SEQ') in data.data["data"]:
+                        
+                        self.scan_var_names = variables[33:41]
+                        
+
+                        parts = np.array(list(self.array_buffer), dtype=object)
+                        transposed = np.transpose(parts)
+                        parts = transposed.tolist()
+                        self.array_buffer = []
+                        self.logger.debug("default_parse:check_array", extra={"parts": parts})
+
+                        self.add_to_record(self.current_record, self.scan_var_names, parts)
+
+                        self.sequence_end = True
+                        self.sequence_start = False
+                        self.logger.debug("default_parse:END SEQ", extra={"vdata": data.data["data"]})
+                        return self.current_record
+                    
+                    elif self.sequence_start:
+                        self.var_name = variables[33:41]
+                        if len(parts) != 8:
+                            return None
+                        self.check_array_buffer(parts, array_cond=False)
+
+
+                        # if self.seq_counter < 52:
+                        #     self.check_array_buffer(parts, array_cond=False)
+                        #     self.seq_counter += 1
+                        #     return
+                        
+                        # else:
+                        #     parts = self.check_array_buffer(parts, array_cond=True)
+                        #     self.logger.debug("default_parse:check_array", extra={"parts": parts})
+                        #     self.seq_counter = 0
+                        #     parts = np.array(list(parts), dtype=object)
+                        #     transposed = np.transpose(parts)
+                        #     parts = transposed.tolist()
+                        #     self.array_buffer = []
+                        #     self.logger.debug("default_parse:check_array", extra={"parts": parts})
+
+                        # pass
+
+                    else:
+                        return None
+
+                    # for index, name in enumerate(self.var_name):
+                    #     if name in record["variables"]:
+                    #         instvar = self.config.metadata.variables[name]
+                    #         try:
+                    #             if instvar.type == "int":
+                    #                 if isinstance(parts[index], list):
+                    #                     record["variables"][name]["data"] = [int(item) for item in parts[index]]
+                    #                 else:
+                    #                     record["variables"][name]["data"] = int(parts[index])
+
+                    #             elif instvar.type == "float":
+                    #                 if isinstance(parts[index], list):
+                    #                     record["variables"][name]["data"] = [float(item) for item in parts[index]]
+                    #                 else:
+                    #                     record["variables"][name]["data"] = float(parts[index])
+                                        
+                    #             else:
+                    #                 record["variables"][name]["data"] = parts[index]
+
+                    #         except ValueError:
+                    #             if instvar.type == "str" or instvar.type == "char":
+                    #                 record["variables"][name]["data"] = ""
+                    #             else:
+                    #                 record["variables"][name]["data"] = None
+                    # self.logger.debug("default_parse:record", extra={"record": record})
+                    # return record
+                except KeyError:
+                    pass
+            except Exception as e:
+                print(f"default_parse error: {e}")
+        # else:
+        return None
+
+    def default_parse_bak(self, data):
+        if data:
+            try:
+                variables = list(self.config.metadata.variables.keys())
+                variables.remove("time")
+
                 record = self.build_data_record(meta=self.include_metadata)
                 self.include_metadata = False
                 try:
+                    self.logger.debug("default_parse", extra={"data.data": data.data["data"]})
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
-                    parts = data.data["data"].split(",")
-                    parts = [item.replace('\r\n', '').strip() for item in parts]
+                    parts = data.data["data"].strip().split(",")
+                    # parts = [item.replace('\r\n', '').strip() for item in parts]
 
                     if (datavar := 'v1') in data.data["data"]:
                         parts = parts[2:3] + parts[4:8]
                         parts = [item.replace('Hz', '').replace('tau=', '') for item in parts]
                         self.var_name = variables[0:5]
+                        self.logger.debug("default_parse:v1", extra={"var_name": self.var_name, "parts": parts})
 
                     elif (datavar := 'STARTING') in data.data["data"]:
                         parts = parts[1:3] + parts[4:25]
                         parts = [item.replace('V', '') for item in parts]
                         self.var_name = variables[5:28]
+                        self.logger.debug("default_parse:STARTING", extra={"var_name": self.var_name, "parts": parts})
+
 
                     elif (datavar := 'Vi') in data.data["data"]:
                         parts = parts[0:4]
                         parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '') for item in parts]
-                        elapsed_time = abs(round((np.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
+                        elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
                         parts.append(elapsed_time)
                         self.var_name = variables[28:33]
+                        self.logger.debug("default_parse:vi", extra={"var_name": self.var_name, "parts": parts})
 
                     elif (datavar := 'START SEQ') in data.data["data"]:
                         self.sequence_start = True
                         self.seq_counter = 0
+                        self.logger.debug("default_parse:START SEQ", extra={"vdata": data.data["data"]})
                         return None
                     
                     elif (datavar := 'END SEQ') in data.data["data"]:
                         self.sequence_end = True
                         self.sequence_start = False
+                        self.logger.debug("default_parse:END SEQ", extra={"vdata": data.data["data"]})
                         return None
                     
                     elif self.sequence_start:
@@ -901,11 +1237,14 @@ class SpiderMagic810(Sensor):
                         
                         else:
                             parts = self.check_array_buffer(parts, array_cond=True)
+                            self.logger.debug("default_parse:check_array", extra={"parts": parts})
                             self.seq_counter = 0
                             parts = np.array(list(parts), dtype=object)
                             transposed = np.transpose(parts)
                             parts = transposed.tolist()
                             self.array_buffer = []
+                            self.logger.debug("default_parse:check_array", extra={"parts": parts})
+
                         pass
 
                     else:
@@ -935,6 +1274,7 @@ class SpiderMagic810(Sensor):
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
+                    self.logger.debug("default_parse:record", extra={"record": record})
                     return record
                 except KeyError:
                     pass
@@ -942,6 +1282,7 @@ class SpiderMagic810(Sensor):
                 print(f"default_parse error: {e}")
         # else:
         return None
+
 
 
 class ServerConfig(BaseModel):

@@ -241,6 +241,7 @@ config = Settings()
 # db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 
 datastore_url = f"datastore.{config.daq_id}-system"
+# datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 
 # websocket = WebSocket(
@@ -702,86 +703,9 @@ def layout(sensor_id=None):
     if sensor_definition:
         try:
             dimensions = sensor_definition["dimensions"]
-            is_2d = False
+            multi_dim = False
             if len(dimensions.keys()) > 1:
-                is_2d = True
-                if "layout-2d" not in layout_options:
-                    layout_options["layout-2d"] = (
-                        {}
-                    )  # {dim_2d: {"table-column-defs": [], "variable-list": []}}
-
-                # for d in dimensions.keys():
-                #     if d == "time":
-                #         continue
-                #     if "columns_2d" not in graph_options:
-                #         graph_options["columns_2d"] = dict()
-                #     graph_options["columns_2d"] = {d:[]}
-
-            print(f"layout: {layout_options}")
-            if is_2d:
-                for d in dimensions.keys():
-                    if d == "time":
-                        cd = {
-                            "field": "time",
-                            "headerName": "Time",
-                            "filter": False,
-                            "cellDataType": "text",
-                            "pinned": "left",
-                        }
-                        layout_options["layout-1d"]["time"]["table-column-defs"].append(
-                            cd
-                        )
-
-                    # if d != "time":
-                    else:
-                        layout_options["layout-2d"][d] = {
-                            "table-column-defs": [],
-                            "variable-list": [],
-                        }
-                        ln = d
-                        try:
-                            ln = sensor_definition["attributes"][d]["long_name"]["data"]
-                        except KeyError:
-                            pass
-
-                        print(f"layout: {ln}")
-                        data_type = "text"
-                        try:
-                            dtype = sensor_definition["variables"][d]["type"]
-                            if dtype in ["float", "double", "int"]:
-                                data_type = "number"
-                            elif dtype in ["str", "string", "char"]:
-                                data_type = "text"
-                            elif dtype in ["bool"]:
-                                data_type = "boolean"
-                        except KeyError:
-                            pass
-                        print(f"layout: {data_type}")
-
-                        cd = {
-                            "field": d,
-                            "headerName": ln,
-                            "filter": False,
-                            "cellDataType": data_type,
-                            "pinned": "left",
-                        }
-                        layout_options["layout-2d"][d]["table-column-defs"].append(cd)
-                        print(f"layout: {layout_options}")
-            else:
-                if "time" in dimensions:
-                    # column_defs_1d.append(
-                    cd = {
-                        "field": "time",
-                        "headerName": "Time",
-                        "filter": False,
-                        "cellDataType": "text",
-                        "pinned": "left",
-                    }
-                    layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
-                    print(f"layout: {layout_options}")
-            
-            # make settings table
-            # layout_options["layout-settings"]["time"]["table-column-defs"].append({"field": "Type"})
+                multi_dim = True
 
             for name, var in sensor_definition["variables"].items():
                 if var["attributes"]["variable_type"]["data"] == "setting":
@@ -810,9 +734,8 @@ def layout(sensor_id=None):
                     }
                     layout_options["layout-settings"]["time"]["table-column-defs"].append(cd)
 
-            for name, var in sensor_definition["variables"].items():
                 # only get the data variables for main
-                if var["attributes"]["variable_type"]["data"] != "main":
+                elif var["attributes"]["variable_type"]["data"] != "main":
                     continue
                 if name in dimensions:
                     continue
@@ -848,9 +771,52 @@ def layout(sensor_id=None):
                 }
                 # )
 
-                if is_2d and len(var["shape"]) == 2:
+                if multi_dim and len(var["shape"]) == 2:
+                    if "layout-2d" not in layout_options:
+                        layout_options["layout-2d"] = (
+                            {}
+                        )  # {dim_2d: {"table-column-defs": [], "variable-list": []}}
+
                     dim_2d = [d for d in var["shape"] if d != "time"][0]
+
+                    # if no entry for second dim, create
+                    if dim_2d not in layout_options["layout-2d"]:
+                        layout_options["layout-2d"][dim_2d] = {
+                            "table-column-defs": [],
+                            "variable-list": [],
+                        }
+                        dln = dim_2d
+                        try:
+                            dln = sensor_definition["attributes"][dim_2d]["long_name"]["data"]
+                        except KeyError:
+                            pass
+
+                        # print(f"layout: {ln}")
+                        data_type = "text"
+                        try:
+                            dtype = sensor_definition["variables"][dim_2d]["type"]
+                            if dtype in ["float", "double", "int"]:
+                                data_type = "number"
+                            elif dtype in ["str", "string", "char"]:
+                                data_type = "text"
+                            elif dtype in ["bool"]:
+                                data_type = "boolean"
+                        except KeyError:
+                            pass
+                        # print(f"layout: {data_type}")
+
+                        dcd = {
+                            "field": dim_2d,
+                            "headerName": dln,
+                            "filter": False,
+                            "cellDataType": data_type,
+                            "pinned": "left",
+                        }
+                        layout_options["layout-2d"][dim_2d]["table-column-defs"].append(dcd)
+
                     layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
+                elif multi_dim and len(var["shape"]) == 3:
+                    continue
                 else:
                     layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
 
@@ -866,16 +832,200 @@ def layout(sensor_id=None):
                             {"label": cd["field"], "value": cd["field"]}
                         )
 
-            # # dropdown_list = []
-            # for cd in column_defs_1d:
-            #     if cd["field"] == "time":
-            #         continue
-            #     if cd["cellDataType"] != "number":
-            #         continue
-            #     dropdown_list_1d.append({"label": cd["field"], "value": cd["field"]})
-
         except KeyError as e:
             print(f"build column_defs error: {e}")
+            
+
+        # below commented out to try new way of setting up layout
+
+        # try:
+        #     dimensions = sensor_definition["dimensions"]
+        #     is_2d = False
+        #     is_3d = False
+        #     if len(dimensions.keys()) == 2:
+        #         is_2d = True
+        #         if "layout-2d" not in layout_options:
+        #             layout_options["layout-2d"] = (
+        #                 {}
+        #             )  # {dim_2d: {"table-column-defs": [], "variable-list": []}}
+
+        #         # for d in dimensions.keys():
+        #         #     if d == "time":
+        #         #         continue
+        #         #     if "columns_2d" not in graph_options:
+        #         #         graph_options["columns_2d"] = dict()
+        #         #     graph_options["columns_2d"] = {d:[]}
+        #     elif len(dimensions.keys()) == 3:
+        #         is_3d = True
+        #         if "layout-3d" not in layout_options:
+        #             layout_options["layout-3d"] = (
+        #                 {}
+        #             )  # {dim_2d: {"table-column-defs": [], "variable-list": []}}
+
+        #     print(f"layout: {layout_options}")
+        #     if is_2d:
+        #         for d in dimensions.keys():
+        #             if d == "time":
+        #                 cd = {
+        #                     "field": "time",
+        #                     "headerName": "Time",
+        #                     "filter": False,
+        #                     "cellDataType": "text",
+        #                     "pinned": "left",
+        #                 }
+        #                 layout_options["layout-1d"]["time"]["table-column-defs"].append(
+        #                     cd
+        #                 )
+
+        #             # if d != "time":
+        #             else:
+        #                 layout_options["layout-2d"][d] = {
+        #                     "table-column-defs": [],
+        #                     "variable-list": [],
+        #                 }
+        #                 ln = d
+        #                 try:
+        #                     ln = sensor_definition["attributes"][d]["long_name"]["data"]
+        #                 except KeyError:
+        #                     pass
+
+        #                 print(f"layout: {ln}")
+        #                 data_type = "text"
+        #                 try:
+        #                     dtype = sensor_definition["variables"][d]["type"]
+        #                     if dtype in ["float", "double", "int"]:
+        #                         data_type = "number"
+        #                     elif dtype in ["str", "string", "char"]:
+        #                         data_type = "text"
+        #                     elif dtype in ["bool"]:
+        #                         data_type = "boolean"
+        #                 except KeyError:
+        #                     pass
+        #                 print(f"layout: {data_type}")
+
+        #                 cd = {
+        #                     "field": d,
+        #                     "headerName": ln,
+        #                     "filter": False,
+        #                     "cellDataType": data_type,
+        #                     "pinned": "left",
+        #                 }
+        #                 layout_options["layout-2d"][d]["table-column-defs"].append(cd)
+        #                 print(f"layout: {layout_options}")
+        #     elif is_3d:
+        #         pass
+
+        #     else:
+        #         if "time" in dimensions:
+        #             # column_defs_1d.append(
+        #             cd = {
+        #                 "field": "time",
+        #                 "headerName": "Time",
+        #                 "filter": False,
+        #                 "cellDataType": "text",
+        #                 "pinned": "left",
+        #             }
+        #             layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
+        #             print(f"layout: {layout_options}")
+            
+        #     # make settings table
+        #     # layout_options["layout-settings"]["time"]["table-column-defs"].append({"field": "Type"})
+
+        #     for name, var in sensor_definition["variables"].items():
+        #         if var["attributes"]["variable_type"]["data"] == "setting":
+        #             long_name = name
+        #             ln = var["attributes"].get("long_name", None)
+        #             if ln:
+        #                 long_name = ln.get("data", name)
+
+        #             # get data type
+        #             dtype = var.get("type", "unknown")
+        #             print(f"dtype = {dtype}")
+        #             data_type = "text"
+        #             if dtype in ["float", "double", "int"]:
+        #                 data_type = "number"
+        #             elif dtype in ["str", "string", "char"]:
+        #                 data_type = "text"
+        #             elif dtype in ["bool"]:
+        #                 data_type = "boolean"
+
+        #             cd = {
+        #                 "field": name,
+        #                 "headerName": long_name,
+        #                 "filter": False,
+        #                 "cellDataType": data_type,
+        #                 # "cellRendererSelector": {'function': 'component_selector(params)'}
+        #             }
+        #             layout_options["layout-settings"]["time"]["table-column-defs"].append(cd)
+
+        #     for name, var in sensor_definition["variables"].items():
+        #         # only get the data variables for main
+        #         if var["attributes"]["variable_type"]["data"] != "main":
+        #             continue
+        #         if name in dimensions:
+        #             continue
+        #         if "shape" not in var:
+        #             continue
+        #         if "time" not in var["shape"]:
+        #             continue
+        #         # if len(var["shape"]) > 1 or "time" not in var["shape"]:
+        #         #     continue
+
+        #         long_name = name
+        #         ln = var["attributes"].get("long_name", None)
+        #         if ln:
+        #             long_name = ln.get("data", name)
+
+        #         # get data type
+        #         dtype = var.get("type", "unknown")
+        #         print(f"dtype = {dtype}")
+        #         data_type = "text"
+        #         if dtype in ["float", "double", "int"]:
+        #             data_type = "number"
+        #         elif dtype in ["str", "string", "char"]:
+        #             data_type = "text"
+        #         elif dtype in ["bool"]:
+        #             data_type = "boolean"
+
+        #         # column_defs_1d.append(
+        #         cd = {
+        #             "field": name,
+        #             "headerName": long_name,
+        #             "filter": False,
+        #             "cellDataType": data_type,
+        #         }
+        #         # )
+
+        #         if is_2d and len(var["shape"]) == 2:
+        #             dim_2d = [d for d in var["shape"] if d != "time"][0]
+        #             layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
+        #         elif is_3d:
+        #             pass
+        #         else:
+        #             layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
+
+        #     for ltype, dims in layout_options.items():
+        #         # for gtype, options in layout_options.items():
+        #         for dim, options in dims.items():
+        #             for cd in options["table-column-defs"]:
+        #                 if cd["field"] in dimensions:
+        #                     continue
+        #                 if cd["cellDataType"] != "number":
+        #                     continue
+        #                 layout_options[ltype][dim]["variable-list"].append(
+        #                     {"label": cd["field"], "value": cd["field"]}
+        #                 )
+
+        #     # # dropdown_list = []
+        #     # for cd in column_defs_1d:
+        #     #     if cd["field"] == "time":
+        #     #         continue
+        #     #     if cd["cellDataType"] != "number":
+        #     #         continue
+        #     #     dropdown_list_1d.append({"label": cd["field"], "value": cd["field"]})
+
+        # except KeyError as e:
+        #     print(f"build column_defs error: {e}")
 
     # print("here:1")
     layout = html.Div(

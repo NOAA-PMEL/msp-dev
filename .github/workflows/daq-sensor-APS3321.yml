@@ -3,7 +3,7 @@ name: Build and Push tsi-aps3321
 on:
 
   push:
-    branches: [ dev-* , add-envds-package-workflow']
+    branches: [ dev-* , add-envds-package-workflow', aps-dndlogdp]
     paths:
       - 'code/apps/daq/sensors/TSI/APS3321/**'
   

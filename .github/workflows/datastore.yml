@@ -3,7 +3,7 @@ name: Build and Push datastore
 on:
 
   push:
-    branches: [ dev-* ]
+    branches: [ dev-*, aps-dndlogdp ]
     paths:
       - 'code/apps/datastore/**'
   

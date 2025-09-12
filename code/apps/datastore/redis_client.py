@@ -348,6 +348,7 @@ class RedisClient(DBClient):
         results = []
         for doc in docs:
             try:
+                # self.logger.debug("device_data_get", extra={'has_attr':hasattr(doc, 'json'), "jdoc": doc})
                 if doc.json:
                     record = json.loads(doc.json)
                     results.append(record["record"])
@@ -441,28 +442,35 @@ class RedisClient(DBClient):
             key = f"{database}:{collection}:{device_id}"
             self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
 
-            check_request = DeviceInstanceRequest(
-                make=make,
-                model=model,
-                serial_number=serial_number,
-                version=version
+            # check_request = DeviceInstanceRequest(
+            #     make=make,
+            #     model=model,
+            #     serial_number=serial_number,
+            #     version=version
+            # )
+            # check_results = await self.device_instance_registry_get(check_request)
+            # self.logger.debug("device_instance_registry_update", extra={"check": check_results})
+            # # check = False # tmp
+            # if check_results["results"]: # check if there are any results
+            #     self.logger.debug("check_results", extra={"results": check_results["results"]})
+            #     result = True
+            # else:
+            #     result = self.client.json().set(
+            #         key,
+            #         "$",
+            #         {"registration": document}
+            #     )
+
+            # update device instance every time to keep up to date
+            result = self.client.json().set(
+                key,
+                "$",
+                {"registration": document}
             )
-            check_results = await self.device_instance_registry_get(check_request)
-            self.logger.debug("device_instance_registry_update", extra={"check": check_results})
-            # check = False # tmp
-            if check_results["results"]: # check if there are any results
-                self.logger.debug("check_results", extra={"results": check_results["results"]})
-                result = True
-            else:
-                result = self.client.json().set(
-                    key,
-                    "$",
-                    {"registration": document}
-                )
             if result:
                 self.client.expire(key, ttl)
 
-            self.logger.debug("device_instance_registry_update", extra={"check_request": check_request, "result": result})
+            # self.logger.debug("device_instance_registry_update", extra={"check_request": check_request, "result": result})
             return result
         
         except Exception as e:
@@ -694,28 +702,35 @@ class RedisClient(DBClient):
             key = f"{database}:{collection}:{controller_id}"
             self.logger.debug("redis_client", extra={"key": key, "controller-doc": document})
 
-            check_request = ControllerInstanceRequest(
-                make=make,
-                model=model,
-                serial_number=serial_number,
-                version=version
+            # check_request = ControllerInstanceRequest(
+            #     make=make,
+            #     model=model,
+            #     serial_number=serial_number,
+            #     version=version
+            # )
+            # check_results = await self.controller_instance_registry_get(check_request)
+            # self.logger.debug("controller_instance_registry_update", extra={"check": check_results})
+            # # check = False # tmp
+            # if check_results["results"]: # check if there are any results
+            #     self.logger.debug("check_results", extra={"results": check_results["results"]})
+            #     result = True
+            # else:
+            #     result = self.client.json().set(
+            #         key,
+            #         "$",
+            #         {"registration": document}
+            #     )
+
+            # update instance every time to keep up to date
+            result = self.client.json().set(
+                key,
+                "$",
+                {"registration": document}
             )
-            check_results = await self.controller_instance_registry_get(check_request)
-            self.logger.debug("controller_instance_registry_update", extra={"check": check_results})
-            # check = False # tmp
-            if check_results["results"]: # check if there are any results
-                self.logger.debug("check_results", extra={"results": check_results["results"]})
-                result = True
-            else:
-                result = self.client.json().set(
-                    key,
-                    "$",
-                    {"registration": document}
-                )
             if result:
                 self.client.expire(key, ttl)
 
-            self.logger.debug("controller_instance_registry_update", extra={"check_request": check_request, "result": result})
+            # self.logger.debug("controller_instance_registry_update", extra={"check_request": check_request, "result": result})
             return result
         
         except Exception as e:
