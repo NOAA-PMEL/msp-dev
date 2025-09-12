@@ -128,7 +128,8 @@ async def registry_sync(request: Request):
         L.debug(request.headers)
         L.debug("registry-sync", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
-        await registrar.handle_registry_sync(ce)
+        # await registrar.handle_registry_sync(ce)
+        await registrar.sync_bcast_buffer.put(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "OK"}
         # return get_response_event(msg, 202)
@@ -136,6 +137,6 @@ async def registry_sync(request: Request):
         L.error("registry-sync", extra={"reason": e})
         pass
         # return "",204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)

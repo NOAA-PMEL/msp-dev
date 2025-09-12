@@ -161,7 +161,7 @@ class XPort(Interface):
                 await asyncio.sleep(1)
 
             # await asyncio.sleep(self.min_recv_delay)
-            await asyncio.sleep(0.0001)
+            await asyncio.sleep(0.001)
 
     async def wait_for_ok(self, timeout=0):
         pass

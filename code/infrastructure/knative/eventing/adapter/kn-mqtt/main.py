@@ -125,6 +125,8 @@ async def root():
 @app.post("/mqtt/send/")
 async def mqtt_send(request: Request):
     try:
+        L.debug("mqtt/send")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         ce = from_http(request.headers, await request.body())
         # L.debug(request.headers)
         L.debug("mqtt_send", extra={"ce": ce, "destpath": ce["destpath"]})
@@ -139,4 +141,4 @@ async def mqtt_send(request: Request):
         # pass
         # # return {"message": "OK"}
         # return "",204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)

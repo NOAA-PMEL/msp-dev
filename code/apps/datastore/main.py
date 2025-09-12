@@ -167,7 +167,7 @@ async def device_settings_update(request: Request):
         # print(e)
         L.error("send", extra={"reason": e})
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
     
@@ -209,7 +209,7 @@ async def status_update(request: Request):
         L.error("status_update", extra={"reason": e})
         # pass
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
@@ -229,7 +229,7 @@ async def device_data_update(request: Request):
     except Exception as e:
         L.error("device_data_update", extra={"reason": e})
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
@@ -281,7 +281,7 @@ async def device_registry_update(request: Request):
         # L.error("send", extra={"reason": e})
         # pass
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
@@ -305,7 +305,7 @@ async def device_definition_registry_update(request: Request):
         # L.error("send", extra={"reason": e})
         # pass
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
@@ -373,7 +373,7 @@ async def device_instance_registry_get(
 #         return Response(status_code=status.HTTP_204_NO_CONTENT)
 #     except Exception as e:
 #         logging.error(f"Error processing event: {e}")
-#         return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # @app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/controller/data/update/")
@@ -390,7 +390,7 @@ async def controller_data_update(request: Request):
     except Exception as e:
         L.error("controller_data_update", extra={"reason": e})
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
@@ -447,7 +447,7 @@ async def controller_registry_update(request: Request):
         print(traceback.format_exc())
         pass
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
@@ -477,7 +477,7 @@ async def controller_definition_registry_update(request: Request):
         print(traceback.format_exc())
         # pass
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
