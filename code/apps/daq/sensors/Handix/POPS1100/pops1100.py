@@ -7,6 +7,7 @@ import signal
 import sys
 import os
 import logging
+import json
 
 # from logfmter import Logfmter
 import logging.config
@@ -24,7 +25,8 @@ from envds.util.util import (
     get_datetime,
     get_datetime_string,
 )
-from envds.daq.sensor import Sensor, SensorConfig, SensorVariable, SensorMetadata
+from envds.daq.sensor import Sensor
+from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
@@ -64,6 +66,7 @@ class POPS1100(Sensor):
             "format_version": {"type": "char", "data": "1.0.0"},
             "variable_types": {"type": "string", "data": "main, setting, calibration"}
         },
+        "dimensions": {"time": 0},
         "variables": {
             "time": {
                 "type": "str",
@@ -481,6 +484,15 @@ class POPS1100(Sensor):
 
         self.default_data_buffer = asyncio.Queue()
 
+        self.sensor_definition_file = "Handix_POPS1100_sensor_definition.json"
+
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
+
         self.lower_dp_bound = [
             115.,
             125.,
@@ -497,7 +509,7 @@ class POPS1100(Sensor):
             1220.,
             1530.,
             1990.,
-            2585.,
+            2585.
         ]
 
         self.upper_dp_bound = [
@@ -516,7 +528,7 @@ class POPS1100(Sensor):
             1530.,
             1990.,
             2585.,
-            3370.,
+            3370.
         ]
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
@@ -557,7 +569,7 @@ class POPS1100(Sensor):
 
         sensor_iface_properties = {
             "default": {
-                "sensor-interface-properties": {
+                "device-interface-properties": {
                     "connection-properties": {
                         "baudrate": 115200,
                         "bytesize": 8,
@@ -584,22 +596,26 @@ class POPS1100(Sensor):
                 "pops1100.configure", extra={"interfaces": conf["interfaces"]}
             )
 
-        for name, setting in POPS1100.metadata["settings"].items():
+        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+
+        for name, setting in settings_def["variables"].items():
+        
             requested = setting["attributes"]["default_value"]["data"]
             if "settings" in config and name in config["settings"]:
                 requested = config["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
 
-        meta = SensorMetadata(
-            attributes=POPS1100.metadata["attributes"],
-            variables=POPS1100.metadata["variables"],
-            settings=POPS1100.metadata["settings"],
+        meta = DeviceMetadata(
+            attributes=self.metadata["attributes"],
+            dimensions=self.metadata["dimensions"],
+            variables=self.metadata["variables"],
+            settings=settings_def["variables"]
         )
 
-        self.config = SensorConfig(
-            make=POPS1100.metadata["attributes"]["make"]["data"],
-            model=POPS1100.metadata["attributes"]["model"]["data"],
+        self.config = DeviceConfig(
+            make=self.metadata["attributes"]["make"]["data"],
+            model=self.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
             metadata=meta,
             interfaces=conf["interfaces"],
@@ -638,16 +654,16 @@ class POPS1100(Sensor):
         await super(POPS1100, self).handle_interface_data(message)
 
         # self.logger.debug("interface_recv_data", extra={"data": message.data})
-        if message.data["type"] == det.interface_data_recv():
+        if message["type"] == det.interface_data_recv():
             try:
-                path_id = message.data["path_id"]
+                path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
                 # if path_id == "default":
                 if path_id == iface_path:
                     self.logger.debug(
-                        "interface_recv_data", extra={"data": message.data.data}
+                        "interface_recv_data", extra={"data": message.data}
                     )
-                    await self.default_data_buffer.put(message.data)
+                    await self.default_data_buffer.put(message)
             except KeyError:
                 pass
 
@@ -740,7 +756,7 @@ class POPS1100(Sensor):
                         await asyncio.sleep(2)
                         self.collecting = False
 
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(1)
 
                 # if self.collecting:
                 #     # await self.stop_command()
@@ -752,17 +768,8 @@ class POPS1100(Sensor):
             except Exception as e:
                 print(f"sampling monitor error: {e}")
 
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(1)
 
-    # async def start_command(self):
-    #     pass # Log,{sampling interval}
-
-    # async def stop_command(self):
-    #     pass # Log,0
-
-    # def stop(self):
-    #     asyncio.create_task(self.stop_sampling())
-    #     super().start()
 
     async def default_data_loop(self):
 
@@ -784,9 +791,36 @@ class POPS1100(Sensor):
                     record["variables"]["diameter_bnd_lower"]["data"] = self.lower_dp_bound
                     record["variables"]["diameter_bnd_upper"]["data"] = self.upper_dp_bound
                     diams = []
+                    dlogDp = []
                     for lower,upper in zip(self.lower_dp_bound, self.upper_dp_bound):
                         diams.append(round(math.sqrt(lower*upper), 1))
+                        dlogDp.append(round(math.log10(upper/lower),3))
+
+                    self.logger.debug("diams", extra={"diams": diams})
+                    for diam in diams:
+                        print(diam)
                     record["variables"]["diameter"]["data"] = diams
+                    record["variables"]["dlogDp"]["data"] = dlogDp
+
+                    # TODO add dlogDp
+
+                    flow = record["variables"]["POPS_Flow"]["data"]
+                    # TODO create dN, dNdlogDp, intN when variables are added
+                    
+                    dN = []
+                    dNdlogDp = []
+                    intN = 0
+                    for i,cnt in enumerate(record["variables"]["bin_count"]["data"]):
+                        conc = cnt/(flow*1.0) # 1s
+                        intN += conc
+                        dN.append(round(conc,3))
+                        dNdlogDp.append(round(conc/dlogDp[i],3))
+                    self.logger.debug("default_data_loop", extra={"dlogDp": dlogDp, "dN": dN, "dNdlogDp": dNdlogDp, "intN": intN})
+                    record["variables"]["dN"]["data"] = dN
+                    record["variables"]["dNdlogDp"]["data"] = dNdlogDp
+                    record["variables"]["intN"]["data"] = intN
+
+                    self.logger.debug('RECORD 2', record)
 
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
@@ -812,17 +846,7 @@ class POPS1100(Sensor):
     def default_parse(self, data):
         if data:
             try:
-                # variables = [
-                #     "time",
-                #     "temperature",
-                #     "rh",
-                #     "pressure",
-                #     "wind_speed",
-                #     "wind_direction",
-                # ]
-                # variables = list(self.config.variables.keys())
                 variables = list(self.config.metadata.variables.keys())
-                # print(f"variables: \n{variables}\n{variables2}")
                 variables.remove("time")
                 variables.remove("diameter")
                 variables.remove("diameter_bnd_lower")
@@ -832,7 +856,7 @@ class POPS1100(Sensor):
 
                 # print(f"include metadata: {self.include_metadata}")
                 record = self.build_data_record(meta=self.include_metadata)
-                # print(f"default_parse: data: {data}, record: {record}")
+                print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
                 try:
                     record["timestamp"] = data.data["timestamp"]
@@ -860,7 +884,7 @@ class POPS1100(Sensor):
                     if fname_idx>0:
                         parts.pop(fname_idx)
 
-                    # print(f"parts: {parts}, {variables}")
+                    print(f"parts: {parts}, {variables}")
                     dist_index = None
                     
                     if len(parts) < 37:
@@ -891,9 +915,11 @@ class POPS1100(Sensor):
                     # get distribution
                     bin_counts = []
                     for val in parts[index:]:
-                        bin_counts.append(int(val.strip()))
+                        cnt = int(val.strip())
+                        bin_counts.append(cnt)
                     record["variables"]["bin_count"]["data"] = bin_counts
 
+                    print("RECORD", record)
                     return record
                 except KeyError:
                     pass

@@ -7,6 +7,7 @@ import traceback
 import sys
 import os
 import logging
+import json
 
 # from logfmter import Logfmter
 import logging.config
@@ -46,7 +47,6 @@ from datetime import datetime
 # from envds.daq.db import init_sensor_type_registration, register_sensor_type
 
 task_list = []
-
 
 class APS3321(Sensor):
     """docstring for APS3321."""
@@ -282,6 +282,23 @@ class APS3321(Sensor):
                     "units": {"type": "char", "data": "V"},
                 },
             },
+            "diameter": {
+            "type": "int",
+            "shape": ["time", "diameter"],
+            "attributes": {
+                "variable_type": {"type": "string", "data": "main"},
+                "long_name": {"type": "char", "data": "Diameter"},
+                "units": {"type": "char", "data": "nm"}
+                }
+            },
+            "channel": {
+                "type": "int",
+                "shape": ["time", "channel"],
+                "attributes": {
+                "variable_type": {"type": "string", "data": "main"},
+                "long_name": {"type": "char", "data": "Side Scatter Channel"}
+                }
+            }
         },
     }
 
@@ -300,6 +317,32 @@ class APS3321(Sensor):
         self.array_buffer = []
         self.C_counter = 0
         self.S_counter = 0
+        self.dlogDp =  0.0337
+        self.diams = [
+            0.50468, 0.54215,
+            0.58166, 0.62506, 0.67305, 0.72353, 0.7775,
+            0.83546, 0.89791, 0.96488, 1.0368, 1.1143,
+            1.1972, 1.2867, 1.3826, 1.4855, 1.5965,
+            1.7154, 1.8433, 1.9812, 2.1291, 2.2875,
+            2.4579, 2.6413, 2.8387, 3.0505, 3.2779,
+            3.5227, 3.7856, 4.0679, 4.3717, 4.698,
+            5.0482, 5.4245, 5.8292, 6.2644, 6.7317,
+            7.2338, 7.7735, 8.3536, 8.9772, 9.6468,
+            10.366, 11.14, 11.971, 12.864, 13.824,
+            14.855, 15.963, 17.154, 18.435, 19.81
+        ]
+
+        # TODO Replace with json file
+        # self.metadata = APS3321.metadata
+        self.sensor_definition_file = "TSI_APS3321_sensor_definition.json"
+
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
+
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
@@ -324,6 +367,7 @@ class APS3321(Sensor):
         # self.enable_task_list.append(self.register_sensor())
         # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
+        self.sampling_frequency = 30 # default sampling freq in seconds
 
     def configure(self):
         super(APS3321, self).configure()
@@ -372,7 +416,7 @@ class APS3321(Sensor):
         The new settings are part [variables] now so this is a bit of a hack to use the existing structure
         with the new format.
         '''
-        settings_def = self.get_definition_by_variable_type(APS3321.metadata, variable_type="setting")
+        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
         # for name, setting in MAGIC250.metadata["settings"].items():
         for name, setting in settings_def["variables"].items():
         
@@ -383,21 +427,25 @@ class APS3321(Sensor):
             self.settings.set_setting(name, requested=requested)
 
         meta = DeviceMetadata(
-            attributes=APS3321.metadata["attributes"],
-            dimensions=APS3321.metadata["dimensions"],
-            variables=APS3321.metadata["variables"],
+            attributes=self.metadata["attributes"],
+            dimensions=self.metadata["dimensions"],
+            variables=self.metadata["variables"],
             # settings=MAGIC250.metadata["settings"],
             settings=settings_def["variables"]
         )
 
         self.config = DeviceConfig(
-            make=APS3321.metadata["attributes"]["make"]["data"],
-            model=APS3321.metadata["attributes"]["model"]["data"],
+            make=self.metadata["attributes"]["make"]["data"],
+            model=self.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
             metadata=meta,
             interfaces=conf["interfaces"],
             daq_id=conf["daq_id"],
         )
+
+        self.sampling_frequency = 30
+        if "sampling_frequency_sec" in conf:
+            self.sampling_frequency = conf["sampling_frequency_sec"]
 
         print(f"self.config: {self.config}")
 
@@ -467,8 +515,8 @@ class APS3321(Sensor):
         # start_command = f"Log,{self.sampling_interval}\n"
         # start_command = "Log,1\n"
         # stop_command = "Log,0\n"
-        # start_commands = ['S0\r', 'SMT2,5\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
-        start_commands = ['S1\r']
+        start_commands = ['S0\r', f'SMT2,{self.sampling_frequency}\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
+        # start_commands = ['S1\r']
         stop_command = 'S0\r'
 
         need_start = True
@@ -488,9 +536,10 @@ class APS3321(Sensor):
                             self.collecting = False
                             continue
                         else:
-                            # for start_command in start_commands:
-                            #     await self.interface_send_data(data={"data": start_command})
-                            await self.interface_send_data(data={"data": start_commands[0]})
+                            for start_command in start_commands:
+                                await self.interface_send_data(data={"data": start_command})
+                                await asyncio.sleep(.5)
+                            # await self.interface_send_data(data={"data": start_commands[0]})
                             need_start = False
                             start_requested = True
                             await asyncio.sleep(2)
@@ -499,9 +548,10 @@ class APS3321(Sensor):
                         if self.collecting:
                             start_requested = False
                         else:
-                            # for start_command in start_commands:
-                            #     await self.interface_send_data(data={"data": start_command})
-                            await self.interface_send_data(data={"data": start_commands[0]})
+                            for start_command in start_commands:
+                                await self.interface_send_data(data={"data": start_command})
+                                await asyncio.sleep(.5)
+                            # await self.interface_send_data(data={"data": start_commands[0]})
                             await asyncio.sleep(2)
                             continue
                 else:
@@ -510,12 +560,12 @@ class APS3321(Sensor):
                         await asyncio.sleep(2)
                         self.collecting = False
 
-                await asyncio.sleep(0.0001)
+                await asyncio.sleep(1)
 
             except Exception as e:
                 print(f"sampling monitor error: {e}")
 
-            await asyncio.sleep(0.0001)
+            await asyncio.sleep(1)
 
 
     async def default_data_loop(self):
@@ -537,6 +587,13 @@ class APS3321(Sensor):
                         if var != 'time':
                             if record2["variables"][var]["data"]:
                                 record1["variables"][var]["data"] = record2["variables"][var]["data"]
+                    # record1["variables"]["diameter"]["data"] = [None]*52
+                    record1["variables"]["diameter"]["data"] = self.diams
+                    record1["variables"]["channel"]["data"] = [None]*64
+                    record1["variables"]["dN"]["data"] = [None]*52
+                    record1["variables"]["dlogDp"]["data"] = [self.dlogDp]*52
+                    record1["variables"]["dNdlogDp"]["data"] = [None]*52
+                    record1["variables"]["intN"]["data"] = None
 
                 else:
                     record2 = self.default_parse(data)
@@ -555,6 +612,22 @@ class APS3321(Sensor):
 
 
                 if record and self.sampling():
+                    dN = []
+                    dNdlogDp = []
+                    intN = 0
+                    sample_flow_lpm = record["variables"]["sflow"]["data"] # lpm
+                    sample_flow_ccs = sample_flow_lpm * (1000./60.)
+                    for i,cnt in enumerate(record["variables"]["particle_counts"]["data"]):
+                        conc = cnt/(sample_flow_ccs * self.sampling_frequency)
+                        intN += conc
+                        dN.append(round(conc,3))
+                        dNdlogDp.append(round(conc/self.dlogDp,3))
+
+                    self.logger.debug("default_data_loop", extra={"intN": intN, "dN": dN, "dNdlogDp": dNdlogDp})
+                    record["variables"]["intN"]["data"] = intN
+                    record["variables"]["dN"]["data"] = dN
+                    record["variables"]["dNdlogDp"]["data"] = dNdlogDp
+
                     event = DAQEvent.create_data_update(
                         # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
@@ -574,7 +647,7 @@ class APS3321(Sensor):
                 self.logger.debug("default_data_loop", extra={"record": record})
             except Exception as e:
                 print(f"default_data_loop error: {e}")
-            await asyncio.sleep(0.0001)
+            await asyncio.sleep(0.001)
 
 
     def check_array_buffer(self, data, array_cond = False):
@@ -602,16 +675,16 @@ class APS3321(Sensor):
 
                     if ',C,' in data.data["data"]:
                         if ',C,0' in data.data["data"]:
-                            parts = data.data["data"].split(",")
+                            parts = data.data["data"].strip().split(",")
                             parts = parts[5:]
-                            parts = [x.replace("\r", "") for x in parts]
+                            # parts = [x.replace("\r", "") for x in parts]
                             self.var_name = ['ffff', 'stime', 'dtime', 'evt1', 'evt3', 'evt4', 'total']
                             compiled_record = parts
                             self.C_counter = 0
                         else:
-                            parts = data.data["data"].split(",")
+                            parts = data.data["data"].strip().split(",")
                             parts = parts[3:]
-                            parts = [x.replace("\r", "") for x in parts]
+                            # parts = [x.replace("\r", "") for x in parts]
                             # Replace all empty strings with values of 0
                             parts = [int(x) if x else 0 for x in parts]
                             # Add zeros to the end of the list until the list length reaches 64
@@ -628,27 +701,34 @@ class APS3321(Sensor):
                                 compiled_record = self.check_array_buffer(parts, array_cond=True)
                                 self.array_buffer = []
                                 self.C_counter = 0
-                    
+                        self.logger.debug("default_parse:C", extra={"compiled_record": compiled_record})
+
                     if ',D,' in data.data["data"]:
-                        parts = data.data["data"].split(",")
+                        self.logger.debug("default_parse:D", extra={"raw": data.data["data"]})
+                        parts = data.data["data"].strip().split(",")
+                        self.logger.debug("default_parse:D", extra={"parts": parts})
                         parts = parts[11:]
-                        parts = [x.replace("\r", "") for x in parts]
+                        self.logger.debug("default_parse:D", extra={"parts": parts})
+                        # parts = [x.replace("\r", "") for x in parts]
                         # Replace all empty list items with values of 0
                         parts = [int(x) if x else 0 for x in parts]
+                        self.logger.debug("default_parse:D", extra={"parts": parts})
                         # Add zeros to the end of the list until the list length reaches 52
                         zeros_to_add = 52 - len(parts)
                         parts.extend([0] * zeros_to_add)
+                        self.logger.debug("default_parse:D", extra={"parts": parts})
                         self.var_name =['particle_counts']
                         compiled_record = parts
-                    
+                        self.logger.debug("default_parse:D", extra={"len": len(compiled_record), "compiled_record": compiled_record})
+
                     if ',S,' in data.data["data"]:
                         if ',S,C' in data.data["data"]:
                             self.S_counter = 0
                             return
                         else:
-                            parts = data.data["data"].split(",")
+                            parts = data.data["data"].strip().split(",")
                             parts = parts[3:]
-                            parts = [x.replace("\r", "") for x in parts]
+                            # parts = [x.replace("\r", "") for x in parts]
                             # Replace all empty strings with values of 0
                             parts = [int(x) if x else 0 for x in parts]
                             # Add zeros to the end of the list until the list length reaches 52
@@ -665,16 +745,17 @@ class APS3321(Sensor):
                                 compiled_record = self.check_array_buffer(parts, array_cond=True)
                                 self.array_buffer = []
                                 self.S_counter = 0
+                        self.logger.debug("default_parse:S", extra={"compiled_record": compiled_record})
                     
                     if ',Y,' in data.data["data"]:
-                        parts = data.data["data"].split(",")
+                        parts = data.data["data"].strip().split(",")
                         parts = parts[2:]
-                        parts = [x.replace("\r", "") for x in parts]
+                        # parts = [x.replace("\r", "") for x in parts]
                         # Remove the analog and digital input voltage levels from the middle of the list
                         del parts[3:8]
                         compiled_record = parts
                         self.var_name = ['bpress', 'tflow', 'sflow', 'lpower', 'lcur', 'spumpv', 'tpumpv', 'itemp', 'btemp', 'dtemp', 'Vop']
-
+                        self.logger.debug("default_parse:Y", extra={"compiled_record": compiled_record})
 
                     for index, name in enumerate(self.var_name):
                     # for index, name in enumerate(variables):
@@ -695,6 +776,7 @@ class APS3321(Sensor):
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
+                    self.logger.debug("default_parse:record", extra={"record": record})
                     return record
                 except KeyError:
                     pass

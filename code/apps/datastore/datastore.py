@@ -417,16 +417,18 @@ class Datastore:
                     request=request,
                     ttl=self.config.db_reg_device_definition_ttl,
                 )
-                if result:
-                    self.logger.debug("configure", extra={"self.config": self.config})
-                    ack = DAQEvent.create_device_definition_registry_ack(
-                        source=f"envds.{self.config.daq_id}.datastore",
-                        data={"device-definition": {"make": make, "model":model, "version": format_version}}
 
-                    )
-                    # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                    ack["destpath"] = f"envds/{self.config.daq_id}/device/registry/ack"
-                    await self.send_event(ack)
+                # stop sending ack for now
+                # if result:
+                #     self.logger.debug("configure", extra={"self.config": self.config})
+                #     ack = DAQEvent.create_device_definition_registry_ack(
+                #         source=f"envds.{self.config.daq_id}.datastore",
+                #         data={"device-definition": {"make": make, "model":model, "version": format_version}}
+
+                #     )
+                #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                #     ack["destpath"] = f"envds/{self.config.daq_id}/device/registry/ack"
+                #     await self.send_event(ack)
 
         except Exception as e:
             self.logger.error("device_definition_registry_update", extra={"reason": e})
@@ -711,16 +713,18 @@ class Datastore:
                     ttl=self.config.db_reg_controller_definition_ttl,
                     # ttl=self.config.db_reg_device_definition_ttl
                 )
-                if result:
-                    self.logger.debug("configure", extra={"self.config": self.config})
-                    ack = DAQEvent.create_controller_definition_registry_ack(
-                        source=f"envds.{self.config.daq_id}.datastore",
-                        data={"controller-definition": {"make": make, "model":model, "version": format_version}}
 
-                    )
-                    # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
-                    ack["destpath"] = f"envds/{self.config.daq_id}/controller/registry/ack"
-                    await self.send_event(ack)
+                # stop sending ack for now
+                # if result:
+                #     self.logger.debug("configure", extra={"self.config": self.config})
+                #     ack = DAQEvent.create_controller_definition_registry_ack(
+                #         source=f"envds.{self.config.daq_id}.datastore",
+                #         data={"controller-definition": {"make": make, "model":model, "version": format_version}}
+
+                #     )
+                #     # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+                #     ack["destpath"] = f"envds/{self.config.daq_id}/controller/registry/ack"
+                #     await self.send_event(ack)
 
         except Exception as e:
             self.logger.error("controller_definition_registry_update", extra={"reason": e})

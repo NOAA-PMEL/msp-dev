@@ -241,6 +241,7 @@ config = Settings()
 # db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 
 datastore_url = f"datastore.{config.daq_id}-system"
+# datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 
 # websocket = WebSocket(
@@ -267,6 +268,8 @@ def build_tables(layout_options):
                                 rowData=[],
                                 columnDefs=layout_options["layout-settings"][dim]["table-column-defs"],
                                 columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
+                                dashGridOptions={"domLayout": "autoHeight"},
+                                style={"height": None, "maxHeight": "400px", "overflow": "auto"}
                             )
                         ],
                         title=title,
@@ -700,85 +703,10 @@ def layout(sensor_id=None):
     if sensor_definition:
         try:
             dimensions = sensor_definition["dimensions"]
-            is_2d = False
+            multi_dim = False
             if len(dimensions.keys()) > 1:
-                is_2d = True
-                if "layout-2d" not in layout_options:
-                    layout_options["layout-2d"] = (
-                        {}
-                    )  # {dim_2d: {"table-column-defs": [], "variable-list": []}}
+                multi_dim = True
 
-                # for d in dimensions.keys():
-                #     if d == "time":
-                #         continue
-                #     if "columns_2d" not in graph_options:
-                #         graph_options["columns_2d"] = dict()
-                #     graph_options["columns_2d"] = {d:[]}
-
-            print(f"layout: {layout_options}")
-            if is_2d:
-                for d in dimensions.keys():
-                    if d == "time":
-                        cd = {
-                            "field": "time",
-                            "headerName": "Time",
-                            "filter": False,
-                            "cellDataType": "text",
-                            "pinned": "left",
-                        }
-                        layout_options["layout-1d"]["time"]["table-column-defs"].append(
-                            cd
-                        )
-
-                    # if d != "time":
-                    else:
-                        layout_options["layout-2d"][d] = {
-                            "table-column-defs": [],
-                            "variable-list": [],
-                        }
-                        ln = d
-                        try:
-                            ln = sensor_definition["attributes"][d]["long_name"]["data"]
-                        except KeyError:
-                            pass
-
-                        print(f"layout: {ln}")
-                        data_type = "text"
-                        try:
-                            dtype = sensor_definition["variables"][d]["type"]
-                            if dtype in ["float", "double", "int"]:
-                                data_type = "number"
-                            elif dtype in ["str", "string", "char"]:
-                                data_type = "text"
-                            elif dtype in ["bool"]:
-                                data_type = "boolean"
-                        except KeyError:
-                            pass
-                        print(f"layout: {data_type}")
-
-                        cd = {
-                            "field": d,
-                            "headerName": ln,
-                            "filter": False,
-                            "cellDataType": data_type,
-                            "pinned": "left",
-                        }
-                        layout_options["layout-2d"][d]["table-column-defs"].append(cd)
-                        print(f"layout: {layout_options}")
-            else:
-                if "time" in dimensions:
-                    # column_defs_1d.append(
-                    cd = {
-                        "field": "time",
-                        "headerName": "Time",
-                        "filter": False,
-                        "cellDataType": "text",
-                        "pinned": "left",
-                    }
-                    layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
-                    print(f"layout: {layout_options}")
-            
-            # make settings table
             for name, var in sensor_definition["variables"].items():
                 if var["attributes"]["variable_type"]["data"] == "setting":
                     long_name = name
@@ -802,12 +730,12 @@ def layout(sensor_id=None):
                         "headerName": long_name,
                         "filter": False,
                         "cellDataType": data_type,
+                        # "cellRendererSelector": {'function': 'component_selector(params)'}
                     }
                     layout_options["layout-settings"]["time"]["table-column-defs"].append(cd)
 
-            for name, var in sensor_definition["variables"].items():
                 # only get the data variables for main
-                if var["attributes"]["variable_type"]["data"] != "main":
+                elif var["attributes"]["variable_type"]["data"] != "main":
                     continue
                 if name in dimensions:
                     continue
@@ -843,9 +771,52 @@ def layout(sensor_id=None):
                 }
                 # )
 
-                if is_2d and len(var["shape"]) == 2:
+                if multi_dim and len(var["shape"]) == 2:
+                    if "layout-2d" not in layout_options:
+                        layout_options["layout-2d"] = (
+                            {}
+                        )  # {dim_2d: {"table-column-defs": [], "variable-list": []}}
+
                     dim_2d = [d for d in var["shape"] if d != "time"][0]
+
+                    # if no entry for second dim, create
+                    if dim_2d not in layout_options["layout-2d"]:
+                        layout_options["layout-2d"][dim_2d] = {
+                            "table-column-defs": [],
+                            "variable-list": [],
+                        }
+                        dln = dim_2d
+                        try:
+                            dln = sensor_definition["attributes"][dim_2d]["long_name"]["data"]
+                        except KeyError:
+                            pass
+
+                        # print(f"layout: {ln}")
+                        data_type = "text"
+                        try:
+                            dtype = sensor_definition["variables"][dim_2d]["type"]
+                            if dtype in ["float", "double", "int"]:
+                                data_type = "number"
+                            elif dtype in ["str", "string", "char"]:
+                                data_type = "text"
+                            elif dtype in ["bool"]:
+                                data_type = "boolean"
+                        except KeyError:
+                            pass
+                        # print(f"layout: {data_type}")
+
+                        dcd = {
+                            "field": dim_2d,
+                            "headerName": dln,
+                            "filter": False,
+                            "cellDataType": data_type,
+                            "pinned": "left",
+                        }
+                        layout_options["layout-2d"][dim_2d]["table-column-defs"].append(dcd)
+
                     layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
+                elif multi_dim and len(var["shape"]) == 3:
+                    continue
                 else:
                     layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
 
@@ -861,16 +832,200 @@ def layout(sensor_id=None):
                             {"label": cd["field"], "value": cd["field"]}
                         )
 
-            # # dropdown_list = []
-            # for cd in column_defs_1d:
-            #     if cd["field"] == "time":
-            #         continue
-            #     if cd["cellDataType"] != "number":
-            #         continue
-            #     dropdown_list_1d.append({"label": cd["field"], "value": cd["field"]})
-
         except KeyError as e:
             print(f"build column_defs error: {e}")
+            
+
+        # below commented out to try new way of setting up layout
+
+        # try:
+        #     dimensions = sensor_definition["dimensions"]
+        #     is_2d = False
+        #     is_3d = False
+        #     if len(dimensions.keys()) == 2:
+        #         is_2d = True
+        #         if "layout-2d" not in layout_options:
+        #             layout_options["layout-2d"] = (
+        #                 {}
+        #             )  # {dim_2d: {"table-column-defs": [], "variable-list": []}}
+
+        #         # for d in dimensions.keys():
+        #         #     if d == "time":
+        #         #         continue
+        #         #     if "columns_2d" not in graph_options:
+        #         #         graph_options["columns_2d"] = dict()
+        #         #     graph_options["columns_2d"] = {d:[]}
+        #     elif len(dimensions.keys()) == 3:
+        #         is_3d = True
+        #         if "layout-3d" not in layout_options:
+        #             layout_options["layout-3d"] = (
+        #                 {}
+        #             )  # {dim_2d: {"table-column-defs": [], "variable-list": []}}
+
+        #     print(f"layout: {layout_options}")
+        #     if is_2d:
+        #         for d in dimensions.keys():
+        #             if d == "time":
+        #                 cd = {
+        #                     "field": "time",
+        #                     "headerName": "Time",
+        #                     "filter": False,
+        #                     "cellDataType": "text",
+        #                     "pinned": "left",
+        #                 }
+        #                 layout_options["layout-1d"]["time"]["table-column-defs"].append(
+        #                     cd
+        #                 )
+
+        #             # if d != "time":
+        #             else:
+        #                 layout_options["layout-2d"][d] = {
+        #                     "table-column-defs": [],
+        #                     "variable-list": [],
+        #                 }
+        #                 ln = d
+        #                 try:
+        #                     ln = sensor_definition["attributes"][d]["long_name"]["data"]
+        #                 except KeyError:
+        #                     pass
+
+        #                 print(f"layout: {ln}")
+        #                 data_type = "text"
+        #                 try:
+        #                     dtype = sensor_definition["variables"][d]["type"]
+        #                     if dtype in ["float", "double", "int"]:
+        #                         data_type = "number"
+        #                     elif dtype in ["str", "string", "char"]:
+        #                         data_type = "text"
+        #                     elif dtype in ["bool"]:
+        #                         data_type = "boolean"
+        #                 except KeyError:
+        #                     pass
+        #                 print(f"layout: {data_type}")
+
+        #                 cd = {
+        #                     "field": d,
+        #                     "headerName": ln,
+        #                     "filter": False,
+        #                     "cellDataType": data_type,
+        #                     "pinned": "left",
+        #                 }
+        #                 layout_options["layout-2d"][d]["table-column-defs"].append(cd)
+        #                 print(f"layout: {layout_options}")
+        #     elif is_3d:
+        #         pass
+
+        #     else:
+        #         if "time" in dimensions:
+        #             # column_defs_1d.append(
+        #             cd = {
+        #                 "field": "time",
+        #                 "headerName": "Time",
+        #                 "filter": False,
+        #                 "cellDataType": "text",
+        #                 "pinned": "left",
+        #             }
+        #             layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
+        #             print(f"layout: {layout_options}")
+            
+        #     # make settings table
+        #     # layout_options["layout-settings"]["time"]["table-column-defs"].append({"field": "Type"})
+
+        #     for name, var in sensor_definition["variables"].items():
+        #         if var["attributes"]["variable_type"]["data"] == "setting":
+        #             long_name = name
+        #             ln = var["attributes"].get("long_name", None)
+        #             if ln:
+        #                 long_name = ln.get("data", name)
+
+        #             # get data type
+        #             dtype = var.get("type", "unknown")
+        #             print(f"dtype = {dtype}")
+        #             data_type = "text"
+        #             if dtype in ["float", "double", "int"]:
+        #                 data_type = "number"
+        #             elif dtype in ["str", "string", "char"]:
+        #                 data_type = "text"
+        #             elif dtype in ["bool"]:
+        #                 data_type = "boolean"
+
+        #             cd = {
+        #                 "field": name,
+        #                 "headerName": long_name,
+        #                 "filter": False,
+        #                 "cellDataType": data_type,
+        #                 # "cellRendererSelector": {'function': 'component_selector(params)'}
+        #             }
+        #             layout_options["layout-settings"]["time"]["table-column-defs"].append(cd)
+
+        #     for name, var in sensor_definition["variables"].items():
+        #         # only get the data variables for main
+        #         if var["attributes"]["variable_type"]["data"] != "main":
+        #             continue
+        #         if name in dimensions:
+        #             continue
+        #         if "shape" not in var:
+        #             continue
+        #         if "time" not in var["shape"]:
+        #             continue
+        #         # if len(var["shape"]) > 1 or "time" not in var["shape"]:
+        #         #     continue
+
+        #         long_name = name
+        #         ln = var["attributes"].get("long_name", None)
+        #         if ln:
+        #             long_name = ln.get("data", name)
+
+        #         # get data type
+        #         dtype = var.get("type", "unknown")
+        #         print(f"dtype = {dtype}")
+        #         data_type = "text"
+        #         if dtype in ["float", "double", "int"]:
+        #             data_type = "number"
+        #         elif dtype in ["str", "string", "char"]:
+        #             data_type = "text"
+        #         elif dtype in ["bool"]:
+        #             data_type = "boolean"
+
+        #         # column_defs_1d.append(
+        #         cd = {
+        #             "field": name,
+        #             "headerName": long_name,
+        #             "filter": False,
+        #             "cellDataType": data_type,
+        #         }
+        #         # )
+
+        #         if is_2d and len(var["shape"]) == 2:
+        #             dim_2d = [d for d in var["shape"] if d != "time"][0]
+        #             layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
+        #         elif is_3d:
+        #             pass
+        #         else:
+        #             layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
+
+        #     for ltype, dims in layout_options.items():
+        #         # for gtype, options in layout_options.items():
+        #         for dim, options in dims.items():
+        #             for cd in options["table-column-defs"]:
+        #                 if cd["field"] in dimensions:
+        #                     continue
+        #                 if cd["cellDataType"] != "number":
+        #                     continue
+        #                 layout_options[ltype][dim]["variable-list"].append(
+        #                     {"label": cd["field"], "value": cd["field"]}
+        #                 )
+
+        #     # # dropdown_list = []
+        #     # for cd in column_defs_1d:
+        #     #     if cd["field"] == "time":
+        #     #         continue
+        #     #     if cd["cellDataType"] != "number":
+        #     #         continue
+        #     #     dropdown_list_1d.append({"label": cd["field"], "value": cd["field"]})
+
+        # except KeyError as e:
+        #     print(f"build column_defs error: {e}")
 
     # print("here:1")
     layout = html.Div(
@@ -1269,7 +1424,9 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
             "serial_number": sensor_meta["serial_number"],
         }
         sort = {"variables.time.data": 1}
-        results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
+        device_id = f'{sensor_meta["make"]}::{sensor_meta["model"]}::{sensor_meta["serial_number"]}'
+        # results = httpx.get(f"http://{datastore_url}/sensor/data/get", params=query)
+        results = get_device_data(device_id=device_id)
         # results = db_data_client.find("data", "sensor", query, sort, refresh=False)
         print(f"2d results: {results}")
         if results is None or len(results) == 0:
@@ -1393,16 +1550,17 @@ def update_sensor_buffers(event):
             except Exception as event:
                 print(f"data buffer update error: {event}")
             
-        elif "settings-update" in event_data:
+        if "settings-update" in event_data:
             try:
                 # msg = json.loads(event["settings"])
                 # print(f"update_controller_settings: {event_data}")
                 if event_data["settings-update"]:
-                    return [dash.no_update,event_data["settings-update"]]
+                    return [dash.no_update, event_data["settings-update"]]
             except Exception as e:
                 print(f"settings buffer update error: {e}")
             # return dash.no_update
             # return dash.no_update
+        
     return [dash.no_update, dash.no_update]
 
 
@@ -1688,7 +1846,6 @@ def update_graph_2d_scatter(
 
 
 
-
 # @callback(
 #     # Output("dbc-switch-value-changed", "children"),
 #     Output("ws-send-instance-buffer", "children"),
@@ -1708,7 +1865,11 @@ def update_graph_2d_scatter(
 #         }
 #     except Exception as e:
 #             print(f"data update error: {e}")
+#             print(traceback.format_exc())
 #     return json.dumps(changed_component), json.dumps(event)
+
+
+
 
 
 # @callback(
@@ -1727,24 +1888,45 @@ def update_graph_2d_scatter(
 #             new_column_defs = []
 #             try:
 #                 for row_data, col_defs in zip(row_data_list, col_defs_list):
-#                     print('col defs', col_defs)
 #                     data = {}
+#                     print('row', row_data)
 #                     for col in col_defs:
 #                         print('col', col)
 #                         name = col["field"]
+#                         if row_data:
+#                             print('row data', row_data[0][name])
+#                             if row_data[0][name] == sensor_settings["settings"][name]["data"]["actual"]:
+#                                 print('value already set')
+#                                 return dash.no_update
+#                             else: 
+#                                 pass
 #                         if name in sensor_settings["settings"]:
+#                             print('name', name)
 #                             data[name] = sensor_settings["settings"][name]["data"]["actual"]
+#                             print('data', data[name])
 #                         else:
 #                             data[name] = ""
 
-#                         # Check if the setting should be set up as a boolean switch
-#                         if sensor_definition["variables"][name]["attributes"]["valid_min"]["data"] == 0:
-#                             if sensor_definition["variables"][name]["attributes"]["valid_max"]["data"] == 1:
-#                                 if sensor_definition["variables"][name]["attributes"]["step_increment"]["data"] == 1:
-#                                     col["cellRenderer"] = "DBC_Switch"
-#                                     col["cellRendererParams"] = {"color": "success"}
-                        
-#                         # Check if the setting should be set up as 
+#                         # Make sure the settings contain integers or floats
+#                         setting_type = sensor_definition["variables"][name]["attributes"]["valid_min"]["type"]
+#                         if setting_type == "int" or setting_type == "float":
+#                             min_val = sensor_definition["variables"][name]["attributes"]["valid_min"]["data"]
+#                             max_val = sensor_definition["variables"][name]["attributes"]["valid_max"]["data"]
+#                             step_val = sensor_definition["variables"][name]["attributes"]["step_increment"]["data"]
+#                             print('min, max, step', min_val, max_val, step_val)
+
+#                             # Check if the setting should be set up as a boolean switch
+#                             if min_val == 0:
+#                                 if max_val == 1:
+#                                     if step_val == 1:
+#                                         col["cellRenderer"] = "DBC_Switch"
+#                                         col["cellRendererParams"] = {"color": "success"}
+                            
+#                             # Check if the setting should be set up as numeric input
+#                             elif max_val > 1:
+#                                 col["cellRenderer"] = "DCC_Input"
+#                                 col["cellRendererParams"] = {"min": min_val, "max": max_val, "step": step_val} 
+
 
 #                         new_column_defs.append(col)
 #                     row_data.insert(0, data)
@@ -1760,6 +1942,132 @@ def update_graph_2d_scatter(
 #         raise PreventUpdate
 
 
+
+
+
+
+
+
+
+@callback(
+    # Output("dbc-switch-value-changed", "children"),
+    Output("ws-send-instance-buffer", "children"),
+    Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
+    Input({"type": "settings-table", "index": ALL}, "cellValueChanged"),
+    State("sensor-meta", "data")
+)
+def get_requested_setting(changed_component, changed_input, sensor_meta):
+    print('changed component', changed_component)
+    print('changed input', changed_input)
+    try:
+        if any(component is not None for component in changed_component):
+            print('component was changed here')
+            requested_val = int(changed_component[0]["value"])
+            col_id = changed_component[0]["colId"]
+        elif any(component is not None for component in changed_input):
+            requested_val = int(changed_input[0][0]['value'])
+            print('requested_val', requested_val)
+            # print('COMPONENT CHANGED', json.dumps(changed_component))
+            # requested_val = int(changed_component[0]["value"])
+            col_id = changed_input[0][0]["colId"]
+            print('col id', col_id)
+        else:
+            raise PreventUpdate
+        try:
+            event = {
+                "source": "testsource",
+                "data": {"settings": col_id, "requested": requested_val},
+                "destpath": "envds/sensor/settings/request",
+                "deviceid": sensor_meta["device_id"]
+            }
+        except Exception as e:
+                print(f"data update error: {e}")
+                print(traceback.format_exc())
+        # return json.dumps(changed_component), json.dumps(event)
+        return json.dumps(event)
+    
+    except Exception as e:
+        print(f"requested setting error: {e}")
+        print(traceback.format_exc())
+
+
+
+
+@callback(
+    Output({"type": "settings-table", "index": ALL}, "rowData"), 
+    Output({"type": "settings-table", "index": ALL}, "columnDefs"),
+    Input("sensor-settings-buffer", "data"),
+    [
+        State({"type": "settings-table", "index": ALL}, "rowData"),
+        State({"type": "settings-table", "index": ALL}, "columnDefs"),
+        State("sensor-definition", "data")
+    ],
+)
+def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_definition):
+    if sensor_settings:
+        new_row_data_list = []
+        new_column_defs = []
+        try:
+            for row_data, col_defs in zip(row_data_list, col_defs_list):
+                print('col defs', col_defs)
+                print('row data', row_data)
+                data = {}
+                for col in col_defs:
+                    print('col', col)
+                    name = col["field"]
+                    if name in sensor_settings["settings"]:
+                        print('name', name)
+                        data[name] = sensor_settings["settings"][name]["data"]["actual"]
+                        print('data', data[name])
+                    else:
+                        data[name] = ""
+                    
+                    # This only works right now because there's only one row in any of the sensors for settings
+                    # Needs to be updated to work when there is more than one row
+                    if row_data:
+                        if row_data[0][col['field']] == data[name]:
+                            raise PreventUpdate 
+
+                    # Make sure the settings contain integers or floats
+                    setting_type = sensor_definition["variables"][name]["attributes"]["valid_min"]["type"]
+                    if setting_type == "int" or setting_type == "float":
+                        min_val = sensor_definition["variables"][name]["attributes"]["valid_min"]["data"]
+                        max_val = sensor_definition["variables"][name]["attributes"]["valid_max"]["data"]
+                        step_val = sensor_definition["variables"][name]["attributes"]["step_increment"]["data"]
+                        print('min, max, step', min_val, max_val, step_val)
+
+                        # Check if the setting should be set up as a boolean switch
+                        if min_val == 0:
+                            if max_val == 1:
+                                if step_val == 1:
+                                    col["cellRenderer"] = "DBC_Switch"
+                                    col["cellRendererParams"] = {"color": "success"}
+                        
+                        # Check if the setting should be set up as numeric input
+                        elif max_val > 1:
+                            col["editable"] = True
+                            col["cellEditor"] = "agNumberCellEditor"
+                            col["cellEditorParams"] = {
+                                "min": min_val,
+                                "max": max_val,
+                                "step": step_val,
+                                "showStepperButtons": True
+                            }
+
+                    new_column_defs.append(col)
+                row_data.insert(0, data)
+                print('row data 2', row_data)
+                new_row_data_list.append(row_data[0:1])
+                print('new data list', new_row_data_list)
+            if len(new_row_data_list) == 0:
+                raise PreventUpdate
+            return new_row_data_list, [new_column_defs]
+        except Exception as e:
+            print(f"data update error: {e}")
+            print(traceback.format_exc())
+        raise PreventUpdate
+    else:
+        raise PreventUpdate
 
 
 
