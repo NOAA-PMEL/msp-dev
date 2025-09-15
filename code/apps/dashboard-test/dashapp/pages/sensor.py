@@ -1738,7 +1738,7 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
         print('x', x)
         print('y', y)
         print('z', z)
-        print('colors', color)
+        print('colors', colors)
         
         dict_3d = {'x': x, 'y': y, 'z': z, 'colors': colors}
         print('dict3d', dict_3d)
