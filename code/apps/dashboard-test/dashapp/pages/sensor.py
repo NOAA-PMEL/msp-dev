@@ -509,7 +509,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
 def build_graph_3d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
     content = dbc.Row(
         children=[
-            dbc.Button("Submit", {"type": "graph-3d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
+            dbc.Button("Submit", {"type": "graph-3d-z-axis-submit", "index": f"{xaxis}::{yaxis}::{zaxis}"}),
             dbc.Label("z-axis min:"),
             # dbc.Col(
             #     dbc.Input(
@@ -543,7 +543,7 @@ def build_graph_3d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
             dbc.CardHeader(
                 children=[
                     dcc.Dropdown(
-                        id={"type": "graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"},
+                        id={"type": "graph-3d-dropdown", "index": f"{xaxis}::{yaxis}::{zaxis}"},
                         options=dropdown_list,
                         value="",
                     )
@@ -563,7 +563,7 @@ def build_graph_3d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
                     # ),
                     dbc.Col(
                         dcc.Graph(
-                            id={"type": "graph-2d-line", "index": f"{xaxis}::{yaxis}"},
+                            id={"type": "graph-2d-line", "index": f"{xaxis}::{yaxis}::{zaxis}"},
                             style={"height": 500},
                         )
                     ),
@@ -1689,13 +1689,15 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
     ],
     prevent_initial_call=True,
 )
-def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
-    print(f"select_graph_3d: {z_axis}, {sensor_meta}, {graph_axes}, {graph_id}")
+# def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
+def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id):
+    # print(f"select_graph_3d: {z_axis}, {sensor_meta}, {graph_axes}, {graph_id}")
     # print(f"current_fig: {current_fig}")
     try:
         if "graph-3d" not in graph_axes:
             graph_axes["graph-3d"] = dict()
         y_axis = graph_id["index"].split("::")[1]
+        z_axis = graph_id["index"].split("::")[2]
         use_log = False
         if y_axis == "diameter":
             use_log = True
@@ -1709,13 +1711,9 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         x = []
         y = []
         z = []
+        colors = []
         orig_z = []
-        query = {
-            "make": sensor_meta["make"],
-            "model": sensor_meta["model"],
-            "serial_number": sensor_meta["serial_number"],
-        }
-        sort = {"variables.time.data": 1}
+        
         device_id = f'{sensor_meta["make"]}::{sensor_meta["model"]}::{sensor_meta["serial_number"]}'
         results = get_device_data(device_id=device_id)
         print(f"3d results: {results}")
@@ -1728,9 +1726,13 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
                 try:
                     x.append(doc["variables"]["time"]["data"])
                     y.append(doc["variables"][y_axis]["data"])
-                    orig_z.append(doc["variables"][z_axis]["data"])
+                    # orig_z.append(doc["variables"][z_axis]["data"])
+                    z.append(doc["variables"][z_axis]["data"])
+                    colors.append(doc["variables"][param]["data"])
                 except KeyError:
                     continue
+        
+        dict_3d = {'x': x, 'y': y, 'z': z, 'colors': colors}
 
         units = ""
         try:
@@ -1739,15 +1741,15 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         except KeyError:
             pass
 
-        if isinstance(y[-1], list):
-            y = y[-1]
+        # if isinstance(y[-1], list):
+        #     y = y[-1]
 
-        for yi, yval in enumerate(y):
-            # z.append([])
-            new_z = []
-            for xi, xval in enumerate(x):
-                new_z.append(orig_z[xi][yi])
-            z.append(new_z)
+        # for yi, yval in enumerate(y):
+        #     # z.append([])
+        #     new_z = []
+        #     for xi, xval in enumerate(x):
+        #         new_z.append(orig_z[xi][yi])
+        #     z.append(new_z)
 
         # heatmap = go.Figure(
         #     data=go.Heatmap(
@@ -1769,26 +1771,31 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         #     data = go.Scatter3D(x=x, y=y, z=z, mode="markers")
         # )
         
-        go.Figure(
-            # data=go.Scatter(x=y, y=z[-1], type="scatter"),
-            data=[{"x": y, "y": z[-1], "type": "scatter"}],
-            layout={
-                "xaxis": {"title": f"{y_axis} {y_units}"},
-                "yaxis": {"title": f"{z_axis} {z_units}"},
-                "title": str(x[-1]),
-                # "yaxis": {"title": f"{y_axis} {y_units}"},
-                # "colorscale": "rainbow"
-            },
+
+        scatter = px.scatter_3d(
+            dict_3d, x = 'x', y = 'y', z = 'z', color = 'colors'
         )
-        if use_log:
-            scatter.update_xaxes(type="log")
-        print(f"scatter figure: {scatter}")
+
+        # go.Figure(
+        #     # data=go.Scatter(x=y, y=z[-1], type="scatter"),
+        #     data=[{"x": y, "y": z[-1], "type": "scatter"}],
+        #     layout={
+        #         "xaxis": {"title": f"{y_axis} {y_units}"},
+        #         "yaxis": {"title": f"{z_axis} {z_units}"},
+        #         "title": str(x[-1]),
+        #         # "yaxis": {"title": f"{y_axis} {y_units}"},
+        #         # "colorscale": "rainbow"
+        #     },
+        # )
+        # if use_log:
+        #     scatter.update_xaxes(type="log")
+        # print(f"scatter figure: {scatter}")
 
         # print(f"go fig: {fig}")
         # return [fig, graph_axes]
         # return [heatmap, scatter]  # , graph_axes]
-        # return [scatter]
-        return PreventUpdate
+        return [scatter]
+        # return PreventUpdate
     except Exception as e:
         print(f"select_graph_2d error: {e}")
         # return [dash.no_update, dash.no_update]
