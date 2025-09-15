@@ -1807,6 +1807,7 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
         # return PreventUpdate
     except Exception as e:
         print(f"select_graph_3d error: {e}")
+        print(traceback.format_exc())
         # return [dash.no_update, dash.no_update]
         raise PreventUpdate
         # return [dash.no_update, dash.no_update]
