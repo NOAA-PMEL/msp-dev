@@ -927,8 +927,52 @@ def layout(sensor_id=None):
                         layout_options["layout-2d"][dim_2d]["table-column-defs"].append(dcd)
 
                     layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
+
                 elif multi_dim and len(var["shape"]) == 3:
-                    continue
+                    if "layout-3d" not in layout_options:
+                        layout_options["layout-3d"] = (
+                            {}
+                        )  # {dim_2d: {"table-column-defs": [], "variable-list": []}}
+
+                    dim_3d = [d for d in var["shape"] if d != "time"][0]
+
+                    # if no entry for second dim, create
+                    if dim_3d not in layout_options["layout-3d"]:
+                        layout_options["layout-3d"][dim_3d] = {
+                            "table-column-defs": [],
+                            "variable-list": [],
+                        }
+                        dln = dim_3d
+                        try:
+                            dln = sensor_definition["attributes"][dim_3d]["long_name"]["data"]
+                        except KeyError:
+                            pass
+
+                        # print(f"layout: {ln}")
+                        data_type = "text"
+                        try:
+                            dtype = sensor_definition["variables"][dim_3d]["type"]
+                            if dtype in ["float", "double", "int"]:
+                                data_type = "number"
+                            elif dtype in ["str", "string", "char"]:
+                                data_type = "text"
+                            elif dtype in ["bool"]:
+                                data_type = "boolean"
+                        except KeyError:
+                            pass
+                        # print(f"layout: {data_type}")
+
+                        dcd = {
+                            "field": dim_3d,
+                            "headerName": dln,
+                            "filter": False,
+                            "cellDataType": data_type,
+                            "pinned": "left",
+                        }
+                        layout_options["layout-3d"][dim_3d]["table-column-defs"].append(dcd)
+
+                    layout_options["layout-3d"][dim_3d]["table-column-defs"].append(cd)
+                    # continue
                 else:
                     layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
 
