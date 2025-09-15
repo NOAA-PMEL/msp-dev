@@ -670,7 +670,7 @@ def build_graphs(layout_options):
                 )
             
         if ltype == "layout-3d":
-            title = f"Plots 3-D (time, {dims.keys[0]}, {dims.keys[1]})"
+            title = f"Plots 3-D (time, {dims.keys()[0]}, {dims.keys()[1]})"
             graph_list.append(
                 dbc.AccordionItem(
                     [
@@ -681,8 +681,8 @@ def build_graphs(layout_options):
                                         "variable-list"
                                     ],
                                     xaxis="time",
-                                    yaxis={dims.keys[0]},
-                                    zaxis={dims.keys[1]}
+                                    yaxis={dims.keys()[0]},
+                                    zaxis={dims.keys()[1]}
                                 )
                             ]
                         )
