@@ -682,7 +682,7 @@ def build_graphs(layout_options):
                                     ],
                                     xaxis="time",
                                     yaxis=dim[0],
-                                    xaxis=dim[1]
+                                    zaxis=dim[1]
                                 )
                             ]
                         )
