@@ -1715,8 +1715,8 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
         x = []
         y = []
         z = []
+        og_colors = []
         colors = []
-        orig_z = []
         
         device_id = f'{sensor_meta["make"]}::{sensor_meta["model"]}::{sensor_meta["serial_number"]}'
         results = get_device_data(device_id=device_id)
@@ -1732,7 +1732,8 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
                     y.append(doc["variables"][y_axis]["data"])
                     # orig_z.append(doc["variables"][z_axis]["data"])
                     z.append(doc["variables"][z_axis]["data"])
-                    colors.append(doc["variables"][param]["data"])
+                    # colors.append(doc["variables"][param]["data"])
+                    og_colors.append(doc["variables"][param]["data"])
                 except KeyError:
                     continue
         print('x', x)
@@ -1740,8 +1741,8 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
         print('z', z)
         print('colors', colors)
         
-        dict_3d = {'x': x, 'y': y, 'z': z, 'colors': colors}
-        print('dict3d', dict_3d)
+        # dict_3d = {'x': x, 'y': y, 'z': z, 'colors': colors}
+        # print('dict3d', dict_3d)
 
         units = ""
         try:
@@ -1753,12 +1754,13 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
         # if isinstance(y[-1], list):
         #     y = y[-1]
 
-        # for yi, yval in enumerate(y):
-        #     # z.append([])
-        #     new_z = []
-        #     for xi, xval in enumerate(x):
-        #         new_z.append(orig_z[xi][yi])
-        #     z.append(new_z)
+        for yi, yval in enumerate(y):
+            new_color = []
+            for xi, xval in enumerate(x):
+                new_color.append(og_colors[xi][yi])
+            colors.append(new_color)
+        
+        dict_3d = {'x': x, 'y': y, 'z': z, 'colors': colors}
 
         # heatmap = go.Figure(
         #     data=go.Heatmap(
@@ -1785,23 +1787,6 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
             dict_3d, x = 'x', y = 'y', z = 'z', color = 'colors'
         )
 
-        # go.Figure(
-        #     # data=go.Scatter(x=y, y=z[-1], type="scatter"),
-        #     data=[{"x": y, "y": z[-1], "type": "scatter"}],
-        #     layout={
-        #         "xaxis": {"title": f"{y_axis} {y_units}"},
-        #         "yaxis": {"title": f"{z_axis} {z_units}"},
-        #         "title": str(x[-1]),
-        #         # "yaxis": {"title": f"{y_axis} {y_units}"},
-        #         # "colorscale": "rainbow"
-        #     },
-        # )
-        # if use_log:
-        #     scatter.update_xaxes(type="log")
-        # print(f"scatter figure: {scatter}")
-
-        # print(f"go fig: {fig}")
-        # return [fig, graph_axes]
         # return [heatmap, scatter]  # , graph_axes]
         return [scatter]
         # return PreventUpdate
