@@ -563,7 +563,7 @@ def build_graph_3d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
                     # ),
                     dbc.Col(
                         dcc.Graph(
-                            id={"type": "graph-2d-line", "index": f"{xaxis}::{yaxis}::{zaxis}"},
+                            id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}::{zaxis}"},
                             style={"height": 500},
                         )
                     ),
@@ -622,6 +622,7 @@ def build_graphs(layout_options):
     graph_list = []
     print(f"build_graphs: {layout_options}")
     for ltype, dims in layout_options.items():
+        print('dims', dims)
         for dim, options in dims.items():
             title = "Plots"
             if ltype == "layout-1d":
@@ -668,26 +669,27 @@ def build_graphs(layout_options):
                     )
                 )
             
-            elif ltype == "layout-3d":
-                title = f"Plots 3-D (time, {dim})"
-                graph_list.append(
-                    dbc.AccordionItem(
-                        [
-                            dbc.Row(
-                                children=[
-                                    build_graph_2d(
-                                        layout_options["layout-3d"][dim][
-                                            "variable-list"
-                                        ],
-                                        xaxis="time",
-                                        yaxis=dim,
-                                    )
-                                ]
-                            )
-                        ],
-                        title=title,
-                    )
+        if ltype == "layout-3d":
+            title = f"Plots 3-D (time, {dim})"
+            graph_list.append(
+                dbc.AccordionItem(
+                    [
+                        dbc.Row(
+                            children=[
+                                build_graph_3d(
+                                    layout_options["layout-3d"][dim][
+                                        "variable-list"
+                                    ],
+                                    xaxis="time",
+                                    yaxis=dim[0],
+                                    xaxis=dim[1]
+                                )
+                            ]
+                        )
+                    ],
+                    title=title,
                 )
+            )
 
     print(f"build_tables: {graph_list}")
 
