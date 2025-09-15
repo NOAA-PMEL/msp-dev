@@ -682,9 +682,9 @@ def build_graphs(layout_options):
                                         "variable-list"
                                     ],
                                     xaxis="time",
-                                    yaxis={list(dims.keys())[0]},
+                                    yaxis=list(dims.keys())[0],
                                     # yaxis=dim
-                                    zaxis={list(dims.keys())[1]}
+                                    zaxis=list(dims.keys())[1]
                                 )
                             ]
                         )
