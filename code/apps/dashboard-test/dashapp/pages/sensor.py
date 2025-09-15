@@ -1735,8 +1735,13 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
                     colors.append(doc["variables"][param]["data"])
                 except KeyError:
                     continue
+        print('x', x)
+        print('y', y)
+        print('z', z)
+        print('colors', color)
         
         dict_3d = {'x': x, 'y': y, 'z': z, 'colors': colors}
+        print('dict3d', dict_3d)
 
         units = ""
         try:
@@ -1801,7 +1806,7 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
         return [scatter]
         # return PreventUpdate
     except Exception as e:
-        print(f"select_graph_2d error: {e}")
+        print(f"select_graph_3d error: {e}")
         # return [dash.no_update, dash.no_update]
         raise PreventUpdate
         # return [dash.no_update, dash.no_update]
