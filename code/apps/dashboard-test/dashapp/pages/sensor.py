@@ -1605,6 +1605,9 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
                 except KeyError:
                     continue
 
+        print('2d x', x)
+        print('2d y', y)
+        print('2d og z', z)
         # print(f"x,y: {x}, {y}")
         # # fig = go.Figure(data=[go.Scatter(x=x, y=y)])
         # print(f"go fig: {fig}")
