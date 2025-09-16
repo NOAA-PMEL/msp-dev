@@ -1742,13 +1742,22 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
                 except KeyError:
                     continue
 
-        units = ""
-        try:
-            x_units = f'({sensor_definition["variables"][x_axis]["attributes"]["units"]["data"]})'
-            y_units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
-            z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
-        except KeyError:
-            pass
+        units = []
+        for axis in [x_axis, y_axis, z_axis]:
+            try:
+                unit = f'({sensor_definition["variables"][axis]["attributes"]["units"]["data"]})'
+                units.append(unit)
+            except Exception:
+                unit = ''
+                units.append(unit)
+        
+        print('units', units)
+        # try:
+        #     x_units = f'({sensor_definition["variables"][x_axis]["attributes"]["units"]["data"]})'
+        #     y_units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
+        #     z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
+        # except KeyError:
+        #     pass
         
         if isinstance(x[-1], list):
             x = x[-1]
@@ -1764,8 +1773,8 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
                 x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
             ),
             layout={
-                "xaxis": {"title": f"{x_axis} {x_units}"},
-                "yaxis": {"title": f"{y_axis} {y_units}"},
+                "xaxis": {"title": f"{x_axis} {units[0]}"},
+                "yaxis": {"title": f"{y_axis} {units[1]}"},
                 # "colorscale": "rainbow"
             },
         )
@@ -1777,9 +1786,9 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         scatter = go.Figure(
             data = go.Surface(z=z, x=x, y=y),
             layout={
-                "xaxis": {"title": f"{x_axis} {x_units}"},
-                "yaxis": {"title": f"{y_axis} {y_units}"},
-                "zaxis": {"title": f"{z_axis} {z_units}"}
+                "xaxis": {"title": f"{x_axis} {units[0]}"},
+                "yaxis": {"title": f"{y_axis} {units[1]}"},
+                "zaxis": {"title": f"{z_axis} {units[2]}"}
             },
         )
 
