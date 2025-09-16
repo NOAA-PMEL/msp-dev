@@ -1759,11 +1759,14 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         except KeyError:
             pass
         
-        # if isinstance(x[-1], list):
-        #     x = x[-1]
+        if isinstance(x[-1], list):
+            x = x[-1]
 
-        # if isinstance(y[-1], list):
-        #     y = y[-1]
+        if isinstance(y[-1], list):
+            y = y[-1]
+        
+        if isinstance(z[-1], list):
+            z = z[-1]
 
         # colors = np.array(og_colors)
         # z = np.array(z)
@@ -1811,8 +1814,12 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         #     heatmap.update_yaxes(type="log")
         #     heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
         # print(f"heatmap figure: {heatmap}")
+        # scatter = go.Figure(
+        #     data = go.Scatter3d(x=x, y=y, z=z, mode="markers")
+        # )
+        
         scatter = go.Figure(
-            data = go.Scatter3d(x=x, y=y, z=z, mode="markers")
+            data = go.Surface(z=z, x=x, y=y)
         )
         
 
