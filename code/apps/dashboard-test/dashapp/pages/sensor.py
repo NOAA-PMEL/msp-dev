@@ -29,7 +29,7 @@ from logfmter import Logfmter
 from collections import deque
 import httpx
 import traceback
-import xarray as xr
+# import xarray as xr
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -511,7 +511,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
 def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
     content = dbc.Row(
         children=[
-            dbc.Button("Submit", {"type": "graph-3d-z-axis-submit", "index": f"{xaxis}::{yaxis}::{zaxis}"}),
+            dbc.Button("Submit", {"type": "graph-3d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
             dbc.Label("z-axis min:"),
             # dbc.Col(
             #     dbc.Input(
@@ -545,7 +545,7 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
             dbc.CardHeader(
                 children=[
                     dcc.Dropdown(
-                        id={"type": "graph-3d-dropdown", "index": f"{xaxis}::{yaxis}::{zaxis}"},
+                        id={"type": "graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"},
                         options=dropdown_list,
                         value="",
                     )
@@ -565,7 +565,7 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
                     # ),
                     dbc.Col(
                         dcc.Graph(
-                            id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}::{zaxis}"},
+                            id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}"},
                             style={"height": 500},
                         )
                     ),
@@ -1759,24 +1759,26 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         except KeyError:
             pass
         
+        if isinstance(x[-1], list):
+            x = x[-1]
+
         if isinstance(y[-1], list):
             y = y[-1]
 
-        if isinstance(z[-1], list):
-            z = z[-1]
-
         # colors = np.array(og_colors)
-        z = np.array(z)
+        # z = np.array(z)
+        # columns = ["Diameter", "Channel", "Value"]
+        # df = pd.DataFrame(z, columns = x)
 
-        dims = ['x', 'y']
-        coords = {
-            "x": np.array(x),
-            "y": np.array(y),
-            # "z": np.array(z)
-        }
+        # dims = ['x', 'y']
+        # coords = {
+        #     "x": np.array(x),
+        #     "y": np.array(y),
+        #     # "z": np.array(z)
+        # }
 
-        da = xr.DataArray(z, coords=coords, dims=dims, name="3d_data")
-        print(da)
+        # da = xr.DataArray(z, coords=coords, dims=dims, name="3d_data")
+        # print(da)
 
         # m,n,r = colors.shape
         # out_arr = np.column_stack((np.repeat(np.arange(m), n), colors.reshape(m*n,-1)))
@@ -1790,21 +1792,21 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         #     colors.append(new_color)
         
         # dict_3d = {'x': x, 'y': y, 'z': z}
-        dict_3d = da.to_dataframe()
-        print('dict_3d', dict_3d)
+        # dict_3d = da.to_dataframe()
+        # print('dict_3d', dict_3d)
 
-        # heatmap = go.Figure(
-        #     data=go.Heatmap(
-        #         x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
-        #     ),
-        #     # data=[{"x": x, "y": y, "z": z, "type": "heatmap"}],
-        #     layout={
-        #         "xaxis": {"title": "Time"},
-        #         "yaxis": {"title": f"{y_axis} {y_units}"},
-        #         # "yaxis": {"title": f"{y_axis} {y_units}"},
-        #         # "colorscale": "rainbow"
-        #     },
-        # )
+        heatmap = go.Figure(
+            data=go.Heatmap(
+                x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
+            ),
+            # data=[{"x": x, "y": y, "z": z, "type": "heatmap"}],
+            layout={
+                # "xaxis": {"title": "Time"},
+                # "yaxis": {"title": f"{y_axis} {y_units}"},
+                # "yaxis": {"title": f"{y_axis} {y_units}"},
+                # "colorscale": "rainbow"
+            },
+        )
         # if use_log:
         #     heatmap.update_yaxes(type="log")
         #     heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
@@ -1814,12 +1816,13 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         # )
         
 
-        scatter = px.scatter_3d(
-            dict_3d, x = 'x', y = 'y', z = 'z', color = 'colors'
-        )
+        # scatter = px.scatter_3d(
+        #     df, x = 'x', y = 'y', z = 'z', color = 'colors'
+        # )
 
         # return [heatmap, scatter]  # , graph_axes]
-        return [scatter]
+        # return [scatter]
+        return[heatmap]
         # return PreventUpdate
     except Exception as e:
         print(f"select_graph_3d error: {e}")
