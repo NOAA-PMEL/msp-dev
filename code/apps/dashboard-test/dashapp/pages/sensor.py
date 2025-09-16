@@ -556,16 +556,17 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
                     axes_settings,
                     dbc.Col(
                         dcc.Graph(
+                            id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}"},
+                            style={"height": 500},
+                        )
+                    ),
+
+                    dbc.Col(
+                        dcc.Graph(
                             id={
                                 "type": "graph-3d-heatmap",
                                 "index": f"{xaxis}::{yaxis}",
                             },
-                            style={"height": 500},
-                        )
-                    ),
-                    dbc.Col(
-                        dcc.Graph(
-                            id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}"},
                             style={"height": 500},
                         )
                     ),
@@ -1723,8 +1724,6 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         x = []
         y = []
         z = []
-        # og_colors = []
-        # colors = []
         
         device_id = f'{sensor_meta["make"]}::{sensor_meta["model"]}::{sensor_meta["serial_number"]}'
         results = get_device_data(device_id=device_id)
@@ -1778,9 +1777,9 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
                 # "colorscale": "rainbow"
             },
         )
-        # if use_log:
-        #     heatmap.update_yaxes(type="log")
-        #     heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
+        if use_log:
+            heatmap.update_yaxes(type="log")
+            heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
         # print(f"heatmap figure: {heatmap}")
         
         scatter = go.Figure(
