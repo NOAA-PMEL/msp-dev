@@ -23,11 +23,13 @@ from pydantic import BaseSettings
 from ulid import ULID
 import dash_ag_grid as dag
 import pandas as pd
+import numpy as np
 from logfmter import Logfmter
 # import pymongo
 from collections import deque
 import httpx
 import traceback
+import xarray as xr
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -506,7 +508,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
     return graph
 
 
-def build_graph_3d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
+def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
     content = dbc.Row(
         children=[
             dbc.Button("Submit", {"type": "graph-3d-z-axis-submit", "index": f"{xaxis}::{yaxis}::{zaxis}"}),
@@ -670,7 +672,7 @@ def build_graphs(layout_options):
                 )
             
         if ltype == "layout-3d":
-            title = f"Plots 3-D (time, {list(dims.keys())[0]}, {list(dims.keys())[1]})"
+            title = f"Plots 3-D ({list(dims.keys())[0]}, {list(dims.keys())[1]})"
             # title = f"Plots 3-D (time, {dim})"
             graph_list.append(
                 dbc.AccordionItem(
@@ -681,10 +683,11 @@ def build_graphs(layout_options):
                                     layout_options["layout-3d"][dim][
                                         "variable-list"
                                     ],
-                                    xaxis="time",
-                                    yaxis=list(dims.keys())[0],
+                                    # xaxis="time",
+                                    xaxis =list(dims.keys())[0],
+                                    yaxis=list(dims.keys())[1],
                                     # yaxis=dim
-                                    zaxis=list(dims.keys())[1]
+                                    # zaxis=list(dims.keys())[1]
                                 )
                             ]
                         )
@@ -1697,19 +1700,21 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
     prevent_initial_call=True,
 )
 # def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
-def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id):
+def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
     # print(f"select_graph_3d: {z_axis}, {sensor_meta}, {graph_axes}, {graph_id}")
     # print(f"current_fig: {current_fig}")
     try:
         if "graph-3d" not in graph_axes:
             graph_axes["graph-3d"] = dict()
+        x_axis = graph_id["index"].split("::")[0]
         y_axis = graph_id["index"].split("::")[1]
-        z_axis = graph_id["index"].split("::")[2]
+        # z_axis = graph_id["index"].split("::")[2]
         use_log = False
-        if y_axis == "diameter":
+        if x_axis == "diameter":
             use_log = True
         graph_axes["graph-3d"][graph_id["index"]] = {
-            "x-axis": "time",
+            # "x-axis": "time",
+            "x-axis": x_axis,
             "y-axis": y_axis,
             "z-axis": z_axis,
         }
@@ -1718,8 +1723,8 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
         x = []
         y = []
         z = []
-        og_colors = []
-        colors = []
+        # og_colors = []
+        # colors = []
         
         device_id = f'{sensor_meta["make"]}::{sensor_meta["model"]}::{sensor_meta["serial_number"]}'
         results = get_device_data(device_id=device_id)
@@ -1731,18 +1736,18 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
             print("results = good")
             for doc in results:
                 try:
-                    x.append(doc["variables"]["time"]["data"])
+                    x.append(doc["variables"][x_axis]["data"])
                     y.append(doc["variables"][y_axis]["data"])
                     # orig_z.append(doc["variables"][z_axis]["data"])
                     z.append(doc["variables"][z_axis]["data"])
                     # colors.append(doc["variables"][param]["data"])
-                    og_colors.append(doc["variables"][param]["data"])
+                    # og_colors.append(doc["variables"][param]["data"])
                 except KeyError:
                     continue
         print('x', x)
         print('y', y)
         print('z', z)
-        print('colors', colors)
+        # print('og_colors', og_colors)
         
         # dict_3d = {'x': x, 'y': y, 'z': z, 'colors': colors}
         # print('dict3d', dict_3d)
@@ -1753,17 +1758,40 @@ def select_graph_3d(param, sensor_meta, graph_axes, sensor_definition, graph_id)
             z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
         except KeyError:
             pass
-
-        # if isinstance(y[-1], list):
-        #     y = y[-1]
-
-        for yi, yval in enumerate(y):
-            new_color = []
-            for xi, xval in enumerate(x):
-                new_color.append(og_colors[xi][yi])
-            colors.append(new_color)
         
-        dict_3d = {'x': x, 'y': y, 'z': z, 'colors': colors}
+        if isinstance(y[-1], list):
+            y = y[-1]
+
+        if isinstance(z[-1], list):
+            z = z[-1]
+
+        # colors = np.array(og_colors)
+        z = np.array(z)
+
+        dims = ['x', 'y']
+        coords = {
+            "x": np.array(x),
+            "y": np.array(y),
+            # "z": np.array(z)
+        }
+
+        da = xr.DataArray(z, coords=coords, dims=dims, name="3d_data")
+        print(da)
+
+        # m,n,r = colors.shape
+        # out_arr = np.column_stack((np.repeat(np.arange(m), n), colors.reshape(m*n,-1)))
+        # out_df = pd.DataFrame(out_arr, columns=)
+
+
+        # for yi, yval in enumerate(y):
+        #     new_color = []
+        #     for xi, xval in enumerate(x):
+        #         new_color.append(og_colors[xi][yi])
+        #     colors.append(new_color)
+        
+        # dict_3d = {'x': x, 'y': y, 'z': z}
+        dict_3d = da.to_dataframe()
+        print('dict_3d', dict_3d)
 
         # heatmap = go.Figure(
         #     data=go.Heatmap(
