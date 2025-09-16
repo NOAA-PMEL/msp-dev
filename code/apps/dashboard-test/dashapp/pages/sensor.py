@@ -554,15 +554,15 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
             dbc.Row(
                 children=[
                     axes_settings,
-                    # dbc.Col(
-                    #     dcc.Graph(
-                    #         id={
-                    #             "type": "graph-2d-heatmap",
-                    #             "index": f"{xaxis}::{yaxis}",
-                    #         },
-                    #         style={"height": 500},
-                    #     )
-                    # ),
+                    dbc.Col(
+                        dcc.Graph(
+                            id={
+                                "type": "graph-3d-heatmap",
+                                "index": f"{xaxis}::{yaxis}",
+                            },
+                            style={"height": 500},
+                        )
+                    ),
                     dbc.Col(
                         dcc.Graph(
                             id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}"},
@@ -1683,9 +1683,9 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
 
 @callback(
     [
-        # Output(
-        #     {"type": "graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True
-        # ),
+        Output(
+            {"type": "graph-3d-heatmap", "index": MATCH}, "figure", allow_duplicate=True
+        ),
         Output(
             {"type": "graph-3d-line", "index": MATCH}, "figure", allow_duplicate=True
         ),
@@ -1795,24 +1795,24 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         # dict_3d = da.to_dataframe()
         # print('dict_3d', dict_3d)
 
-        # heatmap = go.Figure(
-        #     data=go.Heatmap(
-        #         x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
-        #     ),
-        #     # data=[{"x": x, "y": y, "z": z, "type": "heatmap"}],
-        #     layout={
-        #         # "xaxis": {"title": "Time"},
-        #         # "yaxis": {"title": f"{y_axis} {y_units}"},
-        #         # "yaxis": {"title": f"{y_axis} {y_units}"},
-        #         # "colorscale": "rainbow"
-        #     },
-        # )
+        heatmap = go.Figure(
+            data=go.Heatmap(
+                x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
+            ),
+            # data=[{"x": x, "y": y, "z": z, "type": "heatmap"}],
+            layout={
+                # "xaxis": {"title": "Time"},
+                # "yaxis": {"title": f"{y_axis} {y_units}"},
+                # "yaxis": {"title": f"{y_axis} {y_units}"},
+                # "colorscale": "rainbow"
+            },
+        )
         # if use_log:
         #     heatmap.update_yaxes(type="log")
         #     heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
         # print(f"heatmap figure: {heatmap}")
         scatter = go.Figure(
-            data = go.Scatter3D(x=x, y=y, z=z, mode="markers")
+            data = go.Scatter3d(x=x, y=y, z=z, mode="markers")
         )
         
 
@@ -1820,8 +1820,8 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         #     df, x = 'x', y = 'y', z = 'z', color = 'colors'
         # )
 
-        # return [heatmap, scatter]  # , graph_axes]
-        return [scatter]
+        return [heatmap, scatter]  # , graph_axes]
+        # return [scatter]
         # return[heatmap]
         # return PreventUpdate
     except Exception as e:
