@@ -2185,22 +2185,27 @@ def update_graph_3d_scatter(
             for z_axis, graph_id, current_fig in zip(
                 z_axis_list, graph_ids, current_figs
             ):
+                x_axis = graph_id["index"].split("::")[0]
                 y_axis = graph_id["index"].split("::")[1]
                 if (
-                    "time" not in sensor_data["variables"]
+                    # "time" not in sensor_data["variables"]
+                    x_axis no in sensor_data["variables"]
                     or y_axis not in sensor_data["variables"]
                     or z_axis not in sensor_data["variables"]
                 ):
                     raise PreventUpdate
 
-                x = sensor_data["variables"]["time"]["data"]
+                # x = sensor_data["variables"]["time"]["data"]
+                x = sensor_data["variables"][x_axis]["data"]
                 y = sensor_data["variables"][y_axis]["data"]
                 z = sensor_data["variables"][z_axis]["data"]
                 print(f"scatter update: {x}, {y}, {z}")
 
 
-                current_fig["data"][0]["x"] = y
-                current_fig["data"][0]["y"] = z
+                # current_fig["data"][0]["x"] = y
+                # current_fig["data"][0]["y"] = z
+                # current_fig["data"][0]["x"] = y
+                current_fig["data"][0]["z"] = z
                 if isinstance(x, list):
                     x = x[-1]
                 current_fig["layout"]["title"] = str(x)
