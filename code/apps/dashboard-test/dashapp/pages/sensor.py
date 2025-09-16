@@ -1778,7 +1778,7 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
             },
         )
         if use_log:
-            heatmap.update_yaxes(type="log")
+            heatmap.update_xaxes(type="log")
             heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
         # print(f"heatmap figure: {heatmap}")
         
