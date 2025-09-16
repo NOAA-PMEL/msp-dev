@@ -1784,12 +1784,12 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         # print(f"heatmap figure: {heatmap}")
         
         scatter = go.Figure(
-            data = go.Surface(z=z, x=x, y=y),
-            layout={
-                "xaxis": {"title": f"{x_axis} {units[0]}"},
-                "yaxis": {"title": f"{y_axis} {units[1]}"},
-                "zaxis": {"title": f"{z_axis} {units[2]}"}
-            },
+            data = go.Surface(z=z, x=x, y=y)
+        )
+        scatter.update_scenes(
+            xaxis_title_text = f"{x_axis} {units[0]}",
+            yaxis_title_text = f"{y_axis} {units[1]}",
+            zaxis_title_text = f"{z_axis} {units[2]}"
         )
 
         # return [heatmap, scatter]  # , graph_axes]
