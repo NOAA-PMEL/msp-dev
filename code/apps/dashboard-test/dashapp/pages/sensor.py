@@ -2189,7 +2189,7 @@ def update_graph_3d_scatter(
                 y_axis = graph_id["index"].split("::")[1]
                 if (
                     # "time" not in sensor_data["variables"]
-                    x_axis no in sensor_data["variables"]
+                    x_axis not in sensor_data["variables"]
                     or y_axis not in sensor_data["variables"]
                     or z_axis not in sensor_data["variables"]
                 ):
