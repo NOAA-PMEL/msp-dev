@@ -1684,11 +1684,11 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
 @callback(
     [
         Output(
-            {"type": "graph-3d-heatmap", "index": MATCH}, "figure", allow_duplicate=True
-        ),
-        Output(
             {"type": "graph-3d-line", "index": MATCH}, "figure", allow_duplicate=True
         ),
+        Output(
+            {"type": "graph-3d-heatmap", "index": MATCH}, "figure", allow_duplicate=True
+        )
     ],
     Input({"type": "graph-3d-dropdown", "index": MATCH}, "value"),
     [
@@ -1738,22 +1738,13 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
                 try:
                     x.append(doc["variables"][x_axis]["data"])
                     y.append(doc["variables"][y_axis]["data"])
-                    # orig_z.append(doc["variables"][z_axis]["data"])
                     z.append(doc["variables"][z_axis]["data"])
-                    # colors.append(doc["variables"][param]["data"])
-                    # og_colors.append(doc["variables"][param]["data"])
                 except KeyError:
                     continue
-        print('x', x)
-        print('y', y)
-        print('z', z)
-        # print('og_colors', og_colors)
-        
-        # dict_3d = {'x': x, 'y': y, 'z': z, 'colors': colors}
-        # print('dict3d', dict_3d)
 
         units = ""
         try:
+            x_units = f'({sensor_definition["variables"][x_axis]["attributes"]["units"]["data"]})'
             y_units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
             z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
         except KeyError:
@@ -1768,45 +1759,13 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         if isinstance(z[-1], list):
             z = z[-1]
 
-        # colors = np.array(og_colors)
-        # z = np.array(z)
-        # columns = ["Diameter", "Channel", "Value"]
-        # df = pd.DataFrame(z, columns = x)
-
-        # dims = ['x', 'y']
-        # coords = {
-        #     "x": np.array(x),
-        #     "y": np.array(y),
-        #     # "z": np.array(z)
-        # }
-
-        # da = xr.DataArray(z, coords=coords, dims=dims, name="3d_data")
-        # print(da)
-
-        # m,n,r = colors.shape
-        # out_arr = np.column_stack((np.repeat(np.arange(m), n), colors.reshape(m*n,-1)))
-        # out_df = pd.DataFrame(out_arr, columns=)
-
-
-        # for yi, yval in enumerate(y):
-        #     new_color = []
-        #     for xi, xval in enumerate(x):
-        #         new_color.append(og_colors[xi][yi])
-        #     colors.append(new_color)
-        
-        # dict_3d = {'x': x, 'y': y, 'z': z}
-        # dict_3d = da.to_dataframe()
-        # print('dict_3d', dict_3d)
-
         heatmap = go.Figure(
             data=go.Heatmap(
                 x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
             ),
-            # data=[{"x": x, "y": y, "z": z, "type": "heatmap"}],
             layout={
-                # "xaxis": {"title": "Time"},
-                # "yaxis": {"title": f"{y_axis} {y_units}"},
-                # "yaxis": {"title": f"{y_axis} {y_units}"},
+                "xaxis": {"title": f"{x_axis} {x_units}"},
+                "yaxis": {"title": f"{y_axis} {y_units}"},
                 # "colorscale": "rainbow"
             },
         )
@@ -1814,22 +1773,18 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         #     heatmap.update_yaxes(type="log")
         #     heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
         # print(f"heatmap figure: {heatmap}")
-        # scatter = go.Figure(
-        #     data = go.Scatter3d(x=x, y=y, z=z, mode="markers")
-        # )
         
         scatter = go.Figure(
-            data = go.Surface(z=z, x=x, y=y)
+            data = go.Surface(z=z, x=x, y=y),
+            layout={
+                "xaxis": {"title": f"{x_axis} {x_units}"},
+                "yaxis": {"title": f"{y_axis} {y_units}"},
+                "zaxis": {"title": f"{z_axis} {z_units}"}
+            },
         )
-        
 
-        # scatter = px.scatter_3d(
-        #     df, x = 'x', y = 'y', z = 'z', color = 'colors'
-        # )
-
-        return [heatmap, scatter]  # , graph_axes]
-        # return [scatter]
-        # return[heatmap]
+        # return [heatmap, scatter]  # , graph_axes]
+        return [scatter, heatmap]
         # return PreventUpdate
     except Exception as e:
         print(f"select_graph_3d error: {e}")
