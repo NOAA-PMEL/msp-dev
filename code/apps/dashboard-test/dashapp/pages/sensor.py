@@ -1759,11 +1759,11 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         except KeyError:
             pass
         
-        if isinstance(x[-1], list):
-            x = x[-1]
+        # if isinstance(x[-1], list):
+        #     x = x[-1]
 
-        if isinstance(y[-1], list):
-            y = y[-1]
+        # if isinstance(y[-1], list):
+        #     y = y[-1]
 
         # colors = np.array(og_colors)
         # z = np.array(z)
@@ -1795,25 +1795,25 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         # dict_3d = da.to_dataframe()
         # print('dict_3d', dict_3d)
 
-        heatmap = go.Figure(
-            data=go.Heatmap(
-                x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
-            ),
-            # data=[{"x": x, "y": y, "z": z, "type": "heatmap"}],
-            layout={
-                # "xaxis": {"title": "Time"},
-                # "yaxis": {"title": f"{y_axis} {y_units}"},
-                # "yaxis": {"title": f"{y_axis} {y_units}"},
-                # "colorscale": "rainbow"
-            },
-        )
+        # heatmap = go.Figure(
+        #     data=go.Heatmap(
+        #         x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
+        #     ),
+        #     # data=[{"x": x, "y": y, "z": z, "type": "heatmap"}],
+        #     layout={
+        #         # "xaxis": {"title": "Time"},
+        #         # "yaxis": {"title": f"{y_axis} {y_units}"},
+        #         # "yaxis": {"title": f"{y_axis} {y_units}"},
+        #         # "colorscale": "rainbow"
+        #     },
+        # )
         # if use_log:
         #     heatmap.update_yaxes(type="log")
         #     heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
         # print(f"heatmap figure: {heatmap}")
-        # scatter = go.Figure(
-        #     data = go.Scatter3D(x=x, y=y, z=z, mode="markers")
-        # )
+        scatter = go.Figure(
+            data = go.Scatter3D(x=x, y=y, z=z, mode="markers")
+        )
         
 
         # scatter = px.scatter_3d(
@@ -1821,8 +1821,8 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         # )
 
         # return [heatmap, scatter]  # , graph_axes]
-        # return [scatter]
-        return[heatmap]
+        return [scatter]
+        # return[heatmap]
         # return PreventUpdate
     except Exception as e:
         print(f"select_graph_3d error: {e}")
