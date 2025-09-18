@@ -11,7 +11,7 @@ import logging
 import logging.config
 
 # from pydantic import BaseSettings, Field
-# import json
+import json
 import yaml
 import random
 import struct
@@ -717,6 +717,15 @@ class TAP2901(Sensor):
 
         self.default_data_buffer = asyncio.Queue()
 
+        self.sensor_definition_file = "Brechtel_TAP2901_sensor_definition.json"
+
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
+
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
         # self.data_loop_task = None
@@ -788,7 +797,7 @@ class TAP2901(Sensor):
         The new settings are part [variables] now so this is a bit of a hack to use the existing structure
         with the new format.
         '''
-        settings_def = self.get_definition_by_variable_type(TAP2901.metadata, variable_type="setting")
+        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
         # for name, setting in TAP2901.metadata["settings"].items():
         for name, setting in settings_def["variables"].items():
         
@@ -799,16 +808,16 @@ class TAP2901(Sensor):
             self.settings.set_setting(name, requested=requested)
 
         meta = DeviceMetadata(
-            attributes=TAP2901.metadata["attributes"],
-            dimensions=TAP2901.metadata["dimensions"],
-            variables=TAP2901.metadata["variables"],
+            attributes=self.metadata["attributes"],
+            dimensions=self.metadata["dimensions"],
+            variables=self.metadata["variables"],
             # settings=TAP2901.metadata["settings"],
             settings=settings_def["variables"]
         )
 
         self.config = DeviceConfig(
-            make=TAP2901.metadata["attributes"]["make"]["data"],
-            model=TAP2901.metadata["attributes"]["model"]["data"],
+            make=self.metadata["attributes"]["make"]["data"],
+            model=self.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
             metadata=meta,
             interfaces=conf["interfaces"],
