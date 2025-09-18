@@ -545,7 +545,6 @@ class WXT536(Sensor):
                         "default_data_loop",
                         extra={"data": event, "destpath": destpath},
                     )
-                    # message = Message(data=event, destpath=destpath)
                     message = event
                     # self.logger.debug("default_data_loop", extra={"m": message})
                     await self.send_message(message)

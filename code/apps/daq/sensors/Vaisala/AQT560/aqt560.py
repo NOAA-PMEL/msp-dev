@@ -196,9 +196,6 @@ class AQT560(Sensor):
             self.logger.error("sensor_definition not found. Exiting")            
             sys.exit(1)
 
-
-        # self.data_loop_task = None
-
         # all handled in run_setup ----
         # self.configure()
 
