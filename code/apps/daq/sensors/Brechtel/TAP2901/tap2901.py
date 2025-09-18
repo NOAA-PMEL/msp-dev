@@ -713,7 +713,6 @@ class TAP2901(Sensor):
         super(TAP2901, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
-        # self.configure()
 
         self.default_data_buffer = asyncio.Queue()
 

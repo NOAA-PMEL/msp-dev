@@ -264,7 +264,6 @@ class Aurora3000(Sensor):
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
         # self.enable_task_list.append(self.register_sensor())
-        # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
 
     def configure(self):

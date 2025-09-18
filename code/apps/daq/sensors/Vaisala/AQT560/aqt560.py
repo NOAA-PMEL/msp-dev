@@ -196,7 +196,6 @@ class AQT560(Sensor):
             self.logger.error("sensor_definition not found. Exiting")            
             sys.exit(1)
 
-        # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
         # self.data_loop_task = None
 
