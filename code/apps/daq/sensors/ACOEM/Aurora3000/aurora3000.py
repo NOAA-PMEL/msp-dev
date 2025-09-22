@@ -232,7 +232,7 @@ class Aurora3000(Sensor):
         self.default_data_buffer = asyncio.Queue()
 
         self.sensor_definition_file = "ACOEM_Aurora3000_sensor_definition.json"
-        print(self.sensor_definition_file)
+        print(os.listdir(self.sensor_definition_file))
 
         try:            
             with open(self.sensor_definition_file, "r") as f:
