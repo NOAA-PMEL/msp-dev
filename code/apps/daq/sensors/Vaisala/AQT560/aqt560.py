@@ -501,16 +501,20 @@ class AQT560(Sensor):
                             if instvar.type == "string":
                                 vartype = "str"
                             try:
+                                print('vartype', vartype)
                                 # find the corresponding variable
                                 measurement = [item for item in parts if name in item]
+                                print('measurement1', measurement)
                                 # get rid of the variable label (i.e. just get the value)
                                 measurement = measurement[0].split(":")                     
                                 measurement = measurement[1].strip()
+                                print('measurement2', measurement)
                                 record["variables"][name]["data"] = eval(vartype)(measurement)
                             except ValueError:
                                 if vartype == "str" or vartype == "char":
                                     record["variables"][name]["data"] = ""
                                 else:
+                                    print('value error float reached')
                                     record["variables"][name]["data"] = None
                     return record
                 except KeyError:
