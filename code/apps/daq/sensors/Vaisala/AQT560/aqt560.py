@@ -514,7 +514,7 @@ class AQT560(Sensor):
                                 if vartype == "str" or vartype == "char":
                                     record["variables"][name]["data"] = ""
                                 else:
-                                    print('value error float reached')
+                                    print('value error float reached') 
                                     record["variables"][name]["data"] = None
                     return record
                 except KeyError:
