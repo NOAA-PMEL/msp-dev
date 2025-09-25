@@ -1051,8 +1051,9 @@ class TAP2901(Sensor):
                                 intensity = parts[index].strip()
                             try:
                                 # record["variables"][name]["data"] = eval(vartype)(parts[index].strip())
-                                record["variables"][name]["data"] = round(eval(vartype)(intensity), 2)
-                            except ValueError:
+                                val = eval(vartype)(intensity)
+                                record["variables"][name]["data"] = round(val, 2)
+                            except (ValueError, TypeError):
                                 if vartype == "str" or vartype == "char":
                                     record["variables"][name]["data"] = ""
                                 else:
