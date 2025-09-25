@@ -15,6 +15,7 @@ import json
 import yaml
 import random
 import struct
+import traceback
 from envds.core import envdsLogger
 
 # from envds.daq.db import get_sensor_registration, register_sensor  # , envdsBase, envdsStatus
@@ -1061,6 +1062,7 @@ class TAP2901(Sensor):
                     pass
             except Exception as e:
                 print(f"default_parse error: {e}")
+                print(traceback.format_exc())
         # else:
         return None
 
