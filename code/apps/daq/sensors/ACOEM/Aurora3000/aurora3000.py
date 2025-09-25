@@ -46,6 +46,15 @@ from datetime import datetime
 
 task_list = []
 
+TYPE_MAP = {
+    "string": str,
+    "str": str,
+    "char": str,
+    "int": int,
+    "float": float,
+    # Add other expected types here
+}
+
 
 class Aurora3000(Sensor):
     """docstring for Aurora3000."""
@@ -240,8 +249,8 @@ class Aurora3000(Sensor):
             self.logger.error("sensor_definition not found. Exiting")            
             sys.exit(1)
 
-        # self.command_list = ['VI099\r', 'VI004\r', 'VI005\r']
-        self.command_list = ['VI099\r']
+        self.command_list = ['VI099\r', 'VI004\r', 'VI005\r']
+        # self.command_list = ['VI099\r']
         self.command_counter = 0
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
@@ -456,126 +465,245 @@ class Aurora3000(Sensor):
 
         while True:
             try:
-                # for poll_cmd in self.command_list:
-                poll_cmd = 'VI099\r'
-                self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
-                await self.interface_send_data(data={"data": poll_cmd})
-                    # await asyncio.sleep(0.001)
-                # await asyncio.sleep(time_to_next(self.data_rate/2.))
+                for poll_cmd in self.command_list:
+                # poll_cmd = 'VI099\r'
+                    self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
+                    await self.interface_send_data(data={"data": poll_cmd})
+                    await asyncio.sleep(0.001)
                 await asyncio.sleep(time_to_next(self.data_rate))
             except Exception as e:
                 self.logger.error("polling_loop", extra={"e": e})
     
 
+    # async def default_data_loop(self):
+
+    #     while True:
+    #         try:
+    #             print("command number", self.command_counter)
+    #             data = await self.default_data_buffer.get()
+    #             self.logger.debug("default_data_loop", extra={"data": data})
+    #             record = self.default_parse(data)
+    #             cmd_list_len = len(self.command_list)
+
+    #             # check to see if the current data stream is supposed to be output from the first command
+    #             if self.command_counter == 0:
+    #                 # if the first variable is the internal timestamp, this is the first record
+    #                 try:
+    #                     if bool(datetime.strptime(record["variables"]['aurora_date_time']["data"], "%d/%m/%Y %H:%M:%S")):
+    #                         record1 = record
+    #                         self.command_counter += 1
+    #                         continue
+    #                 except Exception as e:
+    #                     print(f"default_data_loop error: {e}")
+
+    #             # consecutive records after the first one are moved into the first one
+    #             else:
+    #                 record2 = record
+    #                 var_index = 13 + self.command_counter
+    #                 record1["variables"][list(self.config.metadata.variables.keys())[var_index]]["data"] = record2["variables"]['aurora_date_time']["data"]
+    #                 self.command_counter += 1
+
+    #                 # once the number of commands sent has surpassed the expected number, this function will finish and return the completed record
+    #                 if self.command_counter < (cmd_list_len - 1):
+    #                     continue
+    #                 else:
+    #                     self.command_counter = 0
+    #                     pass
+
+    #             record = record1
+    #             print("COMPLETE RECORD", record)
+
+    #             if record:
+    #                 self.collecting = True
+
+    #             if record and self.sampling():
+    #                 event = DAQEvent.create_data_update(
+    #                     # source="sensor.mockco-mock1-1234", data=record
+    #                     source=self.get_id_as_source(),
+    #                     data=record,
+    #                 )
+    #                 destpath = f"{self.get_id_as_topic()}/data/update"
+    #                 event["destpath"] = destpath
+    #                 self.logger.debug(
+    #                     "default_data_loop",
+    #                     extra={"data": event, "destpath": destpath},
+    #                 )
+    #                 # message = Message(data=event, destpath=destpath)
+    #                 message = event
+    #                 # self.logger.debug("default_data_loop", extra={"m": message})
+    #                 await self.send_message(message)
+
+    #             # self.logger.debug("default_data_loop", extra={"record": record})
+    #         except Exception as e:
+    #             print(f"default_data_loop error: {e}")
+    #         await asyncio.sleep(0.1)
+    
+    # def default_parse(self, data):
+    #     if data:
+    #         try:
+    #             variables = list(self.config.metadata.variables.keys())
+    #             variables.remove("time")
+    #             print(f"variables: \n{variables}")
+
+    #             print(f"include metadata: {self.include_metadata}")
+    #             record = self.build_data_record(meta=self.include_metadata)
+    #             print(f"default_parse: data: {data}, record: {record}")
+    #             self.include_metadata = False
+    #             try:
+    #                 record["timestamp"] = data.data["timestamp"]
+    #                 record["variables"]["time"]["data"] = data.data["timestamp"]
+    #                 parts = data.data["data"].split(",")
+    #                 print(f"parts: {parts}, {variables}")
+    #                 # if len(parts) < 13:
+    #                 #     return None
+    #                 # if len(parts) > 12:
+
+    #                 for index, name in enumerate(variables):
+    #                     if name in record["variables"]:
+    #                         # instvar = self.config.variables[name]
+    #                         instvar = self.config.metadata.variables[name]
+    #                         vartype = instvar.type
+    #                         if instvar.type == "string":
+    #                             vartype = "str"
+    #                         try:
+    #                             # print(f"default_parse: {record['variables'][name]} - {parts[index].strip()}")
+    #                             record["variables"][name]["data"] = eval(vartype)(
+    #                                 parts[index].strip()
+    #                             )
+    #                         # except ValueError:
+    #                         except Exception as e:
+    #                             if vartype == "str" or vartype == "char":
+    #                                 record["variables"][name]["data"] = ""
+    #                             else:
+    #                                 record["variables"][name]["data"] = None
+                        
+    #                 return record
+    #             except KeyError:
+    #                 pass
+    #         except Exception as e:
+    #             print(f"default_parse error: {e}")
+    #     # else:
+    #     return None
+
+
+
     async def default_data_loop(self):
 
         while True:
             try:
-                print("command number", self.command_counter)
                 data = await self.default_data_buffer.get()
                 self.logger.debug("default_data_loop", extra={"data": data})
-                record = self.default_parse(data)
+                current_record = self.default_parse(data)
+                # cmd_list_len = len(self.command_list)
+
+                if not current_record:
+                    continue
+
+                is_first_chunk = False
+
+                try:
+                    datetime.strptime(current_record["variables"]['aurora_date_time']["data"], "%d/%m/%Y %H:%M:%S")
+                    is_first_chunk = True
+                except (ValueError, TypeError, KeyError):
+                    is_first_chunk = False
+                
+                if is_first_chunk:
+                    self.aggregated_record = current_record
+                    self.command_counter = 1
+                    continue
+
+                if self.aggregated_record:
+                    try:
+                        var_keys = self.config.metadata.variables.keys()
+                        var_index = 13 + self.command_counter
+                        target_key = var_keys[var_index]
+                        self.aggregated_record["variables"][target_key]["data"] = current_record["variables"]['aurora_date_time']["data"]
+                        self.command_counter += 1
+                    
+                    except (IndexError, KeyError) as e:
+                        self.logger.error(f"Failed to aggregate record part: {e}", exc_info=True)
+                        # Reset state on aggregation error to avoid corruption
+                        self.aggregated_record = None
+                        self.command_counter = 0
+                        continue
+                
                 cmd_list_len = len(self.command_list)
 
-                # check to see if the current data stream is supposed to be output from the first command
-                if self.command_counter == 0:
-                    # if the first variable is the internal timestamp, this is the first record
-                    try:
-                        if bool(datetime.strptime(record["variables"]['aurora_date_time']["data"], "%d/%m/%Y %H:%M:%S")):
-                            record1 = record
-                            self.command_counter += 1
-                            continue
-                    except Exception as e:
-                        print(f"default_data_loop error: {e}")
+                if self.aggregated_record and self.command_counter >= cmd_list_len:
+                    record_to_send = self.aggregated_record
 
-                # consecutive records after the first one are moved into the first one
-                else:
-                    record2 = record
-                    var_index = 13 + self.command_counter
-                    record1["variables"][list(self.config.metadata.variables.keys())[var_index]]["data"] = record2["variables"]['aurora_date_time']["data"]
-                    self.command_counter += 1
+                    self.logger.info("Record aggregation complete.", extra={"record": record_to_send})
+                    
+                    # Reset state for the next aggregation cycle
+                    self.aggregated_record = None
+                    self.command_counter = 0
 
-                    # once the number of commands sent has surpassed the expected number, this function will finish and return the completed record
-                    if self.command_counter < (cmd_list_len - 1):
-                        continue
-                    else:
-                        self.command_counter = 0
-                        pass
-
-                record = record1
-                print("COMPLETE RECORD", record)
-
-                if record:
+                    # Process and send the completed record
                     self.collecting = True
-
-                if record and self.sampling():
-                    event = DAQEvent.create_data_update(
-                        # source="sensor.mockco-mock1-1234", data=record
-                        source=self.get_id_as_source(),
-                        data=record,
-                    )
-                    destpath = f"{self.get_id_as_topic()}/data/update"
-                    event["destpath"] = destpath
-                    self.logger.debug(
-                        "default_data_loop",
-                        extra={"data": event, "destpath": destpath},
-                    )
-                    # message = Message(data=event, destpath=destpath)
-                    message = event
-                    # self.logger.debug("default_data_loop", extra={"m": message})
-                    await self.send_message(message)
-
-                # self.logger.debug("default_data_loop", extra={"record": record})
-            except Exception as e:
-                print(f"default_data_loop error: {e}")
-            await asyncio.sleep(0.1)
-    
-    def default_parse(self, data):
-        if data:
-            try:
-                variables = list(self.config.metadata.variables.keys())
-                variables.remove("time")
-                print(f"variables: \n{variables}")
-
-                print(f"include metadata: {self.include_metadata}")
-                record = self.build_data_record(meta=self.include_metadata)
-                print(f"default_parse: data: {data}, record: {record}")
-                self.include_metadata = False
-                try:
-                    record["timestamp"] = data.data["timestamp"]
-                    record["variables"]["time"]["data"] = data.data["timestamp"]
-                    parts = data.data["data"].split(",")
-                    print(f"parts: {parts}, {variables}")
-                    # if len(parts) < 13:
-                    #     return None
-                    # if len(parts) > 12:
-
-                    for index, name in enumerate(variables):
-                        if name in record["variables"]:
-                            # instvar = self.config.variables[name]
-                            instvar = self.config.metadata.variables[name]
-                            vartype = instvar.type
-                            if instvar.type == "string":
-                                vartype = "str"
-                            try:
-                                # print(f"default_parse: {record['variables'][name]} - {parts[index].strip()}")
-                                record["variables"][name]["data"] = eval(vartype)(
-                                    parts[index].strip()
-                                )
-                            # except ValueError:
-                            except Exception as e:
-                                if vartype == "str" or vartype == "char":
-                                    record["variables"][name]["data"] = ""
-                                else:
-                                    record["variables"][name]["data"] = None
+                    if self.sampling():
+                        event = DAQEvent.create_data_update(
+                            source=self.get_id_as_source(),
+                            data=record_to_send,
+                        )
+                        destpath = f"{self.get_id_as_topic()}/data/update"
+                        event["destpath"] = destpath
                         
-                    return record
-                except KeyError:
-                    pass
+                        self.logger.debug("Sending complete message", extra={"event": event})
+                        await self.send_message(event)
+
             except Exception as e:
-                print(f"default_parse error: {e}")
-        # else:
-        return None
+                self.logger.error(f"An unexpected error occurred in data loop: {e}", exc_info=True)
+                # Prevent fast-looping on continuous errors
+                await asyncio.sleep(0.5)
+
+
+    def default_parse(self, data):
+
+        if not data:
+            return None
+        
+        try:
+            record = self.build_data_record(meta=self.include_metadata)
+            self.include_metadata = False  # Ensure metadata is only included once
+
+            timestamp = data.data["timestamp"]
+            record["timestamp"] = timestamp
+            if "time" in record["variables"]:
+                record["variables"]["time"]["data"] = timestamp
+
+            variable_names = [v for v in self.config.metadata.variables if v != "time"]
+            parts = data.data["data"].split(",")
+            
+            # Pair variable names with data parts and populate the record
+            for name, value_str in zip(variable_names, parts):
+                if name not in record["variables"]:
+                    continue
+
+                variable_config = self.config.metadata.variables[name]
+                target_type = TYPE_MAP.get(variable_config.type, str)
+
+                try:
+                    cleaned_value = value_str.strip()
+                    record["variables"][name]["data"] = target_type(cleaned_value)
+                except (ValueError, TypeError):
+                    self.logger.warning(
+                        f"Could not cast '{cleaned_value}' to type '{variable_config.type}' for '{name}'."
+                    )
+                    record["variables"][name]["data"] = None if target_type is not str else ""
+            
+            return record
+
+        except (KeyError, IndexError) as e:
+            self.logger.error(f"Error parsing data due to missing key or index: {e}", exc_info=True)
+            return None
+        except Exception as e:
+            self.logger.error(f"An unexpected error occurred in default_parse: {e}", exc_info=True)
+            return None
+
+
+
+
+
 
 
 class ServerConfig(BaseModel):
