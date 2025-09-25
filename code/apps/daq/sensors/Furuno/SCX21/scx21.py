@@ -535,7 +535,6 @@ class SCX21(Sensor):
                                     record1["variables"][var]["data"] = record2["variables"][var]["data"]
                         continue
                 record = record1
-                print('FINAL RECORD', record)
                 # record = self.default_parse(data)
                 if record:
                     self.collecting = True
@@ -562,7 +561,7 @@ class SCX21(Sensor):
             except Exception as e:
                 print(f"default_data_loop error: {e}")
                 print(traceback.format_exc())
-            await asyncio.sleep(0.0001)
+            await asyncio.sleep(0.001)
 
     def default_parse(self, data):
         if data:
