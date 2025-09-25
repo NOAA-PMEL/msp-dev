@@ -1045,12 +1045,12 @@ class TAP2901(Sensor):
                             if instvar.type == "string":
                                 vartype = "str"
                             if 'intensity' in name:
-                                intensity = round(struct.unpack('!f', bytes.fromhex(parts[index].strip()))[0], 2)
+                                intensity = struct.unpack('!f', bytes.fromhex(parts[index].strip()))[0]
                             else:
-                                intensity = round(parts[index].strip(), 2)
+                                intensity = parts[index].strip()
                             try:
                                 # record["variables"][name]["data"] = eval(vartype)(parts[index].strip())
-                                record["variables"][name]["data"] = eval(vartype)(intensity)
+                                record["variables"][name]["data"] = round(eval(vartype)(intensity), 2)
                             except ValueError:
                                 if vartype == "str" or vartype == "char":
                                     record["variables"][name]["data"] = ""
