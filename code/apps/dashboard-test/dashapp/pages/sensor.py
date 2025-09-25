@@ -818,6 +818,7 @@ def layout(sensor_id=None):
                 elif multi_dim and len(var["shape"]) == 3:
                     continue
                 else:
+                    print('cd', cd)
                     layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
 
             for ltype, dims in layout_options.items():
