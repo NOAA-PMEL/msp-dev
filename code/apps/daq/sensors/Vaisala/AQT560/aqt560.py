@@ -503,7 +503,7 @@ class AQT560(Sensor):
                             try:
                                 print('vartype', vartype)
                                 # find the corresponding variable
-                                measurement = [item for item in parts if name in item]
+                                measurement = [item for item in parts if (name + "") in item]
                                 print('measurement1', measurement)
                                 # get rid of the variable label (i.e. just get the value)
                                 measurement = measurement[0].split(":")                     
