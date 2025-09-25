@@ -240,7 +240,8 @@ class Aurora3000(Sensor):
             self.logger.error("sensor_definition not found. Exiting")            
             sys.exit(1)
 
-        self.command_list = ['VI099\r', 'VI004\r', 'VI005\r']
+        # self.command_list = ['VI099\r', 'VI004\r', 'VI005\r']
+        self.command_list = ['VI099\r']
         self.command_counter = 0
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
@@ -416,15 +417,13 @@ class Aurora3000(Sensor):
 
                     if need_start:
                         if self.collecting:
-                            # await self.interface_send_data(data={"data": stop_command})
                             if self.polling_task:
                                 self.polling_task.cancel()
                             await asyncio.sleep(2)
                             self.collecting = False
                             continue
                         else:
-                            # await self.interface_send_data(data={"data": start_command})
-                            # await self.interface_send_data(data={"data": "\n"})
+
                             self.polling_task = asyncio.create_task(self.polling_loop())
                             need_start = False
                             start_requested = True
@@ -436,13 +435,10 @@ class Aurora3000(Sensor):
                         else:
                             if not self.polling_task:
                                 self.polling_task = asyncio.create_task(self.polling_loop())
-                            # await self.interface_send_data(data={"data": start_command})
-                            # await self.interface_send_data(data={"data": "\n"})
                             await asyncio.sleep(2)
                             continue
                 else:
                     if self.collecting:
-                        # await self.interface_send_data(data={"data": stop_command})
                         if self.polling_task:
                             self.polling_task.cancel()
                         await asyncio.sleep(2)
@@ -450,13 +446,6 @@ class Aurora3000(Sensor):
 
                 await asyncio.sleep(0.1)
 
-                # if self.collecting:
-                #     # await self.stop_command()
-                #     self.logger.debug("sampling_monitor:5", extra={"self.collecting": self.collecting})
-                #     await self.interface_send_data(data={"data": stop_command})
-                #     # self.logger.debug("sampling_monitor:6", extra={"self.collecting": self.collecting})
-                #     self.collecting = False
-                #     # self.logger.debug("sampling_monitor:7", extra={"self.collecting": self.collecting})
             except Exception as e:
                 print(f"sampling monitor error: {e}")
 
