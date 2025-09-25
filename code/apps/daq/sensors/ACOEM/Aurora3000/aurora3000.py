@@ -249,8 +249,8 @@ class Aurora3000(Sensor):
             self.logger.error("sensor_definition not found. Exiting")            
             sys.exit(1)
 
-        self.command_list = ['VI099\r', 'VI004\r', 'VI005\r']
-        # self.command_list = ['VI099\r']
+        # self.command_list = ['VI099\r', 'VI004\r', 'VI005\r']
+        self.command_list = ['VI099\r']
         self.command_counter = 0
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
