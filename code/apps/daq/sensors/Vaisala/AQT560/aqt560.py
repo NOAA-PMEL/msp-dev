@@ -502,11 +502,15 @@ class AQT560(Sensor):
                             if instvar.type == "string":
                                 vartype = "str"
                             try:
+                                if name == 'PM2_5':
+                                    new_name = 'PM2.5 '
+                                else:
+                                    new_name = name + " "
                                 print('vartype', vartype)
                                 print('name', name)
-                                print('name1', (name + " "))
+                                print('name1', new_name)
                                 # find the corresponding variable
-                                measurement = [item for item in parts if (name + " ") in item]
+                                measurement = [item for item in parts if new_name in item]
                                 print('measurement1', measurement)
                                 # get rid of the variable label (i.e. just get the value)
                                 measurement = measurement[0].split(":")                     
