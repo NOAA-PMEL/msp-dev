@@ -515,7 +515,7 @@ class AQT560(Sensor):
                                     record["variables"][name]["data"] = ""
                                 else:
                                     print('value error float reached') 
-                                    record["variables"][name]["data"] = None
+                                    record["variables"][name]["data"] = None 
                     return record
                 except KeyError:
                     pass
