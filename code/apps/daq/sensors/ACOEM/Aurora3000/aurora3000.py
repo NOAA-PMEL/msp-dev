@@ -480,8 +480,8 @@ class Aurora3000(Sensor):
 
         while True:
             try:
+                print("command number", self.command_counter)
                 data = await self.default_data_buffer.get()
-                # self.collecting = True
                 self.logger.debug("default_data_loop", extra={"data": data})
                 record = self.default_parse(data)
                 cmd_list_len = len(self.command_list)
@@ -505,7 +505,7 @@ class Aurora3000(Sensor):
                     self.command_counter += 1
 
                     # once the number of commands sent has surpassed the expected number, this function will finish and return the completed record
-                    if self.command_counter < cmd_list_len:
+                    if self.command_counter < (cmd_list_len - 1):
                         continue
                     else:
                         self.command_counter = 0
