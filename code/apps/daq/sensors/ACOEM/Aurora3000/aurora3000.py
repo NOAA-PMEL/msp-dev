@@ -614,7 +614,7 @@ class Aurora3000(Sensor):
 
                 if self.aggregated_record:
                     try:
-                        var_keys = self.config.metadata.variables.keys()
+                        var_keys = list(self.config.metadata.variables.keys())
                         var_index = 13 + self.command_counter
                         target_key = var_keys[var_index]
                         self.aggregated_record["variables"][target_key]["data"] = current_record["variables"]['aurora_date_time']["data"]
