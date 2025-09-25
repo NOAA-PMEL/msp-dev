@@ -470,6 +470,7 @@ class Aurora3000(Sensor):
                 for poll_cmd in self.command_list:
                     self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
                     await self.interface_send_data(data={"data": poll_cmd})
+                    await asyncio.sleep(0.001)
                 # await asyncio.sleep(time_to_next(self.data_rate/2.))
                 await asyncio.sleep(time_to_next(self.data_rate))
             except Exception as e:
