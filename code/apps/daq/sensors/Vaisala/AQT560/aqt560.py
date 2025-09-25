@@ -491,7 +491,8 @@ class AQT560(Sensor):
                 try:
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
-                    parts = data.data["data"].splitlines()[1:12]                    
+                    parts = data.data["data"].splitlines()[1:12]    
+                    print('parts', parts)                
                     if len(parts) < 11:
                         return None
                     for index, name in enumerate(variables):
@@ -502,8 +503,10 @@ class AQT560(Sensor):
                                 vartype = "str"
                             try:
                                 print('vartype', vartype)
+                                print('name', name)
+                                print('name1', (name + " "))
                                 # find the corresponding variable
-                                measurement = [item for item in parts if (name + "") in item]
+                                measurement = [item for item in parts if (name + " ") in item]
                                 print('measurement1', measurement)
                                 # get rid of the variable label (i.e. just get the value)
                                 measurement = measurement[0].split(":")                     
