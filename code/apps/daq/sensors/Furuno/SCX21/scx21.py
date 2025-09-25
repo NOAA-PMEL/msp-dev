@@ -561,7 +561,7 @@ class SCX21(Sensor):
             except Exception as e:
                 print(f"default_data_loop error: {e}")
                 print(traceback.format_exc())
-            await asyncio.sleep(0.001)
+            await asyncio.sleep(0.001) 
 
     def default_parse(self, data):
         if data:
