@@ -2132,6 +2132,7 @@ def update_table_1d(sensor_data, row_data_list, col_defs_list):  # , sensor_defi
             # print(f"row_data_list: {row_data_list}")
             if len(new_row_data_list) == 0:
                 raise PreventUpdate
+            print('new data', new_row_data_list)
             return new_row_data_list
 
         except Exception as e:
