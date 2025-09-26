@@ -138,7 +138,7 @@ class HYT271(Sensor):
         # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
 
-        self.i2c_address = "28"
+        # self.i2c_address = "28"
 
     def configure(self):
         super(HYT271, self).configure()
@@ -203,6 +203,8 @@ class HYT271(Sensor):
             interfaces=conf["interfaces"],
             daq_id=conf["daq_id"],
         )
+
+        self.i2c_address = conf["i2c_address"]
 
         print(f"self.config: {self.config}")
 
