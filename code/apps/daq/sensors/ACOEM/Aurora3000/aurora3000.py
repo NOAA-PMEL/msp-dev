@@ -606,26 +606,12 @@ class Aurora3000(Sensor):
                     is_first_chunk = True
                 except (ValueError, TypeError, KeyError):
                     is_first_chunk = False
+                    self.logger.info("Not first chunk")
                 
                 if is_first_chunk:
                     self.aggregated_record = current_record
                     self.command_counter = 1
                     continue
-
-                if self.aggregated_record:
-                    try:
-                        var_keys = list(self.config.metadata.variables.keys())
-                        var_index = 13 + self.command_counter
-                        target_key = var_keys[var_index]
-                        self.aggregated_record["variables"][target_key]["data"] = current_record["variables"]['aurora_date_time']["data"]
-                        self.command_counter += 1
-                    
-                    except (IndexError, KeyError) as e:
-                        self.logger.error(f"Failed to aggregate record part: {e}", exc_info=True)
-                        # Reset state on aggregation error to avoid corruption
-                        self.aggregated_record = None
-                        self.command_counter = 0
-                        continue
                 
                 cmd_list_len = len(self.command_list)
 
@@ -650,6 +636,22 @@ class Aurora3000(Sensor):
                         
                         self.logger.debug("Sending complete message", extra={"event": event})
                         await self.send_message(event)
+
+                elif self.aggregated_record:
+                    try:
+                        var_keys = list(self.config.metadata.variables.keys())
+                        var_index = 13 + self.command_counter
+                        target_key = var_keys[var_index]
+                        self.aggregated_record["variables"][target_key]["data"] = current_record["variables"]['aurora_date_time']["data"]
+                        self.command_counter += 1
+                    
+                    except (IndexError, KeyError) as e:
+                        self.logger.error(f"Failed to aggregate record part: {e}", exc_info=True)
+                        # Reset state on aggregation error to avoid corruption
+                        self.aggregated_record = None
+                        self.command_counter = 0
+                        continue
+
 
             except Exception as e:
                 self.logger.error(f"An unexpected error occurred in data loop: {e}", exc_info=True)
