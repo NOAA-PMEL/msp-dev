@@ -613,14 +613,32 @@ class Aurora3000(Sensor):
                     self.command_counter = 1
                     # continue
                 
+                elif self.aggregated_record:
+                    try:
+                        var_keys = list(self.config.metadata.variables.keys())
+                        var_index = 13 + self.command_counter
+                        target_key = var_keys[var_index]
+                        self.aggregated_record["variables"][target_key]["data"] = current_record["variables"]['aurora_date_time']["data"]
+                        self.command_counter += 1
+                    
+                    except (IndexError, KeyError) as e:
+                        self.logger.error(f"Failed to aggregate record part: {e}", exc_info=True)
+                        # Reset state on aggregation error to avoid corruption
+                        self.aggregated_record = None
+                        self.command_counter = 0
+                        continue
+                
+                else:
+                    self.logger.info("Not first chunk and no active aggregation. Ignoring data.")
+                    continue
+                
                 cmd_list_len = len(self.command_list)
-
+                
                 if self.aggregated_record and self.command_counter >= cmd_list_len:
                     record_to_send = self.aggregated_record
-
                     self.logger.info("Record aggregation complete.", extra={"record": record_to_send})
-                    
-                    # Reset state for the next aggregation cycle
+
+                    # Reset state for the next message
                     self.aggregated_record = None
                     self.command_counter = 0
 
@@ -636,23 +654,7 @@ class Aurora3000(Sensor):
                         
                         self.logger.debug("Sending complete message", extra={"event": event})
                         await self.send_message(event)
-
-                elif self.aggregated_record:
-                    try:
-                        var_keys = list(self.config.metadata.variables.keys())
-                        var_index = 13 + self.command_counter
-                        target_key = var_keys[var_index]
-                        self.aggregated_record["variables"][target_key]["data"] = current_record["variables"]['aurora_date_time']["data"]
-                        self.command_counter += 1
-                    
-                    except (IndexError, KeyError) as e:
-                        self.logger.error(f"Failed to aggregate record part: {e}", exc_info=True)
-                        # Reset state on aggregation error to avoid corruption
-                        self.aggregated_record = None
-                        self.command_counter = 0
-                        continue
-
-
+                
             except Exception as e:
                 self.logger.error(f"An unexpected error occurred in data loop: {e}", exc_info=True)
                 # Prevent fast-looping on continuous errors
