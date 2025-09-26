@@ -857,8 +857,8 @@ def layout(sensor_id=None):
                 # only get the data variables for main
                 elif var["attributes"]["variable_type"]["data"] != "main":
                     continue
-                if name in dimensions:
-                    continue
+                # if name in dimensions:
+                #     continue
                 if "shape" not in var:
                     continue
                 if "time" not in var["shape"]:
