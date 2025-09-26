@@ -611,7 +611,7 @@ class Aurora3000(Sensor):
                 if is_first_chunk:
                     self.aggregated_record = current_record
                     self.command_counter = 1
-                    continue
+                    # continue
                 
                 cmd_list_len = len(self.command_list)
 
