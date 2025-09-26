@@ -42,7 +42,7 @@ dash.register_page(
     path_template="/sensor/<sensor_id>",
     title="Sensors",  # , prevent_initial_callbacks=True
 )
-
+ 
 
 class Settings(BaseSettings):
     # host: str = "0.0.0.0"
