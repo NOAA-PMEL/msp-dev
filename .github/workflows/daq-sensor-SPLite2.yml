@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
         run:
-            working-directory: './code/apps/daq/sensors/KippZoneno/SPLite2'
+            working-directory: './code/apps/daq/sensors/KippZonen/SPLite2'
       
     permissions:
         contents: read
