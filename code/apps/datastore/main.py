@@ -110,13 +110,33 @@ app = FastAPI()
 
 datastore = Datastore()
 
+def get_response_event(msg, status):
+    # response_data = {"processed_data": event.data}
+    try:
+        # Construct the response CloudEvent
+        response_event = CloudEvent({
+            "source": "envds.datastore",
+            "type": "envds.response.event",
+            "specversion": "1.0",
+            "datacontenttype": "application/json"
+        }, msg)
+
+        # Return the CloudEvent as a structured HTTP response
+        headers, body = to_structured(response_event)
+        # return jsonify(body), 200, headers
+        return body, status, headers
+    except Exception as e:
+        L.error("get_response_event", extra={"reason": e})
+        return {}, 500, ""
+
 
 @app.get("/")
 async def root():
     return {"message": "Hello World from Datastore"}
 
 
-@app.post("/device/settings/update/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/device/settings/update/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/device/settings/update/")
 async def device_settings_update(request: Request):
 
     # attributes = {
@@ -140,17 +160,25 @@ async def device_settings_update(request: Request):
         )  # , "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
     except Exception as e:
         # print(e)
         L.error("send", extra={"reason": e})
-        return "", 204
+        # return "", 204
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
+    
     # return {"message": "OK"}
 
     # return '', 204
     # return "",204
 
 
-@app.post("/status/update/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/status/update/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/status/update/")
 async def status_update(request: Request):
 
     # attributes = {
@@ -173,14 +201,21 @@ async def status_update(request: Request):
         L.debug("status_update", extra={"ce": ce})  # , "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
     except Exception as e:
         # print(e)
         L.error("status_update", extra={"reason": e})
-        pass
-        return "", 204
+        # pass
+        # return "", 204
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
 
 
-@app.post("/device/data/update/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/device/data/update/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/device/data/update/")
 async def device_data_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -188,9 +223,15 @@ async def device_data_update(request: Request):
         L.debug("device_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         await datastore.device_data_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
     except Exception as e:
         L.error("device_data_update", extra={"reason": e})
-        return "", 204
+        # return "", 204
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
 
 
 @app.get("/device/data/get/")
@@ -224,7 +265,8 @@ async def device_data_get(
     return await datastore.device_data_get(query)
 
 
-@app.post("/device/registry/update/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/device/registry/update/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/device/registry/update/")
 async def device_registry_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -232,13 +274,20 @@ async def device_registry_update(request: Request):
         L.debug("device_registry_update", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         await datastore.device_instance_registry_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
     except Exception as e:
         # L.error("send", extra={"reason": e})
-        pass
-        return "", 204
+        # pass
+        # return "", 204
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
 
 
-@app.post("/device-definition/registry/update/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/device-definition/registry/update/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/device-definition/registry/update/")
 async def device_definition_registry_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -249,10 +298,16 @@ async def device_definition_registry_update(request: Request):
         )
         # await adapter.send_to_mqtt(ce)
         await datastore.device_definition_registry_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
     except Exception as e:
         # L.error("send", extra={"reason": e})
-        pass
-        return "", 204
+        # pass
+        # return "", 204
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
 
 
 @app.get("/device-definition/registry/get/")
@@ -318,7 +373,7 @@ async def device_instance_registry_get(
 #         return Response(status_code=status.HTTP_204_NO_CONTENT)
 #     except Exception as e:
 #         logging.error(f"Error processing event: {e}")
-#         return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # @app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/controller/data/update/")
@@ -330,10 +385,14 @@ async def controller_data_update(request: Request):
         # await adapter.send_to_mqtt(ce)
         await datastore.controller_data_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
     except Exception as e:
         L.error("controller_data_update", extra={"reason": e})
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
 
 
 @app.get("/controller/data/get/")
@@ -379,6 +438,8 @@ async def controller_registry_update(request: Request):
         # await adapter.send_to_mqtt(ce)
         await datastore.controller_instance_registry_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
 
     except Exception as e:
         # L.error("send", extra={"reason": e})
@@ -386,7 +447,9 @@ async def controller_registry_update(request: Request):
         print(traceback.format_exc())
         pass
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
 
 
 # @app.post(
@@ -406,13 +469,17 @@ async def controller_definition_registry_update(request: Request):
         # await adapter.send_to_mqtt(ce)
         await datastore.controller_definition_registry_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
     except Exception as e:
         # L.error("send", extra={"reason": e})
         L.error("datastore_register_controller_definition", extra={"reason": e})
         print(traceback.format_exc())
-        pass
+        # pass
         # return "", 204
-        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
 
 
 @app.get("/controller-definition/registry/get/")

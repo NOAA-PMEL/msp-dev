@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import json
 import logging
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, Response
 # from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -53,6 +53,26 @@ class Settings(BaseSettings):
         case_sensitive = False
 
 
+def get_response_event(msg, status):
+    # response_data = {"processed_data": event.data}
+    try:
+        # Construct the response CloudEvent
+        response_event = CloudEvent({
+            "source": "envds.datastore",
+            "type": "envds.response.event",
+            "specversion": "1.0",
+            "datacontenttype": "application/json"
+        }, msg)
+
+        # Return the CloudEvent as a structured HTTP response
+        headers, body = to_structured(response_event)
+        # return jsonify(body), 200, headers
+        return body, status, headers # fastapi converts json
+    except Exception as e:
+        L.error("get_response_event", extra={"reason": e})
+        return {}, 500, ""
+
+
 # from apis.router import api_router
 
 app = FastAPI()
@@ -100,15 +120,23 @@ registrar = Registrar()
 async def root():
     return {"message": "Hello World from Registrar"}
 
-@app.post("/registry-sync/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/registry-sync/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/registry-sync/")
 async def registry_sync(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(request.headers)
         L.debug("registry-sync", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
-        await registrar.handle_registry_sync(ce)
+        # await registrar.handle_registry_sync(ce)
+        await registrar.sync_bcast_buffer.put(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
     except Exception as e:
         L.error("registry-sync", extra={"reason": e})
         pass
-        return "",204
+        # return "",204
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)

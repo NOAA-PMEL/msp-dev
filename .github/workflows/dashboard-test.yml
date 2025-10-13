@@ -3,7 +3,7 @@ name: Build and Push dashboard-test
 on:
 
   push:
-    branches: [ dev-* ]
+    branches: [ dev-*, aps-dndlogdp ]
     paths:
       - 'code/apps/dashboard-test/**'
   

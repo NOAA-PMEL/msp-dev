@@ -153,7 +153,9 @@ class LabJackClient(DAQClient):
                 data = {}
                 if "unpolled_data" in self.config.properties:
                     data = self.config.properties["unpolled_data"]["data"]
-                await self.send_to_client(data)
+                # await self.send_to_client(data)
+                # add request to queue with everyone else
+                await self.send(data)
                 await asyncio.sleep(time_to_next(self.config.properties["unpolled_sample_frequency_sec"]["data"]))
             except Exception as e:
                 self.logger.error("unpolled_sample_loop", extra={"reason": e})
@@ -346,6 +348,12 @@ class PWMClient(LabJackClient):
                 self.labjack, f"DIO_EF_CLOCK{clock_channel}_ROLL_VALUE", int(clockRollValue)
             )  # Set calculated Clock Roll Value.
 
+            self.logger.debug("send_to_client: clock enable", extra={"clock_channel": clock_channel})
+            ljm.eWriteName(
+                self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 1
+            )  # Enable Clock#, this will start the PWM signal.
+            self.logger.debug("send_to_client:done")
+
             # Configure PWM Registers
             self.logger.debug("send_to_client:pwm disable", extra={"pwm_channel": pwm_channel})
             ljm.eWriteName(
@@ -367,20 +375,16 @@ class PWMClient(LabJackClient):
                 self.labjack, f"DIO{pwm_channel}_EF_ENABLE", 1
             )  # Enable the DIO#_EF Mode, PWM signal will not start until DIO_EF and CLOCK are enabled.
 
-            self.logger.debug("send_to_client: clock enable", extra={"clock_channel": clock_channel})
-            ljm.eWriteName(
-                self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 1
-            )  # Enable Clock#, this will start the PWM signal.
-            self.logger.debug("send_to_client:done")
 
         # TODO turn off pwm on stop/disable
 
-            await asyncio.sleep(1)
-            dataRead = ljm.eReadName(
-                self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A"
-            )  
+            # await asyncio.sleep(1)
+            # dataRead = ljm.eReadName(
+            #     self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A"
+            # )  
             duty_cycle = (pwmConfigA/clockRollValue)*100.0
-            output = {"input-value": pwmConfigA, "data": {"raw": dataRead, "duty_cycle": duty_cycle }}
+            # output = {"input-value": pwmConfigA, "data": {"raw": dataRead, "duty_cycle": duty_cycle }}
+            output = {"input-value": pwmConfigA, "data": {"raw": pwmConfigA, "duty_cycle": duty_cycle }}
             self.logger.debug("send_to_client: read", extra={"pwm-output": output})
             await self.data_buffer.put(output)
 

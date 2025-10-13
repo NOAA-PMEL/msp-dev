@@ -22,7 +22,6 @@ logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
 L.setLevel(logging.DEBUG)
 
-
 class KNMQTTAdapterSettings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
@@ -179,8 +178,10 @@ class KNMQTTClient():
         while True:
             try:
                 L.debug("listen", extra={"config": self.config})
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as self.client:
-                    for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+                client_id=str(ULID())
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port,identifier=client_id) as self.client:
+                    # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+                    for topic in self.config.mqtt_topic_subscriptions.split(","):
                         # print(f"run - topic: {topic.strip()}")
                         # L.debug("run", extra={"topic": topic})
                         if topic.strip():
@@ -217,11 +218,13 @@ class KNMQTTClient():
         # create a new client for each request
         async with httpx.AsyncClient() as client:
             # yield the client to the endpoint function
+            L.debug("get_client")
             yield client
             # close the client when the request is done
 
     def open_http_client(self):
         # create a new client for each request
+        L.debug("open_http_client")
         self.http_client = httpx.AsyncClient()
             # # yield the client to the endpoint function
             # yield client

@@ -176,3 +176,4 @@ secrets/**
 # allow envds lib code to gh for now
 !code/**/lib 
 certs/*
+bootstrap/**
