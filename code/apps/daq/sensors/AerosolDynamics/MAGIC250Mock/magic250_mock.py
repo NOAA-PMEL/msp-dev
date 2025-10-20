@@ -540,11 +540,15 @@ class MAGIC250(Sensor):
             try:
                 # variables = list(self.config.metadata.variables.keys())
                 # variables.remove("time")
+
+                sensor_def = self.get_definition_by_variable_type(self.metadata, variable_type="main")
+                # for name, setting in self.metadata["settings"].items():
+                # for name, setting in settings_def["variables"].items():
                 
                 record = []
-                for name, variable in self.metadata.variables.items():
-                    if variable["attributes"]["variable_type"]["data"] != "main":
-                        continue
+                for name, variable in sensor_def["variables"].items():
+                    # if variable["attributes"]["variable_type"]["data"] != "main":
+                    #     continue
                     if name == "time": 
                         continue
                     if name == "concentration":
