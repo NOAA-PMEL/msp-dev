@@ -1,0 +1,637 @@
+{
+    "attributes": {
+        "make": {
+            "type": "string",
+            "data": "AerosolDynamics"
+        },
+        "model": {
+            "type": "string",
+            "data": "MAGIC250"
+        },
+        "description": {
+            "type": "string",
+            "data": "Water based Condensation Particle Counter (CPC) manufactured by Aerosol Dyanamics and distributed by Aerosol Devices/Handix"
+        },
+        "tags": {
+            "type": "char",
+            "data": "aerosol, cpc, particles, concentration, sensor, physics"
+        },
+        "format_version": {
+            "type": "char",
+            "data": "1.0.0"
+        },
+        "variable_types": {
+            "type": "string",
+            "data": "main, setting, calibration"
+        },
+        "valid_time": {
+            "type": "string",
+            "data": "2025-06-26T19:00:00Z"
+        },
+        "serial_number": {
+            "type": "string",
+            "data": ""
+        }
+    },
+    "dimensions": {
+        "time": 0
+    },
+    "variables": {
+        "time": {
+            "type": "str",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "string",
+                    "data": "Time"
+                }
+            }
+        },
+        "magic_timestamp": {
+            "type": "str",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "string",
+                    "data": "Internal Timestamp"
+                }
+            }
+        },
+        "concentration": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Concentration"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "cm-3"
+                }
+            }
+        },
+        "dew_point": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Dew Point"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "degrees_C"
+                }
+            }
+        },
+        "input_T": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Input T"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "degrees_C"
+                }
+            }
+        },
+        "input_rh": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Input RH"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "percent"
+                }
+            }
+        },
+        "cond_T": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Conditioner T"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "degrees_C"
+                }
+            }
+        },
+        "init_T": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Initiator T"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "degrees_C"
+                }
+            }
+        },
+        "mod_T": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Moderator T"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "degrees_C"
+                }
+            }
+        },
+        "opt_T": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Optics Head T"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "degrees_C"
+                }
+            }
+        },
+        "heatsink_T": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Heat Sink T"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "degrees_C"
+                }
+            }
+        },
+        "case_T": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Case T"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "degrees_C"
+                }
+            }
+        },
+        "wick_sensor": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Wick Sensor"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "percent"
+                }
+            }
+        },
+        "mod_T_sp": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Moderator Set Point T"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "degrees_C"
+                }
+            }
+        },
+        "humid_exit_dew_point": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Humidifier Exit Dew Point (estimated)"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "degrees_C"
+                }
+            }
+        },
+        "abs_pressure": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Absolute Pressure"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "mbar"
+                }
+            }
+        },
+        "flow": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Volumetric Flow Rate"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "cm3 min-1"
+                }
+            }
+        },
+        "log_interval": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Logging Interval"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "seconds"
+                }
+            }
+        },
+        "corr_live_time": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Corrected Live Time"
+                },
+                "description": {
+                    "type": "char",
+                    "data": "Live Time as a fraction of interval, x10000, corrected for coincidence"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "count"
+                }
+            }
+        },
+        "meas_dead_time": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Measured Dead Time"
+                },
+                "description": {
+                    "type": "char",
+                    "data": "Dead Time as a fraction of interval, x10000, raw measurement"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "count"
+                }
+            }
+        },
+        "raw_counts": {
+            "type": "int",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Raw Counts during logging interval"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "count"
+                }
+            }
+        },
+        "dthr2_pctl": {
+            "type": "float",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Upper Threshold.Percentile"
+                },
+                "description": {
+                    "type": "char",
+                    "data": "Two pieces of information. The number before the decimal is the upper threshold in mV. The number after the decimal represents the percentage of light-scattering pulses that were large enough to exceed the upper threshold. Under default settings dhtr2 represents the median puls height."
+                }
+            }
+        },
+        "status_hex": {
+            "type": "string",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Compact display of status codes"
+                }
+            }
+        },
+        "status_ascii": {
+            "type": "string",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Alphabetic list of all abnormal status codes"
+                }
+            }
+        },
+        "magic_serial_number": {
+            "type": "string",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "main"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Serial Number"
+                }
+            }
+        },
+        "pump_state": {
+            "type": "int",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "setting"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Pump State"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "count"
+                },
+                "valid_min": {
+                    "type": "int",
+                    "data": 0
+                },
+                "valid_max": {
+                    "type": "int",
+                    "data": 1
+                },
+                "step_increment": {
+                    "type": "int",
+                    "data": 1
+                },
+                "default_value": {
+                    "type": "int",
+                    "data": 1
+                }
+            }
+        },
+        "q_target": {
+            "type": "int",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "setting"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Target Volumetric Flow Rate"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "cm3 min-1"
+                },
+                "valid_min": {
+                    "type": "int",
+                    "data": 240
+                },
+                "valid_max": {
+                    "type": "int",
+                    "data": 360
+                },
+                "step_increment": {
+                    "type": "int",
+                    "data": 10
+                },
+                "default_value": {
+                    "type": "int",
+                    "data": 300
+                }
+            }
+        },
+        "qfc": {
+            "type": "int",
+            "shape": [
+                "time"
+            ],
+            "attributes": {
+                "variable_type": {
+                    "type": "string",
+                    "data": "calibration"
+                },
+                "long_name": {
+                    "type": "char",
+                    "data": "Flow Calibration Factor"
+                },
+                "units": {
+                    "type": "char",
+                    "data": "count"
+                },
+                "valid_min": {
+                    "type": "int",
+                    "data": 1
+                },
+                "valid_max": {
+                    "type": "int",
+                    "data": 255
+                },
+                "step_increment": {
+                    "type": "int",
+                    "data": 1
+                },
+                "default_value": {
+                    "type": "int",
+                    "data": 1
+                }
+            }
+        }
+    }
+}
