@@ -555,6 +555,7 @@ class MAGIC250(Sensor):
                             val = "mock"
                         else:
                             val = f"{1.0}"
+                    self.logger.debug("mock_data_gen", extra={"mock_name": name, "mock_val": val})
                     record.append(val)
                 
                 # create data string
@@ -574,11 +575,12 @@ class MAGIC250(Sensor):
                     data=data,
                     extra_header=extra_header,
                 )
-                self.logger.debug("data update", extra={"event": event})
+                self.logger.debug("mock_data_gen", extra={"event": event})
                 await self.mock_data_buffer.put(event)
                 # add to buffer for default_data_loop
 
             except Exception as e:
+                self.logger.error("mock_data_gen: {e}")
                 pass
 
             await asyncio.sleep(1)
