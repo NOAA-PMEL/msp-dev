@@ -542,7 +542,7 @@ class MAGIC250(Sensor):
                 # variables.remove("time")
                 
                 record = []
-                for name, variable in self.config.metadata.variables.items():
+                for name, variable in self.metadata.variables.items():
                     if variable["attributes"]["variable_type"]["data"] != "main":
                         continue
                     if name == "time": 
