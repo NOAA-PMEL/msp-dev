@@ -53,115 +53,136 @@ class RedisClient(DBClient):
 
         self.connect()
         
+        # change to only create index if it doesn't exist. This allows replicas
+
         # data:device
         # index_name = "idx:data-device"
-        try:
-            self.client.ft(self.data_device_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.data_device_index_name})
-            self.client.ft(self.registry_device_definition_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.registry_device_definition_index_name})
-            self.client.ft(self.registry_device_instance_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.registry_device_instance_index_name})
-            self.client.ft(self.data_controller_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.data_controller_index_name})
-            self.client.ft(self.registry_controller_definition_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.registry_controller_definition_index_name})
-            self.client.ft(self.registry_controller_instance_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.registry_controller_instance_index_name})
-        except Exception as e:
-            self.logger.error("build_index", extra={"reason": e})
-            pass
+
+        # try:
+        #     self.client.ft(self.data_device_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.data_device_index_name})
+        #     self.client.ft(self.registry_device_definition_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_device_definition_index_name})
+        #     self.client.ft(self.registry_device_instance_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_device_instance_index_name})
+        #     self.client.ft(self.data_controller_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.data_controller_index_name})
+        #     self.client.ft(self.registry_controller_definition_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_controller_definition_index_name})
+        #     self.client.ft(self.registry_controller_instance_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_controller_instance_index_name})
+        # except Exception as e:
+        #     self.logger.error("build_index", extra={"reason": e})
+        #     pass
 
         try:
             # data:device
-            schema = (
-                TagField("$.record.device_id", as_name="device_id"),
-                TagField("$.record.make", as_name="make"),
-                TagField("$.record.model", as_name="model"),
-                TagField("$.record.serial_number", as_name="serial_number"),
-                TagField("$.record.version", as_name="version"),
-                # TextField("$.record.device_type", as_name="device_type"),
-                NumericField("$.record.timestamp", as_name="timestamp")
-            )
-            definition = IndexDefinition(
-                prefix=["data:device:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.data_device_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.record.device_id", as_name="device_id"),
+                    TagField("$.record.make", as_name="make"),
+                    TagField("$.record.model", as_name="model"),
+                    TagField("$.record.serial_number", as_name="serial_number"),
+                    TagField("$.record.version", as_name="version"),
+                    # TextField("$.record.device_type", as_name="device_type"),
+                    NumericField("$.record.timestamp", as_name="timestamp")
+                )
+                definition = IndexDefinition(
+                    prefix=["data:device:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
 
             # registry:device-definition
-            schema = (
-                TagField("$.registration.device_definition_id", as_name="device_definition_id"),
-                TagField("$.registration.make", as_name="make"),
-                TagField("$.registration.model", as_name="model"),
-                TagField("$.registration.version", as_name="version"),
-                TextField("$.registration.device_type", as_name="device_type"),
-            )
-            definition = IndexDefinition(
-                prefix=["registry:device-definition:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.registry_device_definition_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.device_definition_id", as_name="device_definition_id"),
+                    TagField("$.registration.make", as_name="make"),
+                    TagField("$.registration.model", as_name="model"),
+                    TagField("$.registration.version", as_name="version"),
+                    TextField("$.registration.device_type", as_name="device_type"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:device-definition:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
 
             # registry:device-instance
-            schema = (
-                TagField("$.registration.device_id", as_name="device_id"),
-                TagField("$.registration.make", as_name="make"),
-                TagField("$.registration.model", as_name="model"),
-                TagField("$.registration.serial_number", as_name="serial_number"),
-                TagField("$.registration.version", as_name="version"),
-                TextField("$.registration.device_type", as_name="device_type"),
-            )
-            definition = IndexDefinition(
-                prefix=["registry:device-instance:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.registry_device_instance_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.device_id", as_name="device_id"),
+                    TagField("$.registration.make", as_name="make"),
+                    TagField("$.registration.model", as_name="model"),
+                    TagField("$.registration.serial_number", as_name="serial_number"),
+                    TagField("$.registration.version", as_name="version"),
+                    TextField("$.registration.device_type", as_name="device_type"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:device-instance:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
 
             # data:controller
-            schema = (
-                TagField("$.record.controller_id", as_name="controller_id"),
-                TagField("$.record.make", as_name="make"),
-                TagField("$.record.model", as_name="model"),
-                TagField("$.record.serial_number", as_name="serial_number"),
-                TagField("$.record.version", as_name="version"),
-                # TextField("$.record.controller_type", as_name="controller_type"),
-                NumericField("$.record.timestamp", as_name="timestamp")
-            )
-            definition = IndexDefinition(
-                prefix=["data:controller:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.data_controller_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.data_controller_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.record.controller_id", as_name="controller_id"),
+                    TagField("$.record.make", as_name="make"),
+                    TagField("$.record.model", as_name="model"),
+                    TagField("$.record.serial_number", as_name="serial_number"),
+                    TagField("$.record.version", as_name="version"),
+                    # TextField("$.record.controller_type", as_name="controller_type"),
+                    NumericField("$.record.timestamp", as_name="timestamp")
+                )
+                definition = IndexDefinition(
+                    prefix=["data:controller:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.data_controller_index_name).create_index(schema, definition=definition)
 
             # registry:controller-definition
-            schema = (
-                TagField("$.registration.controller_definition_id", as_name="controller_definition_id"),
-                TagField("$.registration.make", as_name="make"),
-                TagField("$.registration.model", as_name="model"),
-                TagField("$.registration.version", as_name="version"),
-                # TextField("$.registration.controller_type", as_name="controller_type"),
-            )
-            definition = IndexDefinition(
-                prefix=["registry:controller-definition:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.registry_controller_definition_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.registry_controller_definition_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.controller_definition_id", as_name="controller_definition_id"),
+                    TagField("$.registration.make", as_name="make"),
+                    TagField("$.registration.model", as_name="model"),
+                    TagField("$.registration.version", as_name="version"),
+                    # TextField("$.registration.controller_type", as_name="controller_type"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:controller-definition:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_controller_definition_index_name).create_index(schema, definition=definition)
 
             # registry:controller-instance
-            schema = (
-                TagField("$.registration.controller_id", as_name="controller_id"),
-                TagField("$.registration.make", as_name="make"),
-                TagField("$.registration.model", as_name="model"),
-                TagField("$.registration.serial_number", as_name="serial_number"),
-                TagField("$.registration.version", as_name="version"),
-                # TextField("$.registration.controller_type", as_name="controller_type"),
-            )
-            definition = IndexDefinition(
-                prefix=["registry:controller-instance:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.registry_controller_instance_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.registry_controller_instance_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.controller_id", as_name="controller_id"),
+                    TagField("$.registration.make", as_name="make"),
+                    TagField("$.registration.model", as_name="model"),
+                    TagField("$.registration.serial_number", as_name="serial_number"),
+                    TagField("$.registration.version", as_name="version"),
+                    # TextField("$.registration.controller_type", as_name="controller_type"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:controller-instance:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_controller_instance_index_name).create_index(schema, definition=definition)
 
         except Exception as e:
             self.logger.error("build_indexes", extra={"reason": e})
