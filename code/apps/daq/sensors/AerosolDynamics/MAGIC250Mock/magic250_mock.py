@@ -723,7 +723,8 @@ class MAGIC250(Sensor):
 
         while True:
             try:
-                data = await self.default_data_buffer.get()
+                # data = await self.default_data_buffer.get()
+                data = await self.mock_data_buffer.get()
                 # self.collecting = True
                 self.logger.debug("default_data_loop", extra={"data": data})
                 # continue
