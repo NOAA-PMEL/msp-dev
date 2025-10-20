@@ -563,10 +563,10 @@ class MAGIC250(Sensor):
                 data = {"timestamp": get_datetime_string(), "data": data_record}
                 # create cloudevent
 
-                destpath = f"{self.get_id_as_topic()}/AerosolDynamics::MAGIC250::Mock/data/update"
+                destpath = f"{self.get_id_as_topic()}/AerosolDynamics::MAGIC250::mock/data/update"
                 # extra_header = {"sourcepath": id}
                 # extra_header = {"path_id": client_id}
-                extra_header = {"path_id": "AerosolDynamics::MAGIC250::Mock", "destpath": destpath}
+                extra_header = {"path_id": "AerosolDynamics::MAGIC250::mock", "destpath": destpath}
                 # event = DAQEvent.create_data_update(
                 event = DAQEvent.create_interface_data_recv(
                     # source="envds.core", data={"test": "one", "test2": 2}
