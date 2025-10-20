@@ -580,7 +580,7 @@ class MAGIC250(Sensor):
                 # add to buffer for default_data_loop
 
             except Exception as e:
-                self.logger.error("mock_data_gen: {e}")
+                self.logger.error(f"mock_data_gen: {e}")
                 pass
 
             await asyncio.sleep(1)
