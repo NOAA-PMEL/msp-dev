@@ -288,7 +288,7 @@ class KNMQTTClient():
                         # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
                         headers=headers,
                         data=body,
-                        timeout=timeout
+                        # timeout=timeout
                     )
                     
                     L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
