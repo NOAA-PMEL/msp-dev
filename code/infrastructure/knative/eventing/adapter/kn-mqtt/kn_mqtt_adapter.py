@@ -252,7 +252,7 @@ class KNMQTTClient():
 
                 L.debug(ce)#, extra=template)
                 try:
-                    timeout = httpx.Timeout(5.0, read=0.1)
+                    timeout = httpx.Timeout(5.0, read=0.5)
                     ce["datacontenttype"] = "application/json"
                     attrs = {
                         # "type": "envds.controller.control.request",
@@ -288,7 +288,7 @@ class KNMQTTClient():
                         # "http://broker-ingress.knative-eventing.svc.cluster.local/mspbase02-system/default",
                         headers=headers,
                         data=body,
-                        # timeout=timeout
+                        timeout=timeout
                     )
                     
                     L.info("adapter send", extra={"verifier-request": r.request.content})#, "status-code": r.status_code})
