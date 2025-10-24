@@ -210,11 +210,14 @@ class Datastore:
                     # async with client.messages() as messages:
                     async for message in self.client.messages: #() as messages:
 
-                        ce = from_json(message.payload)
-                        topic = message.topic.value
-                        ce["sourcepath"] = topic
-                        await self.mqtt_buffer.put(ce)
-                        L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+                        try:
+                            ce = from_json(message.payload)
+                            topic = message.topic.value
+                            ce["sourcepath"] = topic
+                            await self.mqtt_buffer.put(ce)
+                            L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+                        except Exception as e:
+                            L.error("get_from_mqtt_loop", extra={"reason": e})
                         # try:
                         #     L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
                         #     await self.send_to_knbroker(ce)
