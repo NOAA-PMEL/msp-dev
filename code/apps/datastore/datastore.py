@@ -214,12 +214,12 @@ class Datastore:
                         topic = message.topic.value
                         ce["sourcepath"] = topic
                         await self.mqtt_buffer.put(ce)
-                        
-                        try:
-                            L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
-                            await self.send_to_knbroker(ce)
-                        except Exception as e:
-                            L.error("Error sending to knbroker", extra={"reason": e})
+                        L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+                        # try:
+                        #     L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
+                        #     await self.send_to_knbroker(ce)
+                        # except Exception as e:
+                        #     L.error("Error sending to knbroker", extra={"reason": e})
             except MqttError as error:
                 L.error(
                     f'{error}. Trying again in {reconnect} seconds',
@@ -241,7 +241,7 @@ class Datastore:
                     await self.controller_data_update(ce)
             
             except Exception as e:
-                self.logger.error("handle_mqtt_buffer", extra={"reason": e})
+                L.error("handle_mqtt_buffer", extra={"reason": e})
             
             await asyncio.sleep(0.0001)
 
