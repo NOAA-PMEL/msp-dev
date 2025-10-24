@@ -16,8 +16,12 @@ from logfmter import Logfmter
 
 # from registry import registry
 # from flask import Flask, request
-from pydantic import BaseSettings, BaseModel
-from cloudevents.http import CloudEvent, from_http
+from pydantic import BaseSettings, BaseModel, Field
+from cloudevents.http import CloudEvent, from_http, from_json, to_json
+from cloudevents.conversion import to_structured # , from_http
+from cloudevents.exceptions import InvalidStructuredJSON
+from aiomqtt import Client, MqttError
+
 
 # from cloudevents.http.conversion import from_http
 from cloudevents.conversion import to_structured  # , from_http
@@ -109,6 +113,13 @@ class DatastoreConfig(BaseSettings):
     erddap_http_connection: str | None = None
     erddap_author: str = "fake_author"
 
+    mqtt_broker: str = 'mosquitto.default'
+    mqtt_port: int = 1883
+    # mqtt_topic_filter: str = 'aws-id/acg-daq/+'
+    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#' #['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
+    # mqtt_client_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    mqtt_client_id: str = Field(str(ULID()))
+
     knative_broker: str | None = None
     class Config:
         env_prefix = "DATASTORE_"
@@ -126,6 +137,10 @@ class Datastore:
         self.erddap_client = None
         self.config = DatastoreConfig()
         self.configure()
+
+        self.mqtt_buffer = asyncio.Queue()
+        asyncio.create_task(self.get_from_mqtt_loop())
+        asyncio.create_task(self.handle_mqtt_buffer())
 
     def configure(self):
         # set clients
@@ -174,6 +189,61 @@ class Datastore:
             print("error", e)
         await asyncio.sleep(0.01)
 
+    # have secondary path for datastore to recieve data updates - this should relieve some of the
+    #   pressure on the cpu. Will only be used if subscriptions are configured
+    async def get_from_mqtt_loop(self):
+        reconnect = 10
+        while True:
+            try:
+                L.debug("listen", extra={"config": self.config})
+                client_id=str(ULID())
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port,identifier=client_id) as self.client:
+                    # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+                    for topic in self.config.mqtt_topic_subscriptions.split(","):
+                        # print(f"run - topic: {topic.strip()}")
+                        # L.debug("run", extra={"topic": topic})
+                        if topic.strip():
+                            L.debug("subscribe", extra={"topic": topic.strip()})
+                            await self.client.subscribe(f"$share/datastore/{topic.strip()}")
+
+                        # await client.subscribe(config.mqtt_topic_subscription, qos=2)
+                    # async with client.messages() as messages:
+                    async for message in self.client.messages: #() as messages:
+
+                        ce = from_json(message.payload)
+                        topic = message.topic.value
+                        ce["sourcepath"] = topic
+                        await self.mqtt_buffer.put(ce)
+                        
+                        try:
+                            L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
+                            await self.send_to_knbroker(ce)
+                        except Exception as e:
+                            L.error("Error sending to knbroker", extra={"reason": e})
+            except MqttError as error:
+                L.error(
+                    f'{error}. Trying again in {reconnect} seconds',
+                    extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
+                )
+                await asyncio.sleep(reconnect)
+            finally:
+                await asyncio.sleep(0.0001)
+
+
+    async def handle_mqtt_buffer(self):
+        while True:
+            try:
+                ce = await self.mqtt_buffer.get()
+
+                if ce["type"] == "envds.data.update":
+                    await self.device_data_update(ce) 
+                elif ce["type"] == "envds.controller.data.update":
+                    await self.controller_data_update(ce)
+            
+            except Exception as e:
+                self.logger.error("handle_mqtt_buffer", extra={"reason": e})
+            
+            await asyncio.sleep(0.0001)
 
     def find_one(self):  # , database: str, collection: str, query: dict):
         # self.connect()
