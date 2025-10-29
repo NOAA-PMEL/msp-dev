@@ -1,0 +1,29 @@
+[
+  {
+    "version": "v1",
+    "kind": "Platform",
+    "metadata": {
+      "name": "CRK83Payload01",
+      "platform_type": "MSPPayload",
+      "owner": "Local",
+      "description": "",
+      "contacts": [
+        ""
+      ]
+    },
+    "interface": {
+      "power-input": [
+        "input-24v-ups",
+        "input-24v",
+        "input-110v"
+      ],
+      "network": [
+        "internal",
+        "external"
+      ],
+      "sample-input": [
+        "sample-line-01"
+      ]
+    }
+  }
+]

@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     dry_run: bool = False
 
     class Config:
-        env_prefix = "DATASTORE_"
+        env_prefix = "SAMPLING_SYSTEM_"
         case_sensitive = False
 
 

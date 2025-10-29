@@ -1,0 +1,53 @@
+[
+  {
+    "version": "v1",
+    "kind": "PlatformVariableMap",
+    "metadata": {
+      "name": "CRK83Payload01",
+      "platform": "CRK83Payload01"
+    },
+    "valid-config-time": "2025-10-21T00:00:00Z",
+    "variable_groups": {
+      "main": {
+        "index": {
+          "index_type": "timebase",
+          "index_value": 1
+        }
+      }
+    },
+    "variables": {
+      "cn": {
+        "type": "float",
+        "shape": [
+          "time"
+        ],
+        "map_type": "direct",
+        "source": {
+          "concentration": {
+            "source_type": "device",
+            "source_id": "AerosolDynamics::MAGIC250Mock::mock",
+            "source_variable": "concentration"
+          }
+        },
+        "direct_value": {
+          "source_variable": "concentration"
+        },
+        "variable_group": "main",
+        "index_method": [
+          "round",
+          "average"
+        ],
+        "attributes": {
+          "variable_type": {
+            "type": "string",
+            "data": "main"
+          },
+          "units": {
+            "type": "string",
+            "data": "cm-3"
+          }
+        }
+      }
+    }
+  }
+]

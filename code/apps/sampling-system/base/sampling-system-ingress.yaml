@@ -1,19 +1,19 @@
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: datastore-stripprefix
+  name: sampling-system-stripprefix
   namespace: msp-system
   annotations:
     kubernetes.io/ingress.class: traefik
 spec:
   stripPrefix:
     prefixes:
-      - /msp/datastore
+      - /msp/sampling-system
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: datastore-upgrade
+  name: sampling-system-upgrade
   namespace: msp-system
   annotations:
     kubernetes.io/ingress.class: traefik
@@ -25,23 +25,23 @@ apiVersion: networking.k8s.io/v1
 # apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-  name: datastore-ingress
+  name: sampling-system-ingress
   namespace: msp-system
   annotations:
     ingress.kubernetes.io/ssl-redirect: "false"
     traefik.ingress.kubernetes.io/router.middlewares:
-      msp-system-datastore-stripprefix@kubernetescrd
-      # msp-datastore-stripprefix@kubernetescrd, msp-datastore-upgrade@kubernetescrd
+      msp-system-sampling-system-stripprefix@kubernetescrd
+      # msp-sampling-system-stripprefix@kubernetescrd, msp-sampling-system-upgrade@kubernetescrd
 
 spec:
   ingressClassName: traefik
   rules:
     - http:
         paths:
-          - path: /msp/datastore
+          - path: /msp/sampling-system
             pathType: Prefix
             backend:
               service:
-                name: datastore
+                name: sampling-system
                 port:
                   number: 80

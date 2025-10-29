@@ -82,6 +82,7 @@ I think these will be the workhorse of the system. These map device variables to
         "cn": {    
             "type": "float",
             "shape": ["time"],
+            # *NEW* - include option for running average in calculated or its own type
             "map_type": "direct", # mapping type: direct, calculated, priority and aggregate
             "source": {
                 "concentration": { # source variable name
