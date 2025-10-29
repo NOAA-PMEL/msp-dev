@@ -18,7 +18,7 @@ RUN pip3 install -r requirements.txt
 # lib/envds-0.1.0-py3-none-any.whl
 
 # COPY . .
-COPY ./sampling-system.py .
+COPY ./sampling_system.py .
 # COPY ./datastore_requests.py .
 # COPY ./main.py .
 # COPY ./db_client.py .
@@ -32,5 +32,5 @@ COPY ./sampling-system.py .
 # For environments with multiple CPU cores, increase the number of workers
 # to be equal to the cores available.
 # CMD ["uvicorn", "envds.main:app", "--host", "0.0.0.0", "--port", "8080"]
-CMD ["python", "sampling-system.py", "--host", "0.0.0.0"]
+CMD ["python", "sampling_system.py", "--host", "0.0.0.0"]
 # CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
