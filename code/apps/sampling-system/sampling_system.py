@@ -18,7 +18,7 @@ from logfmter import Logfmter
 # from flask import Flask, request
 from pydantic import BaseSettings, BaseModel, Field
 from cloudevents.http import CloudEvent, from_http, from_json, to_json
-from cloudevents.conversion import to_structured # , from_http
+from cloudevents.conversion import to_structured  # , from_http
 from cloudevents.exceptions import InvalidStructuredJSON
 from aiomqtt import Client, MqttError
 
@@ -36,7 +36,7 @@ from envds.util.util import (
     timestamp_to_string,
     time_to_next,
     round_to_nearest_N_seconds,
-    seconds_elapsed    
+    seconds_elapsed,
 )
 
 # from envds.daq.event import DAQEvent
@@ -99,17 +99,21 @@ class SamplingSystemConfig(BaseSettings):
     # TODO fix ns prefix
     daq_id: str | None = None
 
-    mqtt_broker: str = 'mosquitto.default'
+    mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
     # mqtt_topic_filter: str = 'aws-id/acg-daq/+'
-    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#' #['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
+    mqtt_topic_subscriptions: str = (
+        "envds/+/+/+/data/#"  # ['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
+    )
     # mqtt_client_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     mqtt_client_id: str = Field(str(ULID()))
 
     knative_broker: str | None = None
+
     class Config:
         env_prefix = "SAMPLING_SYSTEM_"
         case_sensitive = False
+
 
 class SamplingSystem:
     """docstring for TestClass."""
@@ -124,10 +128,7 @@ class SamplingSystem:
         self.platform_variable_maps = dict()
 
         # this is cache for variable mapping
-        self.platform_variable_sets = {
-            "sources": dict(),
-            "maps": dict()
-        }
+        self.platform_variable_sets = {"sources": dict(), "maps": dict()}
 
         self.config = SamplingSystemConfig()
         self.configure()
@@ -136,27 +137,29 @@ class SamplingSystem:
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
 
+        self.index_monitor_tasks = dict()
+
     def configure(self):
         # set clients
 
         self.logger.debug("configure", extra={"self.config": self.config})
-    
+
         try:
             # load resource configmaps
             #   load payloads
-            with open ("/app/config/platforms.json", "r") as f:
+            with open("/app/config/platforms.json", "r") as f:
                 platforms = json.load(f)
 
             for platform in platforms:
                 if platform["kind"] != "Platform":
                     continue
-                if (name:=platform["metadata"]["name"]) not in self.platforms:
+                if (name := platform["metadata"]["name"]) not in self.platforms:
                     self.platforms[name] = platform
 
             # load layout configmaps
 
             # load variable_map configmaps
-            with open ("/app/config/platform_variable_maps.json", "r") as f:
+            with open("/app/config/platform_variable_maps.json", "r") as f:
                 variable_maps = json.load(f)
 
             # TODO allow for multiple configs of a given map that are retrieved from datastore or loaded
@@ -184,30 +187,66 @@ class SamplingSystem:
                             "indices": dict(),
                             # "sources": dict()
                         }
-                    
+
                     # add each variable group
                     for vg_name, vg in vm["variable_groups"].items():
                         if vg_name not in self.platform_variable_sets:
-                            self.platform_variable_sets["maps"][vm_name][vm_cfg_time]["variable_groups"][vg_name] = {
-                                index: vg["index"],
-                                "variables": dict()
-                            }
+                            self.platform_variable_sets["maps"][vm_name][vm_cfg_time][
+                                "variable_groups"
+                            ][vg_name] = {index: vg["index"], "variables": dict()}
 
                         index_type = vg["index"]["index_type"]
                         index_value = vg["index"]["index_value"]
 
                         # create index and add vg_name to index for x-ref
-                        if index_type not in self.platform_variable_sets[vm_name][vm_cfg_time]["indices"]:
-                            self.platform_variable_sets["maps"][vm_name][vm_cfg_time]["indices"][index_type] = dict()
+                        if (
+                            index_type
+                            not in self.platform_variable_sets[vm_name][vm_cfg_time][
+                                "indices"
+                            ]
+                        ):
+                            self.platform_variable_sets["maps"][vm_name][vm_cfg_time][
+                                "indices"
+                            ][index_type] = dict()
 
-                        if index_value not in self.platform_variable_sets["maps"][vm_name][vm_cfg_time]["indices"][index_type]:
-                            self.platform_variable_sets["maps"][vm_name][vm_cfg_time]["indices"][index_type][index_value] = {
-                                "variable_groups": [],
-                                "data": []
+                        # start index monitors
+                        if index_type not in self.index_monitor_tasks:
+                            self.index_monitor_tasks[index_type] = {
+                                index_value: asyncio.create_task(
+                                    self.index_timebase_monitor(
+                                        self,
+                                        variable_map=vm_name,
+                                        timebase=index_value,
+                                    )
+                                )
                             }
-                            if vg_name not in self.platform_variable_sets["maps"][vm_name][vm_cfg_time]["indices"][index_type][index_value]["variable_groups"]:
-                                self.platform_variable_sets["maps"][vm_name][vm_cfg_time]["indices"][index_type][index_value]["variable_groups"].append(vg_name)
-                        
+
+                        if (
+                            index_value
+                            not in self.platform_variable_sets["maps"][vm_name][
+                                vm_cfg_time
+                            ]["indices"][index_type]
+                        ):
+                            self.platform_variable_sets["maps"][vm_name][vm_cfg_time][
+                                "indices"
+                            ][index_type][index_value] = {
+                                "variable_groups": [],
+                                "data": [],
+                            }
+                            if (
+                                vg_name
+                                not in self.platform_variable_sets["maps"][vm_name][
+                                    vm_cfg_time
+                                ]["indices"][index_type][index_value]["variable_groups"]
+                            ):
+                                self.platform_variable_sets["maps"][vm_name][
+                                    vm_cfg_time
+                                ]["indices"][index_type][index_value][
+                                    "variable_groups"
+                                ].append(
+                                    vg_name
+                                )
+
                         # for index_name, index_value in vm["variable_groups"][vg_name].items():
                         #     # if index_name not in self.platform_variable_sets["maps"][vm_name]["variable_groups"][vg_name]["index"]:
                         #     #     self.platform_variable_sets["maps"][vm_name]["variable_groups"][vg_name]["index"][index_name] = index_value
@@ -215,7 +254,6 @@ class SamplingSystem:
                         #         self.platform_variable_sets["maps"][vm_name]["indices"][index_name] = dict()
                         #     if index_value not in self.platform_variable_sets["maps"][vm_name]["indices"][index_name]:
                         #         self.platform_variable_sets["maps"][vm_name]["indices"][index_name][index_value] = []
-                        
 
                     # for vg_name in vm["variable_groups"]:
                     #     if vg_name not in self.platform_variable_sets[vm_name]["variable_groups"]:
@@ -227,44 +265,74 @@ class SamplingSystem:
                     # add variables to each variable group
                     for name, variable in vm["variables"].items():
                         vg_name = variable["variable_group"]
-                        if name not in self.platform_variable_sets["maps"][vm_name][vm_cfg_time]["variable_groups"]["variables"][vg_name]:
-                            self.platform_variable_sets["maps"][vm_name][vm_cfg_time]["variable_groups"][vg_name]["variables"][name] = {
-                                "map": variable, # grab whole thing for now, not sure what we'll need
+                        if (
+                            name
+                            not in self.platform_variable_sets["maps"][vm_name][
+                                vm_cfg_time
+                            ]["variable_groups"]["variables"][vg_name]
+                        ):
+                            self.platform_variable_sets["maps"][vm_name][vm_cfg_time][
+                                "variable_groups"
+                            ][vg_name]["variables"][name] = {
+                                "map": variable,  # grab whole thing for now, not sure what we'll need
                                 "data": dict(),
-                                "value": dict()
+                                "value": dict(),
                             }
 
                         # add source and map_id for x-ref
                         for source_name, source in variable["sources"].items():
-                            if vm_cfg_time not in self.platform_variable_sets["sources"]:
-                                self.platform_variable_sets["sources"][vm_cfg_time] = dict()
-                            if source["source_id"] not in  self.platform_variable_sets["sources"][vm_cfg_time]:
-                                self.platform_variable_sets["sources"][vm_cfg_time]["source_id"] = []
+                            if (
+                                vm_cfg_time
+                                not in self.platform_variable_sets["sources"]
+                            ):
+                                self.platform_variable_sets["sources"][
+                                    vm_cfg_time
+                                ] = dict()
+                            if (
+                                source["source_id"]
+                                not in self.platform_variable_sets["sources"][
+                                    vm_cfg_time
+                                ]
+                            ):
+                                self.platform_variable_sets["sources"][vm_cfg_time][
+                                    "source_id"
+                                ] = []
                             # build map_id
                             map_id = f"{vm_name}::{vg_name}::{name}"
-                            if map_id not in self.platform_variable_sets["sources"][vm_cfg_time]["source_id"]:
-                                self.platform_variable_sets["sources"][vm_cfg_time]["source_id"].append(map_id)
+                            if (
+                                map_id
+                                not in self.platform_variable_sets["sources"][
+                                    vm_cfg_time
+                                ]["source_id"]
+                            ):
+                                self.platform_variable_sets["sources"][vm_cfg_time][
+                                    "source_id"
+                                ].append(map_id)
 
         except Exception as e:
             self.logger.error("configure error", extra={"reason": e})
 
-
-
-
     async def send_event(self, ce):
         try:
-            self.logger.debug(ce)#, extra=template)
+            self.logger.debug(ce)  # , extra=template)
             try:
                 timeout = httpx.Timeout(5.0, read=0.1)
                 headers, body = to_structured(ce)
-                self.logger.debug("send_event", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
+                self.logger.debug(
+                    "send_event",
+                    extra={
+                        "broker": self.config.knative_broker,
+                        "h": headers,
+                        "b": body,
+                    },
+                )
                 # send to knative broker
                 async with httpx.AsyncClient() as client:
                     r = await client.post(
                         self.config.knative_broker,
                         headers=headers,
                         data=body,
-                        timeout=timeout
+                        timeout=timeout,
                     )
                     r.raise_for_status()
             except InvalidStructuredJSON:
@@ -277,32 +345,40 @@ class SamplingSystem:
             print("error", e)
         await asyncio.sleep(0.01)
 
-
     async def get_from_mqtt_loop(self):
         reconnect = 10
         while True:
             try:
                 L.debug("listen", extra={"config": self.config})
-                client_id=str(ULID())
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port,identifier=client_id) as self.client:
+                client_id = str(ULID())
+                async with Client(
+                    self.config.mqtt_broker,
+                    port=self.config.mqtt_port,
+                    identifier=client_id,
+                ) as self.client:
                     # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
                     for topic in self.config.mqtt_topic_subscriptions.split(","):
                         # print(f"run - topic: {topic.strip()}")
                         # L.debug("run", extra={"topic": topic})
                         if topic.strip():
                             L.debug("subscribe", extra={"topic": topic.strip()})
-                            await self.client.subscribe(f"$share/sampling-system/{topic.strip()}")
+                            await self.client.subscribe(
+                                f"$share/sampling-system/{topic.strip()}"
+                            )
 
                         # await client.subscribe(config.mqtt_topic_subscription, qos=2)
                     # async with client.messages() as messages:
-                    async for message in self.client.messages: #() as messages:
+                    async for message in self.client.messages:  # () as messages:
 
                         try:
                             ce = from_json(message.payload)
                             topic = message.topic.value
                             ce["sourcepath"] = topic
                             await self.mqtt_buffer.put(ce)
-                            L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+                            L.debug(
+                                "get_from_mqtt_loop",
+                                extra={"cetype": ce["type"], "topic": topic},
+                            )
                         except Exception as e:
                             L.error("get_from_mqtt_loop", extra={"reason": e})
                         # try:
@@ -312,13 +388,16 @@ class SamplingSystem:
                         #     L.error("Error sending to knbroker", extra={"reason": e})
             except MqttError as error:
                 L.error(
-                    f'{error}. Trying again in {reconnect} seconds',
-                    extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
+                    f"{error}. Trying again in {reconnect} seconds",
+                    extra={
+                        k: v
+                        for k, v in self.config.dict().items()
+                        if k.lower().startswith("mqtt_")
+                    },
                 )
                 await asyncio.sleep(reconnect)
             finally:
                 await asyncio.sleep(0.0001)
-
 
     async def handle_mqtt_buffer(self):
         while True:
@@ -326,15 +405,14 @@ class SamplingSystem:
                 ce = await self.mqtt_buffer.get()
 
                 if ce["type"] == "envds.data.update":
-                    await self.device_data_update(ce) 
+                    await self.device_data_update(ce)
                 elif ce["type"] == "envds.controller.data.update":
                     await self.controller_data_update(ce)
-            
+
             except Exception as e:
                 L.error("handle_mqtt_buffer", extra={"reason": e})
-            
-            await asyncio.sleep(0.0001)
 
+            await asyncio.sleep(0.0001)
 
     # TODO change this for sampling-system
     async def device_data_update(self, ce: CloudEvent):
@@ -349,7 +427,9 @@ class SamplingSystem:
             serial_number = attributes["serial_number"]["data"]
             device_id = "::".join([make, model, serial_number])
             if device_id in self.platform_variable_sets["sources"]:
-                await self.update_variable_set_by_source(source_id=device_id, source_data=ce)
+                await self.update_variable_set_by_source(
+                    source_id=device_id, source_data=ce
+                )
 
         except Exception as e:
             L.error("device_data_update", extra={"reason": e})
@@ -367,23 +447,30 @@ class SamplingSystem:
 
             controller_id = "::".join([make, model, serial_number])
             if controller_id in self.platform_variable_sets["sources"]:
-                await self.update_variable_set_by_source(source_id=controller_id, source_data=ce)
-
+                await self.update_variable_set_by_source(
+                    source_id=controller_id, source_data=ce
+                )
 
         except Exception as e:
             L.error("device_data_update", extra={"reason": e})
         pass
 
-    async def update_variable_set_by_source(self, source_id:str, source_data:CloudEvent):
+    async def update_variable_set_by_source(
+        self, source_id: str, source_data: CloudEvent
+    ):
         pass
         if source_id not in self.platform_variable_sets["sources"]:
             return
         for map_id in self.platform_variable_sets["sources"]["source_id"]:
-            self.update_variable_by_id(map_id=map_id, source_id=source_id, source_data=source_data)
+            self.update_variable_by_id(
+                map_id=map_id, source_id=source_id, source_data=source_data
+            )
         # loop through mapped vars in source_id
-        #   
+        #
 
-    async def update_variable_by_id(self, map_id:str, source_id:str, source_data:CloudEvent):
+    async def update_variable_by_id(
+        self, map_id: str, source_id: str, source_data: CloudEvent
+    ):
 
         try:
             parts = map_id.split(":")
@@ -392,7 +479,9 @@ class SamplingSystem:
             var_name = parts[3]
 
             target_time = source_data.data["variables"]["time"]["data"]
-            target_vm = self.get_variable_map_by_config_time(variable_map=vm_name, target_time=target_time)
+            target_vm = await self.get_variable_map_by_config_time(
+                variable_map=vm_name, target_time=target_time
+            )
 
             # variable_group = self.platform_variable_sets["maps"][vm_name]["variable_groups"][vg_name]
             variable_group = target_vm["variable_groups"][vg_name]
@@ -405,32 +494,38 @@ class SamplingSystem:
 
                 # get index value
                 index = variable_group[vg_name]["index"]
-                index_value = await self.get_index_value(index=index, source_data=source_data)
+                index_value = await self.get_index_value(
+                    index=index, source_data=source_data
+                )
                 if index_value not in mapped_var["data"]:
                     mapped_var["data"][index_value] = []
 
                 # append data
-                mapped_var["data"][index_value].append(source_data.data["variables"][source_var]["data"])
+                mapped_var["data"][index_value].append(
+                    source_data.data["variables"][source_var]["data"]
+                )
 
         except Exception as e:
             L.error("update_variable_by_id", extra={"reason": e})
 
-    async def get_index_value(self, index:dict, source_data:CloudEvent):
+    async def get_index_value(self, index: dict, source_data: CloudEvent):
 
-        if index["index_type"] == "timebase": 
+        if index["index_type"] == "timebase":
             tb = index["index_value"]
 
             source_time = source_data.data["variables"]["time"]["data"]
-            tb_time = self.round_to_nearest_N_seconds(dt_string=source_time, timebase=tb)
+            tb_time = self.round_to_nearest_N_seconds(
+                dt_string=source_time, timebase=tb
+            )
 
-    def get_timebase_period(self, dt_string:str, timebase: int) -> str:
+    def get_timebase_period(self, dt_string: str, timebase: int) -> str:
         dt = string_to_timestamp(dt_string)
         dt_period = round_to_nearest_N_seconds(dt=dt, Nsec=timebase)
         if dt_period:
             return timestamp_to_string(dt_period)
         else:
             return ""
-        
+
     # def round_to_nearest_N_seconds(self, dt_string:str, timebase:int) -> str:
 
     #     try:
@@ -458,24 +553,26 @@ class SamplingSystem:
     #         # print(f"rounded_dt = {rounded_dt}")
     #         result = timestamp_to_string(rounded_dt)
     #         L.debug("round_to_nearest_N_seconds", extra={"orig": dt_string, "rounded": result})
-    #         # return 
-        
+    #         # return
+
     #     except Exception as e:
     #         L.error("round_to_nearest_N_seconds", extra={"reason": e})
     #         result = ""
     #     return result
 
-    async def index_timebase_monitor(self, variable_map:str, timebase:int):
+    async def index_timebase_monitor(
+        self, variable_map: str, timebase: int
+    ):
         current_dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
 
         last_dt_period = None
         if timebase == 1:
-            threshhold_direct = 0.75*timebase
-            threshhold_other = 0.9*timebase
+            threshhold_direct = 0.75 * timebase
+            threshhold_other = 0.9 * timebase
         else:
-            threshhold_direct = 0.6*timebase
-            threshhold_other = 0.75*timebase
-        
+            threshhold_direct = 0.6 * timebase
+            threshhold_other = 0.75 * timebase
+
         while True:
             # create timestamp for current interval and save to index values
             dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
@@ -484,7 +581,10 @@ class SamplingSystem:
                 current_dt_period = dt_period
 
             current_time_period = timestamp_to_string(current_dt_period)
-            target_vm = self.get_variable_map_by_config_time(variable_map=variable_map, target_time=current_time_period)
+            target_vm = await self.get_variable_map_by_config_time(
+                variable_map=variable_map, target_time=current_time_period
+            )
+
             # if current_time_period not in self.platform_variable_sets["maps"][variable_map]["indices"]["timebase"][timebase]:
             if current_time_period not in target_vm["indices"]["timebase"][timebase]:
                 # self.platform_variable_sets["maps"][variable_map]["indices"]["timebase"][timebase].append(current_time_period)
@@ -501,7 +601,7 @@ class SamplingSystem:
                         "index_type": "timebase",
                         "index_value": timebase,
                         "threshhold_type": "direct",
-                        "index_ready": last_time_period
+                        "index_ready": last_time_period,
                     }
                     # await self.direct_timebase_ready_buffer.put(last_time_period)
                     await self.index_ready_buffer.put(update)
@@ -509,25 +609,26 @@ class SamplingSystem:
             # await asyncio.sleep(time_to_next(timebase))
             await asyncio.sleep(0.1)
 
-    async def get_variable_map_by_config_time(self, variable_map:str, target_time:str="") -> dict:
+    async def get_variable_map_by_config_time(
+        self, variable_map: str, target_time: str = ""
+    ) -> dict:
         if target_time == "":
             target_time = get_datetime_string()
-        
+
         current = ""
         for cfg_time, vm in self.platform_variable_sets["maps"][variable_map].items():
             if target_time > cfg_time and cfg_time > current:
                 current = cfg_time
-        
+
         if current == "":
             return None
-        
+
         return self.platform_variable_sets["maps"][variable_map][current]
 
-
-    async def update_timebase_variable_set_by_index(self, timebase_index:dict):
+    async def update_timebase_variable_set_by_index(self, timebase_index: dict):
         try:
             vm_name = timebase_index["variable_map"]
-            vm_cfg_time =  timebase_index["variable_map_config_time"]
+            vm_cfg_time = timebase_index["variable_map_config_time"]
             target_vm = self.platform_variable_sets["maps"][vm_name][vm_cfg_time]
             index_value = timebase_index["index_value"]
             index_type = "timebase"
@@ -539,13 +640,16 @@ class SamplingSystem:
                 var_set = {
                     "attributes": {
                         "variable_map": {"type": "string", "data": vm_name},
-                        "variable_map_config_time": {"type": "string", "data": vm_cfg_time},
+                        "variable_map_config_time": {
+                            "type": "string",
+                            "data": vm_cfg_time,
+                        },
                         "variable_group": {"type": "string", "data": vg},
                         "index_type": {"type": "string", "data": index_type},
-                        "index_value": {"type": "int", "data": index_value}
+                        "index_value": {"type": "int", "data": index_value},
                     },
                     "dimensions": {"time": 1},
-                    "variables": {}
+                    "variables": {},
                 }
 
                 time_var = {
@@ -554,33 +658,47 @@ class SamplingSystem:
                     "attributes": {
                         # how to make sure these are always using proper config?
                         "variable_map": {"type": "string", "data": vm_name},
-                        "variable_map_config_time": {"type": "string", "data": vm_cfg_time},
+                        "variable_map_config_time": {
+                            "type": "string",
+                            "data": vm_cfg_time,
+                        },
                         "variable_group": {"type": "string", "data": vg},
                         "index_type": {"type": "string", "data": index_type},
-                        "index_value": {"type": "int", "data": index_value}
+                        "index_value": {"type": "int", "data": index_value},
                     },
-                    "data": target_time
+                    "data": target_time,
                 }
                 var_set["variables"]["time"] = time_var
 
                 # for name, variable in self.platform_variable_sets["maps"][vm_name]["indices"][index_type][index_value]["variable_groups"][vg]["variables"].items():
-                for name, variable in target_vm["indices"][index_type][index_value]["variable_groups"][vg]["variables"].items():
+                for name, variable in target_vm["indices"][index_type][index_value][
+                    "variable_groups"
+                ][vg]["variables"].items():
                     map_type = variable["map_type"]
                     source = variable["source"]
                     index_method = variable["index_method"]
                     attributes = variable["attributes"]
                     if map_type == "direct":
                         source_variable = variable["direct_value"]["source_variable"]
-                    
+
                         mapped_var = {
                             "type": "float",
                             "shape": ["time"],
                             "attributes": {
                                 # how to make sure these are always using proper config?
-                                "source_type": {"type": "string", "data": source[source_variable]["source_type"]},
-                                "source_id": {"type": "string", "data": source[source_variable]["source_id"]},
-                                "source_variable": {"type": "string", "data": source[source_variable]["source_variable"]},
-                            }
+                                "source_type": {
+                                    "type": "string",
+                                    "data": source[source_variable]["source_type"],
+                                },
+                                "source_id": {
+                                    "type": "string",
+                                    "data": source[source_variable]["source_id"],
+                                },
+                                "source_variable": {
+                                    "type": "string",
+                                    "data": source[source_variable]["source_variable"],
+                                },
+                            },
                         }
 
                         if len(variable["data"][index_value]) == 0:
@@ -594,13 +712,19 @@ class SamplingSystem:
                             if variable["type"] in ["string", "str", "char"]:
                                 val = variable["data"][index_value][0]
                             else:
-                                val = round(sum(variable["data"][index_value]) / len(variable["data"][index_value]),3)
+                                val = round(
+                                    sum(variable["data"][index_value])
+                                    / len(variable["data"][index_value]),
+                                    3,
+                                )
                         mapped_var["data"] = val
 
                         var_set["variables"][name] = mapped_var
 
                         varset_id = f"{vm_name}::{vm_cfg_time}::{vg}"
-                        source_id = f"envds.{self.config.daq_id}.variableset::{varset_id}"
+                        source_id = (
+                            f"envds.{self.config.daq_id}.variableset::{varset_id}"
+                        )
                         source_topic = source_id.replace(".", "/")
                         if var_set:
                             event = SamplingEvent.create_variableset_update(
@@ -615,17 +739,15 @@ class SamplingSystem:
                                 extra={"data": event, "destpath": destpath},
                             )
                             # message = Message(data=event, destpath=destpath)
-                            message = event
+                            # message = event
                             # self.logger.debug("default_data_loop", extra={"m": message})
-                            await self.send_message(message)
+                            await self.send_event(event)
 
                     else:
-                        continue # TODO fill in for other types
-
+                        continue  # TODO fill in for other types
 
         except Exception as e:
             L.error("update_timebase_variableset_by_index", extra={"reason": e})
-
 
     async def index_monitor(self):
         while True:
@@ -633,7 +755,9 @@ class SamplingSystem:
             try:
                 index_type = update["index_type"]
                 if index_type == "timebase":
-                    self. update_timebase_variable_set_by_index(self, timebase_index=update)
+                    await self.update_timebase_variable_set_by_index(
+                        self, timebase_index=update
+                    )
                     # # handle timebase update
                     # vm_name = update["variable_map"]
                     # vm_cfg_time =  update["variable_map_config_time"]
@@ -674,16 +798,12 @@ class SamplingSystem:
                     #             }
                     #         }
 
-
                     pass
                 else:
                     pass
 
             except Exception as e:
                 L.error("index_monitor", extra={"reason": e})
-
-
-
 
     # async def device_data_get(self, query: DataStoreQuery):
     # async def device_data_get(self, query: DataRequest):
@@ -711,7 +831,6 @@ class SamplingSystem:
 
     #     if query.end_time:
     #         query.end_timestamp = string_to_timestamp(query.end_time)
-
 
     #     if query.last_n_seconds:
     #         # this overrides explicit start,end times
@@ -801,11 +920,11 @@ class SamplingSystem:
     #     pass
 
     # async def device_definition_registry_get(self, query: DeviceDefinitionRequest) -> dict:
-        
+
     #     # TODO add in logic to get/sync from erddap if available
     #     if self.db_client:
     #         return await self.db_client.device_definition_registry_get(query)
-        
+
     #     return {"results": []}
 
     # async def device_instance_registry_update(self, ce: CloudEvent):
@@ -832,7 +951,7 @@ class SamplingSystem:
     #                         # serial_number = parts[2]
     #                     self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
     #                     return
-                    
+
     #                 # if device_id is None:
     #                 device_id = "::".join([make, model, serial_number])
 
@@ -881,14 +1000,12 @@ class SamplingSystem:
     #     pass
 
     # async def device_instance_registry_get(self, query: DeviceInstanceRequest) -> dict:
-        
+
     #     # TODO add in logic to get/sync from erddap if available?
     #     if self.db_client:
     #         return await self.db_client.device_instance_registry_get(query)
-        
+
     #     return {"results": []}
-
-
 
     # async def controller_data_get(self, query: DataRequest):
 
@@ -915,7 +1032,6 @@ class SamplingSystem:
 
     #     if query.end_time:
     #         query.end_timestamp = string_to_timestamp(query.end_time)
-
 
     #     if query.last_n_seconds:
     #         # this overrides explicit start,end times
@@ -1006,11 +1122,11 @@ class SamplingSystem:
     #     pass
 
     # async def controller_definition_registry_get(self, query: ControllerDefinitionRequest) -> dict:
-        
+
     #     # TODO add in logic to get/sync from erddap if available
     #     if self.db_client:
     #         return await self.db_client.controller_definition_registry_get(query)
-        
+
     #     return {"results": []}
 
     # async def controller_instance_registry_update(self, ce: CloudEvent):
@@ -1037,7 +1153,7 @@ class SamplingSystem:
     #                         # serial_number = parts[2]
     #                     self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
     #                     return
-                    
+
     #                 # if controller_id is None:
     #                 controller_id = "::".join([make, model, serial_number])
 
@@ -1086,12 +1202,13 @@ class SamplingSystem:
     #     pass
 
     # async def controller_instance_registry_get(self, query: ControllerInstanceRequest) -> dict:
-        
+
     #     # TODO add in logic to get/sync from erddap if available?
     #     if self.db_client:
     #         return await self.db_client.controller_instance_registry_get(query)
-        
+
     #     return {"results": []}
+
 
 async def shutdown():
     print("shutting down")
