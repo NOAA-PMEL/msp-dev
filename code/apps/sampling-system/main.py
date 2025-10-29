@@ -1,6 +1,6 @@
-import asyncio
+# import asyncio
 from datetime import datetime, timezone
-import json
+# import json
 import logging
 
 from fastapi import FastAPI, Request, Query, status  # , APIRouter
@@ -12,26 +12,26 @@ from cloudevents.conversion import to_structured, to_json  # , from_http
 from cloudevents.exceptions import InvalidStructuredJSON
 from cloudevents.pydantic import CloudEvent
 
-import httpx
+# import httpx
 from logfmter import Logfmter
 from typing import Annotated, List
 from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
-import traceback
+# import traceback
 
-from datastore import Datastore
-from datastore_requests import (
-    # DataStoreQuery,
-    DataRequest,
-    DeviceDefinitionRequest,
-    DeviceInstanceRequest,
-    # ControllerDataUpdate,
-    ControllerDataRequest,
-    ControllerDefinitionRequest,
-    # ControllerDefinitionUpdate,
-    ControllerInstanceRequest,
-    # ControllerInstanceUpdate,
-)
+from sampling_system import SamplingSystem
+# from datastore_requests import (
+#     # DataStoreQuery,
+#     DataRequest,
+#     DeviceDefinitionRequest,
+#     DeviceInstanceRequest,
+#     # ControllerDataUpdate,
+#     ControllerDataRequest,
+#     ControllerDefinitionRequest,
+#     # ControllerDefinitionUpdate,
+#     ControllerInstanceRequest,
+#     # ControllerInstanceUpdate,
+# )
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -108,76 +108,13 @@ app = FastAPI()
 #     end_time: str | None = None
 #     custom: dict | None = None
 
-datastore = Datastore()
+# datastore = Datastore()
+sampling_system = SamplingSystem
 
 
 @app.get("/")
 async def root():
-    return {"message": "Hello World from Datastore"}
-
-
-@app.post("/device/settings/update/", status_code=status.HTTP_202_ACCEPTED)
-async def device_settings_update(request: Request):
-
-    # attributes = {
-    #     # "type": "envds.controller.control.request",
-    #     "type": "message.ack",
-    #     "source": "datastore",
-    #     "id": str(ULID()),
-    #     "datacontenttype": "application/json; charset=utf-8",
-    # }
-    # response = {"message": "ok"}
-    try:
-        # ce = from_json(await request.json())
-        # print(ce)
-        # pass
-        # print("sensor_settings_update")
-        ce = from_http(request.headers, await request.body())
-        # print(ce)
-        # L.debug(request.headers,)
-        L.debug(
-            "device_settings_update", extra={"ce": ce}
-        )  # , "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
-        # await datastore.data_sensor_update(ce)
-    except Exception as e:
-        # print(e)
-        L.error("send", extra={"reason": e})
-        return "", 204
-    # return {"message": "OK"}
-
-    # return '', 204
-    # return "",204
-
-
-@app.post("/status/update/", status_code=status.HTTP_202_ACCEPTED)
-async def status_update(request: Request):
-
-    # attributes = {
-    #     # "type": "envds.controller.control.request",
-    #     "type": "message.ack",
-    #     "source": "datastore",
-    #     "id": str(ULID()),
-    #     "datacontenttype": "application/json; charset=utf-8",
-    # }
-    # response = {"message": "ok"}
-    try:
-        # ce = from_json(await request.json())
-        # print(ce)
-        L.debug(await request.body())
-        # pass
-        # print("sensor_settings_update")
-        ce = from_http(request.headers, await request.body())
-        # print(ce)
-        # L.debug(request.headers,)
-        L.debug("status_update", extra={"ce": ce})  # , "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
-        # await datastore.data_sensor_update(ce)
-    except Exception as e:
-        # print(e)
-        L.error("status_update", extra={"reason": e})
-        pass
-        return "", 204
+    return {"message": "Hello World from SamplingSystem"}
 
 
 @app.post("/device/data/update/", status_code=status.HTTP_202_ACCEPTED)
@@ -187,121 +124,41 @@ async def device_data_update(request: Request):
         L.debug(request.headers)
         L.debug("device_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
-        await datastore.device_data_update(ce)
+        await sampling_system.device_data_update(ce)
     except Exception as e:
         L.error("device_data_update", extra={"reason": e})
         return "", 204
 
 
-@app.get("/device/data/get/")
-# async def device_data_get(query: Annotated[DataStoreQuery, Query()]):
-async def device_data_get(
-    device_id: str | None = None,
-    make: str | None = None,
-    model: str | None = None,
-    serial_number: str | None = None,
-    version: str | None = None,
-    device_type: str | None = None,
-    start_time: str | None = None,
-    end_time: str | None = None,
-    last_n_seconds: int | None = None,
-    variable: List[str] | None = None,
-):
-    L.debug("main:device_data_get", extra={"device_id": device_id})
-    query = DataRequest(
-        device_id=device_id,
-        make=make,
-        model=model,
-        serial_number=serial_number,
-        version=version,
-        device_type=device_type,
-        start_time=start_time,
-        end_time=end_time,
-        last_n_seconds=last_n_seconds,
-        variable=variable,
-    )
-    L.debug("main:device_data_get", extra={"query": query})
-    return await datastore.device_data_get(query)
-
-
-@app.post("/device/registry/update/", status_code=status.HTTP_202_ACCEPTED)
-async def device_registry_update(request: Request):
-    try:
-        ce = from_http(request.headers, await request.body())
-        L.debug(request.headers)
-        L.debug("device_registry_update", extra={"ce": ce, "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
-        await datastore.device_instance_registry_update(ce)
-    except Exception as e:
-        # L.error("send", extra={"reason": e})
-        pass
-        return "", 204
-
-
-@app.post("/device-definition/registry/update/", status_code=status.HTTP_202_ACCEPTED)
-async def device_definition_registry_update(request: Request):
-    try:
-        ce = from_http(request.headers, await request.body())
-        L.debug(request.headers)
-        L.debug(
-            "device_definition_registry_update",
-            extra={"ce": ce, "destpath": ce["destpath"]},
-        )
-        # await adapter.send_to_mqtt(ce)
-        await datastore.device_definition_registry_update(ce)
-    except Exception as e:
-        # L.error("send", extra={"reason": e})
-        pass
-        return "", 204
-
-
-@app.get("/device-definition/registry/get/")
-# async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
-async def device_definition_registry_get(
-    device_definition_id: str | None = None,
-    make: str | None = None,
-    model: str | None = None,
-    version: str | None = None,
-    device_type: str | None = None,
-    valid_time: str | None = None,
-):
-
-    query = DeviceDefinitionRequest(
-        device_definition_id=device_definition_id,
-        make=make,
-        model=model,
-        version=version,
-        device_type=device_type,
-        valid_time=valid_time,
-    )
-    return await datastore.device_definition_registry_get(query)
-
-@app.get("/device-instance/registry/get/")
-# async def device_definition_registry_get(query: Annotated[DeviceInstanceRequest, Query()]):
-# async def device_definition_registry_get(
-async def device_instance_registry_get(
-    device_id: str | None = None,
-    make: str | None = None,
-    model: str | None = None,
-    serial_number: str | None = None,
-    version: str | None = None,
-    device_type: str | None = None,
-):
-
-    query = DeviceInstanceRequest(
-        device_id=device_id,
-        make=make,
-        model=model,
-        serial_number=serial_number,
-        version=version,
-        device_type=device_type,
-    )
-
-    L.debug("device_instance_registry_get", extra={"query": query})
-    results = await datastore.device_instance_registry_get(query)
-    L.debug("device_instance_registry_get", extra={"results": results})
-    # return await datastore.device_instance_registry_get(query)
-    return results
+# @app.get("/device/data/get/")
+# # async def device_data_get(query: Annotated[DataStoreQuery, Query()]):
+# async def device_data_get(
+#     device_id: str | None = None,
+#     make: str | None = None,
+#     model: str | None = None,
+#     serial_number: str | None = None,
+#     version: str | None = None,
+#     device_type: str | None = None,
+#     start_time: str | None = None,
+#     end_time: str | None = None,
+#     last_n_seconds: int | None = None,
+#     variable: List[str] | None = None,
+# ):
+#     L.debug("main:device_data_get", extra={"device_id": device_id})
+#     query = DataRequest(
+#         device_id=device_id,
+#         make=make,
+#         model=model,
+#         serial_number=serial_number,
+#         version=version,
+#         device_type=device_type,
+#         start_time=start_time,
+#         end_time=end_time,
+#         last_n_seconds=last_n_seconds,
+#         variable=variable,
+#     )
+#     L.debug("main:device_data_get", extra={"query": query})
+#     return await datastore.device_data_get(query)
 
 
 @app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
@@ -311,125 +168,39 @@ async def controller_data_update(request: Request):
         L.debug(request.headers)
         L.debug("controller_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
-        await datastore.controller_data_update(ce)
+        await sampling_system.controller_data_update(ce)
     except Exception as e:
         L.error("controller_data_update", extra={"reason": e})
         return "", 204
 
 
-@app.get("/controller/data/get/")
-# async def controller_data_get(query: Annotated[DataStoreQuery, Query()]):
-async def controller_data_get(
-    controller_id: str | None = None,
-    make: str | None = None,
-    model: str | None = None,
-    serial_number: str | None = None,
-    version: str | None = None,
-    # device_type: str | None = None,
-    start_time: str | None = None,
-    end_time: str | None = None,
-    last_n_seconds: int | None = None,
-    variable: List[str] | None = None,
-):
-    L.debug("main:controller_data_get", extra={"controller_id": controller_id})
-    query = ControllerDataRequest(
-        controller_id=controller_id,
-        make=make,
-        model=model,
-        serial_number=serial_number,
-        version=version,
-        # device_type=device_type,
-        start_time=start_time,
-        end_time=end_time,
-        last_n_seconds=last_n_seconds,
-        variable=variable,
-    )
-    L.debug("main:controller_data_get", extra={"query": query})
-    return await datastore.controller_data_get(query)
+# @app.get("/controller/data/get/")
+# # async def controller_data_get(query: Annotated[DataStoreQuery, Query()]):
+# async def controller_data_get(
+#     controller_id: str | None = None,
+#     make: str | None = None,
+#     model: str | None = None,
+#     serial_number: str | None = None,
+#     version: str | None = None,
+#     # device_type: str | None = None,
+#     start_time: str | None = None,
+#     end_time: str | None = None,
+#     last_n_seconds: int | None = None,
+#     variable: List[str] | None = None,
+# ):
+#     L.debug("main:controller_data_get", extra={"controller_id": controller_id})
+#     query = ControllerDataRequest(
+#         controller_id=controller_id,
+#         make=make,
+#         model=model,
+#         serial_number=serial_number,
+#         version=version,
+#         # device_type=device_type,
+#         start_time=start_time,
+#         end_time=end_time,
+#         last_n_seconds=last_n_seconds,
+#         variable=variable,
+#     )
+#     L.debug("main:controller_data_get", extra={"query": query})
+#     return await datastore.controller_data_get(query)
 
-
-@app.post("/controller/registry/update/", status_code=status.HTTP_202_ACCEPTED)
-async def controller_registry_update(request: Request):
-    try:
-        ce = from_http(request.headers, await request.body())
-        L.debug(request.headers)
-        L.debug(
-            "controller_registry_update", extra={"ce": ce, "destpath": ce["destpath"]}
-        )
-        # await adapter.send_to_mqtt(ce)
-        await datastore.controller_instance_registry_update(ce)
-    except Exception as e:
-        # L.error("send", extra={"reason": e})
-        L.error("controller_registry_update", extra={"reason": e})
-        print(traceback.format_exc())
-        pass
-        return "", 204
-
-
-@app.post(
-    "/controller-definition/registry/update/", status_code=status.HTTP_202_ACCEPTED
-)
-async def controller_definition_registry_update(request: Request):
-    try:
-        ce = from_http(request.headers, await request.body())
-        L.debug(request.headers)
-        L.debug(
-            "controller_definition_registry_update",
-            extra={"ce": ce, "destpath": ce["destpath"]},
-        )
-        # await adapter.send_to_mqtt(ce)
-        await datastore.controller_definition_registry_update(ce)
-    except Exception as e:
-        # L.error("send", extra={"reason": e})
-        L.error("datastore_register_controller_definition", extra={"reason": e})
-        print(traceback.format_exc())
-        pass
-        return "", 204
-
-
-@app.get("/controller-definition/registry/get/")
-async def controller_definition_registry_get(
-    controller_definition_id: str | None = None,
-    make: str | None = None,
-    model: str | None = None,
-    version: str | None = None,
-    # device_type: str | None = None,
-    valid_time: str | None = None,
-):
-
-    query = ControllerDefinitionRequest(
-        controller_definition_id=controller_definition_id,
-        make=make,
-        model=model,
-        version=version,
-        # device_type=device_type,
-        valid_time=valid_time,
-    )
-    return await datastore.controller_definition_registry_get(query)
-    
-
-@app.get("/controller-instance/registry/get/")
-# async def controller_definition_registry_get(
-async def controller_instance_registry_get(
-    controller_id: str | None = None,
-    make: str | None = None,
-    model: str | None = None,
-    serial_number: str | None = None,
-    version: str | None = None,
-    # device_type: str | None = None
-):
-
-    query = ControllerInstanceRequest(
-        controller_id=controller_id,
-        make=make,
-        model=model,
-        serial_number=serial_number,
-        version=version,
-        # controller_type=device_type
-    )
-
-    L.debug("controller_instance_registry_get", extra={"query": query})
-    results = await datastore.controller_instance_registry_get(query)
-    L.debug("controller_instance_registry_get", extra={"results": results})
-    # return await datastore.controller_instance_registry_get(query)
-    return results
