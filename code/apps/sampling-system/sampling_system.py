@@ -111,7 +111,6 @@ class SamplingSystemConfig(BaseSettings):
         env_prefix = "SAMPLING_SYSTEM_"
         case_sensitive = False
 
-
 class SamplingSystem:
     """docstring for TestClass."""
 
