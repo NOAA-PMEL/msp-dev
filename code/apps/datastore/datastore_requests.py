@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Any, Dict
 from pydantic import BaseModel
 
 
@@ -159,3 +159,65 @@ class DatastoreRequest(BaseModel):
         | DeviceInstanceUpdate
         | DeviceInstanceRequest
     )
+
+class VariableSetDataUpdate(BaseModel):
+    variableset_id: str | None = None
+    variableset: str | None = None
+    variableset_config_time: str | None = None
+    variablegroup: str | None = None
+    # version: str
+    timestamp: float
+    attributes: dict
+    dimensions: dict
+    variables: dict
+
+
+class VariableSetDataRequest(BaseModel):
+    variableset_id: str | None = None
+    variablemap: str | None = None
+    variablemap_revision_time: str | None = None
+    variablegroup: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    start_timestamp: float | None = None
+    end_timestamp: float | None = None
+    last_n_seconds: int | None
+    variable: List[str] | None = None
+
+class VariableSetDefinitionUpdate(BaseModel):
+    variableset_id: str | None = None
+    platfrom_id: str | None = None
+    variablemap: str | None = None
+    variablemap_revision_time: str | None = None
+    variablegroup: str | None = None
+    index_type: str | None = None
+    index_value: Any | None = None
+    attributes: dict
+    dimensions: dict
+    variables: dict
+
+
+class VariableSetDefinitionRequest(BaseModel):
+    variableset_id: str | None = None
+    platfrom_id: str | None = None
+    variableset: str | None = None
+    variableset_revision_time: str | None = None
+    variablegroup: str | None = None
+    index_type: str | None = None
+    index_value: Any | None = None
+
+class VariableMapDefinitionUpdate(BaseModel):
+    variablemap_id: str | None = None
+    platform_id: str | None = None
+    variablemap: str | None = None
+    variablemap_revision_time: str | None = None
+    variablegroups: dict
+    variables: dict
+
+
+class VariableMapDefinitionRequest(BaseModel):
+    variablemap_id: str | None = None
+    platform_id: str | None = None
+    variablemap: str | None = None
+    variablemap_config_time: str | None = None
+

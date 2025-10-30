@@ -23,7 +23,13 @@ from datastore_requests import (
     ControllerDataRequest,
     ControllerDataUpdate,
     ControllerDefinitionRequest,
-    ControllerDefinitionUpdate
+    ControllerDefinitionUpdate,
+    VariableSetDataUpdate,
+    VariableSetDataRequest,
+    VariableSetDefinitionUpdate,
+    VariableSetDefinitionRequest,
+    VariableMapDefinitionRequest,
+    VariableMapDefinitionUpdate
 )
 
 class RedisClient(DBClient):
@@ -36,6 +42,9 @@ class RedisClient(DBClient):
         self.data_controller_index_name = "idx:data-controller"
         self.registry_controller_definition_index_name = "idx:registry-controller-definition"
         self.registry_controller_instance_index_name = "idx:registry-controller-instance"
+        self.registry_variablemap_definition_index_name = "idx:registry-variablemap-definition"
+        self.registry_variableset_definition_index_name = "idx:registry-variableset-definition"
+
         self.build_indexes()
 
     def connect(self):
@@ -183,6 +192,39 @@ class RedisClient(DBClient):
                     index_type=IndexType.JSON
                 )
                 self.client.ft(self.registry_controller_instance_index_name).create_index(schema, definition=definition)
+
+            # registry:variablemap-definition
+            try:
+                self.client.ft(self.registry_variablemap_definition_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
+                    TagField("$.registration.platform_id", as_name="platform_id"),
+                    TagField("$.registration.variablemap", as_name="variablemap"),
+                    TagField("$.registration.variablemap_revision_time", as_name="variablemap_revision_time"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:variablemap-definition:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_variablemap_definition_index_name).create_index(schema, definition=definition)
+
+            # registry:variableset-definition
+            try:
+                self.client.ft(self.registry_variableset_definition_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.variableset_definition_id", as_name="variablemap_definition_id"),
+                    TagField("$.registration.platform_id", as_name="platform_id"),
+                    TagField("$.registration.variablemap", as_name="variablemap"),
+                    TagField("$.registration.variablemap_revision_time", as_name="variablemap_revision_time"),
+                    TagField("$.registration.variablegroup", as_name="variablemap"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:variableset-definition:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_variableset_definition_index_name).create_index(schema, definition=definition)
 
         except Exception as e:
             self.logger.error("build_indexes", extra={"reason": e})
@@ -788,4 +830,187 @@ class RedisClient(DBClient):
                 self.logger.error("controller_instance_registry_get", extra={"reason": e})
                 continue
 
+        return {"results": results}
+
+    async def variablemap_definition_registry_update(
+        self,
+        # document: dict,
+        database: str,
+        collection: str,
+        request: VariableMapDefinitionUpdate,
+        ttl: int = 300
+    ) -> bool:
+        await super(RedisClient, self).variablemap_definition_registry_update(database, collection, request, ttl)
+        try:
+            self.connect()
+
+            
+            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"update-doc": request, "ttl": ttl})
+            document = request.dict()
+            
+            platform_id = request.platform_id
+            variablemap = request.variablemap
+            variablemap_revision_time = request.variablemap_revision_time
+            # document = request.dict().pop("database").pop("collection")
+            # make = request.request.make
+            # model = request.request.model
+            # serial_number = request.request.serial_number
+            # timestamp = request.request.timestamp
+
+            id = "::".join([platform_id,variablemap,variablemap_revision_time])
+
+            key = f"{database}:{collection}:{id}"
+            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"key": key, "device-doc": document})
+            check_request = VariableMapDefinitionRequest(
+                platform_id=platform_id,
+                variablemap=variablemap,
+                variablemap_revision_time=variablemap_revision_time
+            )
+            check_results = await self.variablemap_definition_registry_get(check_request)
+            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"check": check_results})
+            # check = False # tmp
+            if check_results["results"]: # check if there are any results
+                self.logger.debug("redis_client: variablemap_definition_registry_update check_results", extra={"results": check_results["results"]})
+                result = True
+            else:
+                result = self.client.json().set(
+                    key,
+                    "$",
+                    {"registration": document}
+                )
+            if result and ttl > 0:
+                self.client.expire(key, ttl)
+
+            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"check_request": check_request, "result": result})
+            return result
+        
+        except Exception as e:
+            self.logger.error("redis_client: variablemap_definition_registry_update", extra={"reason": e})
+            return False
+
+    async def variablemap_definition_registry_get(
+            self,
+            request: VariableMapDefinitionRequest
+    ) -> dict:
+        await super(RedisClient, self).variablemap_definition_registry_get(request)
+
+        query_args = []
+        if request.variablemap_definition_id:
+            query_args.append(f"@variablemap_definition_id:{{{self.escape_query(request.variablemap_definition_id)}}}")
+        if request.platform_id:
+            query_args.append(f"@platform_id:{{{self.escape_query(request.platform_id)}}}")
+        if request.variablemap:
+            query_args.append(f"@variablemap:{{{self.escape_query(request.variablemap)}}}")
+        if request.variablemap_revision_time:
+            query_args.append(f"@variablemap_revision_time:{{{self.escape_query(request.variablemap_revision_time)}}}")
+
+        if query_args:
+            qstring = " ".join(query_args)
+        else:
+            qstring = "*"
+        self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"query_string": qstring})
+        q = Query(qstring)#.sort_by("version", asc=False)
+        docs = self.client.ft(self.registry_variablemap_definition_index_name).search(q).docs
+        self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"docs": docs})
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    results.append(reg["registration"])
+            except Exception as e:
+                self.logger.error("redis_client: variablemap_definition_registry_get", extra={"reason": e})
+                continue
+        self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"results": results})
+        return {"results": results}
+
+    async def variableset_definition_registry_update(
+        self,
+        # document: dict,
+        database: str,
+        collection: str,
+        request: VariableSetDefinitionUpdate,
+        ttl: int = 300
+    ) -> bool:
+        await super(RedisClient, self).variableset_definition_registry_update(database, collection, request, ttl)
+        try:
+            self.connect()
+
+            
+            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"update-doc": request, "ttl": ttl})
+            document = request.dict()
+            
+            platform_id = request.platform_id
+            variablemap = request.variablemap
+            variablemap_revision_time = request.variablemap_revision_time
+            variablegroup = request.variablegroup
+
+            id = "::".join([platform_id,variablemap,variablemap_revision_time,variablegroup])
+
+            key = f"{database}:{collection}:{id}"
+            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"key": key, "device-doc": document})
+            check_request = VariableSetDefinitionRequest(
+                platform_id=platform_id,
+                variablemap=variablemap,
+                variablemap_revision_time=variablemap_revision_time,
+                variablegroup=variablegroup
+            )
+            check_results = await self.variableset_definition_registry_get(check_request)
+            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"check": check_results})
+            # check = False # tmp
+            if check_results["results"]: # check if there are any results
+                self.logger.debug("redis_client: variableset_definition_registry_update check_results", extra={"results": check_results["results"]})
+                result = True
+            else:
+                result = self.client.json().set(
+                    key,
+                    "$",
+                    {"registration": document}
+                )
+            if result and ttl > 0:
+                self.client.expire(key, ttl)
+
+            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"check_request": check_request, "result": result})
+            return result
+        
+        except Exception as e:
+            self.logger.error("redis_client: variableset_definition_registry_update", extra={"reason": e})
+            return False
+
+    async def variableset_definition_registry_get(
+            self,
+            request: VariableSetDefinitionRequest
+    ) -> dict:
+        await super(RedisClient, self).variableset_definition_registry_get(request)
+
+        query_args = []
+        if request.variableset_definition_id:
+            query_args.append(f"@variableset_definition_id:{{{self.escape_query(request.variableset_definition_id)}}}")
+        if request.platform_id:
+            query_args.append(f"@platform_id:{{{self.escape_query(request.platform_id)}}}")
+        if request.variablemap:
+            query_args.append(f"@variablemap:{{{self.escape_query(request.variablemap)}}}")
+        if request.variablemap_revision_time:
+            query_args.append(f"@variablemap_revision_time:{{{self.escape_query(request.variablemap_revision_time)}}}")
+        if request.variablegroup:
+            query_args.append(f"@variablegroup:{{{self.escape_query(request.variablegroup)}}}")
+
+        if query_args:
+            qstring = " ".join(query_args)
+        else:
+            qstring = "*"
+        self.logger.debug("redis_client: variableset_definition_registry_get", extra={"query_string": qstring})
+        q = Query(qstring)#.sort_by("version", asc=False)
+        docs = self.client.ft(self.registry_variableset_definition_index_name).search(q).docs
+        self.logger.debug("redis_client: variableset_definition_registry_get", extra={"docs": docs})
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    results.append(reg["registration"])
+            except Exception as e:
+                self.logger.error("redis_client: variableset_definition_registry_get", extra={"reason": e})
+                continue
+        self.logger.debug("redis_client: variableset_definition_registry_get", extra={"results": results})
         return {"results": results}
