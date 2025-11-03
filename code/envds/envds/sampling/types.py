@@ -5,7 +5,9 @@ class SamplingEventType(BaseEventType):
     """docstring for envdsBaseType."""
     TYPE_BASE = "envds"
 
-    TYPE_VARIABLESET = "variable-set"
+    TYPE_VARIABLEMAP_DEFINITION = "variablemap-definition"
+    TYPE_VARIABLESET_DEFINITION = "variableset-definition"
+    TYPE_VARIABLESET = "variableset"
     TYPE_DATASET = "dataset"
     TYPE_PROJECT = "project"
     TYPE_PLATFORM = "platform"
@@ -19,6 +21,22 @@ class SamplingEventType(BaseEventType):
         super(BaseEventType, self).__init__()
 
     # helper functions
+
+    @staticmethod
+    def variablemap_definition_registry_request():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_VARIABLEMAP_DEFINITION), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def variablemap_definition_registry_update():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_VARIABLEMAP_DEFINITION), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def variableset_definition_registry_update():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_VARIABLESET_DEFINITION), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def variableset_definition_registry_request():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_VARIABLESET_DEFINITION), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_REQUEST])
 
     @staticmethod
     def variableset_data_request():

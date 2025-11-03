@@ -19,6 +19,22 @@ class SamplingEvent(envdsEvent):
         super(SamplingEvent, self).__init__()
 
     @staticmethod
+    def create_variablemap_definition_registry_request(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.variablemap_definition_registry_request(), source=source, data=data, extra_header=extra_header)
+
+    @staticmethod
+    def create_variablemap_definition_registry_update(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.variablemap_definition_registry_update(), source=source, data=data, extra_header=extra_header)
+    
+    @staticmethod
+    def create_variableset_definition_registry_request(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.variableset_definition_registry_request(), source=source, data=data, extra_header=extra_header)
+
+    @staticmethod
+    def create_variableset_definition_registry_update(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.variableset_definition_registry_update(), source=source, data=data, extra_header=extra_header)
+    
+    @staticmethod
     def create_variableset_data_request(source: str, data: dict = {}, extra_header: dict = None):
         return SamplingEvent.create(type=et.variableset_data_request(), source=source, data=data, extra_header=extra_header)
 
