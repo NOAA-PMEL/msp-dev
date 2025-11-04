@@ -116,16 +116,17 @@ class SamplingSystemConfig(BaseSettings):
 
 
 class SamplingSystem:
-    """docstring for TestClass."""
+    """docstring for SamplingSystem."""
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.debug("TestClass instantiated")
         self.logger.setLevel(logging.DEBUG)
-
+        self.logger.debug("SamplingSystem instantiated")
+        print("here:1")
         self.platforms = dict()
         self.platform_layouts = dict()
         self.variablemaps = dict()
+        print("here:2")
 
         # this is cache for variable mapping
         self.variablesets = {
@@ -133,9 +134,11 @@ class SamplingSystem:
             "variablesets": dict(),
             "indices": dict(),
         }
+        print("here:3")
 
         self.config = SamplingSystemConfig()
         self.configure()
+        print("here:4")
 
         self.mqtt_buffer = asyncio.Queue()
         asyncio.create_task(self.get_from_mqtt_loop())
