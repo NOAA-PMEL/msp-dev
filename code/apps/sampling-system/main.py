@@ -68,8 +68,9 @@ class Settings(BaseSettings):
 
 
 # from apis.router import api_router
-
+print("main: here:1")
 app = FastAPI()
+print("main: here:2")
 
 # origins = ["*"]  # dev
 # app.add_middleware(
