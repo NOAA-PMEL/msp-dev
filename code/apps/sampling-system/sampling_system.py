@@ -901,7 +901,7 @@ class SamplingSystem:
             source_time = source_data.data["variables"]["time"]["data"]
             self.logger.debug("update_variableset_by_source", extra={"source_time": source_time})
 
-            print(f"update_variableset_by_source: {variablemap}")
+            print(f"update_variableset_by_source: {variablemap["sources"]}")
             for src_xref in variablemap["sources"][source_id]:
                 self.logger.debug("update_variableset_by_source", extra={"source_xref": src_xref})
 
