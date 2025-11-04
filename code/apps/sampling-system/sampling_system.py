@@ -158,20 +158,22 @@ class SamplingSystem:
         try:
             # load resource configmaps
             #   load payloads
-            with open("/app/config/platforms.json", "r") as f:
-                platforms = json.load(f)
 
-            self.logger.debug("configure", extra={"platforms": platforms})
-            for platform in platforms:
-                if not platform:
-                    continue
-                self.logger.debug("configure", extra={"platform": platform})
-                if platform["kind"] != "Platform":
-                    continue
-                if (name := platform["metadata"]["name"]) not in self.platforms:
-                    self.platforms[name] = platform
-            self.logger.debug("configure", extra={"platforms": self.platforms})
-            # load layout configmaps
+
+            # with open("/app/config/platforms.json", "r") as f:
+            #     platforms = json.load(f)
+
+            # self.logger.debug("configure", extra={"platforms": platforms})
+            # for platform in platforms:
+            #     if not platform:
+            #         continue
+            #     self.logger.debug("configure", extra={"platform": platform})
+            #     if platform["kind"] != "Platform":
+            #         continue
+            #     if (name := platform["metadata"]["name"]) not in self.platforms:
+            #         self.platforms[name] = platform
+            # self.logger.debug("configure", extra={"platforms": self.platforms})
+            # # load layout configmaps
 
             # load variablemap configmaps
             with open("/app/config/platform_variablemaps.json", "r") as f:
