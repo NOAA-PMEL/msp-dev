@@ -109,7 +109,7 @@ app = FastAPI()
 #     custom: dict | None = None
 
 # datastore = Datastore()
-sampling_system = SamplingSystem
+sampling_system = SamplingSystem()
 
 
 @app.get("/")
