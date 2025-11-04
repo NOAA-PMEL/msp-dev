@@ -280,7 +280,6 @@ class SamplingSystem:
                                 self.index_monitor_tasks[index_type] = {
                                     index_value: asyncio.create_task(
                                         self.index_time_monitor(
-                                            self,
                                             # variablemap=vm_id,
                                             timebase=index_value,
                                         )
