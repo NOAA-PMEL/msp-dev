@@ -868,18 +868,31 @@ class SamplingSystem:
     
     async def update_by_source(self, source_id:str, source_data: CloudEvent):
         try:
+            print("here:1")
             self.logger.debug("update_by_source", extra={"source_id": source_id})
+            print("here:2")
             source_time = source_data.data["variables"]["time"]["data"]
+            print("here:3")
             self.logger.debug("update_by_source", extra={"source_time": source_time})
+            print("here:4")
             vm_list = await self.get_valid_variablemaps(target_time=source_time)
+            print("here:5")
             for vm in vm_list:
+                print("here:6")
                 self.logger.debug("update_by_source", extra={"vm": vm})
+                print("here:7")
                 variablemap = vm["variablemap"]
+                print("here:8")
                 self.logger.debug("update_by_source", extra={"source_id": source_id, "vm": variablemap})
+                print("here:9")
                 await self.update_variableset_by_source(variablemap=variablemap, source_id=source_id, source_data=source_data)
+                print("here:10")
 
         except Exception as e:
+            print("here:11")
+
             self.logger.error("update_by_source", extra={"reason": e})
+            print("here:12")
 
     async def update_variableset_by_source(self, variablemap:dict, source_id:str, source_data:CloudEvent):
 
