@@ -750,8 +750,9 @@ class SamplingSystem:
             model = attributes["model"]["data"]
             serial_number = attributes["serial_number"]["data"]
             device_id = "::".join([make, model, serial_number])
+            self.logger.debug("device_data_update", extra={"device_id": device_id})
             if device_id in self.variablesets["sources"]:
-                await self.update_variableset_by_source(
+                await self.update_by_source(
                     source_id=device_id, source_data=ce
                 )
 
@@ -825,7 +826,7 @@ class SamplingSystem:
 
             controller_id = "::".join([make, model, serial_number])
             if controller_id in self.variablesets["sources"]:
-                await self.update_variableset_by_source(
+                await self.update_by_source(
                     source_id=controller_id, source_data=ce
                 )
 
@@ -842,6 +843,7 @@ class SamplingSystem:
             source_time = source_data.data["variables"]["time"]["data"]
             vm_list = await self.get_valid_variablemaps(time=source_time)
             for vm in vm_list:
+                self.logger.debug("update_by_source", extra={"source_id": source_id, "vm": vm})
                 await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
 
         except Exception as e:
