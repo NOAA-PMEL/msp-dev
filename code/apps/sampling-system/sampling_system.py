@@ -849,9 +849,13 @@ class SamplingSystem:
     async def update_variableset_by_source(self, variablemap:dict, source_id:str, source_data:CloudEvent):
 
         try:
+            self.logger.debug("update_variableset_by_source", extra={"source_id": source_id})
             source_time = source_data.data["variables"]["time"]["data"]
+            self.logger.debug("update_variableset_by_source", extra={"source_time": source_time})
 
             for src_xref in variablemap["source"][source_id]:
+                self.logger.debug("update_variableset_by_source", extra={"source_xref": source_xref})
+
                 variableset = variablemap["variablesets"][src_xref["variableset"]]
                 index_type = variableset["attributes"]["index_type"]
                 index_value = variableset["attributes"]["index_value"]
@@ -879,6 +883,7 @@ class SamplingSystem:
                         variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name].append(
                             source_data.data["variables"][source_v]["data"]
                         )
+                    self.logger.debug("update_variableset_by_source", extra={"vm": variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]})
 
         except Exception as e:
             self.logger.error("update_variableset_by_source", extra={"reason": e})
@@ -1111,6 +1116,7 @@ class SamplingSystem:
             #   e.g., if tb=1, wait for next second, if tb>1, wait for 0.6*tb to pass (tb=10, wait for 6sec to pass)
             if last_dt_period:
                 last_time_period = timestamp_to_string(last_time_period)
+                self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
                 if seconds_elapsed(initial_dt=last_dt_period) >= update_threshhold:
                     update = {
                         # "variablemap": variablemap,
@@ -1406,6 +1412,7 @@ class SamplingSystem:
         }
 
         try:
+            self.logger.debug("update_variablesets_by_time_index", extra={"time_index"})
             # vm_name = time_index["variablemap"]
             # vm_cfg_time = time_index["variablemap_revision_time"]
             # target_vm = self.variablesets["maps"][vm_name][vm_cfg_time]
@@ -1592,7 +1599,7 @@ class SamplingSystem:
         while True: 
             update = await self.index_ready_buffer.get()
             try:
-
+                self.logger.debug("index_monitor", extra={"update": update})
                 index_type = update["index_type"]
                 index_value = update["index_value"]
                 update_type = update["update_type"]
@@ -1602,6 +1609,7 @@ class SamplingSystem:
                 for vm in vm_list:
                     # await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
 
+                    self.logger.debug("index_monitor", extra={"update": vm})
 
                     index_type = update["index_type"]
                     if index_type == "time":
