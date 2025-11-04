@@ -267,8 +267,8 @@ class SamplingSystem:
                             }
                         }
                         # add variableset to list for x-ref
-                        if vs_name not in current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]]:
-                            current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]].append(vs_name)
+                        if vs_name not in current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]]["variablesets"]:
+                            current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]]["variablesets"].append(vs_name)
                 
                         
                         # create indexing task for current index if necessary
