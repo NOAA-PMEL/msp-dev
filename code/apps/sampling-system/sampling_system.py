@@ -878,7 +878,7 @@ class SamplingSystem:
             vm_list = await self.get_valid_variablemaps(target_time=source_time)
             # print(f"here:5 {vm_list}")
             for vm in vm_list:
-                # print(f"here:6 {vm}")
+                print(f"here:6 {vm}")
                 # self.logger.debug("update_by_source", extra={"vm": vm})
                 # print("here:7")
                 variablemap = vm["variablemap"]
