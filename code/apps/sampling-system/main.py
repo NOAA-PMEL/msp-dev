@@ -33,6 +33,7 @@ from sampling_system import SamplingSystem
 #     # ControllerInstanceUpdate,
 # )
 
+print("pre-logger: 1")
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
@@ -68,9 +69,9 @@ class Settings(BaseSettings):
 
 
 # from apis.router import api_router
-print("main: here:1")
+L.debug("main: here:1")
 app = FastAPI()
-print("main: here:2")
+L.debug("main: here:2")
 
 # origins = ["*"]  # dev
 # app.add_middleware(

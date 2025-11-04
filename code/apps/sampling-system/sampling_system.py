@@ -2077,6 +2077,7 @@ if __name__ == "__main__":
     # app.run(debug=config.debug, host=config.host, port=config.port)
     # app.run()
     config = SamplingSystemConfig()
+    print(config)
     # asyncio.run(main(config))
 
     try:
@@ -2099,5 +2100,5 @@ if __name__ == "__main__":
         config.log_level = ll
     except (ValueError, IndexError):
         pass
-
+    print("going to run(main)")
     asyncio.run(main(config))
