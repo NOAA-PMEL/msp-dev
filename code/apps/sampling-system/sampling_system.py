@@ -250,8 +250,13 @@ class SamplingSystem:
                                 if v["source"][direct_var]["source_id"] not in current_vm["sources"]:
                                     current_vm["sources"][v["source"][direct_var]["source_id"]] = []
                                 source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
-                                if source_entry not in current_vm["sources"]["direct"][v["source"][direct_var]["source_id"]]:
-                                    current_vm["sources"]["direct"][v["source"][direct_var]["source_id"]].append(source_entry)
+
+                                if source_entry not in current_vm["sources"][v["source"][direct_var]["source_id"]]:
+                                    current_vm["sources"][v["source"][direct_var]["source_id"]].append(source_entry)
+
+                            else:
+                                continue
+
 
                     # this holds list of variablesets for each index and indexed variable data
                     if vs_def["index"]["index_type"] not in current_vm["indexed"]:
