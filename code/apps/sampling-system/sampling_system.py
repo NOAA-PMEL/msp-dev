@@ -751,10 +751,10 @@ class SamplingSystem:
             serial_number = attributes["serial_number"]["data"]
             device_id = "::".join([make, model, serial_number])
             self.logger.debug("device_data_update", extra={"device_id": device_id})
-            if device_id in self.variablesets["sources"]:
-                await self.update_by_source(
-                    source_id=device_id, source_data=ce
-                )
+            # if device_id in self.variablesets["sources"]:
+            await self.update_by_source(
+                source_id=device_id, source_data=ce
+            )
 
         except Exception as e:
             self.logger.error("device_data_update", extra={"reason": e})
@@ -825,10 +825,10 @@ class SamplingSystem:
             serial_number = attributes["serial_number"]["data"]
 
             controller_id = "::".join([make, model, serial_number])
-            if controller_id in self.variablesets["sources"]:
-                await self.update_by_source(
-                    source_id=controller_id, source_data=ce
-                )
+            # if controller_id in self.variablesets["sources"]:
+            await self.update_by_source(
+                source_id=controller_id, source_data=ce
+            )
 
         except Exception as e:
             self.logger.error("device_data_update", extra={"reason": e})
