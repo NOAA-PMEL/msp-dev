@@ -940,6 +940,7 @@ class SamplingSystem:
                             source_data.data["variables"][source_v]["data"]
                         )
                     # self.logger.debug("update_variableset_by_source", extra={"vm": variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]})
+                    print(f"!!!source_data: {variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]}")
 
         except Exception as e:
             self.logger.error("update_variableset_by_source", extra={"reason": e})
