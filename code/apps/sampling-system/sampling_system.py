@@ -70,7 +70,7 @@ handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
-self.logger.setLevel(logging.INFO)
+L.setLevel(logging.INFO)
 
 
 # test
@@ -2051,14 +2051,14 @@ async def main(config):
         host=config.host,
         port=config.port,
         # log_level=server_config.log_level,
-        root_path="/msp/datastore",
+        root_path="/msp/sampling-system",
         # log_config=dict_config,
     )
 
     server = uvicorn.Server(config)
     # test = logging.getLogger()
     # test.info("test")
-    self.logger.info(f"server: {server}")
+    L.info(f"server: {server}")
     await server.serve()
 
     print("starting shutdown...")
