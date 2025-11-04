@@ -163,6 +163,8 @@ class SamplingSystem:
 
             self.logger.debug("configure", extra={"platforms": platforms})
             for platform in platforms:
+                if not platform:
+                    continue
                 self.logger.debug("configure", extra={"platform": platform})
                 if platform["kind"] != "Platform":
                     continue
@@ -177,7 +179,9 @@ class SamplingSystem:
 
             # TODO allow for multiple configs of a given map that are retrieved from datastore or loaded
 
+            self.logger.debug("configure", extra={"variablemaps": variablemaps})
             for vm in variablemaps:
+                self.logger.debug("configure", extra={"variablemap": vm})
                 if vm["kind"] != "PlatformVariableMap":
                     continue
                 vm_name = vm["metadata"]["name"]
