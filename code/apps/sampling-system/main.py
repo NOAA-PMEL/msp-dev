@@ -109,7 +109,9 @@ app = FastAPI()
 #     custom: dict | None = None
 
 # datastore = Datastore()
+print("starting sampling_system")
 sampling_system = SamplingSystem()
+print(f"sampling_system started: {sampling_system}")
 
 
 @app.get("/")
