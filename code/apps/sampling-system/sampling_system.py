@@ -906,6 +906,7 @@ class SamplingSystem:
                     print("***YES***")
             
             if source_id not in variablemap["sources"]:
+                print(f"!!! source_id: {source_id} not in variablemap[sources]: variablemap['sources'].keys()")
                 return
             
             # print(f"update_variableset_by_source: {variablemap['sources']}")
