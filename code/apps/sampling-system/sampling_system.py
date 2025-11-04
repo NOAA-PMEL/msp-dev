@@ -119,17 +119,12 @@ class SamplingSystem:
     """docstring for SamplingSystem."""
 
     def __init__(self):
-        print("SamplingSystem: init: here:1")
         self.logger = logging.getLogger(self.__class__.__name__)
-        print("SamplingSystem: init: here:2")
         self.logger.setLevel(logging.DEBUG)
-        print("SamplingSystem: init: here:3")
         self.logger.debug("SamplingSystem instantiated")
-        print("here:4")
         self.platforms = dict()
         self.platform_layouts = dict()
         self.variablemaps = dict()
-        print("here:5")
 
         # this is cache for variable mapping
         self.variablesets = {
@@ -893,7 +888,7 @@ class SamplingSystem:
             source_time = source_data.data["variables"]["time"]["data"]
             self.logger.debug("update_variableset_by_source", extra={"source_time": source_time})
 
-            for src_xref in variablemap["source"][source_id]:
+            for src_xref in variablemap["sources"][source_id]:
                 self.logger.debug("update_variableset_by_source", extra={"source_xref": src_xref})
 
                 variableset = variablemap["variablesets"][src_xref["variableset"]]
@@ -923,7 +918,7 @@ class SamplingSystem:
                         variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name].append(
                             source_data.data["variables"][source_v]["data"]
                         )
-                    self.logger.debug("update_variableset_by_source", extra={"vm": variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]})
+                    # self.logger.debug("update_variableset_by_source", extra={"vm": variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]})
 
         except Exception as e:
             self.logger.error("update_variableset_by_source", extra={"reason": e})
