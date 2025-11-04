@@ -276,6 +276,7 @@ class SamplingSystem:
                         if (index_type:=vs_def["index"]["index_type"]) not in self.index_monitor_tasks:
                             if index_type == "time":
                                 index_value = vs_def["index"]["index_value"]
+                                self.logger.debug("configure", extra={"index_type": index_type, "index_value": index_value})
                                 self.index_monitor_tasks[index_type] = {
                                     index_value: asyncio.create_task(
                                         self.index_time_monitor(
