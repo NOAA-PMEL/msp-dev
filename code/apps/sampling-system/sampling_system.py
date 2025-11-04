@@ -247,7 +247,7 @@ class SamplingSystem:
                                 # add x-ref source_id->variable
                                 # if "direct" not in current_vm["sources"]:
                                 #     current_vm["sources"]["direct"] = dict()
-                                if v["source"]["source_id"] not in current_vm["sources"]:
+                                if v["source"][direct_var]["source_id"] not in current_vm["sources"]:
                                     current_vm["sources"][v["source"]["source_id"]] = []
                                 source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
                                 if source_entry not in current_vm["sources"]["direct"][v["source"]["source_id"]]:
