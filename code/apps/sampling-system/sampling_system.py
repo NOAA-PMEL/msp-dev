@@ -726,8 +726,9 @@ class SamplingSystem:
         while True:
             try:
                 ce = await self.mqtt_buffer.get()
-
+                self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
                 if ce["type"] == "envds.data.update":
+                    self.logger.debug("handle_mqtt_buffer", extra={"ce-type": ce["type"]})
                     await self.device_data_update(ce)
                 elif ce["type"] == "envds.controller.data.update":
                     await self.controller_data_update(ce)
