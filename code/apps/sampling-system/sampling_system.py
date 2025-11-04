@@ -161,7 +161,9 @@ class SamplingSystem:
             with open("/app/config/platforms.json", "r") as f:
                 platforms = json.load(f)
 
+            self.logger.debug("configure", extra={"platforms": platforms})
             for platform in platforms:
+                self.logger.debug("configure", extra={"platform": platform})
                 if platform["kind"] != "Platform":
                     continue
                 if (name := platform["metadata"]["name"]) not in self.platforms:
