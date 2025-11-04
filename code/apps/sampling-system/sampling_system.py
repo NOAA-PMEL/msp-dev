@@ -239,7 +239,7 @@ class SamplingSystem:
                             current_v =  current_vm["variablesets"][vs_name]["variables"][v_name]
                             current_v["attributes"]["map_type"] = v["map_type"]
                             if v["map_type"] == "direct":
-                                direct_var = current_v["direct_value"]["sorce_variable"]
+                                direct_var = v["direct_value"]["source_variable"]
                                 current_v["attributes"]["source_type"] = v["source"][direct_var]["source_type"]
                                 current_v["attributes"]["source_id"] = v["source"][direct_var]["source_id"]
                                 current_v["attributes"]["source_variable"] = v["source"][direct_var]["source_variable"]
