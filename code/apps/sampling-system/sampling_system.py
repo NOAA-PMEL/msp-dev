@@ -70,7 +70,7 @@ handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
-L.setLevel(logging.INFO)
+self.logger.setLevel(logging.INFO)
 
 
 # test
@@ -159,7 +159,7 @@ class SamplingSystem:
                     continue
                 if (name := platform["metadata"]["name"]) not in self.platforms:
                     self.platforms[name] = platform
-
+            self.logger.debug("configure", extra={"platforms": self.platforms})
             # load layout configmaps
 
             # load variablemap configmaps
@@ -650,7 +650,7 @@ class SamplingSystem:
         reconnect = 10
         while True:
             try:
-                L.debug("listen", extra={"config": self.config})
+                self.logger.debug("listen", extra={"config": self.config})
                 client_id = str(ULID())
                 async with Client(
                     self.config.mqtt_broker,
@@ -660,9 +660,9 @@ class SamplingSystem:
                     # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
                     for topic in self.config.mqtt_topic_subscriptions.split(","):
                         # print(f"run - topic: {topic.strip()}")
-                        # L.debug("run", extra={"topic": topic})
+                        # self.logger.debug("run", extra={"topic": topic})
                         if topic.strip():
-                            L.debug("subscribe", extra={"topic": topic.strip()})
+                            self.logger.debug("subscribe", extra={"topic": topic.strip()})
                             await self.client.subscribe(
                                 f"$share/sampling-system/{topic.strip()}"
                             )
@@ -676,19 +676,19 @@ class SamplingSystem:
                             topic = message.topic.value
                             ce["sourcepath"] = topic
                             await self.mqtt_buffer.put(ce)
-                            L.debug(
+                            self.logger.debug(
                                 "get_from_mqtt_loop",
                                 extra={"cetype": ce["type"], "topic": topic},
                             )
                         except Exception as e:
-                            L.error("get_from_mqtt_loop", extra={"reason": e})
+                            self.logger.error("get_from_mqtt_loop", extra={"reason": e})
                         # try:
-                        #     L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
+                        #     self.logger.debug("listen", extra={"payload_type": type(ce), "ce": ce})
                         #     await self.send_to_knbroker(ce)
                         # except Exception as e:
-                        #     L.error("Error sending to knbroker", extra={"reason": e})
+                        #     self.logger.error("Error sending to knbroker", extra={"reason": e})
             except MqttError as error:
-                L.error(
+                self.logger.error(
                     f"{error}. Trying again in {reconnect} seconds",
                     extra={
                         k: v
@@ -711,7 +711,7 @@ class SamplingSystem:
                     await self.controller_data_update(ce)
 
             except Exception as e:
-                L.error("handle_mqtt_buffer", extra={"reason": e})
+                self.logger.error("handle_mqtt_buffer", extra={"reason": e})
 
             await asyncio.sleep(0.0001)
 
@@ -733,7 +733,7 @@ class SamplingSystem:
                 )
 
         except Exception as e:
-            L.error("device_data_update", extra={"reason": e})
+            self.logger.error("device_data_update", extra={"reason": e})
         pass
 
     def get_variablemap_id(self, vm:dict):
@@ -750,7 +750,7 @@ class SamplingSystem:
 
             return "::".join([variablemap_type_id, variablemap_name, valid_config_time])
         except Exception as e:
-            L.error("get_variable_map_id", extra={"reason": e})
+            self.logger.error("get_variable_map_id", extra={"reason": e})
             return ""
 
     def get_variableset_id(self, vs:dict):
@@ -762,7 +762,7 @@ class SamplingSystem:
             return "::".join([variablemap_id, variableset_name])
         
         except Exception as e:
-            L.error("get_variable_map_id", extra={"reason": e})
+            self.logger.error("get_variable_map_id", extra={"reason": e})
             return ""
 
     def get_id_components(self, vm_id:str=None, vs_id:str=None) -> dict:
@@ -786,7 +786,7 @@ class SamplingSystem:
                 }
                 return comp
         except Exception as e:
-            L.error("get_id_components", extra={"reason": e})
+            self.logger.error("get_id_components", extra={"reason": e})
         
         return None
 
@@ -807,7 +807,7 @@ class SamplingSystem:
                 )
 
         except Exception as e:
-            L.error("device_data_update", extra={"reason": e})
+            self.logger.error("device_data_update", extra={"reason": e})
         pass
 
     def is_valid_variable_set(self, vs_id: str, time:str) -> bool:
@@ -822,7 +822,7 @@ class SamplingSystem:
                 await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
 
         except Exception as e:
-            L.error("update_by_source", extra={"reason": e})
+            self.logger.error("update_by_source", extra={"reason": e})
 
     async def update_variableset_by_source(self, variablemap:dict, source_id:str, source_data:CloudEvent):
 
@@ -859,7 +859,7 @@ class SamplingSystem:
                         )
 
         except Exception as e:
-            L.error("update_variableset_by_source", extra={"reason": e})
+            self.logger.error("update_variableset_by_source", extra={"reason": e})
 
 
     # async def update_variableset_by_source(
@@ -981,7 +981,7 @@ class SamplingSystem:
             #     )
 
         except Exception as e:
-            L.error("update_variable_by_id", extra={"reason": e})
+            self.logger.error("update_variable_by_id", extra={"reason": e})
 
     async def get_indexed_value(self, index_type: str, index_value, source_val:str):
         if index_type == "time":
@@ -1042,11 +1042,11 @@ class SamplingSystem:
     #         rounded_dt = dt.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(seconds=rounded_total_seconds)
     #         # print(f"rounded_dt = {rounded_dt}")
     #         result = timestamp_to_string(rounded_dt)
-    #         L.debug("round_to_nearest_N_seconds", extra={"orig": dt_string, "rounded": result})
+    #         self.logger.debug("round_to_nearest_N_seconds", extra={"orig": dt_string, "rounded": result})
     #         # return
 
     #     except Exception as e:
-    #         L.error("round_to_nearest_N_seconds", extra={"reason": e})
+    #         self.logger.error("round_to_nearest_N_seconds", extra={"reason": e})
     #         result = ""
     #     return result
 
@@ -1345,7 +1345,7 @@ class SamplingSystem:
     #                     continue  # TODO fill in for other types
 
     #     except Exception as e:
-    #         L.error("update_timebase_variableset_by_index", extra={"reason": e})
+    #         self.logger.error("update_timebase_variableset_by_index", extra={"reason": e})
 
     async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict):
         pass
@@ -1373,7 +1373,7 @@ class SamplingSystem:
 
             variableset_record[variable_name]["data"] = val
         except Exception as e:
-            L.error("update_direct_variable_by_time_index", extra={"reason": e})
+            self.logger.error("update_direct_variable_by_time_index", extra={"reason": e})
 
         return
 
@@ -1413,7 +1413,7 @@ class SamplingSystem:
                             #     continue
 
 
-                L.debug("update_variableset_by_time_index", extra={"vs_record": variableset})
+                self.logger.debug("update_variableset_by_time_index", extra={"vs_record": variableset})
                 
                 varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name)
                 source_id = (
@@ -1564,7 +1564,7 @@ class SamplingSystem:
             #             continue  # TODO fill in for other types
 
         except Exception as e:
-            L.error("update_timebase_variableset_by_index", extra={"reason": e})
+            self.logger.error("update_timebase_variableset_by_index", extra={"reason": e})
 
     async def index_monitor(self):
         while True: 
@@ -1631,7 +1631,7 @@ class SamplingSystem:
                     pass
 
             except Exception as e:
-                L.error("index_monitor", extra={"reason": e})
+                self.logger.error("index_monitor", extra={"reason": e})
 
     # async def device_data_get(self, query: DataStoreQuery):
     # async def device_data_get(self, query: DataRequest):
@@ -1824,7 +1824,7 @@ class SamplingSystem:
     #                 )
 
     #     except Exception as e:
-    #         L.error("device_instance_registry_update", extra={"reason": e})
+    #         self.logger.error("device_instance_registry_update", extra={"reason": e})
     #     pass
 
     # async def device_instance_registry_get(self, query: DeviceInstanceRequest) -> dict:
@@ -2026,7 +2026,7 @@ class SamplingSystem:
     #                 )
 
     #     except Exception as e:
-    #         L.error("controller_instance_registry_update", extra={"reason": e})
+    #         self.logger.error("controller_instance_registry_update", extra={"reason": e})
     #     pass
 
     # async def controller_instance_registry_get(self, query: ControllerInstanceRequest) -> dict:
@@ -2058,7 +2058,7 @@ async def main(config):
     server = uvicorn.Server(config)
     # test = logging.getLogger()
     # test.info("test")
-    L.info(f"server: {server}")
+    self.logger.info(f"server: {server}")
     await server.serve()
 
     print("starting shutdown...")
