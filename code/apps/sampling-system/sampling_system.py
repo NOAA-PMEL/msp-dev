@@ -902,6 +902,8 @@ class SamplingSystem:
             self.logger.debug("update_variableset_by_source", extra={"source_time": source_time})
             for k,v in variablemap["sources"].items():
                 print(f"***variablemap[sources][{k}] = {v}")
+                if k == source_id:
+                    print("***YES***")
 
             # print(f"update_variableset_by_source: {variablemap['sources']}")
             for src_xref in variablemap["sources"][source_id]:
