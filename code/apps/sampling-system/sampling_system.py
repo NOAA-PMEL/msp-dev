@@ -883,7 +883,7 @@ class SamplingSystem:
                 print("here:7")
                 variablemap = vm["variablemap"]
                 print("here:8")
-                self.logger.debug("update_by_source", extra={"source_id": source_id, "vm": variablemap})
+                # self.logger.debug("update_by_source", extra={"source_id": source_id, "vm": variablemap})
                 print("here:9")
                 await self.update_variableset_by_source(variablemap=variablemap, source_id=source_id, source_data=source_data)
                 print("here:10")
