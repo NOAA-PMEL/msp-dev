@@ -139,6 +139,8 @@ class SamplingSystem:
         }
         print("here:6")
 
+        self.index_monitor_tasks = dict()
+
         self.config = SamplingSystemConfig()
         self.configure()
         print("here:7")
@@ -148,7 +150,6 @@ class SamplingSystem:
         asyncio.create_task(self.handle_mqtt_buffer())
         print("SamplingSystem: init: here:8")
 
-        self.index_monitor_tasks = dict()
 
     def configure(self):
         # set clients
