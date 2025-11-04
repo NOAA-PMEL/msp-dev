@@ -840,6 +840,7 @@ class SamplingSystem:
 
     async def get_valid_variablemaps(self, target_time:str):
         try:
+            self.logger.debug("get_valid_variablemaps", extra={"target_time": target_time})
             valid_variablesets = []
             for vmtype_name, vmtype in self.variablemaps.items():
                 for vmtype_type_name, vm_type_type in vmtype.items():
@@ -847,6 +848,7 @@ class SamplingSystem:
 
                         current = ""
                         for vm_valid_config_time in vm.keys():
+                            self.logger.debug("get_valid_variablemaps", extra={"vm_name": vm_name, "valid_config_time": vm_valid_config_time})
                             # vm_parts = vm_id.split("::")
                             # vm_valid_config_time = vm_parts[2]
                             if target_time > vm_valid_config_time and vm_valid_config_time > current:
@@ -866,11 +868,14 @@ class SamplingSystem:
             self.logger.error("get_valid_variablemaps", extra={"reason": e})
             valid_variablesets = []
         
+        self.logger.debug("get_valid_variablemaps", extra={"valid_variable_sets": valid_variablesets})
         return valid_variablesets
     
     async def update_by_source(self, source_id:str, source_data: CloudEvent):
         try:
+            self.logger.debug("update_by_source", extra={"source_id": source_id})
             source_time = source_data.data["variables"]["time"]["data"]
+            self.logger.debug("update_by_source", extra={"source_time": source_time})
             vm_list = await self.get_valid_variablemaps(target_time=source_time)
             for vm in vm_list:
                 variablemap = vm["variablemap"]
