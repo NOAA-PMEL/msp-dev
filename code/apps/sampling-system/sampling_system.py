@@ -868,31 +868,31 @@ class SamplingSystem:
     
     async def update_by_source(self, source_id:str, source_data: CloudEvent):
         try:
-            print("here:1")
-            self.logger.debug("update_by_source", extra={"source_id": source_id})
-            print("here:2")
+            # print("here:1")
+            # self.logger.debug("update_by_source", extra={"source_id": source_id})
+            # print("here:2")
             source_time = source_data.data["variables"]["time"]["data"]
-            print("here:3")
+            # print("here:3")
             self.logger.debug("update_by_source", extra={"source_time": source_time})
-            print("here:4")
+            # print("here:4")
             vm_list = await self.get_valid_variablemaps(target_time=source_time)
-            print(f"here:5 {vm_list}")
+            # print(f"here:5 {vm_list}")
             for vm in vm_list:
-                print(f"here:6 {vm}")
+                # print(f"here:6 {vm}")
                 # self.logger.debug("update_by_source", extra={"vm": vm})
-                print("here:7")
+                # print("here:7")
                 variablemap = vm["variablemap"]
-                print("here:8")
+                # print("here:8")
                 # self.logger.debug("update_by_source", extra={"source_id": source_id, "vm": variablemap})
-                print("here:9")
+                # print("here:9")
                 await self.update_variableset_by_source(variablemap=variablemap, source_id=source_id, source_data=source_data)
-                print("here:10")
+                # print("here:10")
 
         except Exception as e:
-            print("here:11")
+            # print("here:11")
 
             self.logger.error("update_by_source", extra={"reason": e})
-            print("here:12")
+            # print("here:12")
 
     async def update_variableset_by_source(self, variablemap:dict, source_id:str, source_data:CloudEvent):
 
@@ -901,6 +901,7 @@ class SamplingSystem:
             source_time = source_data.data["variables"]["time"]["data"]
             self.logger.debug("update_variableset_by_source", extra={"source_time": source_time})
 
+            print(f"update_variableset_by_source: {variablemap}")
             for src_xref in variablemap["sources"][source_id]:
                 self.logger.debug("update_variableset_by_source", extra={"source_xref": src_xref})
 
