@@ -838,13 +838,44 @@ class SamplingSystem:
         valid_vs_id = self.get_valid_variableset_id_by_time(self, variableset_id=vs_id, source_time=time)
         return vs_id == valid_vs_id
 
+    async def get_valid_variablemaps(self, target_time:str):
+        try:
+            valid_variablesets = []
+            for vmtype_name, vmtype in self.variablemaps.items():
+                for vmtype_type_name, vm_type_type in vmtype.items():
+                    for vm_name, vm in vm_type_type.items():
+
+                        current = ""
+                        for vm_valid_config_time in vm.keys():
+                            # vm_parts = vm_id.split("::")
+                            # vm_valid_config_time = vm_parts[2]
+                            if target_time > vm_valid_config_time and vm_valid_config_time > current:
+                                current = vm_valid_config_time
+                        if current:
+                            valid_variablesets.append(
+                                {
+                                    "variablemap_type": vmtype_name,
+                                    "variablemap_type_name": vmtype_type_name,
+                                    "variablemap_name": vm_name,
+                                    "valid_config_time": current,
+                                    "variablemap": vm[current]
+                                }
+                            )
+
+        except Exception as e:
+            self.logger.error("get_valid_variablemaps", extra={"reason": e})
+            valid_variablesets = []
+        
+        return valid_variablesets
+    
     async def update_by_source(self, source_id:str, source_data: CloudEvent):
         try:
             source_time = source_data.data["variables"]["time"]["data"]
-            vm_list = await self.get_valid_variablemaps(time=source_time)
+            vm_list = await self.get_valid_variablemaps(target_time=source_time)
             for vm in vm_list:
-                self.logger.debug("update_by_source", extra={"source_id": source_id, "vm": vm})
-                await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
+                variablemap = vm["variablemap"]
+                self.logger.debug("update_by_source", extra={"source_id": source_id, "vm": variablemap})
+                await self.update_variableset_by_source(variablemap=variablemap, source_id=source_id, source_data=source_data)
 
         except Exception as e:
             self.logger.error("update_by_source", extra={"reason": e})
@@ -1608,16 +1639,16 @@ class SamplingSystem:
                 update_type = update["update_type"]
                 target_time = update["index_ready"]
 
-                vm_list = await self.get_valid_variablemaps(time=target_time)
+                vm_list = await self.get_valid_variablemaps(target_time=target_time)
                 for vm in vm_list:
                     # await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
-
-                    self.logger.debug("index_monitor", extra={"update": vm})
+                    variablemap = vm["variablemap"]
+                    self.logger.debug("index_monitor", extra={"update": variablemap})
 
                     index_type = update["index_type"]
                     if index_type == "time":
                         await self.update_variablesets_by_time_index(
-                            self, variablemap=vm, timebase_index=update
+                            self, variablemap=variablemap, timebase_index=update
                         )
                     # # handle timebase update
                     # vm_name = update["variablemap"]
