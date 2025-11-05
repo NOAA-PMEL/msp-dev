@@ -930,9 +930,12 @@ class SamplingSystem:
                     variablemap["indexed"][index_type][index_value]["data"] = dict()
 
                 if index_type == "time":
+                    self.logger.debug("update_variableset_by_source", extra={"index_value": index_value, "source_time": source_time})
+
                     indexed_time = await self.get_indexed_time_value(
                         index_time=index_value,
                         source_time=source_time)
+                    self.logger.debug("update_variableset_by_source", extra={"indexed_time": indexed_time})
                     
                     # if indexed_time not in variablemap["indexed"]["data"][index_type][index_value]:
                     #     variablemap["indexed"]["data"][index_type][index_value][indexed_time] = dict()
@@ -1107,10 +1110,11 @@ class SamplingSystem:
     async def get_indexed_time_value(self, index_time: int, source_time: str):
 
         # source_time = source_data.data["variables"]["time"]["data"]
-            indexed_time = self.get_timebase_period(
-                dt_string=source_time, timebase=index_time
-            )
-            return indexed_time
+        
+        indexed_time = self.get_timebase_period(
+            dt_string=source_time, timebase=index_time
+        )
+        return indexed_time
 
     async def get_index_value(self, index: dict, source_time: str):
 
@@ -1123,8 +1127,12 @@ class SamplingSystem:
             )
 
     def get_timebase_period(self, dt_string: str, timebase: int) -> str:
+        self.logger.debug("get_timebase_period", extra={"dt_string": dt_string, "timebase": timebase})
         dt = string_to_timestamp(dt_string)
+        self.logger.debug("get_timebase_period", extra={"dt": dt})
         dt_period = round_to_nearest_N_seconds(dt=dt, Nsec=timebase)
+        self.logger.debug("get_timebase_period", extra={"dt_period": dt_period})
+        self.logger.debug("get_timebase_period", extra={"period": timestamp_to_string(dt_period)})
         if dt_period:
             return timestamp_to_string(dt_period)
         else:
