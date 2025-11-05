@@ -214,9 +214,12 @@ class SamplingSystem:
                             "variables": dict()
                         }
                     current_vm["variablesets"][vs_name]["attributes"] = vm_data["attributes"].copy()
-                    current_vm["variablesets"][vs_name]["attributes"]["index_type"] = vs_def["index"]["index_type"]
-                    current_vm["variablesets"][vs_name]["attributes"]["index_value"] = vs_def["index"]["index_value"]
-                    current_vm["variablesets"][vs_name]["attributes"]["variablemap_kind"] = vm["kind"]
+                    current_vm["variablesets"][vs_name]["attributes"]["index_type"] = {"type": "string", "data": vs_def["index"]["index_type"]}
+                    vtype = "string"
+                    if vs_def["index"]["index_type"] in ["time"]:
+                        vtype = "int"
+                    current_vm["variablesets"][vs_name]["attributes"]["index_value"] = {"type": vtype, "data": vs_def["index"]["index_value"]}
+                    current_vm["variablesets"][vs_name]["attributes"]["variablemap_kind"] = {"type": "string", "data": vm["kind"]}
 
                     current_vm["variablesets"][vs_name]["dimensions"] = {"time": 0}
 
@@ -236,12 +239,12 @@ class SamplingSystem:
 
                             # add extra attributes
                             current_v =  current_vm["variablesets"][vs_name]["variables"][v_name]
-                            current_v["attributes"]["map_type"] = v["map_type"]
+                            current_v["attributes"]["map_type"] = {"type": "string", "data": v["map_type"]}
                             if v["map_type"] == "direct":
                                 direct_var = v["direct_value"]["source_variable"]
-                                current_v["attributes"]["source_type"] = v["source"][direct_var]["source_type"]
-                                current_v["attributes"]["source_id"] = v["source"][direct_var]["source_id"]
-                                current_v["attributes"]["source_variable"] = v["source"][direct_var]["source_variable"]
+                                current_v["attributes"]["source_type"] = {"type": "string", "data": v["source"][direct_var]["source_type"]}
+                                current_v["attributes"]["source_id"] = {"type": "string", "data": v["source"][direct_var]["source_id"]}
+                                current_v["attributes"]["source_variable"] = {"type": "string", "data": v["source"][direct_var]["source_variable"]}
                                 
                                 # add x-ref source_id->variable
                                 # if "direct" not in current_vm["sources"]:
@@ -981,7 +984,7 @@ class SamplingSystem:
                         self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
                         if (v_name:=src_xref["variable"]) not in direct_map:
                             direct_map[v_name] = []
-                        source_v = variablemap["variablemap"]["data"]["variables"][v_name]["attributes"]["source_variable"]
+                        source_v = variablemap["variablemap"]["data"]["variables"][v_name]["attributes"]["source_variable"]["data"]
                         direct_map[v_name].append(
                             source_data.data["variables"][source_v]["data"]
                         )
