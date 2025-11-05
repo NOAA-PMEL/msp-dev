@@ -1768,10 +1768,10 @@ class SamplingSystem:
                 target_time = update["index_ready"]
 
                 vm_list = await self.get_valid_variablemaps(target_time=target_time)
-                self.logger.debug("index_monitor", extra={"vm_list": vm_list})
+                self.logger.debug("index_monitor", extra={"len": len(vm_list), "vm_list": vm_list})
                 for vm in vm_list:
                     # await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
-                    self.logger.debug("index_monitor", extra={"vm": vm})
+                    print(f"index_monitor:vm = {vm}")
                     variablemap = vm["variablemap"]
                     self.logger.debug("index_monitor", extra={"update": variablemap})
 
