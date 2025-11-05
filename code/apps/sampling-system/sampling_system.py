@@ -1778,7 +1778,7 @@ class SamplingSystem:
                     index_type = update["index_type"]
                     if index_type == "time":
                         await self.update_variablesets_by_time_index(
-                            self, variablemap=variablemap, timebase_index=update
+                            variablemap=variablemap, timebase_index=update
                         )
                     # # handle timebase update
                     # vm_name = update["variablemap"]
