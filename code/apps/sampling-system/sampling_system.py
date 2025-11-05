@@ -1773,7 +1773,7 @@ class SamplingSystem:
                     # await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
                     print(f"index_monitor:vm = {vm}")
                     variablemap = vm["variablemap"]
-                    self.logger.debug("index_monitor", extra={"update": variablemap})
+                    print(f"index_monitor: variablemap = {variablemap}")
 
                     index_type = update["index_type"]
                     if index_type == "time":
