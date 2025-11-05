@@ -1128,13 +1128,13 @@ class SamplingSystem:
 
     def get_timebase_period(self, dt_string: str, timebase: int) -> str:
         self.logger.debug("get_timebase_period", extra={"dt_string": dt_string, "timebase": timebase})
-        dt = string_to_timestamp(dt_string)
+        dt = string_to_datetime(dt_string)
         self.logger.debug("get_timebase_period", extra={"dt": dt})
         dt_period = round_to_nearest_N_seconds(dt=dt, Nsec=timebase)
         self.logger.debug("get_timebase_period", extra={"dt_period": dt_period})
-        self.logger.debug("get_timebase_period", extra={"period": timestamp_to_string(dt_period)})
+        self.logger.debug("get_timebase_period", extra={"period": datetime_to_string(dt_period)})
         if dt_period:
-            return timestamp_to_string(dt_period)
+            return datetime_to_string(dt_period)
         else:
             return ""
 
@@ -1210,7 +1210,7 @@ class SamplingSystem:
             # check if current time is greater than threshold to create previous interval variableset
             #   e.g., if tb=1, wait for next second, if tb>1, wait for 0.6*tb to pass (tb=10, wait for 6sec to pass)
             if last_dt_period:
-                last_time_period = timestamp_to_string(last_time_period)
+                last_time_period = datetime_to_string(last_time_period)
                 self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
                 if seconds_elapsed(initial_dt=last_dt_period) >= update_threshhold:
                     update = {
