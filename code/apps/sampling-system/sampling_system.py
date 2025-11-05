@@ -270,18 +270,23 @@ class SamplingSystem:
                         
                         # create indexing task for current index if necessary
                         if (index_type:=vs_def["index"]["index_type"]) not in self.index_monitor_tasks:
+                            self.monitor_tasks[index_type] = dict()
                             if index_type == "time":
                                 index_value = vs_def["index"]["index_value"]
                                 self.logger.debug("configure", extra={"index_type": index_type, "index_value": index_value})
-                                self.index_monitor_tasks[index_type] = {
-                                    index_value: asyncio.create_task(
-                                        self.index_time_monitor(
-                                            # variablemap=vm_id,
-                                            timebase=index_value,
+                                if index_value not in self.monitor_tasks[index_type] or not self.monitor_tasks[index_type][index_value]:
+                                    self.monitor_tasks[index_type][index_value] = self.index_monitor_tasks(
+                                        asyncio.create_task(self.index_time_monitor(timebase=index_value))
                                         )
-                                    )
-                                }
-                                self.logger.debug("configure", extra={"index_monitor_tasks": self.index_monitor_tasks})
+                                # self.index_monitor_tasks[index_type][index_value] = {
+                                #     index_value: asyncio.create_task(
+                                #         self.index_time_monitor(
+                                #             # variablemap=vm_id,
+                                #             timebase=index_value,
+                                #         )
+                                #     )
+                                # }
+                                # self.logger.debug("configure", extra={"index_monitor_tasks": self.index_monitor_tasks})
 
 
 
@@ -1176,11 +1181,11 @@ class SamplingSystem:
 
     async def index_time_monitor(self, timebase: int):
 
-        while True:
-            dt = get_datetime()
-            self.logger.debug("index_time_monitor", extra={"current_dt": dt, "timebase": timebase})
-            self.logger.debug("index_time_monitor", extra={"current_dt_period": round_to_nearest_N_seconds(dt=dt, Nsec=timebase)})
-            await asyncio.sleep(1)
+        # while True:
+        #     dt = get_datetime()
+        #     self.logger.debug("index_time_monitor", extra={"current_dt": dt, "timebase": timebase})
+        #     self.logger.debug("index_time_monitor", extra={"current_dt_period": round_to_nearest_N_seconds(dt=dt, Nsec=timebase)})
+        #     await asyncio.sleep(1)
 
         try:
             current_dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
@@ -1207,7 +1212,8 @@ class SamplingSystem:
                         last_dt_period = current_dt_period
                         current_dt_period = dt_period
                         self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
-
+                    await asyncio.sleep(1)
+                    continue
                     # # get list of vs from self.variablesets["indices"]["time"][timebase]
                     # get all? valid variable maps based on time?
                     # loop through list of vs in each valid vm and update if index_type and value match
