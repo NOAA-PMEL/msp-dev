@@ -981,7 +981,7 @@ class SamplingSystem:
                         self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
                         if (v_name:=src_xref["variable"]) not in direct_map:
                             direct_map[v_name] = []
-                        source_v = variablemap["variables"][v_name]["attributes"]["source_variable"]
+                        source_v = variablemap["variablemap"]["data"]["variables"][v_name]["attributes"]["source_variable"]
                         direct_map[v_name].append(
                             source_data.data["variables"][source_v]["data"]
                         )
