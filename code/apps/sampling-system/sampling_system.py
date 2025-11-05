@@ -962,7 +962,7 @@ class SamplingSystem:
                     map_type = src_xref["map_type"]
                     if map_type not in variablemap["indexed"][index_type][index_value]["data"][indexed_time]:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type] = dict()
-                    if vs_name not in variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name]:
+                    if vs_name not in variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type]:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name] = dict()
                     print(f"update_variableset_by_source: variablemap = {variablemap}")
 
