@@ -926,6 +926,8 @@ class SamplingSystem:
             for src_xref in variablemap["sources"][source_id]:
                 self.logger.debug("update_variableset_by_source", extra={"source_xref": src_xref})
                 print(f"update_variableset_by_source: variablemap = {variablemap}")
+                for k in variablemap.keys():
+                    print(f"update_variableset_by_source: variablemap[{k}] = {variablemap[k]}")
                 variableset = variablemap["variablesets"][src_xref["variableset"]]
                 index_type = variableset["attributes"]["index_type"]
                 index_value = variableset["attributes"]["index_value"]
