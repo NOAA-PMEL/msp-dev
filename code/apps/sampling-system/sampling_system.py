@@ -281,6 +281,7 @@ class SamplingSystem:
                                         )
                                     )
                                 }
+                            self.logger.debug("configure", extra={"index_monitor_tasks": self.index_monitor_tasks})
 
 
 
@@ -1174,6 +1175,11 @@ class SamplingSystem:
     #     return result
 
     async def index_time_monitor(self, timebase: int):
+
+        while True:
+            self.logger.debug("index_time_monitor: here")
+            await asyncio.sleep(1)
+            
         try:
             current_dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
 
