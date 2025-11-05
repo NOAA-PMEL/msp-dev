@@ -31,6 +31,7 @@ from envds.util.util import (
     get_datetime_string,
     get_datetime,
     datetime_to_string,
+    string_to_datetime,
     get_datetime_with_delta,
     string_to_timestamp,
     timestamp_to_string,
@@ -1189,8 +1190,10 @@ class SamplingSystem:
             # create timestamp for current interval and save to index values
             dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
             if dt_period != current_dt_period:
+                self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
                 last_dt_period = current_dt_period
                 current_dt_period = dt_period
+                self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
 
             # # get list of vs from self.variablesets["indices"]["time"][timebase]
             # get all? valid variable maps based on time?
