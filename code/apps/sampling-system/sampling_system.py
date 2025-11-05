@@ -213,11 +213,14 @@ class SamplingSystem:
                             "dimensions": dict(),
                             "variables": dict()
                         }
-                    current_vm["variablesets"][vs_name]["attributes"] = vm_data["attributes"].copy()
+                    current_vm["variablesets"][vs_name]["attributes"] = dict()
+                    for att_name, att_val in vm_data["attributes"].items():
+                        current_v["variablesets"][vs_name]["attributes"][att_name] = {
+                            "type": f"{type(att_val).__name__}",
+                            "data": att_val
+                        }
                     current_vm["variablesets"][vs_name]["attributes"]["index_type"] = {"type": "string", "data": vs_def["index"]["index_type"]}
-                    vtype = "string"
-                    if vs_def["index"]["index_type"] in ["time"]:
-                        vtype = "int"
+                    vtype = f"{type(vs_def["index"]["index_value"]).__name__}"
                     current_vm["variablesets"][vs_name]["attributes"]["index_value"] = {"type": vtype, "data": vs_def["index"]["index_value"]}
                     current_vm["variablesets"][vs_name]["attributes"]["variablemap_kind"] = {"type": "string", "data": vm["kind"]}
 
@@ -929,8 +932,8 @@ class SamplingSystem:
                 for k in variablemap.keys():
                     print(f"update_variableset_by_source: variablemap[{k}] = {variablemap[k]}")
                 variableset = variablemap["variablesets"][src_xref["variableset"]]
-                index_type = variableset["attributes"]["index_type"]
-                index_value = variableset["attributes"]["index_value"]
+                index_type = variableset["attributes"]["index_type"]["data"]
+                index_value = variableset["attributes"]["index_value"]["data"]
                 # if index_type not in variablemap["indexed"]["data"]:
                 if index_type not in variablemap["indexed"]:
                     # variablemap["indexed"]["data"][index_type] = dict()
