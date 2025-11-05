@@ -55,7 +55,7 @@ def datetime_mod_sec(sec: int) -> int:
     return get_datetime().second % sec
 
 def seconds_elapsed(initial_dt: datetime) -> float:
-    delta = get_datetime() - inital_dt
+    delta = get_datetime() - initial_dt
     return delta.total_seconds()
 
 def get_checksum(data: dict) -> str:
