@@ -955,7 +955,8 @@ class SamplingSystem:
                     
                     # if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"]["data"][indexed_time]:
                     #     variablemap["indexed"]["data"][indexed_time][vs_name] = dict()
-                    if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"][index_type][index_value]["variablesets"]:
+                    vs_name = src_xref["variableset"]
+                    if vs_name not in variablemap["indexed"][index_type][index_value]["variablesets"]:
                         variablemap["indexed"][index_type][index_value]["variablesets"].append(vs_name)
 
                     map_type = src_xref["map_type"]
@@ -963,7 +964,7 @@ class SamplingSystem:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type] = dict()
                     if vs_name not in variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name]:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name] = dict()
-
+                    print(f"update_variableset_by_source: variablemap = {variablemap}")
 
                     # if src_xref["map_type"] == "direct":
                     #     # if "direct" not in variablemap["indexed"]["data"][indexed_time][vs_name]:
@@ -975,6 +976,7 @@ class SamplingSystem:
 
                     
                     if map_type == "direct":
+                        print(f"vs_name = {vs_name}")
                         direct_map = variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name]
                         self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
                         if (v_name:=src_xref["variable"]) not in direct_map:
