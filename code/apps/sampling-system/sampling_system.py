@@ -135,6 +135,7 @@ class SamplingSystem:
         }
         print("here:6")
 
+        self.index_ready_buffer = asyncio.Queue()
         self.index_monitor_tasks = dict()
 
         self.config = SamplingSystemConfig()
@@ -1236,7 +1237,7 @@ class SamplingSystem:
                 #   e.g., if tb=1, wait for next second, if tb>1, wait for 0.6*tb to pass (tb=10, wait for 6sec to pass)
                 if last_dt_period:
                     # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
-                    if seconds_elapsed(inital_dt=last_dt_period) >= update_threshhold:
+                    if seconds_elapsed(initial_dt=last_dt_period) >= update_threshhold:
                         self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
                         last_time_period = datetime_to_string(last_dt_period)
                         update = {
@@ -1249,6 +1250,8 @@ class SamplingSystem:
                         }                   
                         self.logger.debug("index_time_monitor", extra={"upate": update})
                         await self.index_ready_buffer.put(update)
+                        last_dt_period = None
+
                     # if seconds_elapsed(initial_dt=last_dt_period) >= threshhold_direct:
                     #     update = {
                     #         # "variablemap": variablemap,
