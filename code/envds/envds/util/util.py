@@ -54,7 +54,7 @@ def get_datetime_with_delta(delta: timedelta, dt: datetime=datetime.now(timezone
 def datetime_mod_sec(sec: int) -> int:
     return get_datetime().second % sec
 
-def seconds_elapsed(inital_dt: datetime) -> float:
+def seconds_elapsed(initial_dt: datetime) -> float:
     delta = get_datetime() - inital_dt
     return delta.total_seconds()
 
