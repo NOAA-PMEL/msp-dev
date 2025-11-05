@@ -916,33 +916,61 @@ class SamplingSystem:
                 variableset = variablemap["variablesets"][src_xref["variableset"]]
                 index_type = variableset["attributes"]["index_type"]
                 index_value = variableset["attributes"]["index_value"]
-                if index_type not in variablemap["indexed"]["data"]:
-                    variablemap["indexed"]["data"][index_type] = dict()
-                if index_value not in variablemap["indexed"]["data"][index_type]:
-                    variablemap["indexed"]["data"][index_type][index_value] = dict()
+                # if index_type not in variablemap["indexed"]["data"]:
+                if index_type not in variablemap["indexed"]:
+                    # variablemap["indexed"]["data"][index_type] = dict()
+                    variablemap["indexed"][index_type] = dict()
+                # if index_value not in variablemap["indexed"]["data"][index_type]:
+                if index_value not in variablemap["indexed"][index_type]:
+                    # variablemap["indexed"]["data"][index_type][index_value] = dict()
+                    variablemap["indexed"][index_type][index_value] = dict()
+                if "variablesets" not in variablemap["indexed"][index_type][index_value]:
+                    variablemap["indexed"][index_type][index_value]["variablesets"] = []
+                if "data" not in variablemap["indexed"][index_type][index_value]:
+                    variablemap["indexed"][index_type][index_value]["data"] = dict()
 
                 if index_type == "time":
                     indexed_time = await self.get_indexed_time_value(
                         index_time=index_value,
                         source_time=source_time)
                     
-                    if indexed_time not in variablemap["indexed"]["data"][index_type][index_value]:
-                        variablemap["indexed"]["data"][index_type][index_value][indexed_time] = dict()
+                    # if indexed_time not in variablemap["indexed"]["data"][index_type][index_value]:
+                    #     variablemap["indexed"]["data"][index_type][index_value][indexed_time] = dict()
+                    if indexed_time not in variablemap["indexed"][index_type][index_value]["data"]:
+                        variablemap["indexed"][index_type][index_value][indexed_time]["data"][indexed_time] = dict()
 
-                    if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"]["data"][indexed_time]:
-                        variablemap["indexed"]["data"][indexed_time][vs_name] = dict()
-                    if src_xref["map_type"] == "direct":
-                        if "direct" not in variablemap["indexed"]["data"][indexed_time][vs_name]:
-                            variablemap["indexed"]["data"][indexed_time][vs_name]["direct"] = dict()
-                        if (v_name:=src_xref["variable"]) not in variablemap["indexed"]["data"][indexed_time][vs_name]["direct"]:
-                            variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name] = []
-                        source_v = variablemap["variables"][v_name]["attributes"]["soruce_variable"]
-                        variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name].append(
+                    # if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"]["data"][indexed_time]:
+                    #     variablemap["indexed"]["data"][indexed_time][vs_name] = dict()
+                    if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"][index_type][index_value][indexed_time]["variablesets"]:
+                        variablemap["indexed"][index_type][index_value][indexed_time]["variablesets"].append(vs_name)
+
+                    map_type = src_xref["map_type"]
+                    if map_type not in variablemap["indexed"][index_type][index_value]["data"][indexed_time]:
+                        variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type] = dict()
+                    if vs_name not in variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name]:
+                        variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name] = dict()
+
+
+                    # if src_xref["map_type"] == "direct":
+                    #     # if "direct" not in variablemap["indexed"]["data"][indexed_time][vs_name]:
+                    #     #     variablemap["indexed"]["data"][indexed_time][vs_name]["direct"] = dict()
+                    #     if "direct" not in variablemap["indexed"][indexed_time][index_type][index_value]["data"][indexed_time]:
+                    #         variablemap["indexed"][index_type][index_value]["data"][indexed_time]["direct"] = dict()
+                    #     if vs_name not in variablemap["indexed"][index_type][index_value]["data"][indexed_time]["direct"][vs_name]:
+                    #         variablemap["indexed"][index_type][index_value]["data"][indexed_time]["direct"][vs_name] = dict()
+
+                    
+                    if map_type == "direct":
+                        direct_map = variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name]
+                        if (v_name:=src_xref["variable"]) not in direct_map:
+                            direct_map[v_name] = []
+                        source_v = variablemap["variables"][v_name]["attributes"]["source_variable"]
+                        direct_map[v_name].append(
                             source_data.data["variables"][source_v]["data"]
                         )
                     # self.logger.debug("update_variableset_by_source", extra={"vm": variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]})
-                    print(f'!!!source_data: {variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]}')
-                    print(f'!!!source_data: {variablemap["indexed"]["data"]}')
+                    # print(f'!!!source_data: {variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]}')
+                    # print(f'!!!source_data: {variablemap["indexed"]["data"]}')
 
         except Exception as e:
             self.logger.error("update_variableset_by_source", extra={"reason": e})
@@ -1437,8 +1465,15 @@ class SamplingSystem:
     async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict):
         pass
         try:
+
+            index_type = time_index["index_type"]
+            index_value = time_index["index_value"]
+            update_type = time_index["update_type"]
+            target_time = time_index["index_ready"]
+
             # variableset = variablemap["variablesets"][variableset_name]
-            indexed_data = variablemap["indexed"]["data"][time_index["index_ready"]][variableset_name]
+            # indexed_data = variablemap["indexed"]["data"][time_index["index_ready"]][variableset_name]
+            indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][variableset_name]
             
             #TODO handle multi-d data
             if len(indexed_data) == 0:
@@ -1481,24 +1516,50 @@ class SamplingSystem:
             update_type = time_index["update_type"]
             target_time = time_index["index_ready"]
 
-            for vs_name in variablemap["indexed"][index_type][index_value]:
-                if target_time not in variablemap["indexed"]["data"] or vs_name not in variablemap["indexed"]["data"][target_time]:
-                    continue
-                indexed_data = variablemap["indexed"]["data"][target_time][vs_name]
-                variableset = variablemap["variablesets"][vs_name].copy()
+            if target_time in variablemap["indexed"][index_type][index_value]["data"]:
+                return
+            
+            target_variablesets = variablemap["indexed"][index_type][index_value]["data"][target_time]
 
-                for map_type in ["direct", "priority", "aggregate", "calculated"]: #direct, calculated, priority and aggregate
-                    for v_name, v in variableset["variables"].items():
-                        if v["map_type"] == map_type:
-                            variable_updates[map_type](variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset, variable_name=v_name, time_index=time_index)
-                            # if map_type == "direct":
-                            #     self.update_direct_variable_by_time_index(variableset=variableset, time_index=time_index)
-                            # elif map_type == "priority":
-                            #     continue
-                            # elif map_type == "aggregate":
-                            #     continue
-                            # elif map_type == "calulated":
-                            #     continue
+            for map_type in ["direct", "priority", "aggregate", "calculated"]: #direct, calculated, priority and aggregate
+                if map_type not in target_variablesets:
+                    continue
+
+
+                for vs_name, vs_data in target_variablesets[map_type].items():
+                    variableset = variablemap["variablesets"][vs_name].copy()
+                    for v_name, v_data in vs_data.items():
+                        variable_updates[map_type](
+                            variablemap=variablemap,
+                            variableset_name=vs_name,
+                            variableset_record=variableset,
+                            variable_name=v_name,
+                            time_index=time_index
+                            )
+
+
+
+            #         indexed_data = variablemap["indexed"]["data"][target_time][vs_name]
+            #         variableset = variablemap["variablesets"][vs_name].copy()
+
+            # for vs_name in variablemap["indexed"][index_type][index_value]:
+            #     if target_time not in variablemap["indexed"]["data"] or vs_name not in variablemap["indexed"]["data"][target_time]:
+            #         continue
+            #     indexed_data = variablemap["indexed"]["data"][target_time][vs_name]
+            #     variableset = variablemap["variablesets"][vs_name].copy()
+
+            #     for map_type in ["direct", "priority", "aggregate", "calculated"]: #direct, calculated, priority and aggregate
+            #         for v_name, v in variableset["variables"].items():
+            #             if v["map_type"] == map_type:
+            #                 variable_updates[map_type](variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset, variable_name=v_name, time_index=time_index)
+            #                 # if map_type == "direct":
+            #                 #     self.update_direct_variable_by_time_index(variableset=variableset, time_index=time_index)
+            #                 # elif map_type == "priority":
+            #                 #     continue
+            #                 # elif map_type == "aggregate":
+            #                 #     continue
+            #                 # elif map_type == "calulated":
+            #                 #     continue
 
 
                 self.logger.debug("update_variableset_by_time_index", extra={"vs_record": variableset})
