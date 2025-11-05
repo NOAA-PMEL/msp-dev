@@ -145,6 +145,7 @@ class SamplingSystem:
         self.mqtt_buffer = asyncio.Queue()
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
+        asyncio.create_task(self.index_time_monitor())
         print("SamplingSystem: init: here:8")
 
 
