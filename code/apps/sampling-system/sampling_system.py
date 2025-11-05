@@ -1205,18 +1205,18 @@ class SamplingSystem:
         while True:
             try:
                 # create timestamp for current interval and save to index values
-                self.logger.debug("index_time_monitor: here")
+                # self.logger.debug("index_time_monitor: here")
                 dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
-                self.logger.debug("index_time_monitor", extra={"dt_period": dt_period})
+                # self.logger.debug("index_time_monitor", extra={"dt_period": dt_period})
 
                 # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "dt_period": dt_period, "last_dt": last_dt_period})
                 if dt_period != current_dt_period:
-                    self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
+                    # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
                     last_dt_period = current_dt_period
                     current_dt_period = dt_period
-                    self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
-                await asyncio.sleep(1)
-                continue
+                    # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
+                # await asyncio.sleep(1)
+                # continue
                 # # get list of vs from self.variablesets["indices"]["time"][timebase]
                 # get all? valid variable maps based on time?
                 # loop through list of vs in each valid vm and update if index_type and value match
@@ -1235,9 +1235,9 @@ class SamplingSystem:
                 # check if current time is greater than threshold to create previous interval variableset
                 #   e.g., if tb=1, wait for next second, if tb>1, wait for 0.6*tb to pass (tb=10, wait for 6sec to pass)
                 if last_dt_period:
-                    last_time_period = datetime_to_string(last_time_period)
                     self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
                     if seconds_elapsed(initial_dt=last_dt_period) >= update_threshhold:
+                        last_time_period = datetime_to_string(last_dt_period)
                         update = {
                             # "variablemap": variablemap,
                             # "variablemap_revision_time": target_vm["revision-time"],
@@ -1246,6 +1246,7 @@ class SamplingSystem:
                             "update_type": "update",
                             "index_ready": last_time_period,
                         }                   
+                        self.logger.debug("index_time_monitor", extra={"upate": update})
                         await self.index_ready_buffer.put(update)
                     # if seconds_elapsed(initial_dt=last_dt_period) >= threshhold_direct:
                     #     update = {
