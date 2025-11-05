@@ -259,12 +259,13 @@ class SamplingSystem:
 
                     # this holds list of variablesets for each index and indexed variable data
                     if vs_def["index"]["index_type"] not in current_vm["indexed"]:
-                        current_vm["indexed"][vs_def["index"]["index_type"]] = {
-                            vs_def["index"]["index_value"]: {
+                        current_vm["indexed"][vs_def["index"]["index_type"]] = dict()
+                        if vs_def["index"]["index_value"] not in current_vm["indexed"][vs_def["index"]["index_type"]]:
+                            current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]] = {
                                 "variablesets": [],
                                 "data": dict()
                             }
-                        }
+        
                         # add variableset to list for x-ref
                         if vs_name not in current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]]["variablesets"]:
                             current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]]["variablesets"].append(vs_name)
@@ -949,7 +950,7 @@ class SamplingSystem:
                     # if indexed_time not in variablemap["indexed"]["data"][index_type][index_value]:
                     #     variablemap["indexed"]["data"][index_type][index_value][indexed_time] = dict()
                     if indexed_time not in variablemap["indexed"][index_type][index_value]["data"]:
-                        variablemap["indexed"][index_type][index_value][indexed_time]["data"][indexed_time] = dict()
+                        variablemap["indexed"][index_type][index_value]["data"][indexed_time] = dict()
                     self.logger.debug("update_variableset_by_source", extra={"variablemap": variablemap})
                     
                     # if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"]["data"][indexed_time]:
@@ -983,7 +984,7 @@ class SamplingSystem:
                             source_data.data["variables"][source_v]["data"]
                         )
                         self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
-                        
+
                     # self.logger.debug("update_variableset_by_source", extra={"vm": variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]})
                     # print(f'!!!source_data: {variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]}')
                     # print(f'!!!source_data: {variablemap["indexed"]["data"]}')
