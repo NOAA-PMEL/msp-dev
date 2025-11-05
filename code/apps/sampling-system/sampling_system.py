@@ -950,11 +950,12 @@ class SamplingSystem:
                     #     variablemap["indexed"]["data"][index_type][index_value][indexed_time] = dict()
                     if indexed_time not in variablemap["indexed"][index_type][index_value]["data"]:
                         variablemap["indexed"][index_type][index_value][indexed_time]["data"][indexed_time] = dict()
-
+                    self.logger.debug("update_variableset_by_source", extra={"variablemap": variablemap})
+                    
                     # if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"]["data"][indexed_time]:
                     #     variablemap["indexed"]["data"][indexed_time][vs_name] = dict()
-                    if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"][index_type][index_value][indexed_time]["variablesets"]:
-                        variablemap["indexed"][index_type][index_value][indexed_time]["variablesets"].append(vs_name)
+                    if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"][index_type][index_value]["variablesets"]:
+                        variablemap["indexed"][index_type][index_value]["variablesets"].append(vs_name)
 
                     map_type = src_xref["map_type"]
                     if map_type not in variablemap["indexed"][index_type][index_value]["data"][indexed_time]:
@@ -974,12 +975,15 @@ class SamplingSystem:
                     
                     if map_type == "direct":
                         direct_map = variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name]
+                        self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
                         if (v_name:=src_xref["variable"]) not in direct_map:
                             direct_map[v_name] = []
                         source_v = variablemap["variables"][v_name]["attributes"]["source_variable"]
                         direct_map[v_name].append(
                             source_data.data["variables"][source_v]["data"]
                         )
+                        self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
+                        
                     # self.logger.debug("update_variableset_by_source", extra={"vm": variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]})
                     # print(f'!!!source_data: {variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]}')
                     # print(f'!!!source_data: {variablemap["indexed"]["data"]}')
