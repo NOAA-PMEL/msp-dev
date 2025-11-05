@@ -951,7 +951,7 @@ class SamplingSystem:
                     #     variablemap["indexed"]["data"][index_type][index_value][indexed_time] = dict()
                     if indexed_time not in variablemap["indexed"][index_type][index_value]["data"]:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time] = dict()
-                    self.logger.debug("update_variableset_by_source", extra={"variablemap": variablemap})
+                    print(f"update_variableset_by_source: variablemap = {variablemap}")
                     
                     # if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"]["data"][indexed_time]:
                     #     variablemap["indexed"]["data"][indexed_time][vs_name] = dict()
