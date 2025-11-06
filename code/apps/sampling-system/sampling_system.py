@@ -215,6 +215,7 @@ class SamplingSystem:
                         }
                     current_vm["variablesets"][vs_name]["attributes"] = dict()
                     for att_name, att_val in vm_data["attributes"].items():
+                        self.logger.debug("configure", extra={"att_name": att_name, "att_val":att_val})
                         current_v["variablesets"][vs_name]["attributes"][att_name] = {
                             "type": f"{type(att_val).__name__}",
                             "data": att_val
