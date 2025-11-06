@@ -220,7 +220,7 @@ class SamplingSystem:
                             "data": att_val
                         }
                     current_vm["variablesets"][vs_name]["attributes"]["index_type"] = {"type": "string", "data": vs_def["index"]["index_type"]}
-                    vtype = f"{type(vs_def["index"]["index_value"]).__name__}"
+                    vtype = f"{type(vs_def['index']['index_value']).__name__}"
                     current_vm["variablesets"][vs_name]["attributes"]["index_value"] = {"type": vtype, "data": vs_def["index"]["index_value"]}
                     current_vm["variablesets"][vs_name]["attributes"]["variablemap_kind"] = {"type": "string", "data": vm["kind"]}
 
