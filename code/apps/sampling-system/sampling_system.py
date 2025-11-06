@@ -913,6 +913,7 @@ class SamplingSystem:
     async def update_variableset_by_source(self, variablemap:dict, source_id:str, source_data:CloudEvent):
 
         try:
+            print(f"update_variableset_by_source: variablemap = {variablemap}")
             self.logger.debug("update_variableset_by_source", extra={"source_id": source_id})
             source_time = source_data.data["variables"]["time"]["data"]
             self.logger.debug("update_variableset_by_source", extra={"source_time": source_time})
