@@ -788,11 +788,11 @@ class SamplingSystem:
             self.logger.error("get_variable_map_id", extra={"reason": e})
             return ""
 
-    def get_variableset_id(self, vs:dict):
+    def get_variableset_id(self, variableset_name:str, variableset:dict):
         try:
-            variablemap_id = vs["data"]["attributes"]["variablemap_id"]
+            variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
             
-            variableset_name = vs["metadata"]["name"]
+            # variableset_name = variableset["metadata"]["name"]
 
             return "::".join([variablemap_id, variableset_name])
         
@@ -1626,7 +1626,7 @@ class SamplingSystem:
 
                     self.logger.debug("update_variablesets_by_time_index", extra={"vs_record": variableset})
                     
-                    varset_id = self.get_variableset_id(vs=variableset)
+                    varset_id = self.get_variableset_id(variableset_name=vs_name, variableset=variableset)
                     source_id = (
                         f"envds.{self.config.daq_id}.variableset::{varset_id}"
                     )
