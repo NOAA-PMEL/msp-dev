@@ -1567,7 +1567,7 @@ class SamplingSystem:
 
         try:
             self.logger.debug("update_variablesets_by_time_index", extra={"time_index": time_index})
-            print(f"update_variablesets_by_time_index: {variablemap}")
+            # print(f"update_variablesets_by_time_index: {variablemap}")
             # vm_name = time_index["variablemap"]
             # vm_cfg_time = time_index["variablemap_revision_time"]
             # target_vm = self.variablesets["maps"][vm_name][vm_cfg_time]
@@ -1577,7 +1577,7 @@ class SamplingSystem:
             update_type = time_index["update_type"]
             target_time = time_index["index_ready"]
 
-            if target_time in variablemap["indexed"][index_type][index_value]["data"]:
+            if target_time not in variablemap["indexed"][index_type][index_value]["data"]:
                 return
             
             target_variablesets = variablemap["indexed"][index_type][index_value]["data"][target_time]
