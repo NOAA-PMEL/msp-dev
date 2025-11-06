@@ -985,7 +985,7 @@ class SamplingSystem:
 
                     
                     if map_type == "direct":
-                        print(f"vs_name = {vs_name}")
+                        print(f"update_variableset_by_source: vs_name = {vs_name}")
                         direct_map = variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name]
                         self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
                         if (v_name:=src_xref["variable"]) not in direct_map:
