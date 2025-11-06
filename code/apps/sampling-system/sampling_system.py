@@ -1796,6 +1796,7 @@ class SamplingSystem:
 
                     index_type = update["index_type"]
                     if index_type == "time":
+                        print(f"index_monitor: index_type = {index_type}")
                         await self.update_variablesets_by_time_index(
                             variablemap=variablemap, time_index=update
                         )
