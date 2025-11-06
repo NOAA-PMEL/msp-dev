@@ -227,6 +227,7 @@ class SamplingSystem:
 
                     current_vm["variablesets"][vs_name]["dimensions"] = {"time": 0}
 
+                    print(f"configure: {current_vm}")
                     # add variables for variableset
                     for v_name, v in vm_data["variables"].items():
                         if v["variableset"] == vs_name:
