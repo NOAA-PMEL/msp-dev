@@ -1624,31 +1624,31 @@ class SamplingSystem:
             #                 #     continue
 
 
-                self.logger.debug("update_variableset_by_time_index", extra={"vs_record": variableset})
-                
-                varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name)
-                source_id = (
-                    f"envds.{self.config.daq_id}.variableset::{varset_id}"
-                )
-                source_topic = source_id.replace(".", "/")
-                if variableset:
-                    event = SamplingEvent.create_variableset_update(
-                        # source="sensor.mockco-mock1-1234", data=record
-                        source=source_id,
-                        data=variableset,
-                    )
-                    destpath = f"{source_topic}/data/update"
-                    event["destpath"] = destpath
-                    self.logger.debug(
-                        "update_variableset_by_time_index",
-                        extra={"data": event, "destpath": destpath},
-                    )
-                    # message = Message(data=event, destpath=destpath)
-                    # message = event
-                    # self.logger.debug("default_data_loop", extra={"m": message})
+                    self.logger.debug("update_variableset_by_time_index", extra={"vs_record": variableset})
                     
-                    
-                    # await self.send_event(event)
+                    varset_id = self.get_variableset_id(vs=variableset)
+                    source_id = (
+                        f"envds.{self.config.daq_id}.variableset::{varset_id}"
+                    )
+                    source_topic = source_id.replace(".", "/")
+                    if variableset:
+                        event = SamplingEvent.create_variableset_update(
+                            # source="sensor.mockco-mock1-1234", data=record
+                            source=source_id,
+                            data=variableset,
+                        )
+                        destpath = f"{source_topic}/data/update"
+                        event["destpath"] = destpath
+                        self.logger.debug(
+                            "update_variableset_by_time_index",
+                            extra={"data": event, "destpath": destpath},
+                        )
+                        # message = Message(data=event, destpath=destpath)
+                        # message = event
+                        # self.logger.debug("default_data_loop", extra={"m": message})
+                        
+                        
+                        # await self.send_event(event)
 
 
 
