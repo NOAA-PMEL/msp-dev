@@ -1643,15 +1643,11 @@ class SamplingSystem:
                             "update_variablesets_by_time_index",
                             extra={"data": event, "destpath": destpath},
                         )
-                        # message = Message(data=event, destpath=destpath)
-                        # message = event
-                        # self.logger.debug("default_data_loop", extra={"m": message})
                         
-                        
-                        # await self.send_event(event)
+                        await self.send_event(event)
 
-
-
+            # Once processed, remove indexed data
+            variablemap["indexed"][index_type][index_value]["data"].pop(target_time,None)
 
 
             #     if update_type == "direct" and update_type in indexed_data:
