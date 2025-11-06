@@ -1647,9 +1647,9 @@ class SamplingSystem:
                         await self.send_event(event)
 
             # Once processed, remove indexed data
-            self.logger.debug("update_variablesets_by_time_index", extra="indexed_data": variablemap["indexed"][index_type][index_value]["data"].keys())
+            self.logger.debug("update_variablesets_by_time_index", extra={"indexed_data": variablemap["indexed"][index_type][index_value]["data"].keys()})
             variablemap["indexed"][index_type][index_value]["data"].pop(target_time,None)
-            self.logger.debug("update_variablesets_by_time_index", extra="indexed_data": variablemap["indexed"][index_type][index_value]["data"].keys())
+            self.logger.debug("update_variablesets_by_time_index", extra={"indexed_data": variablemap["indexed"][index_type][index_value]["data"].keys()})
 
 
             #     if update_type == "direct" and update_type in indexed_data:
