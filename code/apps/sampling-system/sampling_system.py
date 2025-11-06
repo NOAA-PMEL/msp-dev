@@ -1624,7 +1624,7 @@ class SamplingSystem:
             #                 #     continue
 
 
-                    self.logger.debug("update_variableset_by_time_index", extra={"vs_record": variableset})
+                    self.logger.debug("update_variablesets_by_time_index", extra={"vs_record": variableset})
                     
                     varset_id = self.get_variableset_id(vs=variableset)
                     source_id = (
@@ -1632,7 +1632,7 @@ class SamplingSystem:
                     )
                     source_topic = source_id.replace(".", "/")
                     if variableset:
-                        event = SamplingEvent.create_variableset_update(
+                        event = SamplingEvent.create_variableset_data_update(
                             # source="sensor.mockco-mock1-1234", data=record
                             source=source_id,
                             data=variableset,
@@ -1640,7 +1640,7 @@ class SamplingSystem:
                         destpath = f"{source_topic}/data/update"
                         event["destpath"] = destpath
                         self.logger.debug(
-                            "update_variableset_by_time_index",
+                            "update_variablesets_by_time_index",
                             extra={"data": event, "destpath": destpath},
                         )
                         # message = Message(data=event, destpath=destpath)
