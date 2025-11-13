@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = False
+
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )

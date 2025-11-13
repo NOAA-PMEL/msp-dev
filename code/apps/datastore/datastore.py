@@ -1040,22 +1040,100 @@ class Datastore:
 
         try:
             for definition_type, vm_def in ce.data.items():
-                platform_id = vm_def["metadata"]["platform-id"]
+                # platform = vm_def["metadata"]["platform"]
                 variablemap = vm_def["metadata"]["name"]
-                variablemap_revision_time = vm_def["revision-time"]
+                attributes = vm_def["data"]["attributes"]
+                variablemap_type = attributes["variablemap_type"]
+                if variablemap_type == "Platform":
+                    variablemap_type_id = attributes["platform"]
+                else:
+                    L.error("variablemap_definition_registry_update", extra={"reason": f"unknown variablemap_type-{variablemap_type}"})
+                    return
+                
+                valid_config_time = attributes["valid_config_time"]
 
                 database = "registry"
                 collection = "variablemap-definition"
-                variablegroups = vm_def["variablegroups"]
-                variables = vm_def["variables"]
+                variablesets = vm_def["data"]["variablesets"]
+                variables = vm_def["data"]["variables"]
 
-                variablemap_definition_id = "::".join([platform_id,variablemap,variablemap_revision_time])
+                variablemap_definition_id = "::".join([variablemap_type_id,variablemap,valid_config_time])
                 request = VariableMapDefinitionUpdate(
                     variablemap_definition_id=variablemap_definition_id,
-                    platform_id=platform_id,
+                    variablemap_type=variablemap_type,
+                    variablemap_type_id=variablemap_type_id,
                     variablemap=variablemap,
-                    variablemap_revision_time=variablemap_revision_time,
-                    variablegroups=variablegroups,
+                    valid_config_time=valid_config_time,
+                    attributes=attributes,
+                    variablesets=variablesets,
+                    variables=variables,
+                )
+
+            self.logger.debug(
+                "variablemap_definition_registry_update", extra={"request": request}
+            )
+            if self.db_client:
+                result = await self.db_client.variablemap_definition_registry_update(
+                    database=database,
+                    collection=collection,
+                    request=request,
+                    ttl=self.config.db_reg_variablemap_definition_ttl,
+                )
+
+                # stop sending ack for now
+                # if result:
+                #     self.logger.debug("configure", extra={"self.config": self.config})
+                #     ack = DAQEvent.create_device_definition_registry_ack(
+                #         source=f"envds.{self.config.daq_id}.datastore",
+                #         data={"device-definition": {"make": make, "model":model, "version": format_version}}
+
+                #     )
+                #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+                #     ack["destpath"] = f"envds/{self.config.daq_id}/device/registry/ack"
+                #     await self.send_event(ack)
+
+        except Exception as e:
+            self.logger.error("device_definition_registry_update", extra={"reason": e})
+        pass
+
+    async def variablemap_definition_registry_get(self, query: VariableMapDefinitionRequest) -> dict:
+        
+        # TODO add in logic to get/sync from erddap if available
+        if self.db_client:
+            return await self.db_client.variablemap_definition_registry_get(query)
+        
+        return {"results": []}
+
+    async def variableset_definition_registry_update(self, ce: CloudEvent):
+
+        try:
+            for definition_type, vm_def in ce.data.items():
+                # platform = vm_def["metadata"]["platform"]
+                variable = vm_def["metadata"]["name"]
+                attributes = vm_def["data"]["attributes"]
+                variablemap_type = attributes["variablemap_type"]
+                if variablemap_type == "Platform":
+                    variablemap_type_id = attributes["platform"]
+                else:
+                    L.error("variablemap_definition_registry_update", extra={"reason": f"unknown variablemap_type-{variablemap_type}"})
+                    return
+                
+                valid_config_time = attributes["valid_config_time"]
+
+                database = "registry"
+                collection = "variablemap-definition"
+                variablesets = vm_def["data"]["variablesets"]
+                variables = vm_def["data"]["variables"]
+
+                variablemap_definition_id = "::".join([variablemap_type_id,variablemap,valid_config_time])
+                request = VariableMapDefinitionUpdate(
+                    variablemap_definition_id=variablemap_definition_id,
+                    variablemap_type=variablemap_type,
+                    variablemap_type_id=variablemap_type_id,
+                    variablemap=variablemap,
+                    valid_config_time=valid_config_time,
+                    attributes=attributes,
+                    variablesets=variablesets,
                     variables=variables,
                 )
 

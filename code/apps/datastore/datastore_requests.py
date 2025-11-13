@@ -162,10 +162,8 @@ class DatastoreRequest(BaseModel):
 
 class VariableSetDataUpdate(BaseModel):
     variableset_id: str | None = None
+    variablemap_id: str | None = None
     variableset: str | None = None
-    variableset_config_time: str | None = None
-    variablegroup: str | None = None
-    # version: str
     timestamp: float
     attributes: dict
     dimensions: dict
@@ -174,9 +172,8 @@ class VariableSetDataUpdate(BaseModel):
 
 class VariableSetDataRequest(BaseModel):
     variableset_id: str | None = None
-    variablemap: str | None = None
-    variablemap_revision_time: str | None = None
-    variablegroup: str | None = None
+    variablemap_id: str | None = None
+    variableset: str | None = None
     start_time: str | None = None
     end_time: str | None = None
     start_timestamp: float | None = None
@@ -185,39 +182,38 @@ class VariableSetDataRequest(BaseModel):
     variable: List[str] | None = None
 
 class VariableSetDefinitionUpdate(BaseModel):
-    variableset_id: str | None = None
-    platfrom_id: str | None = None
-    variablemap: str | None = None
-    variablemap_revision_time: str | None = None
-    variablegroup: str | None = None
+    variableset_definition_id: str | None = None
+    variablemap_definition_id: str | None = None
+    variableset: str | None = None
     index_type: str | None = None
     index_value: Any | None = None
     attributes: dict
     dimensions: dict
     variables: dict
 
-
 class VariableSetDefinitionRequest(BaseModel):
-    variableset_id: str | None = None
-    platfrom_id: str | None = None
+    variableset_definition_id: str | None = None
+    variablemap_definition_id: str | None = None
     variableset: str | None = None
-    variableset_revision_time: str | None = None
-    variablegroup: str | None = None
     index_type: str | None = None
     index_value: Any | None = None
 
 class VariableMapDefinitionUpdate(BaseModel):
-    variablemap_id: str | None = None
-    platform_id: str | None = None
+    variablemap_definition_id: str | None = None
+    variablemap_type: str | None = None
+    variablemap_type_id: str | None = None
     variablemap: str | None = None
-    variablemap_revision_time: str | None = None
-    variablegroups: dict
+    valid_config_time: str | None = None
+    revision: int | None = None
+    attributes: dict
+    variablesets: dict
     variables: dict
 
 
 class VariableMapDefinitionRequest(BaseModel):
-    variablemap_id: str | None = None
-    platform_id: str | None = None
+    variablemap_definition_id: str | None = None
+    variablemap_type: str | None = None
+    variablemap_type_id: str | None = None
     variablemap: str | None = None
-    variablemap_config_time: str | None = None
+    valid_config_time: str | None = None
 

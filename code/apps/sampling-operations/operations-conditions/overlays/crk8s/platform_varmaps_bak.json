@@ -4,11 +4,12 @@
     "kind": "PlatformVariableMap",
     "metadata": {
       "name": "MSPPayload01",
-      "sampling_namespace": "pmel.noaa.gov"
+      "platform": "MSPPayload01",
+      "sampling_namespace": "pmel.noaa.gov",
+      "valid_config_time": "2025-10-01T00:00:00Z",
     },
     "data": {
       "attributes": {
-        "variablemap_type": "Platform",
         "platform": "MSPPayload01",
         "sampling_namespace": "pmel.noaa.gov",
         "valid_config_time": "2025-10-01T00:00:00Z",

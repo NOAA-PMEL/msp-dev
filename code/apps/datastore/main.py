@@ -35,7 +35,7 @@ from datastore_requests import (
     VariableSetDataRequest,
     # VariableSetDefinitionUpdate,
     VariableSetDefinitionRequest,
-    VariableMapDefinitionRequest,
+    PlatformVariableMapDefinitionRequest,
 )
 
 
@@ -559,9 +559,8 @@ async def variableset_data_update(request: Request):
 # async def device_data_get(query: Annotated[DataStoreQuery, Query()]):
 async def variableset_data_get(
     variableset_id: str | None = None,
-    variablemap: str | None = None,
-    variablemap_revision_time: str | None = None,
-    variablegroup: str | None = None,
+    variablemap_definition_id: str | None = None,
+    variableset: str | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
     start_timestamp: float | None = None,
@@ -572,11 +571,12 @@ async def variableset_data_get(
     L.debug("main:variableset_data_get", extra={"device_id": variableset_id})
     query = VariableSetDataRequest(
         variableset_id=variableset_id,
-        variablemap=variablemap,
-        variablemap_revision_time=variablemap_revision_time,
-        variablegroup=variablegroup,
+        variablemap_definition_id=variablemap_definition_id,
+        variableset=variableset,
         start_time=start_time,
         end_time=end_time,
+        start_timestamp=start_timestamp,
+        end_timestamp=end_timestamp,
         last_n_seconds=last_n_seconds,
         variable=variable,
     )
@@ -609,21 +609,17 @@ async def variableset_definition_registry_update(request: Request):
 @app.get("/variableset-definition/registry/get/")
 # async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
 async def variableset_definition_registry_get(
-    variableset_id: str | None = None,
-    platform_id: str | None = None,
-    variablemap: str | None = None,
-    variablemap_revision_time: str | None = None,
-    variablegroup: str | None = None,
+    variableset_definition_id: str | None = None,
+    variablemap_definition_id: str | None = None,
+    variableset: str | None = None,
     index_type: str | None = None,
     index_value: Any | None = None
 ):
 
-    query = DeviceDefinitionRequest(
-        variableset_id=variableset_id,
-        platform_id=platform_id,
-        variablemap=variablemap,
-        variablemap_revision_time=variablemap_revision_time,
-        variablegroup=variablegroup,
+    query = VariableSetDefinitionRequest(
+        variableset_definition_id=variableset_definition_id,
+        variablemap_definition_id=variablemap_definition_id,
+        variableset=variableset,
         index_type=index_type,
         index_value=index_value
     )
@@ -639,7 +635,7 @@ async def variablemap_definition_registry_update(request: Request):
             extra={"ce": ce, "destpath": ce["destpath"]},
         )
         # await adapter.send_to_mqtt(ce)
-        await datastore.platformvariablemap_definition_registry_update(ce)
+        await datastore.variablemap_definition_registry_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "OK"}
         # return get_response_event(msg, 202)
@@ -655,16 +651,18 @@ async def variablemap_definition_registry_update(request: Request):
 @app.get("/variablemap-definition/registry/get/")
 # async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
 async def variablemap_definition_registry_get(
-    variablemap_id: str | None = None,
-    platform_id: str | None = None,
+    variablemap_definition_id: str | None = None,
+    variablemap_type: str | None = None,
+    variablemap_type_id: str | None = None,
     variablemap: str | None = None,
-    variablemap_revision_time: str | None = None,
+    valid_config_time: str | None = None,
 ):
 
     query = DeviceDefinitionRequest(
-        variablemap_id=variablemap_id,
-        platform_id=platform_id,
+        variablemap_defnition_id=variablemap_definition_id,
+        variable_map_type=variablemap_type,
+        variable_map_type_id=variablemap_type_id,
         variablemap=variablemap,
-        variablemap_revision_time=variablemap_revision_time,
+        valid_config_time=valid_config_time,
     )
     return await datastore.platformvariablemap_definition_registry_get(query)
