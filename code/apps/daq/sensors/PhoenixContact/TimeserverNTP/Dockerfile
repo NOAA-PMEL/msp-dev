@@ -21,7 +21,7 @@ RUN pip3 install -r requirements.txt
 # for fastapi/uvicorn
 # COPY . .
 # without fastapi/uvicorn
-COPY ./splite2.py .
+COPY ./timeserverNTP.py .
 
 # WORKDIR $APP_HOME/envds
 # COPY ./apis ./apis

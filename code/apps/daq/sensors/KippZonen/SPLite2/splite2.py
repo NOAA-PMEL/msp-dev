@@ -49,7 +49,6 @@ class SPLite2(Sensor):
 
     metadata = {
         "attributes": {
-            # "name": {"type"mock1",
             "make": {"type": "string", "data": "KippZonen"},
             "model": {"type": "string", "data": "SPLite2"},
             "description": {
@@ -107,33 +106,15 @@ class SPLite2(Sensor):
         self.data_task = None
         self.data_rate = 1
         self.sampling_interval = 1
-        # self.configure()
 
         self.default_data_buffer = asyncio.Queue()
 
-        # os.environ["REDIS_OM_URL"] = "redis://redis.default"
-
-        # self.data_loop_task = None
-
-        # all handled in run_setup ----
-        # self.configure()
-
-        # # self.logger = logging.getLogger(f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.logger = logging.getLogger(self.build_app_uid())
-
-        # # self.update_id("app_uid", f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.update_id("app_uid", self.build_app_uid())
-
-        # self.logger.debug("id", extra={"self.id": self.id})
-        # print(f"config: {self.config}")
-        # ----
-
-        # self.sampling_task_list.append(self.data_loop())
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
-        # self.enable_task_list.append(self.polling_loop())
-        # asyncio.create_task(self.sampling_monitor())
+
         self.collecting = False
+        self.sampling_mode = "unpolled" 
+
 
     def configure(self):
         super(SPLite2, self).configure()
@@ -174,9 +155,8 @@ class SPLite2(Sensor):
             )
 
             settings_def = self.get_definition_by_variable_type(SPLite2.metadata, variable_type="setting")
-            # for name, setting in AQT560.metadata["settings"].items():
+
             for name, setting in settings_def["variables"].items():
-            
                 requested = setting["attributes"]["default_value"]["data"]
                 if "settings" in config and name in config["settings"]:
                     requested = config["settings"][name]
@@ -223,25 +203,32 @@ class SPLite2(Sensor):
 
         self.logger.debug("iface_map", extra={"map": self.iface_map})
 
+
     async def handle_interface_message(self, message: Message):
         pass
+
 
     async def handle_interface_data(self, message: Message):
         await super(SPLite2, self).handle_interface_data(message)
 
-        # self.logger.debug("interface_recv_data", extra={"data": message.data})
-        if message.data["type"] == det.interface_data_recv():
+        self.logger.debug("interface_recv_data", extra={"data": message})
+        if message["type"] == det.interface_data_recv():
             try:
-                path_id = message.data["path_id"]
+                self.logger.debug(
+                    "interface_recv_data", extra={"data": message}
+                )
+                path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
+                self.logger.debug("interface_recv_data", extra={"path_id": path_id, "iface_path": iface_path})
                 # if path_id == "default":
                 if path_id == iface_path:
                     self.logger.debug(
-                        "interface_recv_data", extra={"data": message.data.data}
+                        "interface_recv_data", extra={"data": message.data}
                     )
-                    await self.default_data_buffer.put(message.data)
+                    await self.default_data_buffer.put(message)
             except KeyError:
                 pass
+
 
     async def settings_check(self):
         await super().settings_check()
@@ -306,29 +293,7 @@ class SPLite2(Sensor):
 
 
     async def polling_loop(self):
-        
-        # write_command = {
-        #     "i2c-command": "write-buffer",
-        #     "address": "44",
-        #     "write-length": 2,
-        #     "data": "2C06",
-        #     # "delay-ms": 50 # 50ms in seconds
-        # }
-        # read_command = {
-        #     "i2c-command": "read-buffer",
-        #     "address": "44",
-        #     "read-length": 6,
-        #     "delay-ms": 50 # timeout in ms to wait for ACK
-        # }
-        # i2c_commands = [write_command, read_command]
-        ad_command = {
-            "num_samples": 50,
-            "sample_rate": 200.0 # Hz
-        }
-        data = {
-            "ad-command": ad_command
-        }
-
+        data = {}
         while True:
             if self.sampling():
                 await self.interface_send_data(data=data)
@@ -373,6 +338,10 @@ class SPLite2(Sensor):
     def default_parse(self, data):
         if data:
             try:
+                timestamp = data.data["timestamp"]
+                iface_data = data.data["data"]
+                volt_val = iface_data["data"]
+                
                 variables = list(self.config.metadata.variables.keys())
                 variables.remove("time")
                 record = self.build_data_record(meta=self.include_metadata)
