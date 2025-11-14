@@ -161,7 +161,7 @@ class TimeserverNTP(Sensor):
 
         sensor_iface_properties = {
             "default": {
-                "sensor-interface-properties": {
+                "device-interface-properties": {
                     "connection-properties": {
                     },
                     "read-properties": {
