@@ -13,7 +13,7 @@ import logging
 import logging.config
 
 # from pydantic import BaseSettings, Field
-# import json
+import json
 import yaml
 import random
 from envds.core import envdsLogger  # , envdsBase, envdsStatus
@@ -115,6 +115,16 @@ class SPLite2(Sensor):
         self.collecting = False
         self.sampling_mode = "unpolled" 
 
+        self.sensor_definition_file = "KippZonen_SPLite2_sensor_definition.json"
+
+
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
+
 
     def configure(self):
         super(SPLite2, self).configure()
@@ -154,7 +164,7 @@ class SPLite2(Sensor):
                 "splite2.configure", extra={"interfaces": conf["interfaces"]}
             )
 
-            settings_def = self.get_definition_by_variable_type(SPLite2.metadata, variable_type="setting")
+            settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
 
             for name, setting in settings_def["variables"].items():
                 requested = setting["attributes"]["default_value"]["data"]
@@ -164,15 +174,15 @@ class SPLite2(Sensor):
                 self.settings.set_setting(name, requested=requested)
 
         meta = DeviceMetadata(
-            attributes=SPLite2.metadata["attributes"],
-            variables=SPLite2.metadata["variables"],
-            # settings=SPLite2.metadata["settings"],
+            attributes=self.metadata["attributes"],
+            dimensions=self.metadata["dimensions"],
+            variables=self.metadata["variables"],
             settings=settings_def["variables"]
         )
 
         self.config = DeviceConfig(
-            make=SPLite2.metadata["attributes"]["make"]["data"],
-            model=SPLite2.metadata["attributes"]["model"]["data"],
+            make=self.metadata["attributes"]["make"]["data"],
+            model=self.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
             metadata=meta,
             interfaces=conf["interfaces"],
