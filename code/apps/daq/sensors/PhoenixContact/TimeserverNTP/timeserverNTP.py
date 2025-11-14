@@ -107,9 +107,9 @@ class TimeserverNTP(Sensor):
         super(TimeserverNTP, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
-        self.sampling_interval = 1
-        # self.configure()
-
+        self.first_record = 'RMC'
+        self.last_record = 'GGA'
+        self.array_buffer = []
         self.default_data_buffer = asyncio.Queue()
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
@@ -326,6 +326,7 @@ class TimeserverNTP(Sensor):
         while True:
             try:
                 data = await self.default_data_buffer.get()
+                self.logger.debug("default_data_loop", extra={"data": data})
                 if data:
                     self.collecting = True
 
