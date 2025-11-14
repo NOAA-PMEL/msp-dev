@@ -437,7 +437,7 @@ async def get_from_mqtt_loop():
             await asyncio.sleep(0.0001)
 
 
-async def handle_mqtt_buffer(self):
+async def handle_mqtt_buffer():
     while True:
         try:
             ce = await mqtt_buffer.get()
@@ -472,10 +472,12 @@ async def lifespan(app: FastAPI):
     print("Application starting up...")
     # Perform startup tasks here
     mqtt_loop = asyncio.create_task(get_from_mqtt_loop())
+    mqtt_handle_loop = asyncio.create_task(handle_mqtt_buffer())
     yield
     print("Application shutting down...")
     # Perform shutdown tasks here
     mqtt_loop.cancel()
+    mqtt_handle_loop.cancel()
 
 app = FastAPI(lifespan=lifespan)
 
