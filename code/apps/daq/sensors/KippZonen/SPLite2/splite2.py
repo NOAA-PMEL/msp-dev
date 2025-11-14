@@ -166,7 +166,8 @@ class SPLite2(Sensor):
         meta = DeviceMetadata(
             attributes=SPLite2.metadata["attributes"],
             variables=SPLite2.metadata["variables"],
-            settings=SPLite2.metadata["settings"],
+            # settings=SPLite2.metadata["settings"],
+            settings=settings_def["variables"]
         )
 
         self.config = DeviceConfig(
