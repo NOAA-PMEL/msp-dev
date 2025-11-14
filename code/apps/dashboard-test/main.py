@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import json
 import logging
@@ -214,22 +215,22 @@ config = Settings()
 # # db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 # db_registry_client = None
 
-app = FastAPI()
+# app = FastAPI(lifespan=lifespan)
 
-origins = ["*"]  # dev
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# origins = ["*"]  # dev
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=origins,
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
-router = APIRouter()
+# router = APIRouter()
 
-app.mount("/dash", WSGIMiddleware(dash_app.server))
+# app.mount("/dash", WSGIMiddleware(dash_app.server))
 
-task_map = {}
+# task_map = {}
 
                         
 class ConnectionManager:
@@ -397,7 +398,7 @@ async def get_from_mqtt_loop():
     reconnect = 10
     while True:
         try:
-            L.debug("listen", extra={"config": self.config})
+            L.debug("listen", extra={"config": config})
             client_id=str(ULID())
             async with Client(config.mqtt_broker, port=config.mqtt_port,identifier=client_id) as client:
                 # for topic in config.mqtt_topic_subscriptions.split("\n"):
@@ -466,8 +467,32 @@ async def handle_mqtt_buffer(self):
         
         await asyncio.sleep(0.0001)
 
-asyncio.create_task(get_from_mqtt_loop())
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Application starting up...")
+    # Perform startup tasks here
+    mqtt_loop = asyncio.create_task(get_from_mqtt_loop())
+    yield
+    print("Application shutting down...")
+    # Perform shutdown tasks here
+    mqtt_loop.cancel()
 
+app = FastAPI(lifespan=lifespan)
+
+origins = ["*"]  # dev
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+router = APIRouter()
+
+app.mount("/dash", WSGIMiddleware(dash_app.server))
+
+task_map = {}
 
 @app.get("/")
 async def root():
