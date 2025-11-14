@@ -27,6 +27,8 @@ from aiomqtt import Client, MqttError
 import httpx
 from logfmter import Logfmter
 from pydantic import BaseModel, BaseSettings, Field
+# from pydantic import Field
+# from pydantic_settings import BaseSettings
 # import pymongo
 # from motor.motor_asyncio import AsyncIOMotorClient
 from ulid import ULID
@@ -479,9 +481,12 @@ async def lifespan(app: FastAPI):
     mqtt_loop.cancel()
     mqtt_handle_loop.cancel()
 
+print("here:1")
 app = FastAPI(lifespan=lifespan)
+print("here:1")
 
 origins = ["*"]  # dev
+print("here:1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -489,6 +494,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+print("here:1")
 
 router = APIRouter()
 
@@ -1223,4 +1229,3 @@ async def controller_settings_update(request: Request):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
     # msg = {"result": "OK"}
     # return get_response_event(msg, 202)
-
