@@ -14,7 +14,7 @@ import traceback
 import logging.config
 
 # from pydantic import BaseSettings, Field
-# import json
+import json
 import yaml
 import random
 from envds.core import envdsLogger  # , envdsBase, envdsStatus
@@ -136,6 +136,16 @@ class TimeserverNTP(Sensor):
         # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
 
+        self.sensor_definition_file = "PhoenixContact_NTP_sensor_definition.json"
+
+
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
+
     def configure(self):
         super(TimeserverNTP, self).configure()
 
@@ -174,7 +184,7 @@ class TimeserverNTP(Sensor):
                 "TimeserverNTP.configure", extra={"interfaces": conf["interfaces"]}
             )
 
-            settings_def = self.get_definition_by_variable_type(TimeserverNTP.metadata, variable_type="setting")
+            settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
             # for name, setting in AQT560.metadata["settings"].items():
             for name, setting in settings_def["variables"].items():
             
@@ -185,14 +195,15 @@ class TimeserverNTP(Sensor):
                 self.settings.set_setting(name, requested=requested)
 
         meta = DeviceMetadata(
-            attributes=TimeserverNTP.metadata["attributes"],
-            variables=TimeserverNTP.metadata["variables"],
-            settings=TimeserverNTP.metadata["settings"],
+            attributes=self.metadata["attributes"],
+            dimensions=self.metadata["dimensions"],
+            variables=self.metadata["variables"],
+            settings=settings_def["variables"]
         )
 
         self.config = DeviceConfig(
-            make=TimeserverNTP.metadata["attributes"]["make"]["data"],
-            model=TimeserverNTP.metadata["attributes"]["model"]["data"],
+            make=self.metadata["attributes"]["make"]["data"],
+            model=self.metadata["attributes"]["model"]["data"],
             serial_number=conf["serial_number"],
             metadata=meta,
             interfaces=conf["interfaces"],
