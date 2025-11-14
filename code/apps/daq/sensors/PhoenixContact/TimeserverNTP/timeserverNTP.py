@@ -51,7 +51,7 @@ class TimeserverNTP(Sensor):
     metadata = {
         "attributes": {
             # "name": {"type"mock1",
-            "make": {"type": "string", "data": "KippZonen"},
+            "make": {"type": "string", "data": "PhoenixContact"},
             "model": {"type": "string", "data": "TimeserverNTP"},
             "description": {
                 "type": "string",
@@ -271,9 +271,8 @@ class TimeserverNTP(Sensor):
 
     async def sampling_monitor(self):
 
-        # start_command = f"Log,{self.sampling_interval}\n"
-        start_command = "R\n"
-        stop_command = "R\n"
+        start_command = "R\r"
+        stop_command = "R\r"
 
         need_start = True
         start_requested = False
@@ -490,7 +489,7 @@ async def main(server_config: ServerConfig = None):
         pass
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger(f"KippZonen::TimeserverNTP::{sn}")
+    logger = logging.getLogger(f"PhoenixContact::TimeserverNTP::{sn}")
 
     logger.debug("Starting TimeserverNTP")
     inst = TimeserverNTP()
