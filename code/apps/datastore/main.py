@@ -35,7 +35,7 @@ from datastore_requests import (
     VariableSetDataRequest,
     # VariableSetDefinitionUpdate,
     VariableSetDefinitionRequest,
-    PlatformVariableMapDefinitionRequest,
+    VariableMapDefinitionRequest,
 )
 
 
@@ -665,4 +665,4 @@ async def variablemap_definition_registry_get(
         variablemap=variablemap,
         valid_config_time=valid_config_time,
     )
-    return await datastore.platformvariablemap_definition_registry_get(query)
+    return await datastore.variablemap_definition_registry_get(query)
