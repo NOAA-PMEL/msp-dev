@@ -79,7 +79,7 @@ async def main(config):
         # log_level=server_config.log_level,
         root_path="/msp/dashboardtest",
         # log_config=dict_config,
-        # lifespan="on"
+        lifespan="on"
     )
 
     server = uvicorn.Server(config)
