@@ -261,8 +261,8 @@ class TimeserverNTP(Sensor):
     async def sampling_monitor(self):
 
         # start_command = f"Log,{self.sampling_interval}\n"
-        start_command = "Log,1\n"
-        stop_command = "Log,0\n"
+        start_command = "R\n"
+        stop_command = "R\n"
 
         need_start = True
         start_requested = False
@@ -367,35 +367,73 @@ class TimeserverNTP(Sensor):
             except Exception as e:
                 print(f"default_data_loop error: {e}")
                 print(traceback.format_exc())
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.001)
+
 
     def default_parse(self, data):
         if data:
             try:
                 variables = list(self.config.metadata.variables.keys())
                 variables.remove("time")
+                print(f"variables: \n{variables}")
+
                 record = self.build_data_record(meta=self.include_metadata)
-                print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
+
                 try:
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
-                    # parts = data.data["data"].split(",")
+                    parts = data.data["data"].split(",")
 
-                    result = data.data["data"]
-                    record["variables"]["volts"]["data"] = float(result["volts_mean"])
-                    # nominal value of 80
-                    record["variables"]["sensitivity"]["data"] = 80.0
+                    if (datavar := 'RMC') in data.data["data"]:
+                        parts = parts[1:7]
+                    elif (datavar := 'VTG') in data.data["data"]:
+                        parts = parts[7]
+                        parts = [x.split("*")[0] for x in parts]
+                    elif (datavar := 'GGA') in data.data["data"]:
+                        parts = parts[7]
+                    else:
+                        return None
+                                        
+                    self.var_name = []
+                    for key, value in self.config.metadata.variables.items():
+                        try:
+                            if value.attributes["description"].data:
+                                if datavar in value.attributes["description"].data:
+                                    self.var_name.append(key)
+                        except Exception as e:
+                            continue
 
-                    uvolts = record["variables"]["volts"]["data"] * 1000000.0
-                    E = uvolts / record["variables"]["sensitivity"]["data"]
-                    record["variables"]["irradiance"]["data"] = E
+                    for index, name in enumerate(self.var_name):
+                        if name in record["variables"]:
+                            instvar = self.config.metadata.variables[name]
+                            try:
+                                if instvar.type == "int":
+                                    if isinstance(parts[index], list):
+                                        record["variables"][name]["data"] = [int(item) for item in parts[index]]
+                                    else:
+                                        record["variables"][name]["data"] = int(parts[index])
+
+                                elif instvar.type == "float":
+                                    if isinstance(parts[index], list):
+                                        record["variables"][name]["data"] = [float(item) for item in parts[index]]
+                                    else:
+                                        record["variables"][name]["data"] = float(parts[index])
+                                        
+                                else:
+                                    record["variables"][name]["data"] = parts[index]
+
+                            except ValueError:
+                                if instvar.type == "str" or instvar.type == "char":
+                                    record["variables"][name]["data"] = ""
+                                else:
+                                    record["variables"][name]["data"] = None
                     return record
-                    
                 except KeyError:
                     pass
             except Exception as e:
                 print(f"default_parse error: {e}")
+                print(traceback.format_exc())
         # else:
         return None
 
