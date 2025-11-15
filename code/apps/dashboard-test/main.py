@@ -471,22 +471,19 @@ async def handle_mqtt_buffer():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Application starting up...")
+    L.debug("lifespan: Application starting up...")
     # Perform startup tasks here
-    mqtt_loop = asyncio.create_task(get_from_mqtt_loop())
-    mqtt_handle_loop = asyncio.create_task(handle_mqtt_buffer())
+    asyncio.create_task(get_from_mqtt_loop())
+    asyncio.create_task(handle_mqtt_buffer())
     yield
-    print("Application shutting down...")
+    L.debug("lifespan: Application shutting down...")
     # Perform shutdown tasks here
-    mqtt_loop.cancel()
-    mqtt_handle_loop.cancel()
+    # mqtt_loop.cancel()
+    # mqtt_handle_loop.cancel()
 
-print("here:1")
 app = FastAPI(lifespan=lifespan)
-print("here:1")
 
 origins = ["*"]  # dev
-print("here:1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -494,7 +491,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-print("here:1")
 
 router = APIRouter()
 
