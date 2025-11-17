@@ -24,7 +24,7 @@ env:
 
 jobs:
 
-  build-and-push-furuno-scx21:
+  build-and-push-phoenixcontact-ntp:
 
     runs-on: ubuntu-latest
     defaults:
