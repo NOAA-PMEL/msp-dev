@@ -271,7 +271,7 @@ class TimeserverNTP(Sensor):
 
     async def sampling_monitor(self):
 
-        start_command = "R\r\n"
+        start_command = "R\n"
         # stop_command = "R\r"
         stop_command = ""
 
