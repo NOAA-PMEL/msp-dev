@@ -455,6 +455,7 @@ async def handle_mqtt_buffer():
                 sensor_id = "::".join([make, model, serial_number])
 
                 msg = {"data-update": ce.data}
+                L.debug("handle_mqtt_buffer", extra={"msg": msg, "sensor_id": sensor_id})
                 await manager.broadcast(json.dumps(msg), "sensor", sensor_id)
 
             elif ce["type"] == "envds.controller.data.update":
@@ -465,6 +466,7 @@ async def handle_mqtt_buffer():
                 controller_id = "::".join([make, model, serial_number])
 
                 msg = {"data-update": ce.data}
+                L.debug("handle_mqtt_buffer", extra={"msg": msg, "controller_id": controller_id})
                 await manager.broadcast(json.dumps(msg), "controller", controller_id)
         
         except Exception as e:
