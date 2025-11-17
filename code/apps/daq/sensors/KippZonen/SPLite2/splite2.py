@@ -231,7 +231,8 @@ class SPLite2(Sensor):
                 path_id = message["path_id"]
                 default_path = self.config.interfaces["default"]["path"]
                 ref_path = self.config.interfaces["default"]["path"]
-                self.logger.debug("interface_recv_data", extra={"path_id": path_id, "iface_path": iface_path})
+                self.logger.debug("interface_recv_data", extra={"path_id": path_id, "default_path": default_path})
+                self.logger.debug("interface_recv_data", extra={"path_id": path_id, "ref_path": ref_path})
                 # if path_id == "default":
                 if path_id == default_path:
                     self.logger.debug(
