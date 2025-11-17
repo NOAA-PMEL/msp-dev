@@ -48,7 +48,7 @@ handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
-L.setLevel(logging.INFO)
+L.setLevel(logging.DEBU)
 
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
@@ -400,6 +400,7 @@ async def get_from_mqtt_loop():
     reconnect = 10
     while True:
         try:
+            
             L.debug("listen", extra={"config": config})
             client_id=str(ULID())
             async with Client(config.mqtt_broker, port=config.mqtt_port,identifier=client_id) as client:
@@ -435,6 +436,8 @@ async def get_from_mqtt_loop():
                 extra={ k: v for k, v in config.dict().items() if k.lower().startswith('mqtt_') }
             )
             await asyncio.sleep(reconnect)
+        except Exception as e:
+            L.error("get_from_mqtt_loop", extra={"reason": e})
         finally:
             await asyncio.sleep(0.0001)
 
