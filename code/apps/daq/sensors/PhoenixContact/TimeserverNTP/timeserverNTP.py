@@ -285,6 +285,7 @@ class TimeserverNTP(Sensor):
                 data = await self.default_data_buffer.get()
                 self.logger.debug("default_data_loop", extra={"data": data})
                 if data:
+                    print('DATA Found')
                     self.collecting = True
 
                 if self.sampling():
