@@ -229,12 +229,18 @@ class SPLite2(Sensor):
                     "interface_recv_data", extra={"data": message}
                 )
                 path_id = message["path_id"]
-                iface_path = self.config.interfaces["default"]["path"]
+                default_path = self.config.interfaces["default"]["path"]
+                ref_path = self.config.interfaces["default"]["path"]
                 self.logger.debug("interface_recv_data", extra={"path_id": path_id, "iface_path": iface_path})
                 # if path_id == "default":
-                if path_id == iface_path:
+                if path_id == default_path:
                     self.logger.debug(
-                        "interface_recv_data", extra={"data": message.data}
+                        "interface_recv_data", extra={"here default data": message.data}
+                    )
+                    await self.default_data_buffer.put(message)
+                if path_id == ref_path:
+                    self.logger.debug(
+                        "interface_recv_data", extra={"here ref data": message.data}
                     )
                     await self.default_data_buffer.put(message)
             except KeyError:
