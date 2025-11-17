@@ -48,7 +48,7 @@ handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
-L.setLevel(logging.DEBU)
+L.setLevel(logging.DEBUG)
 
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
