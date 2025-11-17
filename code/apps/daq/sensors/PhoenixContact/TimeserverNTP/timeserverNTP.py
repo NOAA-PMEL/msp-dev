@@ -333,7 +333,6 @@ class TimeserverNTP(Sensor):
 
                 if self.first_record in data.data['data']:
                     record1 = self.default_parse(data)
-                    # self.record_counter += 1
                     continue
 
                 elif self.last_record in data.data['data']:
@@ -361,7 +360,6 @@ class TimeserverNTP(Sensor):
 
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(
-                        # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
                         data=record,
                     )
@@ -373,7 +371,7 @@ class TimeserverNTP(Sensor):
                     )
                     # message = Message(data=event, destpath=destpath)
                     message = event
-                    # self.logger.debug("default_data_loop", extra={"m": message})
+                    self.logger.debug("default_data_loop", extra={"m": message})
                     await self.send_message(message)
 
                 self.logger.debug("default_data_loop", extra={"record": record})
@@ -441,6 +439,7 @@ class TimeserverNTP(Sensor):
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
+                    print('RECORD', record)
                     return record
                 except KeyError:
                     pass
