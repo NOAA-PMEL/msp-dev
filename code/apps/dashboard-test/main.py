@@ -396,7 +396,7 @@ async def test_task():
 mqtt_buffer = asyncio.Queue()
 
 async def get_from_mqtt_loop():
-    print("get_from_mqtt_loop: here!")
+    print(f"get_from_mqtt_loop: here! config: {config}")
     reconnect = 10
     while True:
         try:
