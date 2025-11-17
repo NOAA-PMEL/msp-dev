@@ -273,8 +273,7 @@ class TimeserverNTP(Sensor):
     async def sampling_monitor(self):
 
         start_command = "R\n"
-        # stop_command = "R\r"
-        stop_command = ""
+        stop_command = "R\n"
 
         need_start = True
         start_requested = False
@@ -287,6 +286,14 @@ class TimeserverNTP(Sensor):
                 if self.sampling():
 
                     if need_start:
+                        try:
+                            data = await self.default_data_buffer.get()
+                            self.logger.debug("default_data_loop", extra={"data": data})
+                            if data:
+                                self.collecting = True
+                        except Exception as e:
+                            print(f"default_data_loop error: {e}")
+                            
                         if self.collecting:
                             await self.interface_send_data(data={"data": stop_command})
                             await asyncio.sleep(2)
