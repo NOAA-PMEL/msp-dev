@@ -273,22 +273,22 @@ class TimeserverNTP(Sensor):
     async def sampling_monitor(self):
 
         start_command = "R\n"
-        stop_command = "R\n"
+        # stop_command = "R\n"
 
         need_start = True
         start_requested = False
         # wait to see if data is already streaming
         await asyncio.sleep(2)
 
-        try:
-            data = await self.default_data_buffer.get()
-            self.logger.debug("default_data_loop", extra={"data": data})
-            if data:
-                print('already collecting')
-                need_start = False
+        # try:
+        #     data = await self.default_data_buffer.get()
+        #     self.logger.debug("default_data_loop", extra={"data": data})
+        #     if data:
+        #         print('already collecting')
+        #         need_start = False
 
-        except Exception as e:
-            print(f"first sampling monitor error: {e}")
+        # except Exception as e:
+        #     print(f"first sampling monitor error: {e}")
 
 
         while True:
