@@ -283,10 +283,10 @@ class TimeserverNTP(Sensor):
         print('here 1')
         try:
             print('here 2')
-            data = await self.default_data_buffer.get()
-            print('here 3')
-            self.logger.debug("default_data_loop", extra={"data": data})
-            if data:
+            if self.default_data_buffer.empty():
+                pass
+            else:
+                print('here 3')
                 print('already collecting')
                 need_start = False
                 start_requested = True
