@@ -284,7 +284,7 @@ class TimeserverNTP(Sensor):
         try:
             print('here 2')
             data = await self.default_data_buffer.get()
-            print('data', data)
+            print('here 3')
             self.logger.debug("default_data_loop", extra={"data": data})
             if data:
                 print('already collecting')
@@ -292,6 +292,7 @@ class TimeserverNTP(Sensor):
                 start_requested = True
 
         except Exception as e:
+            print('here 4')
             print(f"first sampling monitor error: {e}")
 
 
