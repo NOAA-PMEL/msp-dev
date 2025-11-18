@@ -412,10 +412,10 @@ class TimeserverNTP(Sensor):
                         parts = parts[1:7]
                         print('parts RMC', parts)
                     elif (datavar := 'VTG') in data.data["data"]:
-                        parts = parts[7]
+                        parts = parts[7:8]
                         print('parts VTG', parts)
                     elif (datavar := 'GGA') in data.data["data"]:
-                        parts = parts[7]
+                        parts = parts[7:8]
                         print("parts GGA", parts)
                     else:
                         return None
@@ -438,13 +438,13 @@ class TimeserverNTP(Sensor):
                                     if isinstance(parts[index], list):
                                         record["variables"][name]["data"] = [int(item) for item in parts[index]]
                                     else:
-                                        record["variables"][name]["data"] = int(parts)
+                                        record["variables"][name]["data"] = int(parts[index])
 
                                 elif instvar.type == "float":
                                     if isinstance(parts[index], list):
                                         record["variables"][name]["data"] = [float(item) for item in parts[index]]
                                     else:
-                                        record["variables"][name]["data"] = float(parts)
+                                        record["variables"][name]["data"] = float(parts[index])
                                         
                                 else:
                                     record["variables"][name]["data"] = parts[index]
