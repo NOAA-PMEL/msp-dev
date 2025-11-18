@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Any, Dict
 from pydantic import BaseModel
 
 
@@ -159,3 +159,61 @@ class DatastoreRequest(BaseModel):
         | DeviceInstanceUpdate
         | DeviceInstanceRequest
     )
+
+class VariableSetDataUpdate(BaseModel):
+    variableset_id: str | None = None
+    variablemap_id: str | None = None
+    variableset: str | None = None
+    timestamp: float
+    attributes: dict
+    dimensions: dict
+    variables: dict
+
+
+class VariableSetDataRequest(BaseModel):
+    variableset_id: str | None = None
+    variablemap_id: str | None = None
+    variableset: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    start_timestamp: float | None = None
+    end_timestamp: float | None = None
+    last_n_seconds: int | None
+    variable: List[str] | None = None
+
+class VariableSetDefinitionUpdate(BaseModel):
+    variableset_definition_id: str | None = None
+    variablemap_definition_id: str | None = None
+    variableset: str | None = None
+    index_type: str | None = None
+    index_value: Any | None = None
+    attributes: dict
+    dimensions: dict
+    variables: dict
+
+class VariableSetDefinitionRequest(BaseModel):
+    variableset_definition_id: str | None = None
+    variablemap_definition_id: str | None = None
+    variableset: str | None = None
+    index_type: str | None = None
+    index_value: Any | None = None
+
+class VariableMapDefinitionUpdate(BaseModel):
+    variablemap_definition_id: str | None = None
+    variablemap_type: str | None = None
+    variablemap_type_id: str | None = None
+    variablemap: str | None = None
+    valid_config_time: str | None = None
+    revision: int | None = None
+    attributes: dict
+    variablesets: dict
+    variables: dict
+
+
+class VariableMapDefinitionRequest(BaseModel):
+    variablemap_definition_id: str | None = None
+    variablemap_type: str | None = None
+    variablemap_type_id: str | None = None
+    variablemap: str | None = None
+    valid_config_time: str | None = None
+

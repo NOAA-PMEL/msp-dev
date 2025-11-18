@@ -589,7 +589,8 @@ class APS3321(Sensor):
                                 record1["variables"][var]["data"] = record2["variables"][var]["data"]
                     # record1["variables"]["diameter"]["data"] = [None]*52
                     record1["variables"]["diameter"]["data"] = self.diams
-                    record1["variables"]["channel"]["data"] = [None]*64
+                    # record1["variables"]["channel"]["data"] = [None]*64
+                    record1["variables"]["channel"]["data"] = list(range(1, 65))
                     record1["variables"]["dN"]["data"] = [None]*52
                     record1["variables"]["dlogDp"]["data"] = [self.dlogDp]*52
                     record1["variables"]["dNdlogDp"]["data"] = [None]*52

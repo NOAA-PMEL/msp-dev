@@ -23,11 +23,13 @@ from pydantic import BaseSettings
 from ulid import ULID
 import dash_ag_grid as dag
 import pandas as pd
+import numpy as np
 from logfmter import Logfmter
 # import pymongo
 from collections import deque
 import httpx
 import traceback
+# import xarray as xr
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -40,7 +42,7 @@ dash.register_page(
     path_template="/sensor/<sensor_id>",
     title="Sensors",  # , prevent_initial_callbacks=True
 )
-
+ 
 
 class Settings(BaseSettings):
     # host: str = "0.0.0.0"
@@ -506,7 +508,99 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
     return graph
 
 
+def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
+    content = dbc.Row(
+        children=[
+            dbc.Button("Submit", {"type": "graph-3d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
+            dbc.Label("z-axis min:"),
+            # dbc.Col(
+            #     dbc.Input(
+            #         type="number",
+            #         id={"type": "graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"},
+            #     )
+            # ),
+            # dbc.Label("z-axis max:"),
+            # dbc.Col(
+            #     dbc.Input(
+            #         type="number",
+            #         id={"type": "graph-2d-z-axis-max", "index": f"{xaxis}::{yaxis}"},
+            #     )
+            # ),
+        ]
+    )
+
+    axes_settings = dbc.Accordion(
+        children=[
+            dbc.AccordionItem(
+                [dbc.Card(children=[content])],
+                title="Axes Settings",
+                # start_collapsed=True
+            )
+        ],
+        start_collapsed=True
+    )
+
+    graph = dbc.Card(
+        children=[
+            dbc.CardHeader(
+                children=[
+                    dcc.Dropdown(
+                        id={"type": "graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"},
+                        options=dropdown_list,
+                        value="",
+                    )
+                ]
+            ),
+            dbc.Row(
+                children=[
+                    axes_settings,
+                    dbc.Col(
+                        dcc.Graph(
+                            id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}"},
+                            style={"height": 500},
+                        )
+                    ),
+
+                    dbc.Col(
+                        dcc.Graph(
+                            id={
+                                "type": "graph-3d-heatmap",
+                                "index": f"{xaxis}::{yaxis}",
+                            },
+                            style={"height": 500},
+                        )
+                    ),
+                ]
+            ),
+        ]
+    )
+
+    return graph
+
+
+
+
 def build_graph_settings_2d():
+
+    collapse = html.Div(
+        [
+            dbc.Button(
+                "Graph Settings",
+                id="collapse-button",
+                className="mb-3",
+                color="primary",
+                n_clicks=0,
+            ),
+            dbc.Collapse(
+                dbc.Card(dbc.CardBody("This content is hidden in the collapse")),
+                id="collapse",
+                is_open=False,
+            ),
+        ]
+    )
+
+
+def build_graph_settings_3d():
 
     collapse = html.Div(
         [
@@ -531,6 +625,7 @@ def build_graphs(layout_options):
     graph_list = []
     print(f"build_graphs: {layout_options}")
     for ltype, dims in layout_options.items():
+        print('dims', dims)
         for dim, options in dims.items():
             title = "Plots"
             if ltype == "layout-1d":
@@ -557,7 +652,7 @@ def build_graphs(layout_options):
                 print(f"build_graphs: {graph_list}")
 
             elif ltype == "layout-2d":
-                title = f"Data 2-D (time, {dim})"
+                title = f"Plots 2-D (time, {dim})"
                 graph_list.append(
                     dbc.AccordionItem(
                         [
@@ -576,6 +671,31 @@ def build_graphs(layout_options):
                         title=title,
                     )
                 )
+            
+        if ltype == "layout-3d":
+            title = f"Plots 3-D ({list(dims.keys())[0]}, {list(dims.keys())[1]})"
+            # title = f"Plots 3-D (time, {dim})"
+            graph_list.append(
+                dbc.AccordionItem(
+                    [
+                        dbc.Row(
+                            children=[
+                                build_graph_3d(
+                                    layout_options["layout-3d"][dim][
+                                        "variable-list"
+                                    ],
+                                    # xaxis="time",
+                                    xaxis =list(dims.keys())[0],
+                                    yaxis=list(dims.keys())[1],
+                                    # yaxis=dim
+                                    # zaxis=list(dims.keys())[1]
+                                )
+                            ]
+                        )
+                    ],
+                    title=title,
+                )
+            )
 
     print(f"build_tables: {graph_list}")
 
@@ -737,8 +857,8 @@ def layout(sensor_id=None):
                 # only get the data variables for main
                 elif var["attributes"]["variable_type"]["data"] != "main":
                     continue
-                if name in dimensions:
-                    continue
+                # if name in dimensions:
+                #     continue
                 if "shape" not in var:
                     continue
                 if "time" not in var["shape"]:
@@ -815,8 +935,52 @@ def layout(sensor_id=None):
                         layout_options["layout-2d"][dim_2d]["table-column-defs"].append(dcd)
 
                     layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
+
                 elif multi_dim and len(var["shape"]) == 3:
-                    continue
+                    if "layout-3d" not in layout_options:
+                        layout_options["layout-3d"] = (
+                            {}
+                        )  # {dim_2d: {"table-column-defs": [], "variable-list": []}}
+
+                    dim_3d = [d for d in var["shape"] if d != "time"][0]
+
+                    # if no entry for second dim, create
+                    if dim_3d not in layout_options["layout-3d"]:
+                        layout_options["layout-3d"][dim_3d] = {
+                            "table-column-defs": [],
+                            "variable-list": [],
+                        }
+                        dln = dim_3d
+                        try:
+                            dln = sensor_definition["attributes"][dim_3d]["long_name"]["data"]
+                        except KeyError:
+                            pass
+
+                        # print(f"layout: {ln}")
+                        data_type = "text"
+                        try:
+                            dtype = sensor_definition["variables"][dim_3d]["type"]
+                            if dtype in ["float", "double", "int"]:
+                                data_type = "number"
+                            elif dtype in ["str", "string", "char"]:
+                                data_type = "text"
+                            elif dtype in ["bool"]:
+                                data_type = "boolean"
+                        except KeyError:
+                            pass
+                        # print(f"layout: {data_type}")
+
+                        dcd = {
+                            "field": dim_3d,
+                            "headerName": dln,
+                            "filter": False,
+                            "cellDataType": data_type,
+                            "pinned": "left",
+                        }
+                        layout_options["layout-3d"][dim_3d]["table-column-defs"].append(dcd)
+
+                    layout_options["layout-3d"][dim_3d]["table-column-defs"].append(cd)
+                    # continue
                 else:
                     layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
 
@@ -1445,6 +1609,9 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
                 except KeyError:
                     continue
 
+        print('2d x', x)
+        print('2d y', y)
+        print('2d og z', z)
         # print(f"x,y: {x}, {y}")
         # # fig = go.Figure(data=[go.Scatter(x=x, y=y)])
         # print(f"go fig: {fig}")
@@ -1512,6 +1679,129 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         # return [dash.no_update, dash.no_update]
         raise PreventUpdate
         # return [dash.no_update, dash.no_update]
+
+
+
+@callback(
+    [
+        Output(
+            {"type": "graph-3d-line", "index": MATCH}, "figure", allow_duplicate=True
+        ),
+        Output(
+            {"type": "graph-3d-heatmap", "index": MATCH}, "figure", allow_duplicate=True
+        )
+    ],
+    Input({"type": "graph-3d-dropdown", "index": MATCH}, "value"),
+    [
+        State("sensor-meta", "data"),
+        State("graph-axes", "data"),
+        State("sensor-definition", "data"),
+        State({"type": "graph-3d-dropdown", "index": MATCH}, "id"),
+    ],
+    prevent_initial_call=True,
+)
+# def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
+def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
+    # print(f"select_graph_3d: {z_axis}, {sensor_meta}, {graph_axes}, {graph_id}")
+    # print(f"current_fig: {current_fig}")
+    try:
+        if "graph-3d" not in graph_axes:
+            graph_axes["graph-3d"] = dict()
+        x_axis = graph_id["index"].split("::")[0]
+        y_axis = graph_id["index"].split("::")[1]
+        # z_axis = graph_id["index"].split("::")[2]
+        use_log = False
+        if x_axis == "diameter":
+            use_log = True
+        graph_axes["graph-3d"][graph_id["index"]] = {
+            # "x-axis": "time",
+            "x-axis": x_axis,
+            "y-axis": y_axis,
+            "z-axis": z_axis,
+        }
+        print(f"select_graph_3d: {graph_axes}")
+
+        x = []
+        y = []
+        z = []
+        
+        device_id = f'{sensor_meta["make"]}::{sensor_meta["model"]}::{sensor_meta["serial_number"]}'
+        results = get_device_data(device_id=device_id)
+        print(f"3d results: {results}")
+        if results is None or len(results) == 0:
+            raise PreventUpdate
+
+        elif results and len(results) > 0:
+            print("results = good")
+            for doc in results:
+                try:
+                    x.append(doc["variables"][x_axis]["data"])
+                    y.append(doc["variables"][y_axis]["data"])
+                    z.append(doc["variables"][z_axis]["data"])
+                except KeyError:
+                    continue
+
+        units = []
+        for axis in [x_axis, y_axis, z_axis]:
+            try:
+                unit = f'({sensor_definition["variables"][axis]["attributes"]["units"]["data"]})'
+                units.append(unit)
+            except Exception:
+                unit = ''
+                units.append(unit)
+        
+        print('units', units)
+        # try:
+        #     x_units = f'({sensor_definition["variables"][x_axis]["attributes"]["units"]["data"]})'
+        #     y_units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
+        #     z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
+        # except KeyError:
+        #     pass
+        
+        if isinstance(x[-1], list):
+            x = x[-1]
+
+        if isinstance(y[-1], list):
+            y = y[-1]
+        
+        if isinstance(z[-1], list):
+            z = z[-1]
+
+        heatmap = go.Figure(
+            data=go.Heatmap(
+                x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
+            ),
+            layout={
+                "xaxis": {"title": f"{x_axis} {units[0]}"},
+                "yaxis": {"title": f"{y_axis} {units[1]}"},
+                # "colorscale": "rainbow"
+            },
+        )
+        if use_log:
+            heatmap.update_xaxes(type="log")
+            heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
+        # print(f"heatmap figure: {heatmap}")
+        
+        scatter = go.Figure(
+            data = go.Surface(z=z, x=x, y=y)
+        )
+        scatter.update_scenes(
+            xaxis_title_text = f"{x_axis} {units[0]}",
+            yaxis_title_text = f"{y_axis} {units[1]}",
+            zaxis_title_text = f"{z_axis} {units[2]}"
+        )
+
+        # return [heatmap, scatter]  # , graph_axes]
+        return [scatter, heatmap]
+        # return PreventUpdate
+    except Exception as e:
+        print(f"select_graph_3d error: {e}")
+        print(traceback.format_exc())
+        # return [dash.no_update, dash.no_update]
+        raise PreventUpdate
+        # return [dash.no_update, dash.no_update]
+
+
 
 
 # @callback(
@@ -1844,6 +2134,62 @@ def update_graph_2d_scatter(
 
 
 
+
+@callback(
+    Output({"type": "graph-3d-line", "index": ALL}, "figure"),
+    Input("sensor-data-buffer", "data"),
+    [
+        State({"type": "graph-3d-dropdown", "index": ALL}, "value"),
+        State("graph-axes", "data"),
+        State("sensor-definition", "data"),
+        State({"type": "graph-3d-line", "index": ALL}, "figure"),
+        State({"type": "graph-3d-line", "index": ALL}, "id"),
+    ],
+    prevent_initial_call=True,
+)
+def update_graph_3d_scatter(
+    sensor_data, z_axis_list, graph_axes, sensor_definition, current_figs, graph_ids
+):
+
+    try:
+        scatters = []
+        if sensor_data:
+            print(f"sensor_data: {sensor_data}")
+            for z_axis, graph_id, current_fig in zip(
+                z_axis_list, graph_ids, current_figs
+            ):
+                x_axis = graph_id["index"].split("::")[0]
+                y_axis = graph_id["index"].split("::")[1]
+                if (
+                    # "time" not in sensor_data["variables"]
+                    x_axis not in sensor_data["variables"]
+                    or y_axis not in sensor_data["variables"]
+                    or z_axis not in sensor_data["variables"]
+                ):
+                    raise PreventUpdate
+
+                # x = sensor_data["variables"]["time"]["data"]
+                x = sensor_data["variables"][x_axis]["data"]
+                y = sensor_data["variables"][y_axis]["data"]
+                z = sensor_data["variables"][z_axis]["data"]
+                print(f"scatter update: {x}, {y}, {z}")
+
+
+                # current_fig["data"][0]["x"] = y
+                # current_fig["data"][0]["y"] = z
+                # current_fig["data"][0]["x"] = y
+                current_fig["data"][0]["z"] = z
+                if isinstance(x, list):
+                    x = x[-1]
+                current_fig["layout"]["title"] = str(x)
+                print(f"scatter current_fig: {current_fig}")
+                scatters.append(current_fig)
+
+            return scatters
+
+    except Exception as e:
+        print(f"scatter update error: {e}")
+    raise PreventUpdate
 
 
 # @callback(

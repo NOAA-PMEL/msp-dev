@@ -34,7 +34,13 @@ from datastore_requests import (
     ControllerDataRequest,
     ControllerDataUpdate,
     ControllerInstanceRequest,
-    ControllerInstanceUpdate
+    ControllerInstanceUpdate,
+    VariableMapDefinitionRequest,
+    VariableMapDefinitionUpdate,
+    VariableSetDefinitionRequest,
+    VariableSetDefinitionUpdate,
+    VariableSetDataRequest,
+    VariableSetDataUpdate,
 )
 
 class DBClientConfig(BaseModel):
@@ -225,3 +231,47 @@ class DBClient:
     ) -> dict:
         return {"results": []}
 
+    async def variablemap_definition_registry_update(
+        self,
+        database: str,
+        collection: str,
+        request: VariableMapDefinitionUpdate,
+        ttl: int = 0
+    ) -> bool:
+        return False
+
+    async def variablemap_definition_registry_get(
+            self,
+            request: VariableMapDefinitionRequest
+    ) -> dict:
+        return {"results": []}
+
+    async def variableset_definition_registry_update(
+        self,
+        database: str,
+        collection: str,
+        request: VariableSetDefinitionUpdate,
+        ttl: int = 0
+    ) -> bool:
+        return False
+
+    async def variableset_definition_registry_get(
+            self,
+            request: VariableSetDefinitionRequest
+    ) -> dict:
+        return {"results": []}
+
+    async def variableset_data_update(
+        self,
+        database: str,
+        collection: str,
+        request: VariableSetDataUpdate,
+        ttl: int = 0
+    ) -> bool:
+        return False
+
+    async def variableset_data_get(
+            self,
+            request: VariableSetDataRequest
+    ) -> dict:
+        return {"results": []}

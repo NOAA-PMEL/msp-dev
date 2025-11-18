@@ -23,7 +23,13 @@ from datastore_requests import (
     ControllerDataRequest,
     ControllerDataUpdate,
     ControllerDefinitionRequest,
-    ControllerDefinitionUpdate
+    ControllerDefinitionUpdate,
+    VariableSetDataUpdate,
+    VariableSetDataRequest,
+    VariableSetDefinitionUpdate,
+    VariableSetDefinitionRequest,
+    VariableMapDefinitionRequest,
+    VariableMapDefinitionUpdate
 )
 
 class RedisClient(DBClient):
@@ -36,6 +42,9 @@ class RedisClient(DBClient):
         self.data_controller_index_name = "idx:data-controller"
         self.registry_controller_definition_index_name = "idx:registry-controller-definition"
         self.registry_controller_instance_index_name = "idx:registry-controller-instance"
+        self.registry_variablemap_definition_index_name = "idx:registry-variablemap-definition"
+        self.registry_variableset_definition_index_name = "idx:registry-variableset-definition"
+
         self.build_indexes()
 
     def connect(self):
@@ -53,115 +62,170 @@ class RedisClient(DBClient):
 
         self.connect()
         
+        # change to only create index if it doesn't exist. This allows replicas
+
         # data:device
         # index_name = "idx:data-device"
-        try:
-            self.client.ft(self.data_device_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.data_device_index_name})
-            self.client.ft(self.registry_device_definition_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.registry_device_definition_index_name})
-            self.client.ft(self.registry_device_instance_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.registry_device_instance_index_name})
-            self.client.ft(self.data_controller_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.data_controller_index_name})
-            self.client.ft(self.registry_controller_definition_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.registry_controller_definition_index_name})
-            self.client.ft(self.registry_controller_instance_index_name).dropindex()
-            self.logger.debug("build_index:dropped", extra={"index": self.registry_controller_instance_index_name})
-        except Exception as e:
-            self.logger.error("build_index", extra={"reason": e})
-            pass
+
+        # try:
+        #     self.client.ft(self.data_device_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.data_device_index_name})
+        #     self.client.ft(self.registry_device_definition_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_device_definition_index_name})
+        #     self.client.ft(self.registry_device_instance_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_device_instance_index_name})
+        #     self.client.ft(self.data_controller_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.data_controller_index_name})
+        #     self.client.ft(self.registry_controller_definition_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_controller_definition_index_name})
+        #     self.client.ft(self.registry_controller_instance_index_name).dropindex()
+        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_controller_instance_index_name})
+        # except Exception as e:
+        #     self.logger.error("build_index", extra={"reason": e})
+        #     pass
 
         try:
             # data:device
-            schema = (
-                TagField("$.record.device_id", as_name="device_id"),
-                TagField("$.record.make", as_name="make"),
-                TagField("$.record.model", as_name="model"),
-                TagField("$.record.serial_number", as_name="serial_number"),
-                TagField("$.record.version", as_name="version"),
-                # TextField("$.record.device_type", as_name="device_type"),
-                NumericField("$.record.timestamp", as_name="timestamp")
-            )
-            definition = IndexDefinition(
-                prefix=["data:device:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.data_device_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.record.device_id", as_name="device_id"),
+                    TagField("$.record.make", as_name="make"),
+                    TagField("$.record.model", as_name="model"),
+                    TagField("$.record.serial_number", as_name="serial_number"),
+                    TagField("$.record.version", as_name="version"),
+                    # TextField("$.record.device_type", as_name="device_type"),
+                    NumericField("$.record.timestamp", as_name="timestamp")
+                )
+                definition = IndexDefinition(
+                    prefix=["data:device:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
 
             # registry:device-definition
-            schema = (
-                TagField("$.registration.device_definition_id", as_name="device_definition_id"),
-                TagField("$.registration.make", as_name="make"),
-                TagField("$.registration.model", as_name="model"),
-                TagField("$.registration.version", as_name="version"),
-                TextField("$.registration.device_type", as_name="device_type"),
-            )
-            definition = IndexDefinition(
-                prefix=["registry:device-definition:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.registry_device_definition_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.device_definition_id", as_name="device_definition_id"),
+                    TagField("$.registration.make", as_name="make"),
+                    TagField("$.registration.model", as_name="model"),
+                    TagField("$.registration.version", as_name="version"),
+                    TextField("$.registration.device_type", as_name="device_type"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:device-definition:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
 
             # registry:device-instance
-            schema = (
-                TagField("$.registration.device_id", as_name="device_id"),
-                TagField("$.registration.make", as_name="make"),
-                TagField("$.registration.model", as_name="model"),
-                TagField("$.registration.serial_number", as_name="serial_number"),
-                TagField("$.registration.version", as_name="version"),
-                TextField("$.registration.device_type", as_name="device_type"),
-            )
-            definition = IndexDefinition(
-                prefix=["registry:device-instance:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.registry_device_instance_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.device_id", as_name="device_id"),
+                    TagField("$.registration.make", as_name="make"),
+                    TagField("$.registration.model", as_name="model"),
+                    TagField("$.registration.serial_number", as_name="serial_number"),
+                    TagField("$.registration.version", as_name="version"),
+                    TextField("$.registration.device_type", as_name="device_type"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:device-instance:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
 
             # data:controller
-            schema = (
-                TagField("$.record.controller_id", as_name="controller_id"),
-                TagField("$.record.make", as_name="make"),
-                TagField("$.record.model", as_name="model"),
-                TagField("$.record.serial_number", as_name="serial_number"),
-                TagField("$.record.version", as_name="version"),
-                # TextField("$.record.controller_type", as_name="controller_type"),
-                NumericField("$.record.timestamp", as_name="timestamp")
-            )
-            definition = IndexDefinition(
-                prefix=["data:controller:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.data_controller_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.data_controller_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.record.controller_id", as_name="controller_id"),
+                    TagField("$.record.make", as_name="make"),
+                    TagField("$.record.model", as_name="model"),
+                    TagField("$.record.serial_number", as_name="serial_number"),
+                    TagField("$.record.version", as_name="version"),
+                    # TextField("$.record.controller_type", as_name="controller_type"),
+                    NumericField("$.record.timestamp", as_name="timestamp")
+                )
+                definition = IndexDefinition(
+                    prefix=["data:controller:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.data_controller_index_name).create_index(schema, definition=definition)
 
             # registry:controller-definition
-            schema = (
-                TagField("$.registration.controller_definition_id", as_name="controller_definition_id"),
-                TagField("$.registration.make", as_name="make"),
-                TagField("$.registration.model", as_name="model"),
-                TagField("$.registration.version", as_name="version"),
-                # TextField("$.registration.controller_type", as_name="controller_type"),
-            )
-            definition = IndexDefinition(
-                prefix=["registry:controller-definition:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.registry_controller_definition_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.registry_controller_definition_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.controller_definition_id", as_name="controller_definition_id"),
+                    TagField("$.registration.make", as_name="make"),
+                    TagField("$.registration.model", as_name="model"),
+                    TagField("$.registration.version", as_name="version"),
+                    # TextField("$.registration.controller_type", as_name="controller_type"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:controller-definition:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_controller_definition_index_name).create_index(schema, definition=definition)
 
             # registry:controller-instance
-            schema = (
-                TagField("$.registration.controller_id", as_name="controller_id"),
-                TagField("$.registration.make", as_name="make"),
-                TagField("$.registration.model", as_name="model"),
-                TagField("$.registration.serial_number", as_name="serial_number"),
-                TagField("$.registration.version", as_name="version"),
-                # TextField("$.registration.controller_type", as_name="controller_type"),
-            )
-            definition = IndexDefinition(
-                prefix=["registry:controller-instance:"],
-                index_type=IndexType.JSON
-            )
-            self.client.ft(self.registry_controller_instance_index_name).create_index(schema, definition=definition)
+            try:
+                self.client.ft(self.registry_controller_instance_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.controller_id", as_name="controller_id"),
+                    TagField("$.registration.make", as_name="make"),
+                    TagField("$.registration.model", as_name="model"),
+                    TagField("$.registration.serial_number", as_name="serial_number"),
+                    TagField("$.registration.version", as_name="version"),
+                    # TextField("$.registration.controller_type", as_name="controller_type"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:controller-instance:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_controller_instance_index_name).create_index(schema, definition=definition)
+
+            # registry:variablemap-definition
+            try:
+                self.client.ft(self.registry_variablemap_definition_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
+                    TagField("$.registration.variablemap_type", as_name="variablemap_type"),
+                    TagField("$.registration.variablemap_type_id", as_name="variablemap_type_id"),
+                    TagField("$.registration.variablemap", as_name="variablemap"),
+                    TagField("$.registration.valid_config_time", as_name="valid_config_time"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:variablemap-definition:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_variablemap_definition_index_name).create_index(schema, definition=definition)
+
+            # registry:variableset-definition
+            try:
+                self.client.ft(self.registry_variableset_definition_index_name).info()
+            except Exception as e:
+                schema = (
+                    TagField("$.registration.variableset_definition_id", as_name="variablemap_definition_id"),
+                    TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
+                    TagField("$.registration.variableset", as_name="variableset"),
+                    TagField("$.registration.index_type", as_name="index_type"),
+                    TagField("$.registration.index_value", as_name="index_value"),
+                )
+                definition = IndexDefinition(
+                    prefix=["registry:variableset-definition:"],
+                    index_type=IndexType.JSON
+                )
+                self.client.ft(self.registry_variableset_definition_index_name).create_index(schema, definition=definition)
 
         except Exception as e:
             self.logger.error("build_indexes", extra={"reason": e})
@@ -767,4 +831,209 @@ class RedisClient(DBClient):
                 self.logger.error("controller_instance_registry_get", extra={"reason": e})
                 continue
 
+        return {"results": results}
+
+    async def variablemap_definition_registry_update(
+        self,
+        # document: dict,
+        database: str,
+        collection: str,
+        request: VariableMapDefinitionUpdate,
+        ttl: int = 300
+    ) -> bool:
+        await super(RedisClient, self).variablemap_definition_registry_update(database, collection, request, ttl)
+        try:
+            self.connect()
+
+            
+            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"update-doc": request, "ttl": ttl})
+            document = request.dict()
+            
+            variable_map_type_id = request.variablemap_type_id
+            # platform_id = request.platform_id
+            variablemap = request.variablemap
+            valid_config_time = request.valid_config_time
+            # document = request.dict().pop("database").pop("collection")
+            # make = request.request.make
+            # model = request.request.model
+            # serial_number = request.request.serial_number
+            # timestamp = request.request.timestamp
+
+            # change timestamp to exclude : for redis index
+            redis_time = valid_config_time.replace(":", "")
+            id = "::".join([variable_map_type_id,variablemap,redis_time])
+
+            key = f"{database}:{collection}:{id}"
+            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"key": key, "device-doc": document})
+            check_request = VariableMapDefinitionRequest(
+                variable_map_type_id=variable_map_type_id,
+                variablemap=variablemap,
+                valid_config_time=redis_time
+            )
+            check_results = await self.variablemap_definition_registry_get(check_request)
+            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"check": check_results})
+            # check = False # tmp
+            if check_results["results"]: # check if there are any results
+                self.logger.debug("redis_client: variablemap_definition_registry_update check_results", extra={"results": check_results["results"]})
+                result = True
+            else:
+                result = self.client.json().set(
+                    key,
+                    "$",
+                    {"registration": document}
+                )
+            if result and ttl > 0:
+                self.client.expire(key, ttl)
+
+            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"check_request": check_request, "result": result})
+            return result
+        
+        except Exception as e:
+            self.logger.error("redis_client: variablemap_definition_registry_update", extra={"reason": e})
+            return False
+
+    async def variablemap_definition_registry_get(
+            self,
+            request: VariableMapDefinitionRequest
+    ) -> dict:
+        await super(RedisClient, self).variablemap_definition_registry_get(request)
+
+        query_args = []
+        if request.variablemap_definition_id:
+            parts = request.variablemap_definition_id.split("::")
+            parts[2] = parts[2].replace(":", "")
+            redis_id = "::".join(parts)
+            # query_args.append(f"@variablemap_definition_id:{{{self.escape_query(request.variablemap_definition_id)}}}")
+            query_args.append(f"@variablemap_definition_id:{{{self.escape_query(redis_id)}}}")
+        if request.variablemap_type:
+            query_args.append(f"@variablemap_type:{{{self.escape_query(request.variablemap_type)}}}")
+        if request.variablemap_type_id:
+            query_args.append(f"@variablemap_type_id:{{{self.escape_query(request.variablemap_type_id)}}}")
+        if request.variablemap:
+            query_args.append(f"@variablemap:{{{self.escape_query(request.variablemap)}}}")
+        if request.valid_config_time:
+            redis_time = request.valid_config_time.replace(":", "")
+
+            # query_args.append(f"@valid_config_time:{{{self.escape_query(request.valid_config_time)}}}")
+            query_args.append(f"@valid_config_time:{{{self.escape_query(redis_time)}}}")
+
+        if query_args:
+            qstring = " ".join(query_args)
+        else:
+            qstring = "*"
+        self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"query_string": qstring})
+        q = Query(qstring)#.sort_by("version", asc=False)
+        docs = self.client.ft(self.registry_variablemap_definition_index_name).search(q).docs
+        self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"docs": docs})
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    results.append(reg["registration"])
+            except Exception as e:
+                self.logger.error("redis_client: variablemap_definition_registry_get", extra={"reason": e})
+                continue
+        self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"results": results})
+        return {"results": results}
+
+    async def variableset_definition_registry_update(
+        self,
+        # document: dict,
+        database: str,
+        collection: str,
+        request: VariableSetDefinitionUpdate,
+        ttl: int = 300
+    ) -> bool:
+        await super(RedisClient, self).variableset_definition_registry_update(database, collection, request, ttl)
+        try:
+            self.connect()
+
+            
+            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"update-doc": request, "ttl": ttl})
+            document = request.dict()
+            
+            variablemap_definition_id = request.variablemap_definition_id
+            parts = variablemap_definition_id.split("::")
+            parts[2] = parts[2].replace(":", "")
+            redis_id = "::".join(parts)
+
+            variableset = request.variableset
+
+            id = "::".join([redis_id,variableset])
+
+            key = f"{database}:{collection}:{id}"
+            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"key": key, "device-doc": document})
+            check_request = VariableSetDefinitionRequest(
+                variablemap_definition_id=variablemap_definition_id,
+                variableset=variableset,
+            )
+            check_results = await self.variableset_definition_registry_get(check_request)
+            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"check": check_results})
+            # check = False # tmp
+            if check_results["results"]: # check if there are any results
+                self.logger.debug("redis_client: variableset_definition_registry_update check_results", extra={"results": check_results["results"]})
+                result = True
+            else:
+                result = self.client.json().set(
+                    key,
+                    "$",
+                    {"registration": document}
+                )
+            if result and ttl > 0:
+                self.client.expire(key, ttl)
+
+            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"check_request": check_request, "result": result})
+            return result
+        
+        except Exception as e:
+            self.logger.error("redis_client: variableset_definition_registry_update", extra={"reason": e})
+            return False
+
+    async def variableset_definition_registry_get(
+            self,
+            request: VariableSetDefinitionRequest
+    ) -> dict:
+        await super(RedisClient, self).variableset_definition_registry_get(request)
+
+        query_args = []
+        if request.variableset_definition_id:
+            parts = request.variableset_definition_id.split("::")
+            parts[2] = parts[2].replace(":", "")
+            redis_id = "::".join(parts)
+
+            # query_args.append(f"@variableset_definition_id:{{{self.escape_query(request.variableset_definition_id)}}}")
+            query_args.append(f"@variableset_definition_id:{{{self.escape_query(redis_id)}}}")
+        if request.variablemap_definition_id:
+            parts = request.variablemap_definition_id.split("::")
+            parts[2] = parts[2].replace(":", "")
+            redis_id = "::".join(parts)
+
+            # query_args.append(f"@platform_id:{{{self.escape_query(request.platform_id)}}}")
+            query_args.append(f"@platform_id:{{{self.escape_query(redis_id)}}}")
+        if request.variableset:
+            query_args.append(f"@variablemap:{{{self.escape_query(request.variableset)}}}")
+        if request.index_type:
+            query_args.append(f"@variablemap_revision_time:{{{self.escape_query(request.index_type)}}}")
+        if request.index_value:
+            query_args.append(f"@variablegroup:{{{self.escape_query(request.index_value)}}}")
+
+        if query_args:
+            qstring = " ".join(query_args)
+        else:
+            qstring = "*"
+        self.logger.debug("redis_client: variableset_definition_registry_get", extra={"query_string": qstring})
+        q = Query(qstring)#.sort_by("version", asc=False)
+        docs = self.client.ft(self.registry_variableset_definition_index_name).search(q).docs
+        self.logger.debug("redis_client: variableset_definition_registry_get", extra={"docs": docs})
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    results.append(reg["registration"])
+            except Exception as e:
+                self.logger.error("redis_client: variableset_definition_registry_get", extra={"reason": e})
+                continue
+        self.logger.debug("redis_client: variableset_definition_registry_get", extra={"results": results})
         return {"results": results}

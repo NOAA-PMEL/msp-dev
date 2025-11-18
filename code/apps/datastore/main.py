@@ -14,7 +14,7 @@ from cloudevents.pydantic import CloudEvent
 
 import httpx
 from logfmter import Logfmter
-from typing import Annotated, List
+from typing import Annotated, List, Any
 from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
 import traceback
@@ -31,7 +31,13 @@ from datastore_requests import (
     # ControllerDefinitionUpdate,
     ControllerInstanceRequest,
     # ControllerInstanceUpdate,
+    # VariableSetDataUpdate,
+    VariableSetDataRequest,
+    # VariableSetDefinitionUpdate,
+    VariableSetDefinitionRequest,
+    VariableMapDefinitionRequest,
 )
+
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -528,3 +534,135 @@ async def controller_instance_registry_get(
     L.debug("controller_instance_registry_get", extra={"results": results})
     # return await datastore.controller_instance_registry_get(query)
     return results
+
+# @app.post("/device/data/update/", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/variableset/data/update/")
+async def variableset_data_update(request: Request):
+    try:
+        ce = from_http(request.headers, await request.body())
+        L.debug(request.headers)
+        L.debug("variableset_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
+        # await adapter.send_to_mqtt(ce)
+        await datastore.variableset_data_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
+    except Exception as e:
+        L.error("variableset_data_update", extra={"reason": e})
+        # return "", 204
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
+
+
+@app.get("/variableset/data/get/")
+# async def device_data_get(query: Annotated[DataStoreQuery, Query()]):
+async def variableset_data_get(
+    variableset_id: str | None = None,
+    variablemap_definition_id: str | None = None,
+    variableset: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    start_timestamp: float | None = None,
+    end_timestamp: float | None = None,
+    last_n_seconds: int | None = None,
+    variable: List[str] | None = None
+):
+    L.debug("main:variableset_data_get", extra={"device_id": variableset_id})
+    query = VariableSetDataRequest(
+        variableset_id=variableset_id,
+        variablemap_definition_id=variablemap_definition_id,
+        variableset=variableset,
+        start_time=start_time,
+        end_time=end_time,
+        start_timestamp=start_timestamp,
+        end_timestamp=end_timestamp,
+        last_n_seconds=last_n_seconds,
+        variable=variable,
+    )
+    L.debug("main:variableset_data_get", extra={"query": query})
+    return await datastore.variableset_data_get(query)
+
+@app.post("/variableset-definition/registry/update/")
+async def variableset_definition_registry_update(request: Request):
+    try:
+        ce = from_http(request.headers, await request.body())
+        L.debug(request.headers)
+        L.debug(
+            "device_definition_registry_update",
+            extra={"ce": ce, "destpath": ce["destpath"]},
+        )
+        # await adapter.send_to_mqtt(ce)
+        await datastore.variableset_definition_registry_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
+    except Exception as e:
+        # L.error("send", extra={"reason": e})
+        # pass
+        # return "", 204
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
+
+
+@app.get("/variableset-definition/registry/get/")
+# async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
+async def variableset_definition_registry_get(
+    variableset_definition_id: str | None = None,
+    variablemap_definition_id: str | None = None,
+    variableset: str | None = None,
+    index_type: str | None = None,
+    index_value: Any | None = None
+):
+
+    query = VariableSetDefinitionRequest(
+        variableset_definition_id=variableset_definition_id,
+        variablemap_definition_id=variablemap_definition_id,
+        variableset=variableset,
+        index_type=index_type,
+        index_value=index_value
+    )
+    return await datastore.variableset_definition_registry_get(query)
+
+@app.post("/variablemap-definition/registry/update/")
+async def variablemap_definition_registry_update(request: Request):
+    try:
+        ce = from_http(request.headers, await request.body())
+        L.debug(request.headers)
+        L.debug(
+            "variablemap_definition_registry_update",
+            extra={"ce": ce, "destpath": ce["destpath"]},
+        )
+        # await adapter.send_to_mqtt(ce)
+        await datastore.variablemap_definition_registry_update(ce)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "OK"}
+        # return get_response_event(msg, 202)
+    except Exception as e:
+        # L.error("send", extra={"reason": e})
+        # pass
+        # return "", 204
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
+
+
+@app.get("/variablemap-definition/registry/get/")
+# async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
+async def variablemap_definition_registry_get(
+    variablemap_definition_id: str | None = None,
+    variablemap_type: str | None = None,
+    variablemap_type_id: str | None = None,
+    variablemap: str | None = None,
+    valid_config_time: str | None = None,
+):
+
+    query = DeviceDefinitionRequest(
+        variablemap_defnition_id=variablemap_definition_id,
+        variable_map_type=variablemap_type,
+        variable_map_type_id=variablemap_type_id,
+        variablemap=variablemap,
+        valid_config_time=valid_config_time,
+    )
+    return await datastore.variablemap_definition_registry_get(query)

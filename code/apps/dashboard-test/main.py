@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import json
 import logging
@@ -17,14 +18,17 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.wsgi import WSGIMiddleware
 
-from cloudevents.http import CloudEvent, from_http
+from cloudevents.http import CloudEvent, from_http, from_json, to_json
 from cloudevents.conversion import to_structured, to_json  # , from_http
 from cloudevents.exceptions import InvalidStructuredJSON
+from aiomqtt import Client, MqttError
 
 # from typing import Union
 import httpx
 from logfmter import Logfmter
-from pydantic import BaseModel, BaseSettings
+from pydantic import BaseModel, BaseSettings, Field
+# from pydantic import Field
+# from pydantic_settings import BaseSettings
 # import pymongo
 # from motor.motor_asyncio import AsyncIOMotorClient
 from ulid import ULID
@@ -44,7 +48,7 @@ handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
-L.setLevel(logging.INFO)
+L.setLevel(logging.DEBUG)
 
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
@@ -74,6 +78,13 @@ class Settings(BaseSettings):
     # erddap_author: str = "fake_author"
 
     dry_run: bool = False
+
+    mqtt_broker: str = 'mosquitto.default'
+    mqtt_port: int = 1883
+    # mqtt_topic_filter: str = 'aws-id/acg-daq/+'
+    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#' #['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
+    # mqtt_client_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    mqtt_client_id: str = Field(str(ULID()))
 
     class Config:
         env_prefix = "DASHBOARD_"
@@ -113,12 +124,12 @@ config = Settings()
 
 # class DBClient:
 #     def __init__(self, connection: str, db_type: str = "mongodb") -> None:
-#         self.db_type = db_type
-#         self.client = None
-#         self.connection = connection
+#         db_type = db_type
+#         client = None
+#         connection = connection
 
 #     def connect(self):
-#         if self.db_type == "mongodb":
+#         if db_type == "mongodb":
 #             self.connect_mongo()
 #         # return self.client
 
@@ -206,22 +217,22 @@ config = Settings()
 # # db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 # db_registry_client = None
 
-app = FastAPI()
+# app = FastAPI(lifespan=lifespan)
 
-origins = ["*"]  # dev
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# origins = ["*"]  # dev
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=origins,
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
-router = APIRouter()
+# router = APIRouter()
 
-app.mount("/dash", WSGIMiddleware(dash_app.server))
+# app.mount("/dash", WSGIMiddleware(dash_app.server))
 
-task_map = {}
+# task_map = {}
 
                         
 class ConnectionManager:
@@ -382,6 +393,116 @@ async def test_task():
         cnt+=1
         await asyncio.sleep(1)
 
+mqtt_buffer = asyncio.Queue()
+
+async def get_from_mqtt_loop():
+    print(f"get_from_mqtt_loop: here! config: {config}")
+    reconnect = 10
+    while True:
+        try:
+            
+            L.debug("listen", extra={"config": config})
+            client_id=str(ULID())
+            async with Client(config.mqtt_broker, port=config.mqtt_port,identifier=client_id) as client:
+                # for topic in config.mqtt_topic_subscriptions.split("\n"):
+                for topic in config.mqtt_topic_subscriptions.split(","):
+                    # print(f"run - topic: {topic.strip()}")
+                    # L.debug("run", extra={"topic": topic})
+                    if topic.strip():
+                        L.debug("subscribe", extra={"topic": topic.strip()})
+                        # await client.subscribe(f"$share/datastore/{topic.strip()}")
+                        await client.subscribe(f"{topic.strip()}")
+
+                    # await client.subscribe(config.mqtt_topic_subscription, qos=2)
+                # async with client.messages() as messages:
+                async for message in client.messages: #() as messages:
+
+                    try:
+                        ce = from_json(message.payload)
+                        topic = message.topic.value
+                        ce["sourcepath"] = topic
+                        await mqtt_buffer.put(ce)
+                        L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+                    except Exception as e:
+                        L.error("get_from_mqtt_loop", extra={"reason": e})
+                    # try:
+                    #     L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
+                    #     await send_to_knbroker(ce)
+                    # except Exception as e:
+                    #     L.error("Error sending to knbroker", extra={"reason": e})
+        except MqttError as error:
+            L.error(
+                f'{error}. Trying again in {reconnect} seconds',
+                extra={ k: v for k, v in config.dict().items() if k.lower().startswith('mqtt_') }
+            )
+            await asyncio.sleep(reconnect)
+        except Exception as e:
+            L.error("get_from_mqtt_loop", extra={"reason": e})
+        finally:
+            await asyncio.sleep(0.0001)
+
+
+async def handle_mqtt_buffer():
+    while True:
+        try:
+            ce = await mqtt_buffer.get()
+
+            if ce["type"] == "envds.data.update":
+                attributes = ce.data["attributes"]
+                make = attributes["make"]["data"]
+                model = attributes["model"]["data"]
+                serial_number = attributes["serial_number"]["data"]
+                sensor_id = "::".join([make, model, serial_number])
+
+                msg = {"data-update": ce.data}
+                L.debug("handle_mqtt_buffer", extra={"msg": msg, "sensor_id": sensor_id})
+                await manager.broadcast(json.dumps(msg), "sensor", sensor_id)
+
+            elif ce["type"] == "envds.controller.data.update":
+                attributes = ce.data["attributes"]
+                make = attributes["make"]["data"]
+                model = attributes["model"]["data"]
+                serial_number = attributes["serial_number"]["data"]
+                controller_id = "::".join([make, model, serial_number])
+
+                msg = {"data-update": ce.data}
+                L.debug("handle_mqtt_buffer", extra={"msg": msg, "controller_id": controller_id})
+                await manager.broadcast(json.dumps(msg), "controller", controller_id)
+        
+        except Exception as e:
+            L.error("handle_mqtt_buffer", extra={"reason": e})
+        
+        await asyncio.sleep(0.0001)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    L.debug("lifespan: Application starting up...")
+    # Perform startup tasks here
+    asyncio.create_task(get_from_mqtt_loop())
+    asyncio.create_task(handle_mqtt_buffer())
+    yield
+    L.debug("lifespan: Application shutting down...")
+    # Perform shutdown tasks here
+    # mqtt_loop.cancel()
+    # mqtt_handle_loop.cancel()
+
+app = FastAPI(lifespan=lifespan)
+
+origins = ["*"]  # dev
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+router = APIRouter()
+
+app.mount("/dash", WSGIMiddleware(dash_app.server))
+
+task_map = {}
+
 @app.get("/")
 async def root():
     return {"message": "Hello World from Test Dashboard"}
@@ -417,8 +538,8 @@ async def test_ws_endpoint(
                         source=f"envds.{config.daq_id}.dashboard",
                         data=message_to_send
                     )
-                    # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                    # event["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                    # f"envds/{core_settings.namespace_prefix}/device/registry/ack"
+                    # event["destpath"] = f"envds/{config.daq_id}/registry/sync-update"
                     event["destpath"] = "websocket_topic"
                     await send_event(event)
                 except Exception as e:
@@ -1109,4 +1230,3 @@ async def controller_settings_update(request: Request):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
     # msg = {"result": "OK"}
     # return get_response_event(msg, 202)
-
