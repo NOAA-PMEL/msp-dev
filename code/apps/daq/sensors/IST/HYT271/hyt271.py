@@ -29,7 +29,8 @@ from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
-from envds.message.message import Message
+# from envds.message.message import Message
+from cloudevents.http import CloudEvent
 
 # from envds.exceptions import envdsRunTransitionException
 
@@ -231,10 +232,12 @@ class HYT271(Sensor):
 
         self.logger.debug("iface_map", extra={"map": self.iface_map})
 
-    async def handle_interface_message(self, message: Message):
+    # async def handle_interface_message(self, message: Message):
+    async def handle_interface_message(self, message: CloudEvent):
         pass
 
-    async def handle_interface_data(self, message: Message):
+    # async def handle_interface_data(self, message: Message):
+    async def handle_interface_data(self, message: CloudEvent):
         await super(HYT271, self).handle_interface_data(message)
 
         self.logger.debug("interface_recv_data", extra={"data": message})
