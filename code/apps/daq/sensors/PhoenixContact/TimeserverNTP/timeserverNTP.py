@@ -348,7 +348,7 @@ class TimeserverNTP(Sensor):
 
                 elif self.last_record in data.data['data']:
                     record2 = self.default_parse(data)
-                    print('parts record2')
+                    print('parts record2', record2)
                     for var in record2["variables"]:
                         if var != 'time':
                             if record2["variables"][var]["data"] is not None:
@@ -410,13 +410,13 @@ class TimeserverNTP(Sensor):
 
                     if (datavar := 'RMC') in data.data["data"]:
                         parts = parts[1:7]
-                        print('parts RMC')
+                        print('parts RMC', parts)
                     elif (datavar := 'VTG') in data.data["data"]:
                         parts = parts[7]
-                        print('parts VTG')
+                        print('parts VTG', parts)
                     elif (datavar := 'GGA') in data.data["data"]:
                         parts = parts[7]
-                        print("parts GGA")
+                        print("parts GGA", parts)
                     else:
                         return None
                                         
