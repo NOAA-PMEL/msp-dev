@@ -381,7 +381,7 @@ class SPLite2(Sensor):
 
                     uvolts = record["variables"]["volts"]["data"] * 1000000.0
                     E = uvolts / record["variables"]["sensitivity"]["data"]
-                    record["variables"]["irradiance"]["data"] = E
+                    record["variables"]["irradiance"]["data"] = round(E,5)
                     return record
                     
                 except KeyError:
