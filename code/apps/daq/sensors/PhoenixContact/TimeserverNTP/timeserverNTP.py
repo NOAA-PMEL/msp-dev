@@ -348,7 +348,6 @@ class TimeserverNTP(Sensor):
 
                 elif self.last_record in data.data['data']:
                     record2 = self.default_parse(data)
-                    print('parts record2', record2)
                     for var in record2["variables"]:
                         if var != 'time':
                             if record2["variables"][var]["data"] is not None:
@@ -410,13 +409,10 @@ class TimeserverNTP(Sensor):
 
                     if (datavar := 'RMC') in data.data["data"]:
                         parts = parts[1:7]
-                        print('parts RMC', parts)
                     elif (datavar := 'VTG') in data.data["data"]:
                         parts = parts[7:8]
-                        print('parts VTG', parts)
                     elif (datavar := 'GGA') in data.data["data"]:
                         parts = parts[7:8]
-                        print("parts GGA", parts)
                     else:
                         return None
                                         
@@ -432,7 +428,6 @@ class TimeserverNTP(Sensor):
                     for index, name in enumerate(self.var_name):
                         if name in record["variables"]:
                             instvar = self.config.metadata.variables[name]
-                            print('parts type', type(parts))
                             try:
                                 if instvar.type == "int":
                                     if isinstance(parts[index], list):
@@ -454,7 +449,6 @@ class TimeserverNTP(Sensor):
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
-                    print('parts return record 1', record)
                     return record
                 except KeyError:
                     pass
