@@ -456,7 +456,7 @@ class TimeserverNTP(Sensor):
                         dec_deg = deg + (mm_mm/60.0)
                         if record["variables"]["lat_dir"]["data"] == "S":
                             dec_deg *= -1.0
-                        record["variables"]["lat"]["data"] = dec_deg
+                        record["variables"]["lat"]["data"] = round(dec_deg, 5)
 
                     if record["variables"]["lon"]["data"]:
                         deg = int(record["variables"]["lon"]["data"]/100)
@@ -464,7 +464,7 @@ class TimeserverNTP(Sensor):
                         dec_deg = deg + (mm_mm/60.0)
                         if record["variables"]["lon_dir"]["data"] == "W":
                             dec_deg *= -1.0
-                        record["variables"]["lon"]["data"] = dec_deg
+                        record["variables"]["lon"]["data"] = round(dec_deg, 5)
 
                     return record
                 except KeyError:

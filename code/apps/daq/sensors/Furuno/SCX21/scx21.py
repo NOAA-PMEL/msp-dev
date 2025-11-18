@@ -627,6 +627,24 @@ class SCX21(Sensor):
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
+
+                    # convert lat/lon to decimal
+                    if record["variables"]["lat"]["data"]:
+                        deg = int(record["variables"]["lat"]["data"]/100)
+                        mm_mm = ((record["variables"]["lat"]["data"]/100) - deg)*100.0
+                        dec_deg = deg + (mm_mm/60.0)
+                        if record["variables"]["lat_dir"]["data"] == "S":
+                            dec_deg *= -1.0
+                        record["variables"]["lat"]["data"] = round(dec_deg, 5)
+
+                    if record["variables"]["lon"]["data"]:
+                        deg = int(record["variables"]["lon"]["data"]/100)
+                        mm_mm = ((record["variables"]["lon"]["data"]/100) - deg)*100.0
+                        dec_deg = deg + (mm_mm/60.0)
+                        if record["variables"]["lon_dir"]["data"] == "W":
+                            dec_deg *= -1.0
+                        record["variables"]["lon"]["data"] = round(dec_deg, 5)
+
                     return record
                 except KeyError:
                     pass
