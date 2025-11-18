@@ -374,7 +374,8 @@ class SPLite2(Sensor):
                     # parts = data.data["data"].split(",")
 
                     result = data.data["data"]
-                    record["variables"]["volts"]["data"] = float(result["volts_mean"])
+                    # record["variables"]["volts"]["data"] = float(result["volts_mean"])
+                    record["variables"]["volts"]["data"] = float(result["data"])
                     # nominal value of 80
                     record["variables"]["sensitivity"]["data"] = 80.0
 
