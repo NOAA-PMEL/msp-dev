@@ -438,13 +438,13 @@ class TimeserverNTP(Sensor):
                                     if isinstance(parts[index], list):
                                         record["variables"][name]["data"] = [int(item) for item in parts[index]]
                                     else:
-                                        record["variables"][name]["data"] = int(parts[index])
+                                        record["variables"][name]["data"] = int(parts)
 
                                 elif instvar.type == "float":
                                     if isinstance(parts[index], list):
                                         record["variables"][name]["data"] = [float(item) for item in parts[index]]
                                     else:
-                                        record["variables"][name]["data"] = float(parts[index])
+                                        record["variables"][name]["data"] = float(parts)
                                         
                                 else:
                                     record["variables"][name]["data"] = parts[index]
