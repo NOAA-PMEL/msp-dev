@@ -406,12 +406,12 @@ class TimeserverNTP(Sensor):
                     record["timestamp"] = data.data["timestamp"]
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
+                    print('parts', parts)
 
                     if (datavar := 'RMC') in data.data["data"]:
                         parts = parts[1:7]
                     elif (datavar := 'VTG') in data.data["data"]:
                         parts = parts[7]
-                        parts = [x.split("*")[0] for x in parts]
                     elif (datavar := 'GGA') in data.data["data"]:
                         parts = parts[7]
                     else:
