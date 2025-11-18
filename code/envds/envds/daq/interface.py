@@ -478,7 +478,7 @@ class Interface(envdsBase):
     # async def handle_keepalive(self, message: Message):
     async def handle_keepalive(self, message: CloudEvent):
 
-        if message.data["type"] == det.interface_keepalive_request():
+        if message["type"] == det.interface_keepalive_request():
 
             try:
                 # client_id = message.data["path_id"]
