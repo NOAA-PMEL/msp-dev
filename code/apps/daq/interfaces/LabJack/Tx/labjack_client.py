@@ -171,9 +171,7 @@ class ADCClient(LabJackClient):
         super(ADCClient, self).__init__(config=config)
         # self.adc_started = False
         # asyncio.create_task(self.run_adc())
-        channel = self.config.properties["channel"]["data"]
-        ljm.eWriteName(self.labjack, f"AIN{channel}_RANGE", 1.0)
-        
+
     # async def run_counter(self):
     #     while True:
     #         try:
@@ -190,9 +188,7 @@ class ADCClient(LabJackClient):
         try:
 
             channel = self.config.properties["channel"]["data"]
-            self.logger.debug("ADCClient:send", extra={"channel": channel})
             dataRead = ljm.eReadName(self.labjack, f"AIN{channel}")
-            self.logger.debug("ADCClient:send", extra={"dataRead": dataRead})
             output = {"data": dataRead}
             await self.data_buffer.put(output)
 
