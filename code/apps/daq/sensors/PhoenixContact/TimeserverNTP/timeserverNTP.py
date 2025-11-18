@@ -432,6 +432,7 @@ class TimeserverNTP(Sensor):
                     for index, name in enumerate(self.var_name):
                         if name in record["variables"]:
                             instvar = self.config.metadata.variables[name]
+                            print('parts type', type(parts))
                             try:
                                 if instvar.type == "int":
                                     if isinstance(parts[index], list):
@@ -453,6 +454,7 @@ class TimeserverNTP(Sensor):
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
+                    print('parts return record 1', record)
                     return record
                 except KeyError:
                     pass
