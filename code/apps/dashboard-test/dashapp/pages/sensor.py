@@ -707,7 +707,8 @@ def get_device_data(device_id: str, device_type: str="sensor"):
     url = f"http://{datastore_url}/device/data/get/"
     print(f"device-data-get: {url}, query: {query}")
     try:
-        response = httpx.get(url, params=query)
+        timeout = httpx.Timeout(10.0, read=None)
+        response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
         # print(f"results: {results}")
         if "results" in results and results["results"]:

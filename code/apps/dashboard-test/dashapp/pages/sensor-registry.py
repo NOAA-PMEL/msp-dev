@@ -419,10 +419,10 @@ def update_sensor_definitions(count, table_data):
 
         query = {"device_type": "sensor"}
         url = f"http://{datastore_url}/device-definition/registry/get/"
-        print(f"device-definition-get: {url}")
+        print(f"device-definition-get: {url}, {query}")
         response = httpx.get(url, params=query)
         results = response.json()
-        # print(f"results: {results}")
+        print(f"results: {results}")
         if "results" in results and results["results"]:
             for doc in results["results"]:
                 if doc is not None:
@@ -438,6 +438,7 @@ def update_sensor_definitions(count, table_data):
                         "model": model,
                         "version": version,
                     }
+                    print(f"device-definition-get: {sensor_def}")
                     if sensor_def not in table_data:
                         table_data.append(sensor_def)
                         update = True
