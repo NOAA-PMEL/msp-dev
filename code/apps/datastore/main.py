@@ -319,7 +319,9 @@ async def device_definition_registry_update(request: Request):
 @app.get("/device-definition-ids/registry/get/")
 # async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
 async def device_definition_ids_get():
-    return await datastore.device_definition_ids_registry_get()
+    result = await datastore.device_definition_ids_registry_get()
+    L.debug("device_definition_ids_get", extra={"result": result})
+    return result
 
 @app.get("/device-definition/registry/get/")
 # async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
