@@ -152,7 +152,8 @@ class Registrar:
     async def submit_request(self, path: str, query: dict):
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
-            results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
+            timeout = httpx.Timeout(10.0, read=None)
+            results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
             self.logger.debug("submit_request", extra={"results": results.json()})
             return results.json()
         except Exception as e:
@@ -164,6 +165,11 @@ class Registrar:
         while True:
             try: 
                 query = {}
+                ids = await self.submit_request(
+                    path="device-definition-ids/registry/get", query=None
+                )
+                self.logger.debug("get_device_definitions_loop", extra={"ids": ids})
+
                 results = await self.submit_request(
                     path="device-definition/registry/get", query=query
                 )
