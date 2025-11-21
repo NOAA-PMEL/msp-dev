@@ -518,9 +518,10 @@ class Datastore:
             self.logger.error("device_definition_registry_update", extra={"reason": e})
         pass
 
-    async def device_definition_ids_registry_get(self)->dict:
+    async def device_definition_registry_get_ids(self)->dict:
         if self.db_client:
-            return await self.db_client.device_definition_ids_registry_get()
+            self.logger.debug("device_definition_registry_get_ids")
+            return await self.db_client.device_definition_registry_get_ids()
         
         return {"results": []}
 

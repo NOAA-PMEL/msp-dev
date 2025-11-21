@@ -169,7 +169,7 @@ class Registrar:
             try: 
                 query = {}
                 ids = await self.submit_request(
-                    path="device-definition-ids/registry/get", query=None
+                    path="device-definition/registry/get/ids", query=None
                 )
                 self.logger.debug("get_device_definitions_loop", extra={"ids": ids})
 

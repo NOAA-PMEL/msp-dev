@@ -164,7 +164,7 @@ class DBClient:
     ) -> bool:
         return False
 
-    async def device_definition_ids_registry_get(
+    async def device_definition_registry_get_ids(
             self,
     ) -> dict:
         return {"results": []}

@@ -422,20 +422,24 @@ class RedisClient(DBClient):
 
         return {"results": results}
 
-    async def device_definition_ids_registry_get(
+    async def device_definition_registry_get_ids(
             self,
     ) -> dict:
         ids = []
         try:
+            self.logger.debug("device_definition_registry_get_ids")
             for id in self.client.scan_iter("registry:device-definition:*"):
-                self.logger.debug("device_definition_ids_registry_get", extra={"def_id": id})
+                self.logger.debug("device_definition_registry_get_ids", extra={"def_id": id})
                 ids.append(id)
-                self.logger.debug("device_definition_ids_registry_get", extra={"ids": ids})
-            return {"results": ids}
+                self.logger.debug("device_definition_registry_get_ids", extra={"ids": ids})
+            results = {"results": ids}
+            # return {"results": ids}
         except Exception as e:
-            self.logger.error("device_definition_ids_registry_get", extra={"reason": e})
-            return {"results": []}
-        
+            self.logger.error("device_definition_registry_get_ids", extra={"reason": e})
+            # return {"results": []}
+        self.logger.debug("device_definition_registry_get_ids", extra={"results": results})
+        return results
+    
     async def device_definition_registry_get(
             self,
             request: DeviceDefinitionRequest
