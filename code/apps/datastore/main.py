@@ -316,7 +316,7 @@ async def device_definition_registry_update(request: Request):
         # return get_response_event(msg, 500)
 
 
-@app.get("/device-definition/registry/get/ids")
+@app.get("/device-definition/registry/get/ids/")
 # async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
 async def device_definition_get_ids():
     L.debug("device_definition_get_ids")

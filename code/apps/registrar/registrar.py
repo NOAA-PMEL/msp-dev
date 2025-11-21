@@ -149,14 +149,14 @@ class Registrar:
             self.logger.error("send_event", extra={"reason": e})
         await asyncio.sleep(0.1)
 
-    async def submit_request(self, path: str, query: dict):
+    async def submit_request(self, path: str, query: dict = None):
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
             timeout = httpx.Timeout(10.0, read=None)
-            if query:
-                results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
-            else:
+            if query is None:
                 results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+            else:
+                results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
             self.logger.debug("submit_request", extra={"results": results.json()})
             return results.json()
         except Exception as e:
@@ -169,7 +169,7 @@ class Registrar:
             try: 
                 query = {}
                 ids = await self.submit_request(
-                    path="device-definition/registry/get/ids", query=None
+                    path="device-definition/registry/get/ids"
                 )
                 self.logger.debug("get_device_definitions_loop", extra={"ids": ids})
 
