@@ -428,7 +428,9 @@ class RedisClient(DBClient):
         ids = []
         try:
             for id in self.client.scan_iter("registry:device-definition:*"):
+                self.logger.debug("device_definition_ids_registry_get", extra={"def_id": id})
                 ids.append(id)
+                self.logger.debug("device_definition_ids_registry_get", extra={"ids": ids})
             return {"results": ids}
         except Exception as e:
             self.logger.error("device_definition_ids_registry_get", extra={"reason": e})
