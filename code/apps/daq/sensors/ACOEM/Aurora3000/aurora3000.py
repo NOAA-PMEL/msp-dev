@@ -252,6 +252,7 @@ class Aurora3000(Sensor):
         # self.command_list = ['VI099\r', 'VI004\r', 'VI005\r']
         self.command_list = ['VI099\r']
         self.command_counter = 0
+        self.aggregated_record = None
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
