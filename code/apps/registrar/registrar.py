@@ -153,7 +153,10 @@ class Registrar:
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
             timeout = httpx.Timeout(10.0, read=None)
-            results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
+            if query:
+                results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
+            else:
+                results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
             self.logger.debug("submit_request", extra={"results": results.json()})
             return results.json()
         except Exception as e:
