@@ -430,7 +430,7 @@ class RedisClient(DBClient):
             self.logger.debug("device_definition_registry_get_ids")
             for id in self.client.scan_iter("registry:device-definition:*"):
                 self.logger.debug("device_definition_registry_get_ids", extra={"def_id": id})
-                ids.append(id)
+                ids.append(id.decode('utf-8'))
                 self.logger.debug("device_definition_registry_get_ids", extra={"ids": ids})
             results = {"results": ids}
             # return {"results": ids}

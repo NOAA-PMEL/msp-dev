@@ -157,12 +157,12 @@ class Registrar:
                 self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
                 results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
                 self.logger.debug("submit_request", extra={"results": results})
-                return results
+                # return results
             else:
                 self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/", "query": query})
                 results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
-                self.logger.debug("submit_request", extra={"results": results.json()})
-                return results.json()
+            self.logger.debug("submit_request", extra={"results": results.json()})
+            return results.json()
         except Exception as e:
             self.logger.error("submit_request", extra={"reason": e})
             return {}
@@ -172,22 +172,23 @@ class Registrar:
         while True:
             try: 
                 query = {}
-                ids = await self.submit_request(
+                results = await self.submit_request(
                     path="device-definition/registry/ids/get"
                 )
-                self.logger.debug("get_device_definitions_loop", extra={"ids": ids})
+                self.logger.debug("get_device_definitions_loop", extra={"ids": results})
 
-                results = await self.submit_request(
-                    path="device-definition/registry/get", query=query
-                )
+                # results = await self.submit_request(
+                #     path="device-definition/registry/get", query=query
+                # )
                 # results = httpx.get(f"http://{self.datastore_url}/device-definition/registry/get/", parmams=query)
                 self.logger.debug("get_device_definitions_loop", extra={"results": results})
 
                 if "results" in results and results["results"]:
                     def_list = []
-                    for device_def in results["results"]:
-                        self.logger.debug("get_device_definitions_loop", extra={"device_def": device_def})
-                        id = device_def.get("device_definition_id", None)
+                    # for device_def in results["results"]:
+                    for id in results["results"]:
+                        # self.logger.debug("get_device_definitions_loop", extra={"device_def": device_def})
+                        # id = device_def.get("device_definition_id", None)
                         # id = None
                         if id:
                             def_list.append(id)
