@@ -149,18 +149,37 @@ class Registrar:
             self.logger.error("send_event", extra={"reason": e})
         await asyncio.sleep(0.1)
 
-    async def submit_request(self, path: str, query: dict = None):
+    async def submit_get(self, path: str):
+        try:
+            self.logger.debug("submit_request", extra={"path": path})
+            timeout = httpx.Timeout(10.0, read=None)
+            # if query is None:
+            #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+            #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+            #     self.logger.debug("submit_request", extra={"results": results})
+            #     # return results
+            # else:
+            self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+            results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+            self.logger.debug("submit_request", extra={"results": results.json()})
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_request", extra={"reason": e})
+            return {}
+
+
+    async def submit_request(self, path: str, query: dict):
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
             timeout = httpx.Timeout(10.0, read=None)
-            if query is None:
-                self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
-                results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
-                self.logger.debug("submit_request", extra={"results": results})
-                # return results
-            else:
-                self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/", "query": query})
-                results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
+            # if query is None:
+            #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+            #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+            #     self.logger.debug("submit_request", extra={"results": results})
+            #     # return results
+            # else:
+            self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/", "query": query})
+            results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
             self.logger.debug("submit_request", extra={"results": results.json()})
             return results.json()
         except Exception as e:
@@ -172,7 +191,7 @@ class Registrar:
         while True:
             try: 
                 query = {}
-                results = await self.submit_request(
+                results = await self.submit_get(
                     path="device-definition/registry/ids/get"
                 )
                 self.logger.debug("get_device_definitions_loop", extra={"ids": results})
