@@ -416,27 +416,40 @@ def update_controller_definitions(count, table_data):
         #     else:
         #         return dash.no_update
 
-        query = {"device_type": "controller"}
-        url = f"http://{datastore_url}/controller-definition/registry/get/"
+        # query = {"device_type": "controller"}
+        # url = f"http://{datastore_url}/controller-definition/registry/get/"
+        url = f"http://{datastore_url}/device-definition/registry/ids/get/"
         print(f"controller-definition-get: {url}")
-        response = httpx.get(url, params=query)
+        # response = httpx.get(url, params=query)
+        response = httpx.get(url)
         results = response.json()
         print(f"controller definition results: {results}")
         if "results" in results and results["results"]:
-            for doc in results["results"]:
-                if doc is not None:
-                    # print(f"doc: {doc}")
-                    id = doc["controller_definition_id"]
-                    make = doc["make"]
-                    model = doc["model"]
-                    version = doc["version"]
+            # for doc in results["results"]:
+            for id in results["results"]:
 
+                # if doc is not None:
+                #     # print(f"doc: {doc}")
+                #     id = doc["controller_definition_id"]
+                #     make = doc["make"]
+                #     model = doc["model"]
+                #     version = doc["version"]
+
+                    # controller_def = {
+                    #     "controller-def-id": id,
+                    #     "make": make,
+                    #     "model": model,
+                    #     "version": version,
+                    # }
+                if id is not None:
+                    parts = id.split("::")
                     controller_def = {
                         "controller-def-id": id,
-                        "make": make,
-                        "model": model,
-                        "version": version,
+                        "make": parts[0],
+                        "model": parts[1],
+                        "version": parts[2],
                     }
+
                     if controller_def not in table_data:
                         table_data.append(controller_def)
                         update = True
