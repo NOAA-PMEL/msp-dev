@@ -215,6 +215,11 @@ class DBClient:
     ) -> bool:
         return False
 
+    async def controller_definition_registry_get_ids(
+            self,
+    ) -> dict:
+        return {"results": []}
+
     async def controller_definition_registry_get(
             self,
             request: ControllerDefinitionRequest

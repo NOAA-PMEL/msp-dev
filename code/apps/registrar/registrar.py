@@ -247,18 +247,22 @@ class Registrar:
         while True:
             try: 
                 query = {}
-                results = await self.submit_request(
-                    path="controller-definition/registry/get", query=query
+                results = await self.submit_get(
+                    path="controller-definition/registry/ids/get"
                 )
+                # results = await self.submit_request(
+                #     path="controller-definition/registry/get", query=query
+                # )
                 # results = httpx.get(f"http://{self.datastore_url}/controller-definition/registry/get/", parmams=query)
                 self.logger.debug("get_controller_definitions_loop", extra={"results": results})
 
                 if "results" in results and results["results"]:
                     def_list = []
-                    for controller_def in results["results"]:
-                        self.logger.debug("get_controller_definitions_loop", extra={"controller_def": controller_def})
-                        id = controller_def.get("controller_definition_id", None)
-                        # id = None
+                    # for controller_def in results["results"]:
+                    for id in results["results"]:
+                        # self.logger.debug("get_controller_definitions_loop", extra={"controller_def": controller_def})
+                        # id = controller_def.get("controller_definition_id", None)
+                        # # id = None
                         if id:
                             def_list.append(id)
                     reg = {"controller-definition-list": def_list}

@@ -822,6 +822,13 @@ class Datastore:
             self.logger.error("controller_definition_registry_update", extra={"reason": e})
         pass
 
+    async def controller_definition_registry_get_ids(self)->dict:
+        if self.db_client:
+            self.logger.debug("controller_definition_registry_get_ids")
+            return await self.db_client.controller_definition_registry_get_ids()
+        
+        return {"results": []}
+
     async def controller_definition_registry_get(self, query: ControllerDefinitionRequest) -> dict:
         
         # TODO add in logic to get/sync from erddap if available
