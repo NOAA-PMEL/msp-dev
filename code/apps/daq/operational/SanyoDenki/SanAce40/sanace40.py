@@ -3,17 +3,12 @@ import binascii
 import signal
 from struct import unpack
 
-# import uvicorn
-# from uvicorn.config import LOGGING_CONFIG
 import sys
 import os
 import logging
 
-# from logfmter import Logfmter
 import logging.config
 
-# from pydantic import BaseSettings, Field
-# import json
 import yaml
 import random
 from envds.core import envdsLogger  # , envdsBase, envdsStatus
@@ -22,15 +17,15 @@ from envds.util.util import (
     time_to_next,
     get_datetime,
     get_datetime_string,
+    string_to_datetime,
 )
-from envds.daq.sensor import Sensor
+from envds.daq.operational import Operational
 from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
-# from envds.message.message import Message
-from cloudevents.http import CloudEvent
+from envds.message.message import Message
 
 # from envds.exceptions import envdsRunTransitionException
 
@@ -46,58 +41,56 @@ import json
 task_list = []
 
 
-class HYT271(Sensor):
-    """docstring for MAGIC250."""
+class SanAce40(Operational):
+    """docstring for SanAce40."""
 
     metadata = {
         "attributes": {
-            # "name": {"type"mock1",
-            "make": {"type": "string", "data": "IST"},
-            "model": {"type": "string", "data": "HYT271"},
-            "description": {
-                "type": "string",
-                "data": "Temperature and Humidity Sensor",
-            },
-            "tags": {
-                "type": "char",
-                "data": "met, temperature, rh, sensor",
-            },
+            "make": {"type": "string", "data": "SanyoDenki"},
+            "model": {"type": "string", "data": "SanAce40"},
+            "description": {"type": "string", "data": "9GA0424P3J0011"},
+            "tags": {"type": "char", "data": "flow"},
             "format_version": {"type": "char", "data": "1.0.0"},
             "variable_types": {"type": "string", "data": "main, setting, calibration"},
             "serial_number": {"type": "string", "data": ""},
         },
+        "dimensions": {"time": 0},
         "variables": {
             "time": {
                 "type": "str",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Time"}
+                    "long_name": {"type": "string", "data": "Time"},
                 },
             },
-            "temperature": {
+            "rpm": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Temperature"},
-                    "units": {"type": "char", "data": "degree_C"},
+                    "long_name": {"type": "char", "data": "Fan RPM"},
+                    "units": {"type": "char", "data": "count"},
                 },
             },
-            "rh": {
+            "fan_speed": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Relative Humidity"},
-                    "units": {"type": "char", "data": "%"},
+                    "variable_type": {"type": "string", "data": "setting"},
+                    "long_name": {"type": "char", "data": "Fan Speed"},
+                    "units": {"type": "string", "data": "%"},
+                    "valid_min": {"type": "float", "data": -100.0},
+                    "valid_max": {"type": "int", "data": 100.0},
+                    "step_increment": {"type": "int", "data": 10},
+                    "default_value": {"type": "int", "data": 0},
                 },
             },
-        }
+        },
     }
 
     def __init__(self, config=None, **kwargs):
-        super(HYT271, self).__init__(config=config, **kwargs)
+        super(SanAce40, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
         self.sampling_interval = 1
@@ -105,32 +98,19 @@ class HYT271(Sensor):
 
         self.default_data_buffer = asyncio.Queue()
 
-        self.sensor_definition_file = "IST_HYT271_sensor_definition.json"
+        self.operational_definition_file = (
+            "SanyoDenki_SanAce40_operational_definition.json"
+        )
 
+        self.last_read_timestamp = None
+        self.last_read_count = None
 
-        try:            
-            with open(self.sensor_definition_file, "r") as f:
+        try:
+            with open(self.operational_definition_file, "r") as f:
                 self.metadata = json.load(f)
         except FileNotFoundError:
-            self.logger.error("sensor_definition not found. Exiting")            
+            self.logger.error("sensor_definition not found. Exiting")
             sys.exit(1)
-
-        # os.environ["REDIS_OM_URL"] = "redis://redis.default"
-
-        # self.data_loop_task = None
-
-        # all handled in run_setup ----
-        # self.configure()
-
-        # # self.logger = logging.getLogger(f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.logger = logging.getLogger(self.build_app_uid())
-
-        # # self.update_id("app_uid", f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.update_id("app_uid", self.build_app_uid())
-
-        # self.logger.debug("id", extra={"self.id": self.id})
-        # print(f"config: {self.config}")
-        # ----
 
         # self.sampling_task_list.append(self.data_loop())
         self.enable_task_list.append(self.default_data_loop())
@@ -139,14 +119,17 @@ class HYT271(Sensor):
         # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
 
+        # TODO make this configurable
+        self.sampling_mode = "unpolled" 
+
         # self.i2c_address = "28"
 
     def configure(self):
-        super(HYT271, self).configure()
+        super(SanAce40, self).configure()
 
         # get config from file
         try:
-            with open("/app/config/sensor.conf", "r") as f:
+            with open("/app/config/operational.conf", "r") as f:
                 conf = yaml.safe_load(f)
         except FileNotFoundError:
             conf = {"serial_number": "UNKNOWN", "interfaces": {}}
@@ -154,40 +137,47 @@ class HYT271(Sensor):
         if "metadata_interval" in conf:
             self.include_metadata_interval = conf["metadata_interval"]
 
-        sensor_iface_properties = {
-            "default": {
-                "sensor-interface-properties": {
-                    "connection-properties": {
-                    },
-                    "read-properties": {
-                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
-                        # "read-terminator": "\r",  # only used for read_until
-                        "decode-errors": "strict",
-                        "send-method": "ascii"
-                    },
-                }
-            }
-        }
+        # This device does not have a serial/tcp option
 
-        if "interfaces" in conf:
-            for name, iface in conf["interfaces"].items():
-                if name in sensor_iface_properties:
-                    for propname, prop in sensor_iface_properties[name].items():
-                        iface[propname] = prop
+        # sensor_iface_properties = {
+        #     "default": {
+        #         "sensor-interface-properties": {
+        #             "connection-properties": {
+        #             },
+        #             "read-properties": {
+        #                 "read-method": "readline",  # readline, read-until, readbytes, readbinary
+        #                 # "read-terminator": "\r",  # only used for read_until
+        #                 "decode-errors": "strict",
+        #                 "send-method": "ascii"
+        #             },
+        #         }
+        #     }
+        # }
 
-            self.logger.debug(
-                "hyt271.configure", extra={"interfaces": conf["interfaces"]}
-            )
+        # if "interfaces" in conf:
+        #     for name, iface in conf["interfaces"].items():
+        #         if name in sensor_iface_properties:
+        #             for propname, prop in sensor_iface_properties[name].items():
+        #                 iface[propname] = prop
 
-        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+        #     self.logger.debug(
+        #         "sanace92rf.configure", extra={"interfaces": conf["interfaces"]}
+        #     )
+
+        settings_def = self.get_definition_by_variable_type(
+            self.metadata, variable_type="setting"
+        )
         # for name, setting in self.metadata["settings"].items():
         for name, setting in settings_def["variables"].items():
-        
+
             requested = setting["attributes"]["default_value"]["data"]
-            if "settings" in config and name in config["settings"]:
-                requested = config["settings"][name]
+
+            # override default setting if in config
+            if "settings" in conf and name in conf["settings"]:
+                requested = conf["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
+            self.logger.debug("configure", extra={"setting_name": name, "requested": requested, "settings": self.settings})
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
@@ -204,8 +194,6 @@ class HYT271(Sensor):
             interfaces=conf["interfaces"],
             daq_id=conf["daq_id"],
         )
-
-        self.i2c_address = conf["i2c_address"]
 
         print(f"self.config: {self.config}")
 
@@ -232,52 +220,84 @@ class HYT271(Sensor):
 
         self.logger.debug("iface_map", extra={"map": self.iface_map})
 
-    # async def handle_interface_message(self, message: Message):
-    async def handle_interface_message(self, message: CloudEvent):
+    async def handle_interface_message(self, message: Message):
         pass
 
-    # async def handle_interface_data(self, message: Message):
-    async def handle_interface_data(self, message: CloudEvent):
-        await super(HYT271, self).handle_interface_data(message)
+    def check_fan_speed_sp(self, data):
+        self.logger.debug("check_fan_speed_sp", extra={"fs-data": data})
+        # TODO set setting actual if ok
+        
+        try:
+            requested_sp = self.settings.get_setting("fan_speed_sp")["requested"]
+            duty_cycle = data["data"]["data"].get("duty_cycle", None)
+            if duty_cycle:
+                sp = (duty_cycle-50.0) * 2
+                self.logger.debug("check_fan_speed_sp", extra={"sp": sp, "minus": (sp-5), "plus": (sp+5)})
+                if (sp > (requested_sp-5)) and (sp < (requested_sp+5)):
+                    self.logger.debug("check_fan_speed_sp: here1")
+                    self.settings.set_actual("fan_speed_sp", actual=requested_sp)
+                    self.logger.debug("check_fan_speed_sp: here2")
+                
+                # self.logger.debug(
+                #     "check_fan_speed_sp",
+                #     extra={
+                #         "setting-name": "fan_speed_sp",
+                #         "setting-value": self.settings.get_setting("fan_speed_sp")
+                #     },
+                # )
+        except Exception as e:
+            self.logger.error("check_fan_speed_sp", extra={"reason": e})
+
+    async def handle_interface_data(self, message: Message):
+        await super(SanAce40, self).handle_interface_data(message)
 
         self.logger.debug("interface_recv_data", extra={"data": message})
         if message["type"] == det.interface_data_recv():
             try:
-                self.logger.debug(
-                    "interface_recv_data", extra={"data": message}
-                )
+                self.logger.debug("interface_recv_data", extra={"data": message})
                 path_id = message["path_id"]
-                iface_path = self.config.interfaces["default"]["path"]
-                self.logger.debug("interface_recv_data", extra={"path_id": path_id, "iface_path": iface_path})
+                default_path = self.config.interfaces["default"]["path"]
+                pwm_path = self.config.interfaces["fan_speed_sp"]["path"]
+                self.logger.debug(
+                    "interface_recv_data",
+                    extra={"path_id": path_id, "iface_path": self.config.interfaces["default"]["path"]},
+                )
                 # if path_id == "default":
-                if path_id == iface_path:
+                # if path_id == iface_path:
+                if path_id == default_path:
                     self.logger.debug(
                         "interface_recv_data", extra={"data": message.data}
                     )
                     await self.default_data_buffer.put(message)
+                elif path_id == pwm_path:
+                    self.check_fan_speed_sp(message.data)
             except KeyError:
                 pass
 
     async def polling_loop(self):
-        
+
         # TODO add sensor address to config
 
         # redo format to be more generic (based on new labjack code)
-        i2c_write = {
-            "address": self.i2c_address,
-            "data": "00"
-        }
-        i2c_read = {
-            "address": self.i2c_address,
-            "read-length": 4,
-            "delay-ms": 50 # timeout in ms to wait for ACK
-        }
-        data = {
-            "data": {
-                "i2c-write": i2c_write,
-                "i2c-read": i2c_read
-            }
-        }
+        # i2c_write = {
+        #     "address": self.i2c_address,
+        #     "data": "00"
+        # }
+        # i2c_read = {
+        #     "address": self.i2c_address,
+        #     "read-length": 4,
+        #     "delay-ms": 50 # timeout in ms to wait for ACK
+        # }
+        # data = {
+        #     "data": {
+        #         "i2c-write": i2c_write,
+        #         "i2c-read": i2c_read
+        #     }
+        # }
+
+        data = (
+            {}
+        )  # no data required for counter but that may change for other interfaces
 
         # write_command = {
         #     "i2c-command": "write-byte",
@@ -297,11 +317,12 @@ class HYT271(Sensor):
         # }
 
         while True:
-            if self.sampling():
-                await self.interface_send_data(data=data)
-                await asyncio.sleep(time_to_next(self.sampling_interval))
-
-
+            if self.sampling_mode == "polled":
+                if self.sampling():
+                    await self.interface_send_data(data=data, path_id="default")
+                    await asyncio.sleep(time_to_next(self.sampling_interval))
+            else:
+                await asyncio.sleep(5)
     # async def sampling_monitor(self):
 
     #     # start_command = f"Log,{self.sampling_interval}\n"
@@ -360,7 +381,7 @@ class HYT271(Sensor):
     #                     await self.interface_send_data(data={"data": stop_command})
     #                     await asyncio.sleep(2)
     #                     self.collecting = False
-                            
+
     #             await asyncio.sleep(.1)
 
     #             # if self.collecting:
@@ -372,9 +393,8 @@ class HYT271(Sensor):
     #             #     # self.logger.debug("sampling_monitor:7", extra={"self.collecting": self.collecting})
     #         except Exception as e:
     #             print(f"sampling monitor error: {e}")
-                
-    #         await asyncio.sleep(.1)
 
+    #         await asyncio.sleep(.1)
 
     # async def start_command(self):
     #     pass # Log,{sampling interval}
@@ -414,7 +434,7 @@ class HYT271(Sensor):
                     )
                     message = event
                     # message = Message(data=event, destpath=destpath)
-                    # self.logger.debug("default_data_loop", extra={"m": message})
+                    self.logger.debug("default_data_loop", extra={"m": message})
                     await self.send_message(message)
 
                 # self.logger.debug("default_data_loop", extra={"record": record})
@@ -427,11 +447,15 @@ class HYT271(Sensor):
             try:
                 timestamp = data.data["timestamp"]
                 iface_data = data.data["data"]
-                address = iface_data["address"]
-                self.logger.debug("default_parse", extra={"iface_data": iface_data, "address": address, "i2c-address": self.i2c_address})
-                if address == "" or address != self.i2c_address:
+                # address = iface_data["address"]
+                self.logger.debug("default_parse", extra={"iface_data": iface_data})
+                # if address == "" or address != self.i2c_address:
+                #     return None
+                current_read_timestamp = string_to_datetime(timestamp)
+                if not self.last_read_timestamp:
+                    self.last_read_timestamp = string_to_datetime(timestamp)
                     return None
-                
+
                 variables = list(self.config.metadata.variables.keys())
                 # print(f"variables: \n{variables}\n{variables2}")
                 variables.remove("time")
@@ -444,63 +468,74 @@ class HYT271(Sensor):
                     record["variables"]["time"]["data"] = timestamp
                     # parts = data.data["data"].split(",")
 
-                    # change for new format
+                    dataRead = iface_data["data"]  # should return as bytearray
 
-                    dataRead = iface_data["data"] # should return as bytearray
-                    if len(dataRead) != 4:
+                    self.logger.debug(
+                        "default_parse",
+                        extra={
+                            "last_ts": self.last_read_timestamp,
+                            "ts": timestamp,
+                            "last_cnt": self.last_read_count,
+                            "cnt": dataRead,
+                        },
+                    )
+                    if not self.last_read_timestamp or not self.last_read_count:
+                        self.last_read_timestamp = string_to_datetime(timestamp)
+                        self.last_read_count = dataRead
                         return None
-                    rh = ((((dataRead[0] & 0x3F) * 256) + dataRead[1]) * 100.0) / 16383.0
-                    print(f"rh: {rh}")
-                    temp = ((dataRead[2] * 256) + (dataRead[3] & 0xFC)) / 4
-                    print(f"temp: {temp}")
-                    cTemp = (temp / 16384.0) * 165.0 - 40.0
-                    print(f"cTemp: {cTemp}")
 
-                    # achieves the same and seems much cleaner...
+                    elapsed_time = (
+                        current_read_timestamp - self.last_read_timestamp
+                    ).total_seconds()
+                    revs = (dataRead - self.last_read_count) / 2
+                    speed = 60.0 * revs / elapsed_time
+                    record["variables"]["fan_speed"]["data"] = round(speed, 3)
 
-                    # raw_RH = (dataRead[0] << 8) | dataRead[1]
-                    # raw_RH = raw_RH & 0x3FFF
-                    # raw_temp = ((dataRead[2] << 8) | dataRead[3]) >> 2
-                    # RH = (raw_RH/16383)*100
-                    # temp = (raw_temp*165/16383)-40
+                    self.last_read_timestamp = string_to_datetime(timestamp)
+                    self.last_read_count = dataRead
 
-                    record["variables"]["temperature"]["data"] = round(cTemp,3)
-                    record["variables"]["rh"]["data"] = round(rh,3)
                     return record
-                    
 
-                    # hexdata = data.data["data"].strip()
-                    print(f"hexdata: {hexdata}")
-                    if hexdata and "0x"in hexdata:
-                        bindata = binascii.unhexlify(
-                            hexdata[2:]
-                        )
-                        print(f"bindata: {bindata}")
-                        fmt = f'<4B'
-                        print(f"fmt: {fmt}")
-                        data = unpack(fmt, bindata)
-                        print(f"data: {data}")
-
-                        rh = ((((data[0] & 0x3F) * 256) + data[1]) * 100.0) / 16383.0
-                        print(f"rh: {rh}")
-                        temp = ((data[2] * 256) + (data[3] & 0xFC)) / 4
-                        print(f"temp: {temp}")
-                        cTemp = (temp / 16384.0) * 165.0 - 40.0
-                        print(f"cTemp: {cTemp}")
-
-                        record["variables"]["temperature"]["data"] = round(cTemp,3)
-                        record["variables"]["rh"]["data"] = round(rh,3)
-                        return record
-                        # self.logger.debug("default_parse", extra={"record": record})
-                    else:
-                        return None
-                    
                 except KeyError:
                     pass
             except Exception as e:
                 print(f"default_parse error: {e}")
         # else:
         return None
+
+    async def settings_check(self):
+        await super().settings_check()
+
+        if not self.settings.get_health():  # something has changed
+            for name in self.settings.get_settings().keys():
+                if not self.settings.get_health_setting(name):
+
+                    try:
+                        # set channel power
+                        setting = self.settings.get_setting(name)
+                        # TODO: debug here
+                        # self.logger.debug("settings_check", extra={"setting": setting, "setting_name": name})
+                        if name in ["fan_speed_sp"]:
+                            sp = setting["requested"]
+                            # convert +/- pct to duty_cycle
+                            pwm_data = float((sp / 2.0) + 50.0)
+                            data = {"data": {"pwm-data": pwm_data}}
+                            # self.logger.debug("settings_check:set_channel_power", extra={"ch": ch, "requested": setting["requested"]})
+                            # await self.set_channel_power(ch, setting["requested"])
+                            await self.interface_send_data(
+                                data=data, path_id="fan_speed_sp"
+                            )
+
+                        # self.logger.debug(
+                        #     "settings_check - set setting",
+                        #     extra={
+                        #         "setting-name": name,
+                        #         "setting": self.settings.get_setting(name),
+                        #     },
+                        # )
+                    except Exception as e:
+                        self.logger.error("settings_check", extra={"reason": e})
+
 
 class ServerConfig(BaseModel):
     host: str = "localhost"
@@ -543,10 +578,10 @@ async def main(server_config: ServerConfig = None):
         pass
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger(f"AerosolDynamics::MAGIC250::{sn}")
+    logger = logging.getLogger(f"SanyoDenki::SanAce40::{sn}")
 
-    logger.debug("Starting MAGIC250")
-    inst = HYT271()
+    logger.debug("Starting SanAce40")
+    inst = SanAce40()
     # print(inst)
     # await asyncio.sleep(2)
     inst.run()

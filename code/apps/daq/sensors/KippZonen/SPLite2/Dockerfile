@@ -2,6 +2,7 @@
 # FROM python:3.10
 FROM ghcr.io/noaa-pmel/msp/envds-base:latest
 
+
 # Allow statements and log messages to immediately appear in the Knative logs
 ENV PYTHONUNBUFFERED True
 
@@ -20,7 +21,7 @@ RUN pip3 install -r requirements.txt
 # for fastapi/uvicorn
 # COPY . .
 # without fastapi/uvicorn
-COPY ./aurora3000.py .
+COPY ./splite2.py .
 
 # WORKDIR $APP_HOME/envds
 # COPY ./apis ./apis
@@ -31,5 +32,5 @@ COPY ./aurora3000.py .
 # For environments with multiple CPU cores, increase the number of workers
 # to be equal to the cores available.
 # CMD ["uvicorn", "envds.main:app", "--host", "0.0.0.0", "--port", "8080"]
-CMD ["python", "aurora3000.py", "--host", "0.0.0.0"]
+CMD ["python", "splite2.py", "--host", "0.0.0.0"]
 # CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

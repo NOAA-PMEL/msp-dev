@@ -29,8 +29,7 @@ from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
-# from envds.message.message import Message
-from cloudevents.http import CloudEvent
+from envds.message.message import Message
 
 # from envds.exceptions import envdsRunTransitionException
 
@@ -46,14 +45,14 @@ import json
 task_list = []
 
 
-class HYT271(Sensor):
+class HYT939P(Sensor):
     """docstring for MAGIC250."""
 
     metadata = {
         "attributes": {
             # "name": {"type"mock1",
             "make": {"type": "string", "data": "IST"},
-            "model": {"type": "string", "data": "HYT271"},
+            "model": {"type": "string", "data": "HYT939P"},
             "description": {
                 "type": "string",
                 "data": "Temperature and Humidity Sensor",
@@ -97,7 +96,7 @@ class HYT271(Sensor):
     }
 
     def __init__(self, config=None, **kwargs):
-        super(HYT271, self).__init__(config=config, **kwargs)
+        super(HYT939P, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
         self.sampling_interval = 1
@@ -105,7 +104,7 @@ class HYT271(Sensor):
 
         self.default_data_buffer = asyncio.Queue()
 
-        self.sensor_definition_file = "IST_HYT271_sensor_definition.json"
+        self.sensor_definition_file = "IST_HYT939P_sensor_definition.json"
 
 
         try:            
@@ -142,7 +141,7 @@ class HYT271(Sensor):
         # self.i2c_address = "28"
 
     def configure(self):
-        super(HYT271, self).configure()
+        super(HYT939P, self).configure()
 
         # get config from file
         try:
@@ -176,7 +175,7 @@ class HYT271(Sensor):
                         iface[propname] = prop
 
             self.logger.debug(
-                "hyt271.configure", extra={"interfaces": conf["interfaces"]}
+                "hyt939p.configure", extra={"interfaces": conf["interfaces"]}
             )
 
         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
@@ -232,13 +231,11 @@ class HYT271(Sensor):
 
         self.logger.debug("iface_map", extra={"map": self.iface_map})
 
-    # async def handle_interface_message(self, message: Message):
-    async def handle_interface_message(self, message: CloudEvent):
+    async def handle_interface_message(self, message: Message):
         pass
 
-    # async def handle_interface_data(self, message: Message):
-    async def handle_interface_data(self, message: CloudEvent):
-        await super(HYT271, self).handle_interface_data(message)
+    async def handle_interface_data(self, message: Message):
+        await super(HYT939P, self).handle_interface_data(message)
 
         self.logger.debug("interface_recv_data", extra={"data": message})
         if message["type"] == det.interface_data_recv():
@@ -546,7 +543,7 @@ async def main(server_config: ServerConfig = None):
     logger = logging.getLogger(f"AerosolDynamics::MAGIC250::{sn}")
 
     logger.debug("Starting MAGIC250")
-    inst = HYT271()
+    inst = HYT939P()
     # print(inst)
     # await asyncio.sleep(2)
     inst.run()

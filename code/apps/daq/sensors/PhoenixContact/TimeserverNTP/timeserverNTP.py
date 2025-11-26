@@ -1,5 +1,7 @@
 import asyncio
+import binascii
 import signal
+from struct import unpack 
 
 # import uvicorn
 # from uvicorn.config import LOGGING_CONFIG
@@ -12,59 +14,55 @@ import traceback
 import logging.config
 
 # from pydantic import BaseSettings, Field
-# import json
+import json
 import yaml
 import random
-from envds.core import envdsLogger
-
-# from envds.daq.db import get_sensor_registration, register_sensor  # , envdsBase, envdsStatus
+from envds.core import envdsLogger  # , envdsBase, envdsStatus
 from envds.util.util import (
     # get_datetime_format,
     time_to_next,
     get_datetime,
     get_datetime_string,
 )
-# from envds.daq.sensor import Sensor, SensorConfig, SensorVariable, SensorMetadata
 from envds.daq.sensor import Sensor
 from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 
 # from envds.event.event import create_data_update, create_status_update
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
-# from envds.message.message import Message
+from envds.message.message import Message
 
 # from envds.exceptions import envdsRunTransitionException
 
 # from typing import Union
 from cloudevents.http import CloudEvent
+# from cloudevents.http import CloudEvent, from_dict, from_json
 # from cloudevents.conversion import to_json, to_structured
 
 from pydantic import BaseModel
-import json
 
 # from envds.daq.db import init_sensor_type_registration, register_sensor_type
 
 task_list = []
 
 
-class SCX21(Sensor):
-    """docstring for SCX21."""
+class TimeserverNTP(Sensor):
+    """docstring for TimeserverNTP."""
 
     metadata = {
         "attributes": {
-            "make": {"type": "string", "data": "Furuno"},
-            "model": {"type": "string", "data": "SCX21"},
+            # "name": {"type"mock1",
+            "make": {"type": "string", "data": "PhoenixContact"},
+            "model": {"type": "string", "data": "TimeserverNTP"},
             "description": {
                 "type": "string",
-                "data": "Compact Dome Satellite Compass manufactured by Furuno Electric Company and distributed by The GPS Store",
+                "data": "Pyranometer",
             },
             "tags": {
                 "type": "char",
-                "data": "satellite, compass, GPS, sensor",
+                "data": "met, temperature, rh, sensor",
             },
             "format_version": {"type": "char", "data": "1.0.0"},
-            "variable_types": {"type": "string", "data": "main, setting, calibration"},
-            "serial_number": {"type": "string", "data": ""},
         },
         "dimensions": {"time": 0},
         "variables": {
@@ -74,197 +72,46 @@ class SCX21(Sensor):
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
                     "long_name": {"type": "string", "data": "Time"}
-                },
+                    },
             },
-            "scx21_timestamp": {
+            "volts": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Timestamp (UTC)"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: ZDA",
-                    }
+                    "long_name": {"type": "char", "data": "Measured voltage"},
+                    "units": {"type": "char", "data": "volts"},
                 },
             },
-            "lat": {
+            "sensitivity": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Latitude"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GNS",
-                    },
-                    "units": {"type": "char", "data": "degrees"},
+                    "long_name": {"type": "char", "data": "Sensitivity of sensor (uV / W*m2)"},
+                    "units": {"type": "char", "data": "uV W-1 m2"},
                 },
             },
-            "lat_dir": {
-                "type": "char",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Direction of Latitude"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GNS",
-                    },
-                },
-            },
-            "lon": {
+            "irradiance": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Longitude"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GNS",
-                    },
-                    "units": {"type": "char", "data": "degrees"},
+                    "long_name": {"type": "char", "data": "Irradiance of sensor (uV / W*m2)"},
+                    "units": {"type": "char", "data": "W m-2"},
                 },
             },
-            "lon_dir": {
-                "type": "char",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Direction of Longitude"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GNS",
-                    },
-                    "units": {"type": "char", "data": "unitless"},
-                },
-            },
-            "mode": {
-                "type": "char",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Mode Indicator"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GNS",
-                    },
-                    "units": {"type": "char", "data": "unitless"},
-                },
-            },
-            "sv_num": {
-                "type": "int",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Number of SVs in Use"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GNS",
-                    },
-                    "units": {"type": "char", "data": "count"},
-                },
-            },
-            "heading": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Heading from True north"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: HDT",
-                    },
-                    "units": {"type": "char", "data": "degrees"},
-                },
-            },
-            "speed": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Speed Over Ground"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: VTG",
-                    },
-                    "units": {"type": "char", "data": "kilometers/hour"},
-                },
-            },
-            "yaw": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Yaw"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GPatt",
-                    },
-                    "units": {"type": "char", "data": "degrees"},
-                },
-            },
-            "pitch": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Pitch"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GPatt",
-                    },
-                    "units": {"type": "char", "data": "degrees"},
-                },
-            },
-            "roll": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Roll"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GPatt",
-                    },
-                    "units": {"type": "char", "data": "degrees"},
-                },
-            },
-            "heave": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Heave"},
-                    "description": {
-                        "type": "char",
-                        "data": "NMEA 0183 ID: GPhve",
-                    },
-                    "units": {"type": "char", "data": "meters"},
-                },
-            },
-        },
+        }
     }
 
     def __init__(self, config=None, **kwargs):
-        super(SCX21, self).__init__(config=config, **kwargs)
+        super(TimeserverNTP, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
-        # self.configure()
-        self.first_record = 'ZDA'
-        self.last_record = 'GPhve'
+        self.first_record = 'RMC'
+        self.last_record = 'GGA'
         self.array_buffer = []
-
         self.default_data_buffer = asyncio.Queue()
-
-        # self.sensor_definition_file = "Furuno_SCX21_sensor_definition.json"
-
-        # try:            
-        #     with open(self.sensor_definition_file, "r") as f:
-        #         self.metadata = json.load(f)
-        # except FileNotFoundError:
-        #     self.logger.error("sensor_definition not found. Exiting")            
-        #     sys.exit(1)
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
@@ -285,13 +132,23 @@ class SCX21(Sensor):
 
         # self.sampling_task_list.append(self.data_loop())
         self.enable_task_list.append(self.default_data_loop())
-        # self.enable_task_list.append(self.sampling_monitor())
-        # self.enable_task_list.append(self.register_sensor())
+        self.enable_task_list.append(self.sampling_monitor())
+        # self.enable_task_list.append(self.polling_loop())
         # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
 
+        self.sensor_definition_file = "PhoenixContact_NTP_sensor_definition.json"
+
+
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
+
     def configure(self):
-        super(SCX21, self).configure()
+        super(TimeserverNTP, self).configure()
 
         # get config from file
         try:
@@ -307,16 +164,12 @@ class SCX21(Sensor):
             "default": {
                 "device-interface-properties": {
                     "connection-properties": {
-                        "baudrate": 38400,
-                        "bytesize": 8,
-                        "parity": "N",
-                        "stopbit": 1,
                     },
                     "read-properties": {
                         "read-method": "readline",  # readline, read-until, readbytes, readbinary
                         # "read-terminator": "\r",  # only used for read_until
                         "decode-errors": "strict",
-                        "send-method": "ascii",
+                        "send-method": "ascii"
                     },
                 }
             }
@@ -329,29 +182,23 @@ class SCX21(Sensor):
                         iface[propname] = prop
 
             self.logger.debug(
-                "scx21.configure", extra={"interfaces": conf["interfaces"]}
+                "TimeserverNTP.configure", extra={"interfaces": conf["interfaces"]}
             )
 
-        # TODO change settings for new sensor definition
-        '''
-        The new settings are part [variables] now so this is a bit of a hack to use the existing structure
-        with the new format.
-        '''
-        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
-        # for name, setting in self.metadata["settings"].items():
-        for name, setting in settings_def["variables"].items():
-        
-            requested = setting["attributes"]["default_value"]["data"]
-            if "settings" in config and name in config["settings"]:
-                requested = config["settings"][name]
+            settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+            # for name, setting in AQT560.metadata["settings"].items():
+            for name, setting in settings_def["variables"].items():
+            
+                requested = setting["attributes"]["default_value"]["data"]
+                if "settings" in config and name in config["settings"]:
+                    requested = config["settings"][name]
 
-            self.settings.set_setting(name, requested=requested)
+                self.settings.set_setting(name, requested=requested)
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
             dimensions=self.metadata["dimensions"],
             variables=self.metadata["variables"],
-            # settings=self.metadata["settings"],
             settings=settings_def["variables"]
         )
 
@@ -389,28 +236,22 @@ class SCX21(Sensor):
 
         self.logger.debug("iface_map", extra={"map": self.iface_map})
 
-    # async def handle_interface_message(self, message: Message):
     async def handle_interface_message(self, message: CloudEvent):
         pass
 
-    # async def handle_interface_data(self, message: Message):
     async def handle_interface_data(self, message: CloudEvent):
-        await super(SCX21, self).handle_interface_data(message)
+        await super(TimeserverNTP, self).handle_interface_data(message)
 
-        # self.logger.debug("interface_recv_data", extra={"data": message})
-        # if message.data["type"] == det.interface_data_recv():
+        # self.logger.debug("interface_recv_data", extra={"data": message.data})
         if message["type"] == det.interface_data_recv():
             try:
-                # path_id = message.data["path_id"]
                 path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
                 # if path_id == "default":
                 if path_id == iface_path:
                     self.logger.debug(
-                        # "interface_recv_data", extra={"data": message.data.data}
                         "interface_recv_data", extra={"data": message.data}
                     )
-                    # await self.default_data_buffer.put(message.data)
                     await self.default_data_buffer.put(message)
             except KeyError:
                 pass
@@ -429,40 +270,26 @@ class SCX21(Sensor):
                         },
                     )
 
-    # async def register_sensor(self):
-    #     try:
-
-    #         make = self.config.make
-    #         model = self.config.model
-    #         serial_number = self.config.serial_number
-    #         if not await get_sensor_registration(make=make, model=model, serial_number=serial_number):
-
-    #             await register_sensor(
-    #                 make=make,
-    #                 model=model,
-    #                 serial_number=serial_number,
-    #                 source_id=self.get_id_as_source(),
-    #             )
-
-    #     except Exception as e:
-    #         self.logger.error("sensor_reg error", extra={"e": e})
-
     async def sampling_monitor(self):
 
-        # start_command = f"Log,{self.sampling_interval}\n"
-        start_command = "Log,1\n"
-        stop_command = "Log,0\n"
+        start_command = "R\n"
+        stop_command = "R\n"
 
         need_start = True
         start_requested = False
         # wait to see if data is already streaming
         await asyncio.sleep(2)
-        # # if self.collecting:
-        # await self.interface_send_data(data={"data": stop_command})
-        # await asyncio.sleep(2)
-        # self.collecting = False
-        # init to stopped
-        # await self.stop_command()
+
+        try:
+            if self.default_data_buffer.empty():
+                pass
+            else:
+                need_start = False
+                start_requested = True
+
+        except Exception as e:
+            print(f"first sampling monitor error: {e}")
+
 
         while True:
             try:
@@ -470,6 +297,7 @@ class SCX21(Sensor):
                 if self.sampling():
 
                     if need_start:
+
                         if self.collecting:
                             await self.interface_send_data(data={"data": stop_command})
                             await asyncio.sleep(2)
@@ -504,17 +332,18 @@ class SCX21(Sensor):
             await asyncio.sleep(0.1)
 
 
+
     async def default_data_loop(self):
 
         while True:
             try:
                 data = await self.default_data_buffer.get()
+                self.logger.debug("default_data_loop", extra={"data": data})
                 if data:
                     self.collecting = True
 
                 if self.first_record in data.data['data']:
                     record1 = self.default_parse(data)
-                    # self.record_counter += 1
                     continue
 
                 elif self.last_record in data.data['data']:
@@ -542,7 +371,6 @@ class SCX21(Sensor):
 
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(
-                        # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
                         data=record,
                     )
@@ -554,7 +382,7 @@ class SCX21(Sensor):
                     )
                     # message = Message(data=event, destpath=destpath)
                     message = event
-                    # self.logger.debug("default_data_loop", extra={"m": message})
+                    self.logger.debug("default_data_loop", extra={"m": message})
                     await self.send_message(message)
 
                 self.logger.debug("default_data_loop", extra={"record": record})
@@ -562,6 +390,7 @@ class SCX21(Sensor):
                 print(f"default_data_loop error: {e}")
                 print(traceback.format_exc())
             await asyncio.sleep(0.001)
+
 
     def default_parse(self, data):
         if data:
@@ -578,19 +407,12 @@ class SCX21(Sensor):
                     record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].split(",")
 
-                    if (datavar := 'HDT') in data.data["data"]:
-                        parts = parts[1:2]
-                    elif (datavar := 'GPatt') in data.data["data"]:
-                        parts = parts[2:5]
-                        parts = [x.split("*")[0] for x in parts]
-                    elif (datavar := 'GPhve') in data.data["data"]:
-                        parts = parts[2:3]
-                    elif (datavar := 'ZDA') in data.data["data"]:
-                        parts = parts[1:2]
+                    if (datavar := 'RMC') in data.data["data"]:
+                        parts = parts[1:7]
                     elif (datavar := 'VTG') in data.data["data"]:
                         parts = parts[7:8]
-                    elif (datavar := 'GNS') in data.data["data"]:
-                        parts = parts[2:8]
+                    elif (datavar := 'GGA') in data.data["data"]:
+                        parts = parts[7:8]
                     else:
                         return None
                                         
@@ -627,7 +449,6 @@ class SCX21(Sensor):
                                     record["variables"][name]["data"] = ""
                                 else:
                                     record["variables"][name]["data"] = None
-
                     # convert lat/lon to decimal
                     if record["variables"]["lat"]["data"]:
                         deg = int(record["variables"]["lat"]["data"]/100)
@@ -653,7 +474,6 @@ class SCX21(Sensor):
                 print(traceback.format_exc())
         # else:
         return None
-
 
 class ServerConfig(BaseModel):
     host: str = "localhost"
@@ -696,10 +516,10 @@ async def main(server_config: ServerConfig = None):
         pass
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger(f"Furuno::SCX21::{sn}")
+    logger = logging.getLogger(f"PhoenixContact::TimeserverNTP::{sn}")
 
-    logger.debug("Starting SCX21")
-    inst = SCX21()
+    logger.debug("Starting TimeserverNTP")
+    inst = TimeserverNTP()
     # print(inst)
     # await asyncio.sleep(2)
     inst.run()
@@ -742,7 +562,7 @@ async def main(server_config: ServerConfig = None):
     event_loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
 
     while do_run:
-        logger.debug("mock1.run", extra={"do_run": do_run})
+        logger.debug("TimeserverNTP.run", extra={"do_run": do_run})
         await asyncio.sleep(1)
 
     logger.info("starting shutdown...")

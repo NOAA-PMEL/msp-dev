@@ -983,6 +983,7 @@ def layout(sensor_id=None):
                     layout_options["layout-3d"][dim_3d]["table-column-defs"].append(cd)
                     # continue
                 else:
+                    print('cd', cd)
                     layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
 
             for ltype, dims in layout_options.items():
@@ -2441,6 +2442,7 @@ def update_table_1d(sensor_data, row_data_list, col_defs_list):  # , sensor_defi
     # print(f"row_data: {type(row_data)}, {row_data}, col_defs: {col_defs}")
     # if e is not None and "data" in e:
     if sensor_data:
+        print('sensor data', sensor_data)
         new_row_data_list = []
         try:
             # sensor_data = json.loads(e["data"])
@@ -2449,11 +2451,11 @@ def update_table_1d(sensor_data, row_data_list, col_defs_list):  # , sensor_defi
                 # print(f"row, col: {row_data}, {col_defs}")
                 for col in col_defs:
                     name = col["field"]
-                    # print(f"name: {name}")
+                    print(f"name: {name}")
                     if name in sensor_data["variables"]:
                         # print(f"variable: {msg["variables"][name]["data"]}")
                         data[name] = sensor_data["variables"][name]["data"]
-                        # print(f"data: {data}")
+                        print(f"data: {data}")
                     else:
                         data[name] = ""
                 # if row_data is None:
@@ -2478,6 +2480,7 @@ def update_table_1d(sensor_data, row_data_list, col_defs_list):  # , sensor_defi
             # print(f"row_data_list: {row_data_list}")
             if len(new_row_data_list) == 0:
                 raise PreventUpdate
+            print('new data', new_row_data_list)
             return new_row_data_list
 
         except Exception as e:
