@@ -422,6 +422,27 @@ class RedisClient(DBClient):
 
         return {"results": results}
 
+    async def device_definition_registry_get_ids(
+            self,
+    ) -> dict:
+        ids = []
+        try:
+            self.logger.debug("device_definition_registry_get_ids")
+            for key in self.client.scan_iter("registry:device-definition:*"):
+                self.logger.debug("device_definition_registry_get_ids", extra={"def_id": key})
+                id = key.decode('utf-8').replace("registry:device-definition:", "")
+                # id = key.split(".")[-1]
+                # ids.append(id.decode('utf-8'))
+                ids.append(id)
+                self.logger.debug("device_definition_registry_get_ids", extra={"ids": ids})
+            results = {"results": ids}
+            # return {"results": ids}
+        except Exception as e:
+            self.logger.error("device_definition_registry_get_ids", extra={"reason": e})
+            # return {"results": []}
+        self.logger.debug("device_definition_registry_get_ids", extra={"results": results})
+        return results
+    
     async def device_definition_registry_get(
             self,
             request: DeviceDefinitionRequest
@@ -705,6 +726,28 @@ class RedisClient(DBClient):
                 continue
 
         return {"results": results}
+
+    async def controller_definition_registry_get_ids(
+            self,
+    ) -> dict:
+        ids = []
+        try:
+            self.logger.debug("controller_definition_registry_get_ids")
+            for key in self.client.scan_iter("registry:controller-definition:*"):
+                self.logger.debug("controller_definition_registry_get_ids", extra={"def_id": key})
+                id = key.decode('utf-8').replace("registry:controller-definition:", "")
+                # id = key.split(".")[-1]
+                # ids.append(id.decode('utf-8'))
+                ids.append(id)
+                self.logger.debug("controller_definition_registry_get_ids", extra={"ids": ids})
+            results = {"results": ids}
+            # return {"results": ids}
+        except Exception as e:
+            self.logger.error("controller_definition_registry_get_ids", extra={"reason": e})
+            # return {"results": []}
+        self.logger.debug("controller_definition_registry_get_ids", extra={"results": results})
+        return results
+    
 
     async def controller_definition_registry_get(
             self,

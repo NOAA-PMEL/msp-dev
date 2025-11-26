@@ -316,6 +316,14 @@ async def device_definition_registry_update(request: Request):
         # return get_response_event(msg, 500)
 
 
+@app.get("/device-definition/registry/ids/get/")
+# async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
+async def device_definition_get_ids():
+    L.debug("device_definition_get_ids")
+    result = await datastore.device_definition_registry_get_ids()
+    L.debug("device_definition_get_ids", extra={"result": result})
+    return result
+
 @app.get("/device-definition/registry/get/")
 # async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
 async def device_definition_registry_get(
@@ -487,6 +495,13 @@ async def controller_definition_registry_update(request: Request):
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
+@app.get("/controller-definition/registry/ids/get/")
+# async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
+async def device_definition_get_ids():
+    L.debug("controller_definition_get_ids")
+    result = await datastore.controller_definition_registry_get_ids()
+    L.debug("controller_definition_get_ids", extra={"result": result})
+    return result
 
 @app.get("/controller-definition/registry/get/")
 async def controller_definition_registry_get(

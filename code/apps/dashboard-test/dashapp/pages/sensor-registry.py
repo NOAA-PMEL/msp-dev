@@ -417,27 +417,33 @@ def update_sensor_definitions(count, table_data):
         #     else:
         #         return dash.no_update
 
-        query = {"device_type": "sensor"}
-        url = f"http://{datastore_url}/device-definition/registry/get/"
+        # query = {"device_type": "sensor"}
+        # url = f"http://{datastore_url}/device-definition/registry/get/"
+        url = f"http://{datastore_url}/device-definition/registry/ids/get/"
+        # print(f"device-definition-get: {url}, {query}")
         print(f"device-definition-get: {url}")
-        response = httpx.get(url, params=query)
+        # response = httpx.get(url, params=query)
+        response = httpx.get(url)
         results = response.json()
-        # print(f"results: {results}")
+        print(f"results: {results}")
         if "results" in results and results["results"]:
-            for doc in results["results"]:
-                if doc is not None:
-                    # print(f"doc: {doc}")
-                    id = doc["device_definition_id"]
-                    make = doc["make"]
-                    model = doc["model"]
-                    version = doc["version"]
-
+            # for doc in results["results"]:
+            for id in results["results"]:
+                # if doc is not None:
+                #     # print(f"doc: {doc}")
+                #     id = doc["device_definition_id"]
+                #     make = doc["make"]
+                #     model = doc["model"]
+                #     version = doc["version"]
+                if id is not None:
+                    parts = id.split("::")
                     sensor_def = {
                         "sensor-def-id": id,
-                        "make": make,
-                        "model": model,
-                        "version": version,
+                        "make": parts[0],
+                        "model": parts[1],
+                        "version": parts[2],
                     }
+                    print(f"device-definition-get: {sensor_def}")
                     if sensor_def not in table_data:
                         table_data.append(sensor_def)
                         update = True
