@@ -242,11 +242,11 @@ class SPLite2(Sensor):
                         "interface_recv_data", extra={"here default data": message.data}
                     )
                     await self.default_data_buffer.put(message)
-                if path_id == ref_path:
-                    self.logger.debug(
-                        "interface_recv_data", extra={"here ref data": message.data}
-                    )
-                    await self.default_data_buffer.put(message)
+                # if path_id == ref_path:
+                #     self.logger.debug(
+                #         "interface_recv_data", extra={"here ref data": message.data}
+                #     )
+                #     await self.default_data_buffer.put(message)
             except KeyError:
                 pass
 
