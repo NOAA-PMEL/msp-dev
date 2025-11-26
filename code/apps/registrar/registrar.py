@@ -149,10 +149,37 @@ class Registrar:
             self.logger.error("send_event", extra={"reason": e})
         await asyncio.sleep(0.1)
 
+    async def submit_get(self, path: str):
+        try:
+            self.logger.debug("submit_request", extra={"path": path})
+            timeout = httpx.Timeout(10.0, read=None)
+            # if query is None:
+            #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+            #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+            #     self.logger.debug("submit_request", extra={"results": results})
+            #     # return results
+            # else:
+            self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+            results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+            self.logger.debug("submit_request", extra={"results": results.json()})
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_request", extra={"reason": e})
+            return {}
+
+
     async def submit_request(self, path: str, query: dict):
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
-            results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
+            timeout = httpx.Timeout(10.0, read=None)
+            # if query is None:
+            #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+            #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+            #     self.logger.debug("submit_request", extra={"results": results})
+            #     # return results
+            # else:
+            self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/", "query": query})
+            results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
             self.logger.debug("submit_request", extra={"results": results.json()})
             return results.json()
         except Exception as e:
@@ -164,17 +191,23 @@ class Registrar:
         while True:
             try: 
                 query = {}
-                results = await self.submit_request(
-                    path="device-definition/registry/get", query=query
+                results = await self.submit_get(
+                    path="device-definition/registry/ids/get"
                 )
+                self.logger.debug("get_device_definitions_loop", extra={"ids": results})
+
+                # results = await self.submit_request(
+                #     path="device-definition/registry/get", query=query
+                # )
                 # results = httpx.get(f"http://{self.datastore_url}/device-definition/registry/get/", parmams=query)
                 self.logger.debug("get_device_definitions_loop", extra={"results": results})
 
                 if "results" in results and results["results"]:
                     def_list = []
-                    for device_def in results["results"]:
-                        self.logger.debug("get_device_definitions_loop", extra={"device_def": device_def})
-                        id = device_def.get("device_definition_id", None)
+                    # for device_def in results["results"]:
+                    for id in results["results"]:
+                        # self.logger.debug("get_device_definitions_loop", extra={"device_def": device_def})
+                        # id = device_def.get("device_definition_id", None)
                         # id = None
                         if id:
                             def_list.append(id)
@@ -214,18 +247,22 @@ class Registrar:
         while True:
             try: 
                 query = {}
-                results = await self.submit_request(
-                    path="controller-definition/registry/get", query=query
+                results = await self.submit_get(
+                    path="controller-definition/registry/ids/get"
                 )
+                # results = await self.submit_request(
+                #     path="controller-definition/registry/get", query=query
+                # )
                 # results = httpx.get(f"http://{self.datastore_url}/controller-definition/registry/get/", parmams=query)
                 self.logger.debug("get_controller_definitions_loop", extra={"results": results})
 
                 if "results" in results and results["results"]:
                     def_list = []
-                    for controller_def in results["results"]:
-                        self.logger.debug("get_controller_definitions_loop", extra={"controller_def": controller_def})
-                        id = controller_def.get("controller_definition_id", None)
-                        # id = None
+                    # for controller_def in results["results"]:
+                    for id in results["results"]:
+                        # self.logger.debug("get_controller_definitions_loop", extra={"controller_def": controller_def})
+                        # id = controller_def.get("controller_definition_id", None)
+                        # # id = None
                         if id:
                             def_list.append(id)
                     reg = {"controller-definition-list": def_list}

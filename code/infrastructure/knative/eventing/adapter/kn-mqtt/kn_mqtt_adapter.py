@@ -22,7 +22,6 @@ logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
 L.setLevel(logging.DEBUG)
 
-
 class KNMQTTAdapterSettings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
@@ -219,11 +218,13 @@ class KNMQTTClient():
         # create a new client for each request
         async with httpx.AsyncClient() as client:
             # yield the client to the endpoint function
+            L.debug("get_client")
             yield client
             # close the client when the request is done
 
     def open_http_client(self):
         # create a new client for each request
+        L.debug("open_http_client")
         self.http_client = httpx.AsyncClient()
             # # yield the client to the endpoint function
             # yield client
@@ -251,7 +252,7 @@ class KNMQTTClient():
 
                 L.debug(ce)#, extra=template)
                 try:
-                    timeout = httpx.Timeout(5.0, read=0.1)
+                    timeout = httpx.Timeout(5.0, read=0.5)
                     ce["datacontenttype"] = "application/json"
                     attrs = {
                         # "type": "envds.controller.control.request",

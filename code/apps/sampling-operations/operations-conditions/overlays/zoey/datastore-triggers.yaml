@@ -1,0 +1,17 @@
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: datastore-sensor-data-update
+  namespace: msp-events
+spec:
+  broker: msp-events-broker
+  filter:
+    attributes:
+      type: sensor.data.update
+  subscriber:
+    ref:
+      apiVersion: v1
+      kind: Service
+      name: datastore
+      namespace: msp
+    uri: /data/update

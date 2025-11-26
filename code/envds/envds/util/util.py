@@ -54,8 +54,8 @@ def get_datetime_with_delta(delta: timedelta, dt: datetime=datetime.now(timezone
 def datetime_mod_sec(sec: int) -> int:
     return get_datetime().second % sec
 
-def seconds_elapsed(inital_dt: datetime) -> float:
-    delta = get_datetime() - inital_dt
+def seconds_elapsed(initial_dt: datetime) -> float:
+    delta = get_datetime() - initial_dt
     return delta.total_seconds()
 
 def get_checksum(data: dict) -> str:
@@ -67,3 +67,32 @@ def get_checksum(data: dict) -> str:
     encoded = json.dumps(data, sort_keys=True).encode()
     dhash.update(encoded)
     return dhash.hexdigest()
+
+def round_to_nearest_N_seconds(dt: datetime, Nsec: int) -> datetime:
+    try:
+        total_seconds = (dt - dt.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
+        # print(f"total_seconds = {total_seconds}")
+
+        # Calculate the number of N-second intervals
+        intervals = total_seconds / Nsec
+        # print(f"intervals = {intervals}")
+
+        # Round to the nearest interval
+        rounded_intervals = round(intervals)
+        # print(f"rounded_intervals = {rounded_intervals}")
+
+        # Calculate the rounded total seconds
+        rounded_total_seconds = rounded_intervals * Nsec
+        # print(f"rounded_total_seconds = {rounded_total_seconds}")
+
+        # Create a new datetime object with the rounded seconds
+        rounded_dt = dt.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(seconds=rounded_total_seconds)
+        # print(f"rounded_dt = {rounded_dt}")
+        # result = timestamp_to_string(rounded_dt)
+        result = rounded_dt
+        
+    except Exception as e:
+        print(f"error: round_to_nearest_N_seconds: {e}")
+        result = None
+
+    return result

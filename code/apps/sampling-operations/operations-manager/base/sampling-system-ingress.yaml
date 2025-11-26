@@ -1,0 +1,47 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: sampling-system-stripprefix
+  namespace: msp-system
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  stripPrefix:
+    prefixes:
+      - /msp/sampling-system
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: sampling-system-upgrade
+  namespace: msp-system
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+   headers:
+     contentSecurityPolicy: "upgrade-insecure-requests"     
+---
+apiVersion: networking.k8s.io/v1
+# apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: sampling-system-ingress
+  namespace: msp-system
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+    traefik.ingress.kubernetes.io/router.middlewares:
+      msp-system-sampling-system-stripprefix@kubernetescrd
+      # msp-sampling-system-stripprefix@kubernetescrd, msp-sampling-system-upgrade@kubernetescrd
+
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /msp/sampling-system
+            pathType: Prefix
+            backend:
+              service:
+                name: sampling-system
+                port:
+                  number: 80
