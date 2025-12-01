@@ -1775,6 +1775,7 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                 for col in col_defs:
                     i += 1
                     if row_data:
+                        name = col["field"]
                         if controller_settings["settings"][name]["data"]["actual"] != row_data[0][col['field']]:
                             break
                         elif i == len(col_defs):

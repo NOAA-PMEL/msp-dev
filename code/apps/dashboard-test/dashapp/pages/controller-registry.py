@@ -418,7 +418,8 @@ def update_controller_definitions(count, table_data):
 
         # query = {"device_type": "controller"}
         # url = f"http://{datastore_url}/controller-definition/registry/get/"
-        url = f"http://{datastore_url}/device-definition/registry/ids/get/"
+        # url = f"http://{datastore_url}/device-definition/registry/ids/get/"
+        url = f"http://{datastore_url}/controller-definition/registry/ids/get/"
         print(f"controller-definition-get: {url}")
         # response = httpx.get(url, params=query)
         response = httpx.get(url)
