@@ -1,0 +1,131 @@
+name: Build and Push parkerhannifin_btxconnect
+
+on:
+
+  push:
+    branches: [ dev-* , create-op-device]
+    paths:
+      - 'code/apps/daq/operational/ParkerHannifin/BTXConnect/**'
+  
+  pull_request:
+    branches: [main, dev-*, create-op-device]
+    paths:
+      - 'code/apps/daq/operational/ParkerHannifin/BTXConnect/**'
+  
+  # workflow_run:
+  #   workflows: [Build Envds Package]
+  #   types: [completed]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: parkerhannifin_btxconnect
+  # IMAGE_TAG: ${{ github.sha }}
+  # IMAGE_TAG: $(cat VERSION)
+
+jobs:
+
+  build-and-push-parkerhannifin_btxconnect:
+
+    runs-on: ubuntu-latest
+    defaults:
+        run:
+            working-directory: './code/apps/daq/operational/ParkerHannifin/BTXConnect'
+      
+    permissions:
+        contents: read
+        packages: write
+        attestations: write
+        id-token: write
+
+    steps:
+
+        - name: 'Checkout Main'
+          uses: actions/checkout@v4
+
+        - name: 'set env variables'
+          run: |
+            VER=$(cat VERSION)
+            echo "IMAGE_TAG=$VER" >> $GITHUB_ENV
+        # - name: Build the Docker image
+        # #   run: docker build . --file Dockerfile --tag ghcr.io/acg/verifier:$(date +%s)
+        #   run: docker build . --file Dockerfile --tag ghcr.io/acg/verifier:latest
+
+        - name: Set up QEMU
+          uses: docker/setup-qemu-action@v2
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v2
+  
+        # - name: Download envds package
+        #   uses: actions/download-artifact@v4
+        #   with:
+        #     name: envds
+        #     github-token: ${{ github.token }}
+        #     run-id: {{ github.event.workflow_run.id }}
+
+        # - name: Download envds package
+        #   uses: dawidd6/action-download-artifact@v6
+        #   with:
+        #     workflow: build-pipeline.yml
+        #     name: envds
+        #     path: code/envds/dist
+        #     branch: add-envds-package-workflow
+        
+        # - name: Install envds package
+        #   run:
+        #     cd code/envds/dist
+        #     pip install envds
+
+        - name: 'Login to GitHub Container Registry'
+          uses: docker/login-action@v1
+          with:
+            registry: ${{ env.REGISTRY }}
+            username: ${{github.actor}}
+            password: ${{secrets.GITHUB_TOKEN}}
+
+        # - name: Extract metadata (tags, labels) for Docker
+        #   id: meta
+        #   uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        #   with:
+        #     images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+        # - name: Build and push Docker image
+        #   id: push
+        #   uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        #   with:
+        #     context: ./apps/verifier
+        #     push: true
+        #     tags: ${{ steps.meta.outputs.tags }}
+        #     labels: ${{ steps.meta.outputs.labels }}
+    
+                
+        # - name: Generate artifact attestation
+        #   uses: actions/attest-build-provenance@v2
+        #   with:
+        #     subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
+        #     subject-digest: ${{ steps.push.outputs.digest }}
+        #     push-to-registry: true
+
+        - name: Build and push multi-platform image
+          uses: docker/build-push-action@v4
+          with:
+            context: code/apps/daq/operational/ParkerHannifin/BTXConnect/.
+            # dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
+            push: true
+            tags: |
+              ghcr.io/noaa-pmel/msp/parkerhannifin_btxconnect:${{env.IMAGE_TAG}}
+            platforms: linux/amd64,linux/arm64
+            
+            # build_args: |
+            #   REGISTRY=${{ github.repository_owner }}
+            #   TAG=${{ github.sha }}
+
+        # - name: Build the Docker image
+        # #   run: docker build . --file Dockerfile --tag ghcr.io/acg/verifier:$(date +%s)
+        #   run: docker build . --file Dockerfile --tag ghcr.io/noaa-pmel/msp/sanyodenki_sanace92rf:$IMAGE_TAG
+ 
+        # - name: Push the Docker image
+        #   run: docker push ghcr.io/noaa-pmel/msp/sanyodenki_sanace92rf:$IMAGE_TAG
+        #   run: docker build . --file Dockerfile --tag ghcr.io/noaa-pmel/msp/sanyodenki_sanace92rf:$IMAGE_TAG
+ 
+        # - name: Push the Docker image
+        #   run: docker push ghcr.io/noaa-pmel/msp/sanyodenki_sanace92rf:$IMAGE_TAG
