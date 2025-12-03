@@ -604,8 +604,9 @@ class Aurora3000(Sensor):
                 is_first_chunk = False
 
                 try:
-                    datetime.strptime(current_record["variables"]['aurora_date_time']["data"], "%d/%m/%Y %H:%M:%S")
-                    self.logger.debug("default_data_loop", extra={"datetime": current_record["variables"]['aurora_date_time']["data"]})
+                    current_record["variables"]['aurora_date_time']["data"].count('/') == 3
+                    # datetime.strptime(current_record["variables"]['aurora_date_time']["data"], "%d/%m/%Y %H:%M:%S")
+                    # self.logger.debug("default_data_loop", extra={"datetime": current_record["variables"]['aurora_date_time']["data"]})
                     is_first_chunk = True
                 except (ValueError, TypeError, KeyError):
                     is_first_chunk = False
