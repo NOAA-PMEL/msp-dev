@@ -595,6 +595,7 @@ class Aurora3000(Sensor):
                 data = await self.default_data_buffer.get()
                 self.logger.debug("default_data_loop", extra={"data": data})
                 current_record = self.default_parse(data)
+                self.logger.debug("default_data_loop", extra={"current_record": current_record})
                 # cmd_list_len = len(self.command_list)
 
                 if not current_record:
@@ -604,6 +605,7 @@ class Aurora3000(Sensor):
 
                 try:
                     datetime.strptime(current_record["variables"]['aurora_date_time']["data"], "%d/%m/%Y %H:%M:%S")
+                    self.logger.debug("default_data_loop", extra={"datetime": current_record["variables"]['aurora_date_time']["data"]})
                     is_first_chunk = True
                 except (ValueError, TypeError, KeyError):
                     is_first_chunk = False
