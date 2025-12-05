@@ -218,7 +218,7 @@ class RedisClient(DBClient):
                 self.client.ft(self.registry_variableset_definition_index_name).info()
             except Exception as e:
                 schema = (
-                    TagField("$.registration.variableset_definition_id", as_name="variablemap_definition_id"),
+                    TagField("$.registration.variableset_definition_id", as_name="variableset_definition_id"),
                     TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
                     TagField("$.registration.variableset", as_name="variableset"),
                     TagField("$.registration.index_type", as_name="index_type"),
