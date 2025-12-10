@@ -85,13 +85,13 @@ class MQTTBridge():
         # url = "https://{}".format(aws_iot_endpoint)
 
         if client_type == "local": 
-            ca = "/local-root-CA.crt" 
-            cert = "/local-tls.crt"
-            private = "/local-tls.key"
+            ca = "/certs/local/aws/rootCA.crt" 
+            cert = "/certs/local/aws/cert.crt"
+            private = "/certs/local/aws/private.key"
         elif client_type == "remote": 
-            ca = "/remote-root-CA.crt" 
-            cert = "/remote-tls.crt"
-            private = "/remote-tls.key"
+            ca = "/certs/remote/aws/rootCA.crt" 
+            cert = "/certs/remote/aws/cert.crt"
+            private = "/certs/remote/aws/private.key"
         else:
             return None
         
