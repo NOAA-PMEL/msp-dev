@@ -66,6 +66,8 @@ class MQTTBridge():
 
         asyncio.create_task(self.send_to_remote_mqtt_loop())
         asyncio.create_task(self.send_to_local_mqtt_loop())
+        asyncio.create_task(self.get_from_remote_mqtt_loop())
+        asyncio.create_task(self.get_from_local_mqtt_loop())
 
         self.local_client = None
         self.remote_client = None
