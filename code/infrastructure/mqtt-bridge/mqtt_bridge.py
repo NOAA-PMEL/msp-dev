@@ -81,8 +81,8 @@ class MQTTBridge():
     def ssl_alpn(self, client_type:str="local"):
         IoT_protocol_name = "x-amzn-mqtt-ca"
         # aws_iot_endpoint = "AWS_IoT_ENDPOINT_HERE" # <random>.iot.<region>.amazonaws.com
-        aws_iot_endpoint = config.mqtt_broker # <random>.iot.<region>.amazonaws.com
-        url = "https://{}".format(aws_iot_endpoint)
+        # aws_iot_endpoint = config.mqtt_broker # <random>.iot.<region>.amazonaws.com
+        # url = "https://{}".format(aws_iot_endpoint)
 
         if client_type == "local": 
             ca = "/local-root-CA.crt" 
