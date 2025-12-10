@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kn-mqtt-adapter
+  namespace: msp-system
+data:
+  # mqtt_bridge_host: "0.0.0.0"
+  # mqtt_bridge_port: 80
+  knative_broker: "http://broker-ingress.knative-eventing.svc.cluster.local/msp-system/default"
+
+  mqtt_broker: "mqtt.msp-system"
+  mqtt_port: "1883"
+  # mqtt_topic_filter: "instrument/#"
+  mqtt_topic_subscriptions: |
+    /envds/+/+/+/data/update
+    /envds/+/+/+/status/update
+    /envds/+/+/+/settings/update
+    /envds/+/+/+/control/update
+
+  
+  
+  # mqtt_broker: "mosquitto.default"
+  # mqtt_port: "1883"
+  # # mqtt_topic_filter: "sensor/#"
+  # mqtt_topic_subscription: "test-account/uas-test/#"
+
+  # mqtt_broker: "iot.pmel-dev.oarcloud.noaa.gov"
+  # mqtt_port: "8883"
+  # # mqtt_topic_filter: "sensor/#"
+  # # mqtt_topic_subscription: "test-account/uas-test/#"
+  # mqtt_topic_subscription: "uasdaq/#"
