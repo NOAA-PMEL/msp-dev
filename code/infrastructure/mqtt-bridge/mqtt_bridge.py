@@ -30,14 +30,14 @@ class MQTTBridgeSettings(BaseSettings):
 
     local_mqtt_broker: str = 'mosquitto.default'
     local_mqtt_port: int = 1883
-    local_broker_type: 'mosquitto'
+    local_broker_type: str = 'mosquitto'
     local_mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#' #['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
     local_mqtt_client_id: str = Field(str(ULID()))
     local_validation_required: bool = False
 
     remote_mqtt_broker: str = 'mosquitto.default'
     remote_mqtt_port: int = 1883
-    remote_broker_type: 'mosquitto' # aws
+    remote_broker_type: str = 'mosquitto' # aws
     remote_mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#' #['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
     remote_mqtt_client_id: str = Field(str(ULID()))
     remote_validation_required: bool = False
