@@ -102,7 +102,7 @@ class MQTTBridge():
             ssl_context.set_alpn_protocols([IoT_protocol_name])
             ssl_context.load_verify_locations(cafile=ca)
             ssl_context.load_cert_chain(certfile=cert, keyfile=private)
-            # L.info(f"ssl_context: {ssl_context}")
+            L.info(f"ssl_context: {ssl_context}")
             return  ssl_context
         except Exception as e:
             print("exception ssl_alpn()")
@@ -112,6 +112,7 @@ class MQTTBridge():
 
         try:
             tls_context = None
+            L.info("get_mqtt_client", extra={"client_type": client_type})
             if client_type == "local": 
                 broker = self.config.local_mqtt_broker
                 port = self.config.local_mqtt_port
@@ -123,10 +124,14 @@ class MQTTBridge():
                 broker = self.config.remote_mqtt_broker
                 port = self.config.remote_mqtt_port
                 client_id = self.config.remote_mqtt_client_id
+                L.info("get_mqtt_client", extra={"broker": broker, "port": port, "identifier": client_id, "tls_context": tls_context})
                 if self.config.remote_validation_required:
                     if self.config.remote_broker_type == "aws":
                         tls_context = self.ssl_alpn(client_type=client_type)
+                        L.info("get_mqtt_client", extra={"broker": broker, "port": port, "identifier": client_id, "tls_context": tls_context})
 
+
+            L.info("get_mqtt_client", extra={"broker": broker, "port": port, "identifier": client_id, "tls_context": tls_context})
             client = Client(broker, port=port, tls_context=tls_context, identifier=client_id)
         except Exception as e:
             L.error("get_mqtt_client", extra={"reason": e})
@@ -250,7 +255,7 @@ class MQTTBridge():
         reconnect = 10
         while True:
             try:
-                L.debug("listen local", extra={"config": self.config})
+                L.debug("listen remote", extra={"config": self.config})
                 # client_id=str(ULID())
                 # async with Client(self.config.local_mqtt_broker, port=self.config.local_mqtt_port,identifier=client_id) as self.local_client:
                 async with self.get_mqtt_client(client_type="remote") as self.remote_client:
