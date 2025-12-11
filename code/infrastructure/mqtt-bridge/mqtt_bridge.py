@@ -123,7 +123,7 @@ class MQTTBridge():
                 if self.config.local_validation_required:
                     if self.config.local_broker_type == "aws":
                         tls_context = self.ssl_alpn(client_type=client_type)
-                        tls_params = TLSParameters(server_hostname=broker)
+                        # tls_params = TLSParameters(server_hostname=broker)
                         use_tls = True
             elif client_type == "remote": 
                 broker = self.config.remote_mqtt_broker
@@ -133,7 +133,7 @@ class MQTTBridge():
                 if self.config.remote_validation_required:
                     if self.config.remote_broker_type == "aws":
                         tls_context = self.ssl_alpn(client_type=client_type)
-                        tls_params = TLSParameters(server_hostname=broker)
+                        # tls_params = TLSParameters(server_hostname=broker)
                         use_tls = True
                         L.info("get_mqtt_client", extra={"broker": broker, "port": port, "identifier": client_id, "tls_context": tls_context, "tls_params": tls_params})
             if use_tls:
