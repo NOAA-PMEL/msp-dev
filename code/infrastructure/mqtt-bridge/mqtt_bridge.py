@@ -95,10 +95,11 @@ class MQTTBridge():
         else:
             return None
         
+        L.info("ssl_alpn", extra={"ca": ca, "cert": cert, "private": private})
         try:
             #debug print opnessl version
             L.info("open ssl version:{}".format(ssl.OPENSSL_VERSION))
-            ssl_context = ssl.create_default_context()
+            ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
             ssl_context.set_alpn_protocols([IoT_protocol_name])
             ssl_context.load_verify_locations(cafile=ca)
             ssl_context.load_cert_chain(certfile=cert, keyfile=private)
@@ -112,6 +113,8 @@ class MQTTBridge():
 
         try:
             tls_context = None
+            tls_params = None
+            use_tls = False
             L.info("get_mqtt_client", extra={"client_type": client_type})
             if client_type == "local": 
                 broker = self.config.local_mqtt_broker
@@ -120,6 +123,8 @@ class MQTTBridge():
                 if self.config.local_validation_required:
                     if self.config.local_broker_type == "aws":
                         tls_context = self.ssl_alpn(client_type=client_type)
+                        tls_params = TLSParameters(server_hostname=broker)
+                        use_tls = True
             elif client_type == "remote": 
                 broker = self.config.remote_mqtt_broker
                 port = self.config.remote_mqtt_port
@@ -128,11 +133,14 @@ class MQTTBridge():
                 if self.config.remote_validation_required:
                     if self.config.remote_broker_type == "aws":
                         tls_context = self.ssl_alpn(client_type=client_type)
-                        L.info("get_mqtt_client", extra={"broker": broker, "port": port, "identifier": client_id, "tls_context": tls_context})
-
-
-            L.info("get_mqtt_client", extra={"broker": broker, "port": port, "identifier": client_id, "tls_context": tls_context})
-            client = Client(broker, port=port, tls_context=tls_context, identifier=client_id)
+                        tls_params = TLSParameters(server_hostname=broker)
+                        use_tls = True
+                        L.info("get_mqtt_client", extra={"broker": broker, "port": port, "identifier": client_id, "tls_context": tls_context, "tls_params": tls_params})
+            if use_tls:
+                L.info("get_mqtt_client", extra={"broker": broker, "port": port, "identifier": client_id, "tls_context": tls_context})
+                client = Client(broker, port=port, tls_context=tls_context, tls_params=tls_params, identifier=client_id)
+            else:
+                client = Client(broker, port=port, identifier=client_id)
         except Exception as e:
             L.error("get_mqtt_client", extra={"reason": e})
             client = None
