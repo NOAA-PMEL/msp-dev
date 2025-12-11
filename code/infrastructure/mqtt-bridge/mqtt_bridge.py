@@ -99,9 +99,9 @@ class MQTTBridge():
         try:
             #debug print opnessl version
             L.info("open ssl version:{}".format(ssl.OPENSSL_VERSION))
-            ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+            ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=ca)
             ssl_context.set_alpn_protocols([IoT_protocol_name])
-            ssl_context.load_verify_locations(cafile=ca)
+            # ssl_context.load_verify_locations(cafile=ca)
             ssl_context.load_cert_chain(certfile=cert, keyfile=private)
             L.info(f"ssl_context: {ssl_context}")
             return  ssl_context
@@ -138,9 +138,10 @@ class MQTTBridge():
                         L.info("get_mqtt_client", extra={"broker": broker, "port": port, "identifier": client_id, "tls_context": tls_context, "tls_params": tls_params})
             if use_tls:
                 L.info("get_mqtt_client", extra={"broker": broker, "port": port, "identifier": client_id, "tls_context": tls_context})
-                client = Client(broker, port=port, tls_context=tls_context, tls_params=tls_params, identifier=client_id)
+                # client = Client(broker, port=port, tls_context=tls_context, tls_params=tls_params, identifier=client_id)
+                client = Client(hostname=broker, port=port, tls_context=tls_context, client_id=client_id)
             else:
-                client = Client(broker, port=port, identifier=client_id)
+                client = Client(broker, port=port, client_id=client_id)
         except Exception as e:
             L.error("get_mqtt_client", extra={"reason": e})
             client = None
