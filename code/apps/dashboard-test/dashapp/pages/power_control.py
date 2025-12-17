@@ -17,7 +17,15 @@ class Settings(BaseSettings):
     port: int = 8787
     debug: bool = False
     daq_id: str = "default"
-    ws_hostname: str = "localhost:8080"
+
+    external_hostname: str = "localhost"
+    http_use_tls: bool = False
+    http_port: 80
+    https_port: 443
+    ws_use_tls: bool = False
+    ws_port: 1883
+    wss_port: 8883
+
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
@@ -88,7 +96,17 @@ pdu_outlets = dbc.Row([
 #                  ])
 
 datastore_url = f"datastore.{config.daq_id}-system"
-link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
+# link_url_base = f"http://{config.external_hostname}/msp/dashboardtest"
+
+http_url_base = f"http://{config.external_hostname}:{config.http_port}"
+if config.http_use_tls:
+    http_url_base = f"https://{config.external_hostname}:{config.https_port}"
+ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}:"
+if config.ws_use_tls:
+    ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
+
+link_url_base = f"{http_url_base}/msp/dashboardtest"
+
 
 # print("here:1")
 def get_layout():
@@ -125,10 +143,12 @@ def get_layout():
         #     ], gap=3)
         # ]),
         # WebSocket(id="ws", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/wwss/sensor/main")
-        WebSocket(id="ws", url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/test/testhome"),
+        # WebSocket(id="ws", url=f"{config.ws_protocol}://{config.external_hostname}/msp/dashboardtest/ws/test/testhome"),
+        WebSocket(id="ws", url=f"{ws_url_base}/msp/dashboardtest/ws/test/testhome"),
         # WebSocket(id="ws_pb", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/pb")
         # url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor-registry/main"
-        WebSocket(id="ws_pb", url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/test/pb")
+        # WebSocket(id="ws_pb", url=f"{config.ws_protocol}://{config.external_hostname}/msp/dashboardtest/ws/test/pb")
+        WebSocket(id="ws_pb", url=f"{ws_url_base}/msp/dashboardtest/ws/test/pb")
     # ], style=CONTENT_STYLE)
     ])
     # try:

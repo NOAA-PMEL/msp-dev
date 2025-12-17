@@ -24,7 +24,15 @@ class Settings(BaseSettings):
     port: int = 8787
     debug: bool = False
     daq_id: str = "default"
-    ws_hostname: str = "localhost:8080"
+
+    external_hostname: str = "localhost"
+    http_use_tls: bool = False
+    http_port: 80
+    https_port: 443
+    ws_use_tls: bool = False
+    ws_port: 1883
+    wss_port: 8883
+
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
@@ -232,7 +240,17 @@ print(f"config: {config}")
 ws_send_buffer = html.Div(id="ws-send-buffer", style={"display": "none"})
 
 datastore_url = f"datastore.{config.daq_id}-system"
-link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
+# link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
+
+http_url_base = f"http://{config.external_hostname}:{config.http_port}"
+if config.http_use_tls:
+    http_url_base = f"https://{config.external_hostname}:{config.https_port}"
+ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}:"
+if config.ws_use_tls:
+    ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
+
+link_url_base = f"{http_url_base}/msp/dashboardtest"
+
 # query = {"device_type": "sensor"}
 # url = f"http://{datastore_url}/device-definition/registry/get/"
 # print(f"device-definition-get: {url}")
@@ -320,8 +338,9 @@ def get_layout():
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"ws:/dashboard/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor-registry/main",
-                # url=f"ws://mspbase01.pmel.noaa.gov:8080/msp/dashboardtest/ws/sensor-registry/main",
-                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/controller-registry/main"
+                # url=f"ws://mspbase01.pmel.noaa.gov:8080/mexternal_hostnamedtest/ws/sensor-registry/main",
+                # url=f"{config.external_protocol}://{config.ws_hostname}/msp/dashboardtest/ws/controller-registry/main"
+                url=f"{ws_url_base}/msp/dashboardtest/ws/controller-registry/main"
             ),
             ws_send_buffer,
             dcc.Store(id="controller-defs-changes", data=[]),
