@@ -58,11 +58,11 @@ class Settings(BaseSettings):
 
     external_hostname: str = "localhost" # for access outside the cluster
     http_use_tls: bool = False
-    http_port: 80
-    https_port: 443
+    http_port: int = 80
+    https_port: int = 443
     ws_use_tls: bool = False
-    ws_port: 1883
-    wss_port: 8883
+    ws_port: int = 1883
+    wss_port: int = 8883
 
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
