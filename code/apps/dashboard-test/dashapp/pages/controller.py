@@ -250,7 +250,7 @@ config = Settings()
 # db_data_client = DBClient(connection=config.mongodb_data_connection)
 # db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 
-datastore_url = f"datastore.{config.daq-id}-system"
+datastore_url = f"datastore.{config.daq_id}-system"
 # link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 
 http_url_base = f"http://{config.external_hostname}:{config.http_port}"
