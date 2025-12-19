@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     http_port: int = 80
     https_port: int = 443
     ws_use_tls: bool = False
-    ws_port: int = 1883
-    wss_port: int = 8883
+    ws_port: int = 80
+    wss_port: int = 443
 
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
