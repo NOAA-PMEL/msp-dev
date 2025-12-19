@@ -255,6 +255,7 @@ if config.ws_use_tls:
 
 link_url_base = f"{http_url_base}/msp/dashboardtest"
 
+print(f"urls: {ws_url_base}/msp/dashboardtest/ws/sensor-registry/main, {link_url_base}")
 
 def get_layout():
     # print("here:1")
@@ -574,7 +575,7 @@ def update_active_sensors(count, table_data):
                     "model": model,
                     "serial_number": serial_number,
                     # "sampling_system_id": f"[{sampling_system_id}](http://uasdaq.pmel.noaa.gov/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
-                    "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
+                    "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/dash/sampling-system/{sampling_system_id})",
                     # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
                 }
                 if sensor not in table_data:
