@@ -1532,8 +1532,8 @@ class SamplingSystem:
             update_type = time_index["update_type"]
             target_time = time_index["index_ready"]
 
-            # for k,v in variablemap.items():
-            #     self.logger.debug("update_direct_variable_by_time_index", extra={k: v})
+            for k,v in variablemap.items():
+                print(f"update_direct_variable_by_time_index: {k}: {v}")
 
             self.logger.debug("update_direct_variable_by_time_index", extra={"var_map": type(variablemap)})
 
