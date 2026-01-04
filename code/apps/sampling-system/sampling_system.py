@@ -786,7 +786,7 @@ class SamplingSystem:
 
             return "::".join([variablemap_type_id, variablemap_name, valid_config_time])
         except Exception as e:
-            self.logger.error("get_variable_map_id", extra={"reason": e})
+            self.logger.error("get_variablemap_id", extra={"reason": e})
             return ""
 
     def get_variableset_id(self, variableset_name:str, variableset:dict):
