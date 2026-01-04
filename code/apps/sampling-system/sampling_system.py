@@ -1579,6 +1579,7 @@ class SamplingSystem:
 
         try:
             self.logger.debug("update_variablesets_by_time_index", extra={"time_index": time_index})
+            self.logger.debug("update_variablesets_by_time_index", extra={"var_map": variablemap})
             # print(f"update_variablesets_by_time_index: {variablemap}")
             # vm_name = time_index["variablemap"]
             # vm_cfg_time = time_index["variablemap_revision_time"]
