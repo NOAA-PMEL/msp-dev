@@ -773,6 +773,7 @@ class SamplingSystem:
 
     def get_variablemap_id(self, vm:dict):
         try:
+            print(f"get_variablemap_id: {vm}")
             variablemap_type = vm["data"]["attributes"]["variablemap_index_type"]
             if variablemap_type == "Platform":
                 variablemap_type_id = vm["data"]["attributes"]["platform"]
