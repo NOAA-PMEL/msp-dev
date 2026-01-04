@@ -1523,7 +1523,7 @@ class SamplingSystem:
     #         self.logger.error("update_timebase_variableset_by_index", extra={"reason": e})
 
     async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict):
-        
+        map_type = "direct"
         try:
             self.logger.debug("update_direct_variable_by_time_index", extra={"time_index": time_index})
 
@@ -1539,7 +1539,7 @@ class SamplingSystem:
 
             # variableset = variablemap["variablesets"][variableset_name]
             # indexed_data = variablemap["indexed"]["data"][time_index["index_ready"]][variableset_name]
-            indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][variableset_name]
+            indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][map_type][variableset_name]
             
             self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type]})
             self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type][index_value]})
