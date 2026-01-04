@@ -1568,7 +1568,7 @@ class SamplingSystem:
                         3,
                     )
 
-            variableset_record[variable_name]["data"] = val
+            variableset_record["variables"][variable_name]["data"] = val
         except Exception as e:
             self.logger.error("update_direct_variable_by_time_index", extra={"reason": e})
 
