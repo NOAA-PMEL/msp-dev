@@ -784,9 +784,9 @@ class SamplingSystem:
             # variablemap_name = vm["metadata"]["name"]
             # valid_config_time = vm["data"]["attributes"]["valid_config_time"]
 
-            vm_type = vm["data"]["attributes"]["variablemap_type"]
+            vm_type = vm["variablemap"]["data"]["attributes"]["variablemap_type"]
             vm_name = vm["variablemap"]["metadata"]["name"]
-            vm_ns = vm["data"]["attributes"]["sampling_namespace"]
+            vm_ns = vm["variablemap"]["data"]["attributes"]["sampling_namespace"]
             vm_valid_config_time = vm["data"]["attributes"]["valid_config_time"]
 
             return "::".join([f"{vm_name}.{vm_ns}", vm_valid_config_time])
@@ -814,21 +814,38 @@ class SamplingSystem:
         try:
             if vs_id:
                 parts = vs_id.split("::")
-                comp = {
-                    "variablemap_index_type_id": parts[0],
-                    "variablemap_name": parts[1],
-                    "valid_config_time": parts[2],
-                    "variableset_name": parts[3],
+                # comp = {
+                #     "variablemap_index_type_id": parts[0],
+                #     "variablemap_name": parts[1],
+                #     "valid_config_time": parts[2],
+                #     "variableset_name": parts[3],
 
+                # }
+                comp = {
+                    "variablemap_name_full": parts[0],
+                    "valid_config_time": parts[1],
+                    "variableset_name": parts[2]
                 }
+                vm_name = parts[0].split(".")
+                vm_ns = ".".join(parts[0].split(".")[1:]
+                comp["variablemap_name"] = vm_name
+                comp["sampling_namespace"] = vm_ns
                 return comp
             elif vm_id:
                 parts = vm_id.split("::")
+                # comp = {
+                #     "variablemap_index_type_id": parts[0],
+                #     "variablemap_name": parts[1],
+                #     "valid_config_time": parts[2],
+                # }
                 comp = {
-                    "variablemap_index_type_id": parts[0],
-                    "variablemap_name": parts[1],
-                    "valid_config_time": parts[2],
+                    "variablemap_name_full": parts[0],
+                    "valid_config_time": parts[1],
                 }
+                vm_name = parts[0].split(".")
+                vm_ns = ".".join(parts[0].split(".")[1:]
+                comp["variablemap_name"] = vm_name
+                comp["sampling_namespace"] = vm_ns
                 return comp
         except Exception as e:
             self.logger.error("get_id_components", extra={"reason": e})
