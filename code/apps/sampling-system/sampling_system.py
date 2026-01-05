@@ -1673,7 +1673,7 @@ class SamplingSystem:
                     
                     varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
                     source_id = (
-                        f"envds.{self.config.daq_id}.variableset::{varset_id}"
+                        f"envds.{self.config.daq_id}.variableset.{varset_id}"
                     )
                     source_topic = source_id.replace(".", "/")
                     if variableset:
