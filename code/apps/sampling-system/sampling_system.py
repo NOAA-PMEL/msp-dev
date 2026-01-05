@@ -789,7 +789,8 @@ class SamplingSystem:
             vm_ns = vm["variablemap"]["data"]["attributes"]["sampling_namespace"]
             vm_valid_config_time = vm["variablemap"]["data"]["attributes"]["valid_config_time"]
 
-            return "::".join([f"{vm_name}.{vm_ns}", vm_valid_config_time])
+            # return "::".join([f"{vm_name}.{vm_ns}", vm_valid_config_time])
+            return "::".join([vm_name, vm_valid_config_time])
 
             # return "::".join([variablemap_type_id, variablemap_name, valid_config_time])
         except Exception as e:
@@ -810,6 +811,9 @@ class SamplingSystem:
             self.logger.error("get_variableset_id", extra={"reason": e})
             return ""
 
+    def get_variablemap_namespace(self, variablemap:dict):
+        return variablemap["variablemap"]["data"]["attributes"]["sampling_namespace"]
+
     def get_id_components(self, vm_id:str=None, vs_id:str=None) -> dict:
         try:
             if vs_id:
@@ -822,14 +826,14 @@ class SamplingSystem:
 
                 # }
                 comp = {
-                    "variablemap_name_full": parts[0],
+                    "variablemap_name": parts[0],
                     "valid_config_time": parts[1],
                     "variableset_name": parts[2]
                 }
-                vm_name = parts[0].split(".")
-                vm_ns = ".".join(parts[0].split(".")[1:])
-                comp["variablemap_name"] = vm_name
-                comp["sampling_namespace"] = vm_ns
+                # vm_name = parts[0].split(".")
+                # vm_ns = ".".join(parts[0].split(".")[1:])
+                # comp["variablemap_name"] = vm_name
+                # comp["sampling_namespace"] = vm_ns
                 return comp
             elif vm_id:
                 parts = vm_id.split("::")
@@ -839,13 +843,13 @@ class SamplingSystem:
                 #     "valid_config_time": parts[2],
                 # }
                 comp = {
-                    "variablemap_name_full": parts[0],
+                    "variablemap_name": parts[0],
                     "valid_config_time": parts[1],
                 }
-                vm_name = parts[0].split(".")
-                vm_ns = ".".join(parts[0].split(".")[1:])
-                comp["variablemap_name"] = vm_name
-                comp["sampling_namespace"] = vm_ns
+                # vm_name = parts[0].split(".")
+                # vm_ns = ".".join(parts[0].split(".")[1:])
+                # comp["variablemap_name"] = vm_name
+                # comp["sampling_namespace"] = vm_ns
                 return comp
         except Exception as e:
             self.logger.error("get_id_components", extra={"reason": e})
@@ -1671,6 +1675,8 @@ class SamplingSystem:
 
                     self.logger.debug("update_variablesets_by_time_index", extra={"vs_record": variableset})
                     
+                    varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
+
                     varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
                     source_id = (
                         f"envds.{self.config.daq_id}.variableset.{varset_id}"
@@ -1684,6 +1690,7 @@ class SamplingSystem:
                         )
                         destpath = f"{source_topic}/data/update"
                         event["destpath"] = destpath
+                        event["samplingnamespace"] = varmap_ns
                         self.logger.debug(
                             "update_variablesets_by_time_index",
                             extra={"data": event, "destpath": destpath},
