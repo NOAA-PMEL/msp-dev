@@ -774,31 +774,40 @@ class SamplingSystem:
     def get_variablemap_id(self, vm:dict):
         try:
             print(f"get_variablemap_id: {vm}")
-            variablemap_type = vm["data"]["attributes"]["variablemap_index_type"]
-            if variablemap_type == "Platform":
-                variablemap_type_id = vm["data"]["attributes"]["platform"]
-            else:
-                return ""
+            # variablemap_type = vm["data"]["attributes"]["variablemap_index_type"]
+            # if variablemap_type == "Platform":
+            #     variablemap_type_id = vm["data"]["attributes"]["platform"]
+            # else:
+            #     return ""
             
             # variable_map_type_id = vm["data"]["attributes"]["variablemap_index_type_id"]
             variablemap_name = vm["metadata"]["name"]
             valid_config_time = vm["data"]["attributes"]["valid_config_time"]
 
-            return "::".join([variablemap_type_id, variablemap_name, valid_config_time])
+            vm_type = vm["data"]["attributes"]["variablemap_type"]
+            vm_name = vm["variablemap"]["metadata"]["name"]
+            vm_ns = vm["data"]["attributes"]["sampling_namespace"]
+            vm_valid_config_time = vm["data"]["attributes"]["valid_config_time"]
+
+            return "::".join([f"{vm_name}.{vm_ns}", vm_valid_config_time])
+
+            # return "::".join([variablemap_type_id, variablemap_name, valid_config_time])
         except Exception as e:
             self.logger.error("get_variablemap_id", extra={"reason": e})
             return ""
 
-    def get_variableset_id(self, variableset_name:str, variableset:dict):
+    def get_variableset_id(self, variablemap:dict, variableset_name:str, variableset:dict):
         try:
-            variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
+            variablemap_id = self.get_variablemap_id(vm=variablemap)
+
+            # variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
             
             # variableset_name = variableset["metadata"]["name"]
 
             return "::".join([variablemap_id, variableset_name])
         
         except Exception as e:
-            self.logger.error("get_variable_map_id", extra={"reason": e})
+            self.logger.error("get_variableset_id", extra={"reason": e})
             return ""
 
     def get_id_components(self, vm_id:str=None, vs_id:str=None) -> dict:
@@ -1645,7 +1654,7 @@ class SamplingSystem:
 
                     self.logger.debug("update_variablesets_by_time_index", extra={"vs_record": variableset})
                     
-                    varset_id = self.get_variableset_id(variableset_name=vs_name, variableset=variableset)
+                    varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
                     source_id = (
                         f"envds.{self.config.daq_id}.variableset::{varset_id}"
                     )
