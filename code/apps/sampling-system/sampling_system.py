@@ -781,8 +781,8 @@ class SamplingSystem:
             #     return ""
             
             # variable_map_type_id = vm["data"]["attributes"]["variablemap_index_type_id"]
-            variablemap_name = vm["metadata"]["name"]
-            valid_config_time = vm["data"]["attributes"]["valid_config_time"]
+            # variablemap_name = vm["metadata"]["name"]
+            # valid_config_time = vm["data"]["attributes"]["valid_config_time"]
 
             vm_type = vm["data"]["attributes"]["variablemap_type"]
             vm_name = vm["variablemap"]["metadata"]["name"]
