@@ -827,7 +827,7 @@ class SamplingSystem:
                     "variableset_name": parts[2]
                 }
                 vm_name = parts[0].split(".")
-                vm_ns = ".".join(parts[0].split(".")[1:]
+                vm_ns = ".".join(parts[0].split(".")[1:])
                 comp["variablemap_name"] = vm_name
                 comp["sampling_namespace"] = vm_ns
                 return comp
@@ -843,7 +843,7 @@ class SamplingSystem:
                     "valid_config_time": parts[1],
                 }
                 vm_name = parts[0].split(".")
-                vm_ns = ".".join(parts[0].split(".")[1:]
+                vm_ns = ".".join(parts[0].split(".")[1:])
                 comp["variablemap_name"] = vm_name
                 comp["sampling_namespace"] = vm_ns
                 return comp
