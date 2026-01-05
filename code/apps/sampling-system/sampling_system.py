@@ -787,7 +787,7 @@ class SamplingSystem:
             vm_type = vm["variablemap"]["data"]["attributes"]["variablemap_type"]
             vm_name = vm["variablemap"]["metadata"]["name"]
             vm_ns = vm["variablemap"]["data"]["attributes"]["sampling_namespace"]
-            vm_valid_config_time = vm["data"]["attributes"]["valid_config_time"]
+            vm_valid_config_time = vm["variablemap"]["data"]["attributes"]["valid_config_time"]
 
             return "::".join([f"{vm_name}.{vm_ns}", vm_valid_config_time])
 
