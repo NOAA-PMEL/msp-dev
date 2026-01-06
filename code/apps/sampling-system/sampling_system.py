@@ -799,13 +799,15 @@ class SamplingSystem:
 
     def get_variableset_id(self, variablemap:dict, variableset_name:str, variableset:dict):
         try:
-            variablemap_id = self.get_variablemap_id(vm=variablemap)
+            # variablemap_id = self.get_variablemap_id(vm=variablemap)
 
+            #variableset_id should not be bound to a valid_config
+            vm_name = variablemap["variablemap"]["metadata"]["name"]
             # variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
             
             # variableset_name = variableset["metadata"]["name"]
 
-            return "::".join([variablemap_id, variableset_name])
+            return "::".join([vm_name, variableset_name])
         
         except Exception as e:
             self.logger.error("get_variableset_id", extra={"reason": e})
@@ -827,8 +829,8 @@ class SamplingSystem:
                 # }
                 comp = {
                     "variablemap_name": parts[0],
-                    "valid_config_time": parts[1],
-                    "variableset_name": parts[2]
+                    # "valid_config_time": parts[1],
+                    "variableset_name": parts[1]
                 }
                 # vm_name = parts[0].split(".")
                 # vm_ns = ".".join(parts[0].split(".")[1:])

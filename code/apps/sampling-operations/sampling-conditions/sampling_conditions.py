@@ -6,12 +6,12 @@ sampling_conditions = [
             "name": "cn_limit",
             "sampling_namespace": "pmel.noaa.gov",
             "valid_config_time": "2025-10-01T00:00:00Z",
-            "revision": 1,
+            "revision": 1
         },
         "sources": {
             "cn": {
-                "variablemap_id": "abc",
-                "variableset_id": "def",
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
                 "variable": "cn"
             },
         },
@@ -36,7 +36,7 @@ sampling_conditions = [
             "name": "at_sea",
             "sampling_namespace": "pmel.noaa.gov",
             "valid_config_time": "2025-10-01T00:00:00Z",
-            "revision": 1,
+            "revision": 1
         },
         "sources": {
             # "position": { # need to define this in varablemap?
@@ -45,13 +45,13 @@ sampling_conditions = [
             #     "variable": "latitude"
             # }
             "gps_latitude": {
-                "variablemap_id": "abc",
-                "variableset_id": "def",
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
                 "variable": "latitude"
             },
             "gps_longitude": {
-                "variablemap_id": "abc",
-                "variableset_id": "def",
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
                 "variable": "longitude"
             },
         },
@@ -60,12 +60,12 @@ sampling_conditions = [
                 {
                     "kind": "LatLonRegionLocation",
                     "label": "San Diego, CA",
-                    "sources": ["gps_latitude", "gps_longitude"]
+                    "sources": ["gps_latitude", "gps_longitude"],
                     "coordinates": {"latitude": "gps_latitude", "longitude": "gps_longitude"},
                     "region": [
                         {"latitude": 32.943680, "longitude": -117.264183},
                         {"latitude": 32.726873, "longitude": -117.563043},
-                        {"latitude": 32.314643, "longitude": -117.016473},
+                        {"latitude": 32.314643, "longitude": -117.016473}
                     ]
                 },
                 {
@@ -75,9 +75,9 @@ sampling_conditions = [
                     "region": [
                         {"latitude": 32.943680, "longitude": -117.264183},
                         {"latitude": 32.726873, "longitude": -117.563043},
-                        {"latitude": 32.314643, "longitude": -117.016473},
+                        {"latitude": 32.314643, "longitude": -117.016473}
                     ]
-                },
+                }
 
             ]
         }
@@ -94,13 +94,13 @@ sampling_conditions = [
         },
         "sources": {
             "relative_wind_velocity": {
-                "variablemap_id": "abc",
-                "variableset_id": "def",
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
                 "variable": "relative_wind_velocity"
             },
             "inlet_nozzle_velocity": {
-                "variablemap_id": "abc",
-                "variableset_id": "def",
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
                 "variable": "inlet_nozzle_velocity"
             }
         },
@@ -115,6 +115,6 @@ sampling_conditions = [
             ]
         }
             
-    },
+    }
     
 ]
