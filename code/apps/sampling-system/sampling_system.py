@@ -806,6 +806,7 @@ class SamplingSystem:
             # variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
             
             # variableset_name = variableset["metadata"]["name"]
+            self.logger.debug("get_variableset_id", extra={"vm_name": vm_name, "variableset_name": variableset_name})
 
             return "::".join([vm_name, variableset_name])
         
@@ -1683,6 +1684,8 @@ class SamplingSystem:
                     source_id = (
                         f"envds.{self.config.daq_id}.variableset.{varset_id}"
                     )
+                    self.logger.debug("update_variablesets_by_time_index", extra={"source_id": source_id})
+                    
                     source_topic = source_id.replace(".", "/")
                     if variableset:
                         event = SamplingEvent.create_variableset_data_update(
