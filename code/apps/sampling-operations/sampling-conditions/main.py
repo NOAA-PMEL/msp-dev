@@ -19,7 +19,7 @@ from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
 # import traceback
 
-from sampling_conditions import SamplingConditionsManager
+from manager import SamplingConditionsManager
 
 # from conditions import OperationsConditions
 # from datastore_requests import (
