@@ -343,12 +343,12 @@ class SamplingConditionsManager:
         self.http_client = None
 
         self.mqtt_buffer = asyncio.Queue()
-        # asyncio.create_task(self.get_from_mqtt_loop())
-        # asyncio.create_task(self.handle_mqtt_buffer())
+        asyncio.create_task(self.get_from_mqtt_loop())
+        asyncio.create_task(self.handle_mqtt_buffer())
 
         # asyncio.create_tasks(self.sampling_mode_monitor())
         # asyncio.create_tasks(self.sampling_state_monitor())
-        asyncio.create_task(self.sampling_condition_monitor())
+        # asyncio.create_task(self.sampling_condition_monitor())
         # asyncio.create_tasks(self.sampling_action_monitor())
 
         print("OperationsConditions: init: here:8")
