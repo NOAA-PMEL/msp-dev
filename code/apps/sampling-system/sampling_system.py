@@ -806,7 +806,7 @@ class SamplingSystem:
             # variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
             
             # variableset_name = variableset["metadata"]["name"]
-            self.logger.debug("get_variableset_id", extra={"vm_name": vm_name, "variableset_name": variableset_name})
+            # self.logger.debug("get_variableset_id", extra={"vm_name": vm_name, "variableset_name": variableset_name})
 
             return "::".join([vm_name, variableset_name])
         
