@@ -98,34 +98,38 @@ class SamplingCondition:
             "apps.sampling-operations.sampling-conditions.criteria"
         )
 
+        self.current_state = False
+
         self.criterion_tasks = []
+
+        asyncio.create_task(self.condition_monitor())
 
     def configure(self):
 
         if not self.config or "sources" not in self.config:
             return
 
+        # for source_name, source in self.config["sources"].items():
+        #     vm = source["variablemap_name"]
+        #     vs = source["variableset_name"]
+        #     v = source["variable"]
+
         for source_name, _ in self.config["sources"].items():
             if source_name not in self.source_map:
-                self.source_map[source_name] = {"data": dict(), "criteria": []}
-            
+                # self.source_map[source_name] = {"data": dict(), "criteria": []}
+                self.source_map[source_name] = {"data": dict()}
 
-        # for source_name, source in self.config["sources"].items():
-        #     # TODO: fix this with "source_id"
-        #     source_id = "variableset::variablemap::variable"
-        #     if source_id not in self.source_map["source_id"]:
-        #         self.source_map["source_id"][source_id] = {
-        #             "source_name": source_name,
-        #         }
-        #     if source_name not in self.source_map["source_name"]:
-        #         self.source_map["source_name"][source_name] = {
-        #             "criteria": [],
-        #         }
+        #     if vm not in self.data:
+        #         self.data[vm] = dict()
+        #     if vs not in self.data[vm]:
+        #         self.data[vm][vs] = dict()
+        #     if v not in self.data[vm][vs]:
+        #         self.data[vm][vs][v] = dict()
 
         if "criteria" in self.config:
             for group_type, group in self.config["criteria"].items():
                 if group_type not in self.criteria_map:
-                    self.criteria_map[group_type] = dict()
+                    self.criteria_map[group_type] = {"criteria": []}
                 for _, criterion_config in group.items():
                     criterion_module = self.default_criterion_module
                     if "criterion_module" in criterion_config:
@@ -133,27 +137,115 @@ class SamplingCondition:
                     mod_ = importlib.import_module(criterion_module)
                     criterion_class = criterion_config["criterion_class"]
                     criterion = getattr(mod_, criterion_class)(criterion_config)
+                    self.criteria_map[group_type]["criteria"].append(criterion)
 
+        # for source_name, _ in self.config["sources"].items():
+        #     if source_name not in self.source_map:
+        #         self.source_map[source_name] = {"data": dict(), "criteria": []}
 
+        # # for source_name, source in self.config["sources"].items():
+        # #     # TODO: fix this with "source_id"
+        # #     source_id = "variableset::variablemap::variable"
+        # #     if source_id not in self.source_map["source_id"]:
+        # #         self.source_map["source_id"][source_id] = {
+        # #             "source_name": source_name,
+        # #         }
+        # #     if source_name not in self.source_map["source_name"]:
+        # #         self.source_map["source_name"][source_name] = {
+        # #             "criteria": [],
+        # #         }
 
-                    # for source in criterion_config[group_type]["sources"]:
-                    #     # if source in self.source_map["source_name"]:
-                    #     if source in self.source_map:
-                    #         # self.source_map["source_name"][source]["criteria"].append(
-                    #         self.source_map[source]["criteria"].append(
-                    #             {"sources":  criterion
-                    #         )
+        # if "criteria" in self.config:
+        #     for group_type, group in self.config["criteria"].items():
+        #         if group_type not in self.criteria_map:
+        #             self.criteria_map[group_type] = dict()
+        #         for _, criterion_config in group.items():
+        #             criterion_module = self.default_criterion_module
+        #             if "criterion_module" in criterion_config:
+        #                 self.criterion_module = criterion_config["criterion_module"]
+        #             mod_ = importlib.import_module(criterion_module)
+        #             criterion_class = criterion_config["criterion_class"]
+        #             criterion = getattr(mod_, criterion_class)(criterion_config)
+
+        # for source in criterion_config[group_type]["sources"]:
+        #     # if source in self.source_map["source_name"]:
+        #     if source in self.source_map:
+        #         # self.source_map["source_name"][source]["criteria"].append(
+        #         self.source_map[source]["criteria"].append(
+        #             {"sources":  criterion
+        #         )
 
     async def condition_monitor(self):
 
         while True:
-            data = await self.data_buffer.get()
+            try:
+                data = await self.data_buffer.get()
+                if "condition_variables" in data:
+                    variables = data["condition_variables"]["variables"]
+                    dt = variables["time"]["data"]
+                    for varname, var in variables.items():
+                        if varname == "time":
+                            continue
+                        if varname in self.source_map:
+                            self.source_map[varname][dt] = var["data"]
 
-            # extract data and save as source_data with timestamp as key
+                await self.evaluate_criteria(dt)
 
-            # check each timestamp for completess (i.e., all sources have data for a timestamp)
-            # if true, evaluate all criteria and send event with condition status
+            except Exception as e:
+                self.logger.error("condition_monitor", extra={"reason": e})
 
+            await asyncio.sleep(0.001)
+
+
+    async def evaluate_criteria(self, timestamp):
+
+        try:
+            crit_states = []
+            for group_type, group in self.criteria_map.items():
+                group_states = []
+                for criterion in group["criteria"]:
+                    data = {"time": timestamp}
+                    for src_name in criterion.get_sources():
+                        if (
+                            timestamp not in self.source_map[src_name]
+                            or self.source_map[src_name][timestamp] is None
+                        ):
+                            # missing source data, can't evaluate
+                            self.logger.info(
+                                "evaluate_criteria",
+                                extra={
+                                    "ts": timestamp,
+                                    "success": False,
+                                    "reason": "missing source value",
+                                },
+                            )
+                            return
+                        data[src_name] = self.source_map[src_name][timestamp]
+                    group_states.append(criterion.evaluate(data))
+                if group_type == "all":
+                    crit_states.append(all(group_states))
+                elif group_type == "any":
+                    crit_states.append(any(group_states))
+                elif group_type == "none":
+                    crit_states.append(not any(group_states))
+            
+            state = all(crit_states)
+            self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
+            if state != self.current_state:
+                # send event with updated condition state
+                self.logger.debug("evaluate_criteria - send update with new state")
+                self.current_state = state
+
+            for src_name, src_data in self.source_map.items():
+                src_data.pop(timestamp)
+        
+        except Exception as e:
+            self.logger.error("evaluate_criteria", extra={"reason": e})
+            
+    async def update_state_loop(self):
+        while True:
+            self.logger.debug("update_state_loop - send update")
+            await asyncio.sleep(10)
 
 class SamplingCriterion:
     """
@@ -166,13 +258,13 @@ class SamplingCriterion:
         self.configure()
 
     def configure(self):
-        
+
         if "sources" in self.config:
             self.source_names = [n for n in self.config["sources"]]
 
     def get_sources(self):
         return self.source_names
-    
+
     async def evaluate(self, sources) -> bool:
         return False
 
@@ -189,7 +281,7 @@ class LimitMinMax(SamplingCriterion):
         self.true_if = "inside"  # inside or outside of value >=min and <=max
 
     def configure(self):
-        super(LimitMinMax,self).configure()
+        super(LimitMinMax, self).configure()
 
         if "max_val" in self.config:
             self.max_val = self.config["max_val"]
@@ -201,14 +293,15 @@ class LimitMinMax(SamplingCriterion):
 
     async def evaluate(self, sources) -> bool:
         result = []
-        if self.true_if == "inside":
-            for source_val in sources:
-                result.append(source_val >= self.min_val and source_val <= self.max_val)
-        elif self.true_if == "outside":
-            for source_val in sources:
-                result.append(source_val < self.min_val and source_val > self.max_val)
-        
+        for source_var in self.get_sources():
+            if source_var in sources:
+                source_val = sources[source_val]
+                if self.true_if == "inside":
+                    result.append(source_val >= self.min_val and source_val <= self.max_val)
+                elif self.true_if == "outside":
+                    result.append(source_val < self.min_val and source_val > self.max_val)
         return all(result)
+
 
 class SamplingConditionsManager:
     """docstring for OperationsConditions."""
@@ -285,25 +378,38 @@ class SamplingConditionsManager:
                         self.sampling_conditions["conditions"][cond_name] = {
                             "config": condition,
                             "data_buffer": data_buffer,
-                            "condition": None
+                            "condition": None,
                         }
 
                     for source_name, source in condition["sources"].items():
                         # TODO get src_id
-                        src_id = "111::222::aaa"
+                        # src_id = "111::222::aaa"
+                        vm_name = source["variablemap_name"]
+                        vs_name = source["variableset_name"]
+                        src_id = "::".join([vm_name, vs_name])
+
                         if src_id not in self.sampling_conditions["sources"]:
-                            self.sampling_conditions["sources"][src_id] = {"targets": []}
+                            self.sampling_conditions["sources"][src_id] = {
+                                "targets": []
+                            }
                         source_variable = source["variable"]
                         self.sampling_conditions["sources"][src_id]["targets"].append(
-                            {"condition": cond_name, "source_name": source_name, "source_variable": source_variable}
+                            {
+                                "condition": cond_name,
+                                "source_name": source_name,
+                                "source_variable": source_variable,
+                            }
                         )
 
                     condition_instance = SamplingCondition(
-                        config=self.sampling_conditions["conditions"][cond_name]["config"],
-                        data_buffer=self.sampling_conditions["conditions"][data_buffer]
+                        config=self.sampling_conditions["conditions"][cond_name][
+                            "config"
+                        ],
+                        data_buffer=self.sampling_conditions["conditions"][data_buffer],
                     )
-                    self.sampling_conditions["conditions"][cond_name]["condition"] = condition_instance
-
+                    self.sampling_conditions["conditions"][cond_name][
+                        "condition"
+                    ] = condition_instance
 
             self.logger.debug(
                 "configure", extra={"sampling_conditions": self.sampling_conditions}
@@ -454,18 +560,40 @@ class SamplingConditionsManager:
             # get source_id
             src_id = "111::222::aaa"
             # get target from dict and send source data to all databuffers
+
+            data_map = dict()
+
             for target in self.sampling_conditions["sources"][src_id]["targets"]:
                 cond_name = target["condition"]
-                condition = self. sampling_conditions["conditions"][cond_name]
+                if cond_name not in data_map:
+                    data_map[cond_name] = {"variables": dict()}
+
+                condition = self.sampling_conditions["conditions"][cond_name]
                 dt = ce.data["variables"]["time"]
+
+                if "time" not in data_map[cond_name]["variables"]:
+                    data_map[cond_name]["variables"]["time"] = {"data": dt["data"]}
+
                 val = ce.data["variables"][condition["source_variable"]]
-                payload = {
-                    "variables": {
-                        "time": {"data": dt["data"]},
-                        condition["source_name"]: {"data": val["data"]}
+                if condition["source_name"] not in data_map[cond_name]["variables"]:
+                    data_map[cond_name]["variables"][condition["source_name"]] = {
+                        "data": val
                     }
-                }
-                await condition["data_buffer"].put(payload)
+
+            # once all condition data compiled, send all to condition for processing
+            for cond_name, cond_data in self.data_map.items():
+                payload = {"condition_variables": cond_data["variables"]}
+                await self.sampling_conditions["conditions"][cond_name][
+                    "data_buffer"
+                ].put(payload)
+
+                # payload = {
+                #     "variables": {
+                #         "time": {"data": dt["data"]},
+                #         condition["source_name"]: {"data": val["data"]}
+                #     }
+                # }
+                # await condition["data_buffer"].put(payload)
 
         except Exception as e:
             self.logger.error("device_data_update", extra={"reason": e})
