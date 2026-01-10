@@ -12,6 +12,7 @@ class SamplingEventType(BaseEventType):
     TYPE_PROJECT = "project"
     TYPE_PLATFORM = "platform"
     TYPE_SAMPLING = "sampling"
+    TYPE_CONDITION = "condition"
     
     # ACTION_RECV = "recv"
     # ACTION_SEND = "send"
@@ -78,3 +79,10 @@ class SamplingEventType(BaseEventType):
     def sampling_data_update():
         return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING), BaseEventType.TYPE_DATA, BaseEventType.ACTION_UPDATE])
 
+    @staticmethod
+    def condition_status_request():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_CONDITION), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def condition_status_update():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_CONDITION), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_UPDATE])

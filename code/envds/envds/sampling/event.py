@@ -74,6 +74,13 @@ class SamplingEvent(envdsEvent):
     def create_sampling_data_update(source: str, data: dict = {}, extra_header: dict = None):
         return SamplingEvent.create(type=et.sampling_data_update(), source=source, data=data, extra_header=extra_header)
     
+    @staticmethod
+    def create_condition_status_request(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.condition_status_request(), source=source, data=data, extra_header=extra_header)
+
+    @staticmethod
+    def create_condition_status_update(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.condition_status_update(), source=source, data=data, extra_header=extra_header)
 
 
 
