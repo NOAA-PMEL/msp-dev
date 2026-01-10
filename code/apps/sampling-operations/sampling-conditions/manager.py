@@ -241,7 +241,7 @@ class SamplingCondition:
         
         except Exception as e:
             self.logger.error("evaluate_criteria", extra={"reason": e})
-            
+
     async def update_state_loop(self):
         while True:
             self.logger.debug("update_state_loop - send update")
@@ -543,7 +543,7 @@ class SamplingConditionsManager:
                     self.logger.debug(
                         "handle_mqtt_buffer", extra={"ce-type": ce["type"]}
                     )
-                    await self.condition_data_update(ce)
+                    await self.variableset_data_update(ce)
                 # elif ce["type"] == "envds.controller.data.update":
                 #     await self.controller_data_update(ce)
 
@@ -552,7 +552,7 @@ class SamplingConditionsManager:
 
             await asyncio.sleep(0.0001)
 
-    async def condition_data_update(self, ce: CloudEvent):
+    async def variableset_data_update(self, ce: CloudEvent):
 
         try:
             pass

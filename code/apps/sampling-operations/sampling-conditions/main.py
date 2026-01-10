@@ -19,6 +19,8 @@ from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
 # import traceback
 
+from sampling_conditions import SamplingConditionsManager
+
 # from conditions import OperationsConditions
 # from datastore_requests import (
 #     # DataStoreQuery,
@@ -63,7 +65,7 @@ class Settings(BaseSettings):
     dry_run: bool = False
 
     class Config:
-        env_prefix = "SAMPLING_OPERATIONS_"
+        env_prefix = "SAMPLING_CONDITIONS_"
         case_sensitive = False
 
 
@@ -110,9 +112,10 @@ L.debug("main: here:2")
 #     custom: dict | None = None
 
 # datastore = Datastore()
-print("starting operations_conditions")
-operations_conditions = OperationsConditions()
-print(f"operations_conditions started: {operations_conditions}")
+print("starting sampling_conditions")
+# operations_conditions = OperationsConditions()
+manager = SamplingConditionsManager()
+print(f"sampling_conditions started: {manager}")
 
 
 @app.get("/")
@@ -120,14 +123,14 @@ async def root():
     return {"message": "Hello World from SamplingSystem"}
 
 
-@app.post("/device/data/update/", status_code=status.HTTP_202_ACCEPTED)
-async def device_data_update(request: Request):
+@app.post("/variableset/data/update/", status_code=status.HTTP_202_ACCEPTED)
+async def variableset_data_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(request.headers)
-        L.debug("device_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
+        L.debug("variableset_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
-        await operations_conditions.device_data_update(ce)
+        await manager.variableset_data_update(ce)
     except Exception as e:
         L.error("device_data_update", extra={"reason": e})
         return "", 204
