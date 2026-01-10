@@ -555,15 +555,16 @@ class SamplingConditionsManager:
     async def variableset_data_update(self, ce: CloudEvent):
 
         try:
-            pass
-
+            
+            self.logger.debug("variableset_data_update", extra={"ce": ce})
             # get source_id
             # src_id = "111::222::aaa"
             # get target from dict and send source data to all databuffers
-            src_id = ce["source"][-1]
+            src_id = ce["source"].split("::")[-1]
 
             data_map = dict()
 
+            self.logger.debug("variableset_data_update", extra={"src_id": src_id})
             for target in self.sampling_conditions["sources"][src_id]["targets"]:
                 cond_name = target["condition"]
                 if cond_name not in data_map:
@@ -580,6 +581,7 @@ class SamplingConditionsManager:
                     data_map[cond_name]["variables"][condition["source_name"]] = {
                         "data": val
                     }
+            self.logger.debug("variableset_data_update", extra={"data_map": data_map})
 
             # once all condition data compiled, send all to condition for processing
             for cond_name, cond_data in self.data_map.items():
