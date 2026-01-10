@@ -304,12 +304,12 @@ class LimitMinMax(SamplingCriterion):
 
 
 class SamplingConditionsManager:
-    """docstring for OperationsConditions."""
+    """docstring for SamplingConditionsManager."""
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.DEBUG)
-        self.logger.debug("OperationsConditions instantiated")
+        self.logger.debug("SamplingConditionsManager instantiated")
 
         # self.sampling_mode_control = True
         # self.sampling_modes = dict()
@@ -351,7 +351,7 @@ class SamplingConditionsManager:
         # asyncio.create_task(self.sampling_condition_monitor())
         # asyncio.create_tasks(self.sampling_action_monitor())
 
-        print("OperationsConditions: init: here:8")
+        print("SamplingConditionsManager: init: here:8")
 
     def configure(self):
         # set clients
@@ -405,7 +405,7 @@ class SamplingConditionsManager:
                         config=self.sampling_conditions["conditions"][cond_name][
                             "config"
                         ],
-                        data_buffer=self.sampling_conditions["conditions"][data_buffer],
+                        data_buffer=self.sampling_conditions["conditions"][cond_name]["data_buffer"],
                     )
                     self.sampling_conditions["conditions"][cond_name][
                         "condition"
