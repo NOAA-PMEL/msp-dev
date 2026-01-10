@@ -167,17 +167,17 @@ async def variableset_data_update(request: Request):
 #     return await datastore.device_data_get(query)
 
 
-@app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
-async def controller_data_update(request: Request):
-    try:
-        ce = from_http(request.headers, await request.body())
-        L.debug(request.headers)
-        L.debug("controller_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
-        await operations_conditions.controller_data_update(ce)
-    except Exception as e:
-        L.error("controller_data_update", extra={"reason": e})
-        return "", 204
+# @app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
+# async def controller_data_update(request: Request):
+#     try:
+#         ce = from_http(request.headers, await request.body())
+#         L.debug(request.headers)
+#         L.debug("controller_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
+#         # await adapter.send_to_mqtt(ce)
+#         await operations_conditions.controller_data_update(ce)
+#     except Exception as e:
+#         L.error("controller_data_update", extra={"reason": e})
+#         return "", 204
 
 
 # @app.get("/controller/data/get/")

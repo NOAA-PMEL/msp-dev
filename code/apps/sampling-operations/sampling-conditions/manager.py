@@ -348,7 +348,7 @@ class SamplingConditionsManager:
 
         # asyncio.create_tasks(self.sampling_mode_monitor())
         # asyncio.create_tasks(self.sampling_state_monitor())
-        asyncio.create_tasks(self.sampling_condition_monitor())
+        asyncio.create_task(self.sampling_condition_monitor())
         # asyncio.create_tasks(self.sampling_action_monitor())
 
         print("OperationsConditions: init: here:8")
