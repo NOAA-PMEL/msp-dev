@@ -54,7 +54,7 @@ class LimitMinMax(SamplingCriterion):
     Docstring for LimitMinMax
     """
 
-    def __init__(self, config, data_buffer):
+    def __init__(self, config):
         super(LimitMinMax, self).__init__(config)
         self.min_value = None
         self.max_value = None
