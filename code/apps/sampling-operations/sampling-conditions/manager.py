@@ -96,7 +96,8 @@ class SamplingCondition:
         self.config = config
         # self.data_buffer = data_buffer
         self.data_buffer = asyncio.Queue(maxsize=60)
-        self.source_map = {"source_id": dict(), "source_name": dict()}
+        # self.source_map = {"source_id": dict(), "source_name": dict()}
+        self.source_map = dict()
         self.criteria_map = dict()
         # self.source_data = dict()
         self.default_criterion_module: str = (
@@ -205,6 +206,7 @@ class SamplingCondition:
                         if varname in self.source_map:
                             self.source_map[varname][dt] = var["data"]
 
+                    self.logger.debug("condition_monitor", extra={"src_map": self.src_map})
                     await self.evaluate_criteria(dt)
 
             except Exception as e:
@@ -230,6 +232,7 @@ class SamplingCondition:
                             self.logger.info(
                                 "evaluate_criteria",
                                 extra={
+                                    "src_name": src_name,
                                     "ts": timestamp,
                                     "success": False,
                                     "reason": "missing source value",
@@ -237,6 +240,7 @@ class SamplingCondition:
                             )
                             return
                         data[src_name] = self.source_map[src_name][timestamp]
+                    self.logger.debug("evaluate_criteria", extra={"data_for_eval": data})
                     group_states.append(criterion.evaluate(data))
                 if group_type == "all":
                     crit_states.append(all(group_states))
@@ -253,6 +257,7 @@ class SamplingCondition:
                 self.current_state = state
 
             for src_name, src_data in self.source_map.items():
+                self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
                 src_data.pop(timestamp)
         
         except Exception as e:
