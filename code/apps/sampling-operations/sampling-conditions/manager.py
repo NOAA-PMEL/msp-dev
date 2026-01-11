@@ -242,7 +242,7 @@ class SamplingCondition:
                             return
                         data[src_name] = self.source_map[src_name][timestamp]["data"]
                     self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
-                    group_states.append(await criterion.evaluate(data))
+                    group_states.append(await criterion.evaluate(sources=data))
                 if group_type == "all":
                     crit_states.append(all(group_states))
                 elif group_type == "any":
