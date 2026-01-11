@@ -206,7 +206,7 @@ class SamplingCondition:
                         if varname in self.source_map:
                             self.source_map[varname][dt] = var["data"]
 
-                    self.logger.debug("condition_monitor", extra={"src_map": self.src_map})
+                    self.logger.debug("condition_monitor", extra={"src_map": self.source_map})
                     await self.evaluate_criteria(dt)
 
             except Exception as e:
@@ -258,8 +258,9 @@ class SamplingCondition:
 
             for src_name, src_data in self.source_map.items():
                 self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
-                src_data.pop(timestamp)
-        
+                # src_data.pop(timestamp)
+                self.source_map[src_name].pop(timestamp)
+
         except Exception as e:
             self.logger.error("evaluate_criteria", extra={"reason": e})
 
