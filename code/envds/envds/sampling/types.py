@@ -12,7 +12,8 @@ class SamplingEventType(BaseEventType):
     TYPE_PROJECT = "project"
     TYPE_PLATFORM = "platform"
     TYPE_SAMPLING = "sampling"
-    TYPE_CONDITION = "condition"
+    TYPE_SAMPLING_CONDITION = "sampling-condition"
+    TYPE_SAMPLING_STATE = "sampling-state"
     
     # ACTION_RECV = "recv"
     # ACTION_SEND = "send"
@@ -80,9 +81,17 @@ class SamplingEventType(BaseEventType):
         return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING), BaseEventType.TYPE_DATA, BaseEventType.ACTION_UPDATE])
 
     @staticmethod
-    def condition_status_request():
-        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_CONDITION), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_REQUEST])
+    def sampling_condition_status_request():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING_CONDITION), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_REQUEST])
 
     @staticmethod
-    def condition_status_update():
-        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_CONDITION), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_UPDATE])
+    def sampling_condition_status_update():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING_CONDITION), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def sampling_state_status_request():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING_STATE), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def sampling_state_status_update():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING_STATE), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_UPDATE])
