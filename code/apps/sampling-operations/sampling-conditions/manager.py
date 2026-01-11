@@ -530,7 +530,7 @@ class SamplingConditionsManager:
 
             data_map = dict()
 
-            self.logger.debug("variableset_data_update", extra={"src_id": src_id})
+            self.logger.debug("variableset_data_update", extra={"src_id": src_id, "sampling_conditions": self.sampling_conditions})
             for target in self.sampling_conditions["sources"][src_id]["targets"]:
                 self.logger.debug("variableset_data_update", extra={"target": target})
                 cond_name = target["condition"]
