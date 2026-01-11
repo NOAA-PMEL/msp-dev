@@ -343,7 +343,7 @@ class SamplingConditionsManager:
                             "condition": None,
                         }
                     self.sampling_conditions["conditions"][cond_name]["config"] = condition
-                    self.sampling_conditions["conditions"][cond_name]["data_buffer"] = data_buffer
+                    # self.sampling_conditions["conditions"][cond_name]["data_buffer"] = data_buffer
 
                     for source_name, source in condition["sources"].items():
                         # TODO get src_id
