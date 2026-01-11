@@ -225,7 +225,7 @@ class SamplingCondition:
                 for criterion in group["criteria"]:
                     data = {"time": timestamp}
                     for src_name in criterion.get_sources():
-                        self.debug("evaluate_criteria", extra={"src_name": src_name})
+                        # self.logger.debug("evaluate_criteria", extra={"src_name": src_name})
                         if (
                             timestamp not in self.source_map[src_name]
                             or self.source_map[src_name][timestamp] is None
@@ -244,7 +244,7 @@ class SamplingCondition:
                         data[src_name] = self.source_map[src_name][timestamp]["data"]
                     self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
                     group_states.append(await criterion.evaluate(sources=data))
-                    group_states.append(res)
+                    # group_states.append(res)
                 if group_type == "all":
                     crit_states.append(all(group_states))
                 elif group_type == "any":
