@@ -1690,9 +1690,10 @@ class SamplingSystem:
                     source_topic = source_id.replace(".", "/")
                     if variableset:
 
-                        if "time" not in variableset["variables"]:
-                            variableset["variables"]["time"] = {"type": "string", "data": target_time}
-                        self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
+                        # if "time" not in variableset["variables"]:
+                        #     variableset["variables"]["time"] = dict()
+                        # variableset["variables"]["time"]["data"] = target_time
+                        # self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
 
 
                         event = SamplingEvent.create_variableset_data_update(
