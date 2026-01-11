@@ -560,7 +560,7 @@ class SamplingConditionsManager:
             # get source_id
             # src_id = "111::222::aaa"
             # get target from dict and send source data to all databuffers
-            src_id = ce["source"].split("::")[-1]
+            src_id = ce["source"].split(".")[-1]
 
             data_map = dict()
 
