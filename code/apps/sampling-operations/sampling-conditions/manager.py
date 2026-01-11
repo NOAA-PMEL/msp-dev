@@ -566,16 +566,21 @@ class SamplingConditionsManager:
 
             self.logger.debug("variableset_data_update", extra={"src_id": src_id})
             for target in self.sampling_conditions["sources"][src_id]["targets"]:
+                self.logger.debug("variableset_data_update", extra={"target": target})
                 cond_name = target["condition"]
+                self.logger.debug("variableset_data_update", extra={"cond_name": cond_name})
                 if cond_name not in data_map:
                     data_map[cond_name] = {"variables": dict()}
 
+                self.logger.debug("variableset_data_update", extra={"data_map": data_map})
                 condition = self.sampling_conditions["conditions"][cond_name]
+                self.logger.debug("variableset_data_update", extra={"condition": condition})
                 dt = ce.data["variables"]["time"]
 
                 if "time" not in data_map[cond_name]["variables"]:
                     data_map[cond_name]["variables"]["time"] = {"data": dt["data"]}
 
+                self.logger.debug("variableset_data_update", extra={"data_map": data_map})
                 val = ce.data["variables"][condition["source_variable"]]
                 if condition["source_name"] not in data_map[cond_name]["variables"]:
                     data_map[cond_name]["variables"][condition["source_name"]] = {
@@ -599,7 +604,7 @@ class SamplingConditionsManager:
                 # await condition["data_buffer"].put(payload)
 
         except Exception as e:
-            self.logger.error("device_data_update", extra={"reason": e})
+            self.logger.error("variableset_data_update", extra={"reason": e})
         pass
 
     async def handle_condition_request(self, ce: CloudEvent):
