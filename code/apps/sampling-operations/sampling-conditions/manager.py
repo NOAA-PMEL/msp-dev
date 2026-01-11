@@ -213,6 +213,7 @@ class SamplingCondition:
                 self.logger.error("condition_monitor", extra={"reason": e})
 
             await asyncio.sleep(0.001)
+            self.data_buffer.task_done()
 
 
     async def evaluate_criteria(self, timestamp):
@@ -256,8 +257,8 @@ class SamplingCondition:
                 self.logger.debug("evaluate_criteria - send update with new state")
                 self.current_state = state
 
-            for src_name, src_data in self.source_map.items():
-                self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
+            for src_name, _ in self.source_map.items():
+                # self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
                 # src_data.pop(timestamp)
                 self.source_map[src_name].pop(timestamp)
 
@@ -523,6 +524,7 @@ class SamplingConditionsManager:
                 self.logger.error("handle_mqtt_buffer", extra={"reason": e})
 
             await asyncio.sleep(0.0001)
+            self.mqtt_buffer.task_done()
 
     async def variableset_data_update(self, ce: CloudEvent):
 
@@ -1401,6 +1403,7 @@ class SamplingConditionsManager:
         # async def index_monitor(self):
         while True:
             update = await self.index_ready_buffer.get()
+            self.index_ready_buffer.task_done()
             try:
                 self.logger.debug("index_monitor", extra={"update": update})
                 index_type = update["index_type"]
@@ -1470,7 +1473,6 @@ class SamplingConditionsManager:
 
             except Exception as e:
                 self.logger.error("index_monitor", extra={"reason": e})
-
 
 async def shutdown():
     print("shutting down")
