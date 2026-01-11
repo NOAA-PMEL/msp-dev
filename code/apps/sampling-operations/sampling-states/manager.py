@@ -504,7 +504,7 @@ class SamplingStatesManager:
                     extra={"data": event, "destpath": destpath},
                 )
 
-                self.send_event(event)
+                await self.send_event(event)
             except Exception as e:
                 self.logger.error("state_status_monitor", extra={"reason": e})
             
