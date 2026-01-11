@@ -175,8 +175,10 @@ class SamplingState:
                         req["status"] = all(req_status)
                         state_status.append(req["status"])
 
+                current_dt = get_datetime()
+                current_secs = current_dt.second
                 latest_status = all(state_status)
-                if self.current_status != latest_status:
+                if self.current_status != latest_status or (current_secs % 30) == 0:
                     self.logger.info("status change", extra={"old_status": self.current_status, "new_status": latest_status})
                     self.current_status = latest_status
 
