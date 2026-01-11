@@ -360,23 +360,6 @@ class SamplingStatesManager:
         self.status_buffer = asyncio.Queue(maxsize=60)
         # self.sampling_actions = dict()
 
-        # # current mode
-        # self.platform_sampling_mode = None
-
-        # self.platforms = dict()
-        # self.platform_layouts = dict()
-        # self.variablemaps = dict()
-
-        # this is cache for variable mapping
-        # self.variablesets = {
-        #     "sources": dict(),
-        #     "variablesets": dict(),
-        #     "indices": dict(),
-        # }
-        # print("here:6")
-
-        # self.index_ready_buffer = asyncio.Queue()
-        # self.index_monitor_tasks = dict()
 
         self.config = SamplingStatesManagerConfig()
         self.configure()
@@ -388,11 +371,6 @@ class SamplingStatesManager:
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
         asyncio.create_task(self.state_status_monitor())
-        # asyncio.create_task(self.condition_status_monitor())
-        # asyncio.create_tasks(self.sampling_mode_monitor())
-        # asyncio.create_tasks(self.sampling_state_monitor())
-        # asyncio.create_task(self.sampling_condition_monitor())
-        # asyncio.create_tasks(self.sampling_action_monitor())
 
         # print("SamplingStatesManager: init: here:8")
 
