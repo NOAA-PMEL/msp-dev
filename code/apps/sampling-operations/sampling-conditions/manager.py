@@ -193,10 +193,10 @@ class SamplingCondition:
     async def condition_monitor(self):
 
         while True:
-            self.logger.debug("condition_monitor", extra={"data_buffer": self.data_buffer})
+            # self.logger.debug("condition_monitor", extra={"data_buffer": self.data_buffer})
             try:
                 data = await self.data_buffer.get()
-                self.logger.debug("condition_monitor", extra={"data_buffer": data})
+                # self.logger.debug("condition_monitor", extra={"data_buffer": data})
                 if "condition_variables" in data:
                     variables = data["condition_variables"]
                     dt = variables["time"]["data"]
@@ -206,7 +206,7 @@ class SamplingCondition:
                         if varname in self.source_map:
                             self.source_map[varname][dt] = var["data"]
 
-                    self.logger.debug("condition_monitor", extra={"src_map": self.source_map})
+                    # self.logger.debug("condition_monitor", extra={"src_map": self.source_map})
                     await self.evaluate_criteria(dt)
 
             except Exception as e:
@@ -242,7 +242,7 @@ class SamplingCondition:
                             return
                         data[src_name] = self.source_map[src_name][timestamp]["data"]
                     self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
-                    group_states.append(criterion.evaluate(data))
+                    group_states.append(await criterion.evaluate(data))
                 if group_type == "all":
                     crit_states.append(all(group_states))
                 elif group_type == "any":
@@ -307,7 +307,7 @@ class SamplingConditionsManager:
 
         self.config = SamplingConditionsManagerConfig()
         self.configure()
-        print("here:7")
+        # print("here:7")
 
         self.http_client = None
 
@@ -320,7 +320,7 @@ class SamplingConditionsManager:
         # asyncio.create_task(self.sampling_condition_monitor())
         # asyncio.create_tasks(self.sampling_action_monitor())
 
-        print("SamplingConditionsManager: init: here:8")
+        # print("SamplingConditionsManager: init: here:8")
 
     def configure(self):
         # set clients
@@ -379,7 +379,7 @@ class SamplingConditionsManager:
                         # data_buffer=self.sampling_conditions["conditions"][cond_name]["data_buffer"],
                         data_buffer=None,
                     )
-                    self.logger.debug("configure", extra={"condition": condition_instance})
+                    # self.logger.debug("configure", extra={"condition": condition_instance})
                     self.sampling_conditions["conditions"][cond_name][
                         "condition"
                     ] = condition_instance
@@ -538,23 +538,23 @@ class SamplingConditionsManager:
 
             data_map = dict()
 
-            self.logger.debug("variableset_data_update", extra={"src_id": src_id, "sampling_conditions": self.sampling_conditions})
+            # self.logger.debug("variableset_data_update", extra={"src_id": src_id, "sampling_conditions": self.sampling_conditions})
             for target in self.sampling_conditions["sources"][src_id]["targets"]:
-                self.logger.debug("variableset_data_update", extra={"target": target})
+                # self.logger.debug("variableset_data_update", extra={"target": target})
                 cond_name = target["condition"]
-                self.logger.debug("variableset_data_update", extra={"cond_name": cond_name})
+                # self.logger.debug("variableset_data_update", extra={"cond_name": cond_name})
                 if cond_name not in data_map:
                     data_map[cond_name] = {"variables": dict()}
 
-                self.logger.debug("variableset_data_update", extra={"data_map": data_map})
+                # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
                 condition = self.sampling_conditions["conditions"][cond_name]
-                self.logger.debug("variableset_data_update", extra={"condition": condition})
+                # self.logger.debug("variableset_data_update", extra={"condition": condition})
                 dt = ce.data["variables"]["time"]
 
                 # if "time" not in data_map[cond_name]["variables"]:
                 #     data_map[cond_name]["variables"]["time"] = {"data": dt["data"]}
 
-                self.logger.debug("variableset_data_update", extra={"data_map": data_map})
+                # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
 
                 if target["source_variable"] in ce.data["variables"]:
                     val = ce.data["variables"][target["source_variable"]]
@@ -562,7 +562,7 @@ class SamplingConditionsManager:
                         data_map[cond_name]["variables"][target["source_name"]] = {
                             "data": val
                         }
-            self.logger.debug("variableset_data_update", extra={"data_map": data_map})
+            # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
 
             # once all condition data compiled, send all to condition for processing
             for cond_name, cond_data in data_map.items():
