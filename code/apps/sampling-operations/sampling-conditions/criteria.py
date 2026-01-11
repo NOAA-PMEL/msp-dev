@@ -74,7 +74,7 @@ class LimitMinMax(SamplingCriterion):
                 self.true_if = val
 
     async def evaluate(self, sources) -> bool:
-        super(LimitMinMax, self).evaluate()
+        super(LimitMinMax, self).evaluate(sources)
         result = []
         self.debug("evaluate", extra={"src_vals": sources})
         for source_var in self.get_sources():
