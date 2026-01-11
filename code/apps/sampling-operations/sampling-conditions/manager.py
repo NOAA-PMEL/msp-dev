@@ -240,7 +240,7 @@ class SamplingCondition:
                                 },
                             )
                             return
-                        data[src_name] = self.source_map[src_name][timestamp]
+                        data[src_name] = self.source_map[src_name][timestamp]["data"]
                     self.logger.debug("evaluate_criteria", extra={"data_for_eval": data})
                     group_states.append(criterion.evaluate(data))
                 if group_type == "all":
