@@ -179,7 +179,7 @@ class SamplingCondition:
     async def condition_monitor(self):
 
         while True:
-            self.logger.debug("condition_monitor")
+            self.logger.debug("condition_monitor", extra={"data_buffer": self.data_buffer})
             try:
                 data = await self.data_buffer.get()
                 self.logger.debug("condition_monitor", extra={"data_buffer": data})
