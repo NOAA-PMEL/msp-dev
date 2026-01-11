@@ -101,7 +101,8 @@ class SamplingCondition:
         self.current_state = False
 
         self.criterion_tasks = []
-
+        
+        self.configure()
         asyncio.create_task(self.condition_monitor())
 
     def configure(self):
@@ -178,6 +179,7 @@ class SamplingCondition:
     async def condition_monitor(self):
 
         while True:
+            self.logger.debug("condition_monitor")
             try:
                 data = await self.data_buffer.get()
                 self.logger.debug("condition_monitor", extra={"data_buffer": data})
@@ -375,10 +377,10 @@ class SamplingConditionsManager:
                     # cond_name = f'{condition["metadata"]["name"]}.{condition["metadata"]["sampling_namespace"]}'
                     cond_name = f'{condition["metadata"]["name"]}'
                     if cond_name not in self.sampling_conditions["conditions"]:
-                        data_buffer = asyncio.Queue()
+                        # data_buffer = asyncio.Queue()
                         self.sampling_conditions["conditions"][cond_name] = {
                             "config": condition,
-                            "data_buffer": data_buffer,
+                            "data_buffer": asyncio.Queue(),
                             "condition": None,
                         }
 
