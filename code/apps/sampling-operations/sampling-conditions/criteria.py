@@ -77,9 +77,11 @@ class LimitMinMax(SamplingCriterion):
             if source_var in sources:
                 source_val = sources[source_val]
                 if self.true_if == "inside":
+                    self.logger.debug("evaluate", extra={"src_val": source_val, "min_val": self.min_val, "max_val": self.max_val})
                     result.append(source_val >= self.min_val and source_val <= self.max_val)
                 elif self.true_if == "outside":
                     result.append(source_val < self.min_val and source_val > self.max_val)
+                self.logger.debug("evaluate", extra={"eval_result": result, "return_result": all(result)})
         return all(result)
 
 
