@@ -112,7 +112,7 @@ class SamplingCondition:
         
         self.configure()
         asyncio.create_task(self.condition_monitor())
-        asyncio.create_task(self.update_status_loop())
+        # asyncio.create_task(self.update_status_loop())
 
     def configure(self):
 
@@ -291,28 +291,31 @@ class SamplingCondition:
             
             state = all(crit_states)
             self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
-            if state != self.current_state:
+            # if state != self.current_state:
                 # send event with updated condition state
-                self.logger.debug("evaluate_criteria - send update with new state")
-        
-                cond_name = self.config["metadata"]["name"]
-                cond_ns = self.config["metadata"]["sampling_namespace"]
-                cond_valid_time = self.config["metadata"]["valid_config_time"]
+            
+            # Send status whenever data is available
+            self.logger.debug("evaluate_criteria - send update with new state")
+    
+            cond_name = self.config["metadata"]["name"]
+            cond_ns = self.config["metadata"]["sampling_namespace"]
+            cond_valid_time = self.config["metadata"]["valid_config_time"]
 
-                self.current_state = state
+            self.current_state = state
 
-                status = {
-                    "condition": {
-                        "kind": "SamplingCondition",
-                        "name": cond_name,
-                        "sampling_namespace": cond_ns,
-                        "valid_config_time": cond_valid_time,
-                        "status": self.current_state
-                    }
+            status = {
+                "condition": {
+                    "kind": "SamplingCondition",
+                    "time": timestamp,
+                    "name": cond_name,
+                    "sampling_namespace": cond_ns,
+                    "valid_config_time": cond_valid_time,
+                    "status": state
                 }
-                await self.status_buffer.put(status)
+            }
+            await self.status_buffer.put(status)
 
-                # await self.update_status(status)
+            # await self.update_status(status)
 
 
             for src_name, _ in self.source_map.items():
