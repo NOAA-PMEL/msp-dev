@@ -584,7 +584,7 @@ class SamplingConditionsManager:
 
                 if target["source_variable"] not in ce.data["variables"]:
                     continue
-                
+
                 val = ce.data["variables"][target["source_variable"]]
                 if target["source_name"] not in data_map[cond_name]["variables"]:
                     data_map[cond_name]["variables"][target["source_name"]] = {
@@ -593,7 +593,7 @@ class SamplingConditionsManager:
             self.logger.debug("variableset_data_update", extra={"data_map": data_map})
 
             # once all condition data compiled, send all to condition for processing
-            for cond_name, cond_data in self.data_map.items():
+            for cond_name, cond_data in data_map.items():
                 payload = {"condition_variables": cond_data["variables"]}
                 await self.sampling_conditions["conditions"][cond_name][
                     "data_buffer"
