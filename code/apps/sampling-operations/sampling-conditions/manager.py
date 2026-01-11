@@ -581,9 +581,9 @@ class SamplingConditionsManager:
                     data_map[cond_name]["variables"]["time"] = {"data": dt["data"]}
 
                 self.logger.debug("variableset_data_update", extra={"data_map": data_map})
-                val = ce.data["variables"][condition["source_variable"]]
-                if condition["source_name"] not in data_map[cond_name]["variables"]:
-                    data_map[cond_name]["variables"][condition["source_name"]] = {
+                val = ce.data["variables"][target["source_variable"]]
+                if target["source_name"] not in data_map[cond_name]["variables"]:
+                    data_map[cond_name]["variables"][target["source_name"]] = {
                         "data": val
                     }
             self.logger.debug("variableset_data_update", extra={"data_map": data_map})
