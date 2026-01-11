@@ -112,6 +112,7 @@ class SamplingCondition:
         
         self.configure()
         asyncio.create_task(self.condition_monitor())
+        asyncio.create_task(self.update_status_loop())
 
     def configure(self):
 
@@ -216,6 +217,37 @@ class SamplingCondition:
             await asyncio.sleep(0.001)
             self.data_buffer.task_done()
 
+    async def update_status(self, status):
+
+        cond_name = status["condition"]["name"]
+        cond_ns = status["condition"]["sampling_namespace"]
+        cond_valid_time = status["condition"]["valid_config_time"]
+
+        source_id = (
+            f"envds.{self.config.daq_id}.condition.{cond_name}"
+        )
+        self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
+        
+        source_topic = source_id.replace(".", "/")
+
+        event = SamplingEvent.create_condition_status_update(
+            # source="sensor.mockco-mock1-1234", data=record
+            source=source_id,
+            data=status,
+        )
+        destpath = f"{source_topic}/status/update"
+        event["destpath"] = destpath
+        event["samplingnamespace"] = cond_ns
+        event["validconfigtime"] = cond_valid_time
+        self.logger.debug(
+            "evaluate_criteria",
+            extra={"data": event, "destpath": destpath},
+        )
+        
+        # await self.send_event(event)
+        await self.event_buffer.put(event)
+
+
 
     async def evaluate_criteria(self, timestamp):
 
@@ -262,45 +294,23 @@ class SamplingCondition:
             if state != self.current_state:
                 # send event with updated condition state
                 self.logger.debug("evaluate_criteria - send update with new state")
-
+        
                 cond_name = self.config["metadata"]["name"]
                 cond_ns = self.config["metadata"]["sampling_namespace"]
                 cond_valid_time = self.config["metadata"]["valid_config_time"]
 
-                source_id = (
-                    f"envds.{self.config.daq_id}.condition.{cond_name}"
-                )
-                self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
-                
-                source_topic = source_id.replace(".", "/")
+                self.current_state = state
 
                 status = {
                     "condition": {
                         "name": cond_name,
                         "sampling_namespace": cond_ns,
                         "valid_config_time": cond_valid_time,
-                        "status": state
+                        "status": self.current_state
                     }
                 }
-                event = SamplingEvent.create_condition_status_update(
-                    # source="sensor.mockco-mock1-1234", data=record
-                    source=source_id,
-                    data=status,
-                )
-                destpath = f"{source_topic}/status/update"
-                event["destpath"] = destpath
-                event["samplingnamespace"] = cond_ns
-                event["validconfigtime"] = cond_valid_time
-                self.logger.debug(
-                    "evaluate_criteria",
-                    extra={"data": event, "destpath": destpath},
-                )
-                
-                # await self.send_event(event)
-                await self.event_buffer.put(event)
+                await self.update_status(status)
 
-
-                self.current_state = state
 
             for src_name, _ in self.source_map.items():
                 # self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
@@ -310,9 +320,24 @@ class SamplingCondition:
         except Exception as e:
             self.logger.error("evaluate_criteria", extra={"reason": e})
 
-    async def update_state_loop(self):
+    async def update_status_loop(self):
         while True:
             self.logger.debug("update_state_loop - send update")
+
+            cond_name = self.config["metadata"]["name"]
+            cond_ns = self.config["metadata"]["sampling_namespace"]
+            cond_valid_time = self.config["metadata"]["valid_config_time"]
+
+            status = {
+                "condition": {
+                    "name": cond_name,
+                    "sampling_namespace": cond_ns,
+                    "valid_config_time": cond_valid_time,
+                    "status": self.current_state
+                }
+            }
+            await self.update_status(status)
+
             await asyncio.sleep(10)
 
 
