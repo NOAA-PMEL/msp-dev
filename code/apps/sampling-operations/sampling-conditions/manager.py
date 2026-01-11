@@ -190,7 +190,7 @@ class SamplingCondition:
                         if varname in self.source_map:
                             self.source_map[varname][dt] = var["data"]
 
-                await self.evaluate_criteria(dt)
+                    await self.evaluate_criteria(dt)
 
             except Exception as e:
                 self.logger.error("condition_monitor", extra={"reason": e})
@@ -583,19 +583,18 @@ class SamplingConditionsManager:
 
                 self.logger.debug("variableset_data_update", extra={"data_map": data_map})
 
-                if target["source_variable"] not in ce.data["variables"]:
-                    continue
-
-                val = ce.data["variables"][target["source_variable"]]
-                if target["source_name"] not in data_map[cond_name]["variables"]:
-                    data_map[cond_name]["variables"][target["source_name"]] = {
-                        "data": val
-                    }
+                if target["source_variable"] in ce.data["variables"]:
+                    val = ce.data["variables"][target["source_variable"]]
+                    if target["source_name"] not in data_map[cond_name]["variables"]:
+                        data_map[cond_name]["variables"][target["source_name"]] = {
+                            "data": val
+                        }
             self.logger.debug("variableset_data_update", extra={"data_map": data_map})
 
             # once all condition data compiled, send all to condition for processing
             for cond_name, cond_data in data_map.items():
                 payload = {"condition_variables": cond_data["variables"]}
+                self.logger.debug("variableset_data_update", extra={"cond_payload": payload})
                 await self.sampling_conditions["conditions"][cond_name][
                     "data_buffer"
                 ].put(payload)
