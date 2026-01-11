@@ -1642,6 +1642,7 @@ class SamplingSystem:
                     variableset = variablemap["variablesets"][vs_name].copy()
                     if "time" not in variableset["variables"]:
                         variableset["variables"]["time"] = {"type": "string", "data": target_time}
+                    self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
                     for v_name, v_data in vs_data.items():
                         self.logger.debug("update_variablesets_by_time_index", extra={"vs_name": vs_name, "vset": variableset})
                         self.logger.debug("update_variablesets_by_time_index", extra={"variable_updates": variable_updates})
@@ -1652,7 +1653,8 @@ class SamplingSystem:
                             variable_name=v_name,
                             time_index=time_index
                             )
-
+                        self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
+                    
 
 
             #         indexed_data = variablemap["indexed"]["data"][target_time][vs_name]
