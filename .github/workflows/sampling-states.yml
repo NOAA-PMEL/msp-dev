@@ -1,31 +1,31 @@
-name: Build and Push sampling-conditions
+name: Build and Push sampling-states
 
 on:
 
   push:
     branches: [ dev-* ]
     paths:
-      - 'code/apps/sampling-operations/sampling-conditions/**'
+      - 'code/apps/sampling-operations/sampling-states/**'
   
   pull_request:
     branches: [main, dev-*]
     paths:
-      - 'code/apps/sampling-operations/sampling-conditions/**'
+      - 'code/apps/sampling-operations/sampling-states/**'
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: sampling-conditions
+  IMAGE_NAME: sampling-states
   # IMAGE_TAG: ${{ github.sha }}
   # IMAGE_TAG: $(cat VERSION)
 
 jobs:
 
-  build-and-push-sampling-conditions:
+  build-and-push-sampling-states:
 
     runs-on: ubuntu-latest
     defaults:
         run:
-            working-directory: './code/apps/sampling-operations/sampling-conditions'
+            working-directory: './code/apps/sampling-operations/sampling-states'
       
     permissions:
         contents: read
@@ -84,17 +84,17 @@ jobs:
         - name: Build and push multi-platform image
           uses: docker/build-push-action@v4
           with:
-            context: code/apps/sampling-operations/sampling-conditions/.
+            context: code/apps/sampling-operations/sampling-states/.
             # dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
             push: true
             tags: |
-              ghcr.io/noaa-pmel/msp/sampling-conditions:${{env.IMAGE_TAG}}
-              ghcr.io/noaa-pmel/msp/sampling-conditions:latest
+              ghcr.io/noaa-pmel/msp/sampling-states:${{env.IMAGE_TAG}}
+              ghcr.io/noaa-pmel/msp/sampling-states:latest
             platforms: linux/amd64,linux/arm64
 
         # - name: Build the Docker image
         # #   run: docker build . --file Dockerfile --tag ghcr.io/acg/verifier:$(date +%s)
-        #   run: docker build . --file Dockerfile --tag ghcr.io/noaa-pmel/msp/sampling-conditions:$IMAGE_TAG
+        #   run: docker build . --file Dockerfile --tag ghcr.io/noaa-pmel/msp/sampling-states:$IMAGE_TAG
  
         # - name: Push the Docker image
-        #   run: docker push ghcr.io/noaa-pmel/msp/sampling-conditions:$IMAGE_TAG
+        #   run: docker push ghcr.io/noaa-pmel/msp/sampling-states:$IMAGE_TAG
