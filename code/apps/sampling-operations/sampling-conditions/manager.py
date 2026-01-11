@@ -137,7 +137,7 @@ class SamplingCondition:
                 for group_type, group in self.config["criteria"].items():
                     if group_type not in self.criteria_map:
                         self.criteria_map[group_type] = {"criteria": []}
-                    for _, criterion_config in group.items():
+                    for criterion_config in group:
                         criterion_module = self.default_criterion_module
                         if "criterion_module" in criterion_config:
                             self.criterion_module = criterion_config["criterion_module"]
