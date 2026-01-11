@@ -96,7 +96,7 @@ class SamplingCondition:
         self.config = config
         # self.data_buffer = data_buffer
         self.data_buffer = asyncio.Queue(maxsize=60)
-        self.event_buffer = event_buffer
+        self.status_buffer = event_buffer
         # self.source_map = {"source_id": dict(), "source_name": dict()}
         self.source_map = dict()
         self.criteria_map = dict()
@@ -217,35 +217,35 @@ class SamplingCondition:
             await asyncio.sleep(0.001)
             self.data_buffer.task_done()
 
-    async def update_status(self, status):
+    # async def update_status(self, status):
 
-        cond_name = status["condition"]["name"]
-        cond_ns = status["condition"]["sampling_namespace"]
-        cond_valid_time = status["condition"]["valid_config_time"]
+    #     cond_name = status["condition"]["name"]
+    #     cond_ns = status["condition"]["sampling_namespace"]
+    #     cond_valid_time = status["condition"]["valid_config_time"]
 
-        source_id = (
-            f"envds.{self.config.daq_id}.condition.{cond_name}"
-        )
-        self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
+    #     source_id = (
+    #         f"envds.{self.config.daq_id}.condition.{cond_name}"
+    #     )
+    #     self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
         
-        source_topic = source_id.replace(".", "/")
+    #     source_topic = source_id.replace(".", "/")
 
-        event = SamplingEvent.create_condition_status_update(
-            # source="sensor.mockco-mock1-1234", data=record
-            source=source_id,
-            data=status,
-        )
-        destpath = f"{source_topic}/status/update"
-        event["destpath"] = destpath
-        event["samplingnamespace"] = cond_ns
-        event["validconfigtime"] = cond_valid_time
-        self.logger.debug(
-            "evaluate_criteria",
-            extra={"data": event, "destpath": destpath},
-        )
+    #     event = SamplingEvent.create_condition_status_update(
+    #         # source="sensor.mockco-mock1-1234", data=record
+    #         source=source_id,
+    #         data=status,
+    #     )
+    #     destpath = f"{source_topic}/status/update"
+    #     event["destpath"] = destpath
+    #     event["samplingnamespace"] = cond_ns
+    #     event["validconfigtime"] = cond_valid_time
+    #     self.logger.debug(
+    #         "evaluate_criteria",
+    #         extra={"data": event, "destpath": destpath},
+    #     )
         
-        # await self.send_event(event)
-        await self.event_buffer.put(event)
+    #     # await self.send_event(event)
+    #     await self.status_buffer.put(status)
 
 
 
@@ -303,13 +303,16 @@ class SamplingCondition:
 
                 status = {
                     "condition": {
+                        "kind": "SamplingCondition",
                         "name": cond_name,
                         "sampling_namespace": cond_ns,
                         "valid_config_time": cond_valid_time,
                         "status": self.current_state
                     }
                 }
-                await self.update_status(status)
+                await self.status_buffer.put(status)
+
+                # await self.update_status(status)
 
 
             for src_name, _ in self.source_map.items():
@@ -330,13 +333,16 @@ class SamplingCondition:
 
             status = {
                 "condition": {
+                    "kind": "SamplingCondition",
                     "name": cond_name,
                     "sampling_namespace": cond_ns,
                     "valid_config_time": cond_valid_time,
                     "status": self.current_state
                 }
             }
-            await self.update_status(status)
+            await self.status_buffer.put(status)
+
+            # await self.update_status(status)
 
             await asyncio.sleep(10)
 
@@ -355,7 +361,7 @@ class SamplingConditionsManager:
         # self.sampling_states = dict()
         self.sampling_conditions = {"conditions": dict(), "sources": {}}
 
-        self.event_buffer = asyncio.Queue(maxsize=60)
+        self.status_buffer = asyncio.Queue(maxsize=60)
         # self.sampling_actions = dict()
 
         # # current mode
@@ -385,7 +391,7 @@ class SamplingConditionsManager:
         self.mqtt_buffer = asyncio.Queue()
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
-        asyncio.create_task(self.condition_event_monitor())
+        asyncio.create_task(self.condition_status_monitor())
         # asyncio.create_tasks(self.sampling_mode_monitor())
         # asyncio.create_tasks(self.sampling_state_monitor())
         # asyncio.create_task(self.sampling_condition_monitor())
@@ -417,7 +423,7 @@ class SamplingConditionsManager:
                     if cond_name not in self.sampling_conditions["conditions"]:
                         self.sampling_conditions["conditions"][cond_name] = {
                             "config": None,
-                            "event_buffer": self.event_buffer,
+                            "event_buffer": self.status_buffer,
                             "condition": None,
                         }
                     self.sampling_conditions["conditions"][cond_name]["config"] = condition
@@ -448,7 +454,7 @@ class SamplingConditionsManager:
                             "config"
                         ],
                         # data_buffer=self.sampling_conditions["conditions"][cond_name]["data_buffer"],
-                        event_buffer=self.event_buffer,
+                        event_buffer=self.status_buffer,
                     )
                     # self.logger.debug("configure", extra={"condition": condition_instance})
                     self.sampling_conditions["conditions"][cond_name][
@@ -522,16 +528,42 @@ class SamplingConditionsManager:
             self.logger.error("submit_request", extra={"reason": e})
             return {}
 
-    async def condition_event_monitor(self):
+    async def condition_status_monitor(self):
         while True:
             try:
-                event = await self.event_buffer.get()
+                status = await self.status_buffer.get()
+
+                cond_name = status["condition"]["name"]
+                cond_ns = status["condition"]["sampling_namespace"]
+                cond_valid_time = status["condition"]["valid_config_time"]
+
+                source_id = (
+                    f"envds.{self.config.daq_id}.condition.{cond_name}"
+                )
+                self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
+                
+                source_topic = source_id.replace(".", "/")
+
+                event = SamplingEvent.create_condition_status_update(
+                    # source="sensor.mockco-mock1-1234", data=record
+                    source=source_id,
+                    data=status,
+                )
+                destpath = f"{source_topic}/status/update"
+                event["destpath"] = destpath
+                event["samplingnamespace"] = cond_ns
+                event["validconfigtime"] = cond_valid_time
+                self.logger.debug(
+                    "evaluate_criteria",
+                    extra={"data": event, "destpath": destpath},
+                )
+
                 self.send_event(event)
             except Exception as e:
                 self.logger.error("condition_event_monitor", extra={"reason": e})
             
             await asyncio.sleep(0.001)
-            self.event_buffer.task_done()
+            self.status_buffer.task_done()
 
     async def get_from_mqtt_loop(self):
         reconnect = 10
