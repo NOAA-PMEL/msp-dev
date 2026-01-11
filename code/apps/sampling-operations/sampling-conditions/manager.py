@@ -128,19 +128,22 @@ class SamplingCondition:
         #     if v not in self.data[vm][vs]:
         #         self.data[vm][vs][v] = dict()
 
-        if "criteria" in self.config:
-            for group_type, group in self.config["criteria"].items():
-                if group_type not in self.criteria_map:
-                    self.criteria_map[group_type] = {"criteria": []}
-                for _, criterion_config in group.items():
-                    criterion_module = self.default_criterion_module
-                    if "criterion_module" in criterion_config:
-                        self.criterion_module = criterion_config["criterion_module"]
-                    mod_ = importlib.import_module(criterion_module)
-                    criterion_class = criterion_config["criterion_class"]
-                    criterion = getattr(mod_, criterion_class)(criterion_config)
-                    self.criteria_map[group_type]["criteria"].append(criterion)
-
+        try:
+            if "criteria" in self.config:
+                for group_type, group in self.config["criteria"].items():
+                    if group_type not in self.criteria_map:
+                        self.criteria_map[group_type] = {"criteria": []}
+                    for _, criterion_config in group.items():
+                        criterion_module = self.default_criterion_module
+                        if "criterion_module" in criterion_config:
+                            self.criterion_module = criterion_config["criterion_module"]
+                        mod_ = importlib.import_module(criterion_module)
+                        criterion_class = criterion_config["criterion_class"]
+                        criterion = getattr(mod_, criterion_class)(criterion_config)
+                        self.criteria_map[group_type]["criteria"].append(criterion)
+        except Exception as e:
+            self.logger.error("configure", extra={"reason": e})
+            sys.exit()
         # for source_name, _ in self.config["sources"].items():
         #     if source_name not in self.source_map:
         #         self.source_map[source_name] = {"data": dict(), "criteria": []}
