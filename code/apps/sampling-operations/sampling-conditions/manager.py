@@ -335,7 +335,7 @@ class SamplingConditionsManager:
                     # full condition name with namespace
                     # cond_name = f'{condition["metadata"]["name"]}.{condition["metadata"]["sampling_namespace"]}'
                     cond_name = f'{condition["metadata"]["name"]}'
-                    data_buffer = asyncio.Queue(maxsize=60)
+                    # data_buffer = asyncio.Queue(maxsize=60)
                     if cond_name not in self.sampling_conditions["conditions"]:
                         self.sampling_conditions["conditions"][cond_name] = {
                             "config": None,
@@ -369,7 +369,8 @@ class SamplingConditionsManager:
                         config=self.sampling_conditions["conditions"][cond_name][
                             "config"
                         ],
-                        data_buffer=self.sampling_conditions["conditions"][cond_name]["data_buffer"],
+                        # data_buffer=self.sampling_conditions["conditions"][cond_name]["data_buffer"],
+                        data_buffer=None,
                     )
                     self.logger.debug("configure", extra={"condition": condition_instance})
                     self.sampling_conditions["conditions"][cond_name][
@@ -557,6 +558,7 @@ class SamplingConditionsManager:
 
             # once all condition data compiled, send all to condition for processing
             for cond_name, cond_data in data_map.items():
+                cond_data["variables"]["time"] = dt
                 payload = {"condition_variables": cond_data["variables"]}
                 self.logger.debug("variableset_data_update", extra={"cond_payload": payload})
                 # db = self.sampling_conditions["conditions"][cond_name]["data_buffer"]
