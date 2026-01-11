@@ -209,9 +209,9 @@ class SamplingState:
                         if req["transition_time"]["to_become_true"] > gc_time:
                             gc_time = req["transition_time"]["to_become_true"]
 
-                        delta = timedelta(seconds=(gc_time * -1))
-                        gc_dt = get_datetime_with_delta(delta)
-                        # gc_dt = get_datetime_with_delta(gc_time * -1)
+                        # delta = timedelta(seconds=(gc_time * -1))
+                        # gc_dt = get_datetime_with_delta(delta)
+                        gc_dt = get_datetime_with_delta(-(gc_time))
                         keys = list(req["data"].keys())
                         for k in keys:
                             if k < datetime_to_string(gc_dt):
