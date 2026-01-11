@@ -157,62 +157,68 @@ class SamplingState:
     async def requirement_monitor(self):
 
         while True:
-            state_status = []
-            for req_type, req_kind in self.requirements.items():
-                for req_name, req in req_kind.items():
-                    current_status = req["status"]
-                    transition_time = req["transition_time"]["to_become_false"]
-                    if current_status is False:
-                        transition_time = req["transition_time"]["to_become_true"]
-                    delta = timedelta(seconds=(transition_time * -1))
-                    transition_dt = get_datetime_with_delta(delta)
+            try:
+                state_status = []
+                for req_type, req_kind in self.requirements.items():
+                    for req_name, req in req_kind.items():
+                        current_status = req["status"]
+                        transition_time = req["transition_time"]["to_become_false"]
+                        if current_status is False:
+                            transition_time = req["transition_time"]["to_become_true"]
+                        # delta = timedelta(seconds=(transition_time * -1))
+                        transition_dt = get_datetime_with_delta(-(transition_time))
 
-                    req_status = []
-                    for ts, st in req["data"].items():
-                        if ts > datetime_to_string(transition_dt):
-                            req_status.append(st)
-                    req["status"] = all(req_status)
-                    state_status.append(req["status"])
+                        req_status = []
+                        for ts, st in req["data"].items():
+                            if ts > datetime_to_string(transition_dt):
+                                req_status.append(st)
+                        req["status"] = all(req_status)
+                        state_status.append(req["status"])
 
-            latest_status = all(state_status)
-            if self.current_status != latest_status:
-                self.logger.info("status change", extra={"old_status": self.current_status, "new_status": latest_status})
-                self.current_status = latest_status
+                latest_status = all(state_status)
+                if self.current_status != latest_status:
+                    self.logger.info("status change", extra={"old_status": self.current_status, "new_status": latest_status})
+                    self.current_status = latest_status
 
-                state_name = self.config["metadata"]["name"]
-                state_ns = self.config["metadata"]["sampling_namespace"]
-                state_valid_time = self.config["metadata"]["valid_config_time"]
+                    state_name = self.config["metadata"]["name"]
+                    state_ns = self.config["metadata"]["sampling_namespace"]
+                    state_valid_time = self.config["metadata"]["valid_config_time"]
 
-                status = {
-                    "condition": {
-                        "kind": "SamplingState",
-                        "time": get_datetime_string(),
-                        "name": state_name,
-                        "sampling_namespace": state_ns,
-                        "valid_config_time": state_valid_time,
-                        "status": self.current_status
+                    status = {
+                        "condition": {
+                            "kind": "SamplingState",
+                            "time": get_datetime_string(),
+                            "name": state_name,
+                            "sampling_namespace": state_ns,
+                            "valid_config_time": state_valid_time,
+                            "status": self.current_status
+                        }
                     }
-                }
-                await self.status_buffer.put(status)
+                    await self.status_buffer.put(status)
+            except Exception as e:
+                self.logger.error("requirement_monitor", extra={"reason": e})
 
             await asyncio.sleep(time_to_next(1))
 
     async def data_gc(self):
         while True:
-            for req_type, req_kind in self.requirements.items():
-                for req_name, req in req_kind.items():
-                    gc_time = req["transition_time"]["to_become_false"]
-                    if req["transition_time"]["to_become_true"] > gc_time:
-                        gc_time = req["transition_time"]["to_become_true"]
+            try:
+                for req_type, req_kind in self.requirements.items():
+                    for req_name, req in req_kind.items():
+                        gc_time = req["transition_time"]["to_become_false"]
+                        if req["transition_time"]["to_become_true"] > gc_time:
+                            gc_time = req["transition_time"]["to_become_true"]
 
-                    delta = timedelta(seconds=(gc_time * -1))
-                    gc_dt = get_datetime_with_delta(delta)
-                    # gc_dt = get_datetime_with_delta(gc_time * -1)
-                    keys = list(req["data"].keys())
-                    for k in keys:
-                        if k < datetime_to_string(gc_dt):
-                            req["data"].pop(k)
+                        delta = timedelta(seconds=(gc_time * -1))
+                        gc_dt = get_datetime_with_delta(delta)
+                        # gc_dt = get_datetime_with_delta(gc_time * -1)
+                        keys = list(req["data"].keys())
+                        for k in keys:
+                            if k < datetime_to_string(gc_dt):
+                                req["data"].pop(k)
 
+            except Exception as e:
+                self.logger.error("data_gc", extra={"reason": e})
             await asyncio.sleep(time_to_next(30))
             
     # async def update_status(self, status):
