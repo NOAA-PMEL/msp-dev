@@ -88,7 +88,7 @@ class SamplingCondition:
     Docstring for SamplingCondition
     """
 
-    def __init__(self, config, event_buffer):
+    def __init__(self, config, status_buffer):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.DEBUG)
         self.logger.debug("SamplingCondition instantiated")
@@ -96,7 +96,7 @@ class SamplingCondition:
         self.config = config
         # self.data_buffer = data_buffer
         self.data_buffer = asyncio.Queue(maxsize=60)
-        self.status_buffer = event_buffer
+        self.status_buffer = status_buffer
         # self.source_map = {"source_id": dict(), "source_name": dict()}
         self.source_map = dict()
         self.criteria_map = dict()
@@ -457,7 +457,7 @@ class SamplingConditionsManager:
                             "config"
                         ],
                         # data_buffer=self.sampling_conditions["conditions"][cond_name]["data_buffer"],
-                        event_buffer=self.status_buffer,
+                        status_buffer=self.status_buffer,
                     )
                     # self.logger.debug("configure", extra={"condition": condition_instance})
                     self.sampling_conditions["conditions"][cond_name][
@@ -541,13 +541,13 @@ class SamplingConditionsManager:
                 cond_valid_time = status["condition"]["valid_config_time"]
 
                 source_id = (
-                    f"envds.{self.config.daq_id}.condition.{cond_name}"
+                    f"envds.{self.config.daq_id}.sampling-condition.{cond_name}"
                 )
                 self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
                 
                 source_topic = source_id.replace(".", "/")
 
-                event = SamplingEvent.create_condition_status_update(
+                event = SamplingEvent.create_sampling_condition_status_update(
                     # source="sensor.mockco-mock1-1234", data=record
                     source=source_id,
                     data=status,
@@ -588,7 +588,7 @@ class SamplingConditionsManager:
                                 "subscribe", extra={"topic": topic.strip()}
                             )
                             await self.client.subscribe(
-                                f"$share/sampling-system/{topic.strip()}"
+                                f"$share/sampling-conditions/{topic.strip()}"
                             )
 
                         # await client.subscribe(config.mqtt_topic_subscription, qos=2)
