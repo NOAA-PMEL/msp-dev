@@ -1640,9 +1640,6 @@ class SamplingSystem:
 
                 for vs_name, vs_data in target_variablesets[map_type].items():
                     variableset = variablemap["variablesets"][vs_name].copy()
-                    if "time" not in variableset["variables"]:
-                        variableset["variables"]["time"] = {"type": "string", "data": target_time}
-                    self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
                     for v_name, v_data in vs_data.items():
                         self.logger.debug("update_variablesets_by_time_index", extra={"vs_name": vs_name, "vset": variableset})
                         self.logger.debug("update_variablesets_by_time_index", extra={"variable_updates": variable_updates})
@@ -1692,6 +1689,12 @@ class SamplingSystem:
                     
                     source_topic = source_id.replace(".", "/")
                     if variableset:
+
+                        if "time" not in variableset["variables"]:
+                            variableset["variables"]["time"] = {"type": "string", "data": target_time}
+                        self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
+
+
                         event = SamplingEvent.create_variableset_data_update(
                             # source="sensor.mockco-mock1-1234", data=record
                             source=source_id,
