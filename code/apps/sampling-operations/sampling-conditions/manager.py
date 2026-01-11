@@ -578,8 +578,8 @@ class SamplingConditionsManager:
                 self.logger.debug("variableset_data_update", extra={"condition": condition})
                 dt = ce.data["variables"]["time"]
 
-                if "time" not in data_map[cond_name]["variables"]:
-                    data_map[cond_name]["variables"]["time"] = {"data": dt["data"]}
+                # if "time" not in data_map[cond_name]["variables"]:
+                #     data_map[cond_name]["variables"]["time"] = {"data": dt["data"]}
 
                 self.logger.debug("variableset_data_update", extra={"data_map": data_map})
 
@@ -595,9 +595,10 @@ class SamplingConditionsManager:
             for cond_name, cond_data in data_map.items():
                 payload = {"condition_variables": cond_data["variables"]}
                 self.logger.debug("variableset_data_update", extra={"cond_payload": payload})
-                await self.sampling_conditions["conditions"][cond_name][
-                    "data_buffer"
-                ].put(payload)
+                db = self.sampling_conditions["conditions"][cond_name]["data_buffer"]
+                self.logger.debug("variableset_data_update", extra={"data_buffer": db})
+                await db.put(payload)
+                self.logger.debug("variableset_data_update", extra={"db_q": db.qsize()})
 
                 # payload = {
                 #     "variables": {
