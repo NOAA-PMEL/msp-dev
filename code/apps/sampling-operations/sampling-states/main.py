@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     dry_run: bool = False
 
     class Config:
-        env_prefix = "SAMPLING_CONDITIONS_"
+        env_prefix = "SAMPLING_STATES_"
         case_sensitive = False
 
 
