@@ -1641,7 +1641,7 @@ class SamplingSystem:
                 for vs_name, vs_data in target_variablesets[map_type].items():
                     variableset = variablemap["variablesets"][vs_name].copy()
                     if "time" not in variableset["variables"]:
-                        variableset["variables"]["time"]["data"] = target_time
+                        variableset["variables"]["time"] = {"data": target_time}
                     for v_name, v_data in vs_data.items():
                         self.logger.debug("update_variablesets_by_time_index", extra={"vs_name": vs_name, "vset": variableset})
                         self.logger.debug("update_variablesets_by_time_index", extra={"variable_updates": variable_updates})
