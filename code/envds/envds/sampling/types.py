@@ -12,8 +12,8 @@ class SamplingEventType(BaseEventType):
     TYPE_PROJECT = "project"
     TYPE_PLATFORM = "platform"
     TYPE_SAMPLING = "sampling"
-    TYPE_SAMPLING_CONDITION = "sampling-condition"
-    TYPE_SAMPLING_STATE = "sampling-state"
+    TYPE_SAMPLING_CONDITION = "samplingcondition"
+    TYPE_SAMPLING_STATE = "samplingstate"
     
     # ACTION_RECV = "recv"
     # ACTION_SEND = "send"
