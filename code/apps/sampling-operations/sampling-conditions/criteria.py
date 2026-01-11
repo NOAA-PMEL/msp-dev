@@ -57,6 +57,7 @@ class LimitMinMax(SamplingCriterion):
 
     def __init__(self, config):
         super(LimitMinMax, self).__init__(config)
+        self.logger.debug("LimitMinMax instantiated")
         self.min_value = None
         self.max_value = None
         self.true_if = "inside"  # inside or outside of value >=min and <=max
