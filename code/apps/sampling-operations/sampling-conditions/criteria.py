@@ -47,6 +47,7 @@ class SamplingCriterion:
         return self.source_names
 
     async def evaluate(self, sources) -> bool:
+        self.debug("evaluate-base")
         return False
 
 class LimitMinMax(SamplingCriterion):
@@ -72,7 +73,9 @@ class LimitMinMax(SamplingCriterion):
                 self.true_if = val
 
     async def evaluate(self, sources) -> bool:
+        super(LimitMinMax, self).evaluate()
         result = []
+        self.debug("evaluate", extra={"src_vals": sources})
         for source_var in self.get_sources():
             if source_var in sources:
                 source_val = sources[source_val]
