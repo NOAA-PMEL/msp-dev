@@ -79,7 +79,7 @@ class SamplingStatesManagerConfig(BaseSettings):
     knative_broker: str | None = None
 
     class Config:
-        env_prefix = "SAMPLING_CONDITIONS_"
+        env_prefix = "SAMPLING_STATES_"
         case_sensitive = False
 
 
