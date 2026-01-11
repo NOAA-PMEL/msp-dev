@@ -89,6 +89,10 @@ class SamplingCondition:
     """
 
     def __init__(self, config, data_buffer):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.debug("SamplingCondition instantiated")
+
         self.config = config
         # self.data_buffer = data_buffer
         self.data_buffer = asyncio.Queue(maxsize=60)
@@ -264,6 +268,10 @@ class SamplingCriterion:
     """
 
     def __init__(self, config):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.debug("SamplingCriterion instantiated")
+
         self.config = config
         self.source_names = []
         self.configure()
