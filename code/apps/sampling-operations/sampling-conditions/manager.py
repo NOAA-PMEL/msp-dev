@@ -372,8 +372,8 @@ class SamplingConditionsManager:
                         continue
 
                     # full condition name with namespace
-                    cond_name = f'{condition["metadata"]["name"]}.{condition["metadata"]["sampling_namespace"]}'
-
+                    # cond_name = f'{condition["metadata"]["name"]}.{condition["metadata"]["sampling_namespace"]}'
+                    cond_name = f'{condition["metadata"]["name"]}'
                     if cond_name not in self.sampling_conditions["conditions"]:
                         data_buffer = asyncio.Queue()
                         self.sampling_conditions["conditions"][cond_name] = {
