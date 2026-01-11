@@ -376,13 +376,15 @@ class SamplingConditionsManager:
                     # full condition name with namespace
                     # cond_name = f'{condition["metadata"]["name"]}.{condition["metadata"]["sampling_namespace"]}'
                     cond_name = f'{condition["metadata"]["name"]}'
+                    data_buffer = asyncio.Queue(maxsize=60)
                     if cond_name not in self.sampling_conditions["conditions"]:
-                        # data_buffer = asyncio.Queue()
                         self.sampling_conditions["conditions"][cond_name] = {
-                            "config": condition,
-                            "data_buffer": asyncio.Queue(),
+                            "config": None,
+                            "data_buffer": None,
                             "condition": None,
                         }
+                    self.sampling_conditions["conditions"][cond_name]["config"] = condition
+                    self.sampling_conditions["conditions"][cond_name]["data_buffer"] = data_buffer
 
                     for source_name, source in condition["sources"].items():
                         # TODO get src_id
