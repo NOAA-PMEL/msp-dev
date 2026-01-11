@@ -180,6 +180,7 @@ class SamplingCondition:
         while True:
             try:
                 data = await self.data_buffer.get()
+                self.logger.debug("condition_monitor", extra={"data_buffer": data})
                 if "condition_variables" in data:
                     variables = data["condition_variables"]["variables"]
                     dt = variables["time"]["data"]
