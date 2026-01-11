@@ -90,7 +90,8 @@ class SamplingCondition:
 
     def __init__(self, config, data_buffer):
         self.config = config
-        self.data_buffer = data_buffer
+        # self.data_buffer = data_buffer
+        self.data_buffer = asyncio.Queue(maxsize=60)
         self.source_map = {"source_id": dict(), "source_name": dict()}
         self.criteria_map = dict()
         # self.source_data = dict()
@@ -175,6 +176,10 @@ class SamplingCondition:
         #         self.source_map[source]["criteria"].append(
         #             {"sources":  criterion
         #         )
+
+    async def update(self, data):
+        self.logger.debug("update", extra={"update_data": data})
+        await self.data_buffer.put(data)
 
     async def condition_monitor(self):
 
@@ -412,6 +417,7 @@ class SamplingConditionsManager:
                         ],
                         data_buffer=self.sampling_conditions["conditions"][cond_name]["data_buffer"],
                     )
+                    self.logger.debug("configure", extra={"condition": condition_instance})
                     self.sampling_conditions["conditions"][cond_name][
                         "condition"
                     ] = condition_instance
@@ -599,11 +605,11 @@ class SamplingConditionsManager:
             for cond_name, cond_data in data_map.items():
                 payload = {"condition_variables": cond_data["variables"]}
                 self.logger.debug("variableset_data_update", extra={"cond_payload": payload})
-                db = self.sampling_conditions["conditions"][cond_name]["data_buffer"]
-                self.logger.debug("variableset_data_update", extra={"data_buffer": db})
-                await db.put(payload)
-                self.logger.debug("variableset_data_update", extra={"db_q": db.qsize()})
-
+                # db = self.sampling_conditions["conditions"][cond_name]["data_buffer"]
+                # self.logger.debug("variableset_data_update", extra={"data_buffer": db})
+                # await db.put(payload)
+                # self.logger.debug("variableset_data_update", extra={"db_q": db.qsize()})
+                await self.sampling_conditions["conditions"][cond_name]["condition"].update(payload)
                 # payload = {
                 #     "variables": {
                 #         "time": {"data": dt["data"]},
