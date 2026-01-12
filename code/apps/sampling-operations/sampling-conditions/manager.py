@@ -552,6 +552,7 @@ class SamplingConditionsManager:
                     source=source_id,
                     data=status,
                 )
+                self.logger.debug("condition_status_monitor", extra={"event-type": event["type"]})
                 destpath = f"{source_topic}/status/update"
                 event["destpath"] = destpath
                 event["samplingnamespace"] = cond_ns
@@ -588,7 +589,7 @@ class SamplingConditionsManager:
                                 "subscribe", extra={"topic": topic.strip()}
                             )
                             await self.client.subscribe(
-                                f"$share/sampling-conditions/{topic.strip()}"
+                                f"$share/samplingconditions/{topic.strip()}"
                             )
 
                         # await client.subscribe(config.mqtt_topic_subscription, qos=2)
