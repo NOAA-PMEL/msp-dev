@@ -169,6 +169,7 @@ class SamplingState:
                         transition_dt = get_datetime_with_delta(-(transition_time))
 
                         req_status = []
+                        self.logger.debug("requirement_monitor", extra={"reqs": self.requirements})
                         for ts, st in req["data"].items():
                             if ts > datetime_to_string(transition_dt):
                                 req_status.append(st)
