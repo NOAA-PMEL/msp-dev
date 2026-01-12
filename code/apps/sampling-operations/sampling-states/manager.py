@@ -222,8 +222,11 @@ class SamplingState:
                         # gc_dt = get_datetime_with_delta(delta)
                         gc_dt = get_datetime_with_delta(-(gc_time))
                         keys = list(req["data"].keys())
+                        self.logger.debug("data_gc", extra={"keys": keys, "gc_dt": gc_dt})
                         for k in keys:
+                            self.logger.debug("data_gc", extra={"key": k})
                             if k < datetime_to_string(gc_dt):
+                                self.logger.debug("data_gc-pop", extra={"keys": k})
                                 req["data"].pop(k)
 
             except Exception as e:
