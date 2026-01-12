@@ -225,7 +225,8 @@ class SamplingState:
                         self.logger.debug("data_gc", extra={"keys": keys, "gc_dt": gc_dt})
                         del_list = []
                         for k in keys:
-                            self.logger.debug("data_gc", extra={"key": k, "dt_string": datetime_to_string(gc_dt), "dt": gc_dt})
+                            self.logger.debug("data_gc", extra={"key": k, "dt_string": datetime_to_string(gc_dt), "dt_now": get_datetime()})
+                            self.logger.debug("data_gc", extra={"diff": k < datetime_to_string(gc_dt)})
                             if k < datetime_to_string(gc_dt):
                                 self.logger.debug("data_gc-pop", extra={"keys": k})
                                 # del self.requirements[req_type][req_name]["data"][k]
