@@ -217,10 +217,11 @@ class SamplingState:
                         gc_time = req["transition_time"]["to_become_false"]
                         if req["transition_time"]["to_become_true"] > gc_time:
                             gc_time = req["transition_time"]["to_become_true"]
-
+                        self.logger.debug("data_gc1", extra={"gc_time": gc_time, "req": req})
                         # delta = timedelta(seconds=(gc_time * -1))
                         # gc_dt = get_datetime_with_delta(delta)
                         gc_dt = get_datetime_with_delta(-(gc_time))
+                        self.logger.debug("data_gc", extra={"gc_time": gc_time, "noww": get_datetime_string(), "gc_dt": gc_dt})
                         keys = list(req["data"].keys())
                         self.logger.debug("data_gc", extra={"keys": keys, "gc_dt": gc_dt})
                         del_list = []
