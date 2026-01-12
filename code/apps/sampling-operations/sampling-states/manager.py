@@ -141,15 +141,15 @@ class SamplingState:
     async def update_monitor(self):
 
         while True:
-            # self.logger.debug("condition_monitor", extra={"data_buffer": self.data_buffer})
             try:
                 status = await self.update_buffer.get()
+                self.logger.debug("update_monitor", extra={"update_status": status})
                 try:
                     self.requirements[status["kind"]][status["name"]]["data"][status["time"]] = status["status"]
                 except KeyError:
                     continue
             except Exception as e:
-                self.logger.error("requirement_monitor", extra={"reason": e})
+                self.logger.error("update_monitor", extra={"reason": e})
 
             await asyncio.sleep(0.001)
             self.update_buffer.task_done()
