@@ -173,7 +173,7 @@ class SamplingState:
                         req_status = []
                         self.logger.debug("requirement_monitor", extra={"reqs": self.requirements})
                         for ts, st in req["data"].items():
-                            if ts > datetime_to_string(transition_dt):
+                            if string_to_datetime(ts) > transition_dt:
                                 req_status.append(st)
                         req["status"] = all(req_status)
                         state_status.append(req["status"])
@@ -228,7 +228,7 @@ class SamplingState:
                         for k in keys:
                             self.logger.debug("data_gc", extra={"key": k, "dt_string": datetime_to_string(gc_dt), "dt_now": get_datetime()})
                             self.logger.debug("data_gc", extra={"diff": k < datetime_to_string(gc_dt)})
-                            if k < datetime_to_string(gc_dt):
+                            if string_to_datetime(k) <gc_dt:
                                 self.logger.debug("data_gc-pop", extra={"keys": k})
                                 # del self.requirements[req_type][req_name]["data"][k]
                                 req["data"].pop(k)
