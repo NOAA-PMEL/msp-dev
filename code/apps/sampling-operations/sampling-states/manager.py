@@ -228,10 +228,10 @@ class SamplingState:
                             if k < datetime_to_string(gc_dt):
                                 self.logger.debug("data_gc-pop", extra={"keys": k})
                                 req["data"].pop(k)
-
             except Exception as e:
                 self.logger.error("data_gc", extra={"reason": e})
-            await asyncio.sleep(time_to_next(30))
+            self.logger.debug("data_gc", extra={"self.req": self.requirements})
+            await asyncio.sleep(time_to_next(10))
             
     # async def update_status(self, status):
 
