@@ -601,16 +601,18 @@ class SamplingStatesManager:
             self.logger.debug("requirement_status_update", extra={"ce": ce})
 
             for req_type, status in ce.data.items():
-                req_type = ce.data["condition"]
+                # req_type = ce.data["condition"]
                 if "kind" in status and "name" in status:
                     req_kind = status["kind"]
                     req_name = status["name"]
 
                 try:
+                    self.logger.debug("requirement_status_update", extra={"sampling_states": self.sampling_states})
                     for state_name in self.sampling_states["requirement_map"][req_kind][req_name]:
-                        state = self.sampling_states[state_name]["state"]
+                        state = self.sampling_states["states"][state_name]["state"]
                         await state.update(status)
                 except KeyError:
+                    self.logger.error("requirement_status_update", extra={"reason": e})
                     continue
 
         except Exception as e:
