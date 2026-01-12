@@ -609,7 +609,7 @@ class SamplingStatesManager:
                 try:
                     for state_name in self.sampling_states["requirement_map"][req_kind][req_name]:
                         state = self.sampling_states[state_name]["state"]
-                        state.update(status)
+                        await state.update(status)
                 except KeyError:
                     continue
 
