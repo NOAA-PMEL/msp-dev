@@ -562,7 +562,7 @@ class SamplingConditionsManager:
                     extra={"data": event, "destpath": destpath},
                 )
 
-                self.send_event(event)
+                await self.send_event(event)
             except Exception as e:
                 self.logger.error("condition_event_monitor", extra={"reason": e})
             
