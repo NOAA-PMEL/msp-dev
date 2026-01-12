@@ -227,7 +227,8 @@ class SamplingState:
                             self.logger.debug("data_gc", extra={"key": k})
                             if k < datetime_to_string(gc_dt):
                                 self.logger.debug("data_gc-pop", extra={"keys": k})
-                                req["data"].pop(k)
+                                self.requirements[req_type][req_name]["data"].pop(k)
+                                # req["data"].pop(k)
             except Exception as e:
                 self.logger.error("data_gc", extra={"reason": e})
             self.logger.debug("data_gc", extra={"self.req": self.requirements})
