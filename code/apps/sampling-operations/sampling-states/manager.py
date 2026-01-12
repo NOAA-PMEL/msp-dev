@@ -114,6 +114,7 @@ class SamplingState:
         self.criterion_tasks = []
         
         self.configure()
+        asyncio.create_task(self.update_monitor())
         asyncio.create_task(self.requirement_monitor())
         asyncio.create_task(self.data_gc())
 
@@ -137,6 +138,7 @@ class SamplingState:
     async def update(self, status):
         self.logger.debug("update", extra={"update_status": status})
         await self.update_buffer.put(status)
+        self.logger.debug("update", extra={"update_buffer": self.update_buffer.qsize()})
 
     async def update_monitor(self):
 
