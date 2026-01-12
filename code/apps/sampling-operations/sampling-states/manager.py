@@ -229,9 +229,9 @@ class SamplingState:
                                 self.logger.debug("data_gc-pop", extra={"keys": k})
                                 del self.requirements[req_type][req_name]["data"][k]
                                 # req["data"].pop(k)
+                        self.logger.debug("data_gc", extra={"self.req": self.requirements[req_type][req_name]["data"]})
             except Exception as e:
                 self.logger.error("data_gc", extra={"reason": e})
-            self.logger.debug("data_gc", extra={"self.req": self.requirements})
             await asyncio.sleep(time_to_next(10))
             
     # async def update_status(self, status):
