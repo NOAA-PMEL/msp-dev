@@ -5,8 +5,8 @@ class SamplingEventType(BaseEventType):
     """docstring for envdsBaseType."""
     TYPE_BASE = "envds"
 
-    TYPE_VARIABLEMAP_DEFINITION = "variablemap-definition"
-    TYPE_VARIABLESET_DEFINITION = "variableset-definition"
+    TYPE_VARIABLEMAP_DEFINITION = "variablemapdefinition"
+    TYPE_VARIABLESET_DEFINITION = "variablesetdefinition"
     TYPE_VARIABLESET = "variableset"
     TYPE_DATASET = "dataset"
     TYPE_PROJECT = "project"
@@ -50,7 +50,7 @@ class SamplingEventType(BaseEventType):
 
     @staticmethod
     def dataset_data_request():
-        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_DATAESET), BaseEventType.TYPE_DATA, BaseEventType.ACTION_REQUEST])
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_DATASET), BaseEventType.TYPE_DATA, BaseEventType.ACTION_REQUEST])
 
     @staticmethod
     def dataset_data_update():
