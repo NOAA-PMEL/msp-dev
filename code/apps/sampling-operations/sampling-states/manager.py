@@ -223,12 +223,13 @@ class SamplingState:
                         gc_dt = get_datetime_with_delta(-(gc_time))
                         keys = list(req["data"].keys())
                         self.logger.debug("data_gc", extra={"keys": keys, "gc_dt": gc_dt})
+                        del_list = []
                         for k in keys:
-                            self.logger.debug("data_gc", extra={"key": k})
+                            self.logger.debug("data_gc", extra={"key": k, "dt_string": datetime_to_string(gc_dt), "dt": gc_dt})
                             if k < datetime_to_string(gc_dt):
                                 self.logger.debug("data_gc-pop", extra={"keys": k})
-                                del self.requirements[req_type][req_name]["data"][k]
-                                # req["data"].pop(k)
+                                # del self.requirements[req_type][req_name]["data"][k]
+                                req["data"].pop(k)
                         self.logger.debug("data_gc", extra={"self.req": self.requirements[req_type][req_name]["data"]})
             except Exception as e:
                 self.logger.error("data_gc", extra={"reason": e})
