@@ -161,6 +161,7 @@ class SamplingState:
         while True:
             try:
                 state_status = []
+                current_dt = get_datetime().replace(tzinfo=timezone.utc)
                 for req_type, req_kind in self.requirements.items():
                     for req_name, req in req_kind.items():
                         current_status = req["status"]
@@ -168,7 +169,7 @@ class SamplingState:
                         if current_status is False:
                             transition_time = req["transition_time"]["to_become_true"]
                         # delta = timedelta(seconds=(transition_time * -1))
-                        transition_dt = get_datetime_with_delta(-(transition_time))
+                        transition_dt = get_datetime_with_delta(delta=(-(transition_time)), dt=current_dt)
 
                         req_status = []
                         self.logger.debug("requirement_monitor", extra={"reqs": self.requirements})
@@ -178,7 +179,7 @@ class SamplingState:
                         req["status"] = all(req_status)
                         state_status.append(req["status"])
                         self.logger.debug("requirement_monitor", extra={"state_status": state_status, "req_status": req_status})
-                current_dt = get_datetime()
+                # current_dt = get_datetime()
                 current_secs = current_dt.second
                 if self.current_status:
                     latest_status = any(state_status)
@@ -217,26 +218,26 @@ class SamplingState:
                         gc_time = req["transition_time"]["to_become_false"]
                         if req["transition_time"]["to_become_true"] > gc_time:
                             gc_time = req["transition_time"]["to_become_true"]
-                        self.logger.debug("data_gc1", extra={"gc_time": gc_time, "req": req})
+                        # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "req": req})
                         # delta = timedelta(seconds=(gc_time * -1))
                         # gc_dt = get_datetime_with_delta(delta)
                         dt_now = get_datetime().replace(tzinfo=timezone.utc)
                         gc_dt = get_datetime_with_delta(delta=(-(gc_time)), dt=dt_now)
-                        self.logger.debug("data_gc1", extra={"gc_time": gc_time, "now": get_datetime_string(), "gc_dt": gc_dt})
+                        # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "now": get_datetime_string(), "gc_dt": gc_dt})
                         keys = list(req["data"].keys())
-                        self.logger.debug("data_gc", extra={"keys": keys, "gc_dt": gc_dt})
+                        # self.logger.debug("data_gc", extra={"keys": keys, "gc_dt": gc_dt})
                         del_list = []
                         for k in keys:
-                            self.logger.debug("data_gc2", extra={"key": string_to_datetime(k).replace(tzinfo=timezone.utc), "gc_dt": gc_dt, "dt_now": get_datetime()})
-                            self.logger.debug("data_gc2", extra={"diff": string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt})
+                            # self.logger.debug("data_gc2", extra={"key": string_to_datetime(k).replace(tzinfo=timezone.utc), "gc_dt": gc_dt, "dt_now": get_datetime()})
+                            # self.logger.debug("data_gc2", extra={"diff": string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt})
                             if string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt:
-                                self.logger.debug("data_gc-pop", extra={"keys": k})
+                                # self.logger.debug("data_gc-pop", extra={"keys": k})
                                 # del self.requirements[req_type][req_name]["data"][k]
                                 req["data"].pop(k)
-                        self.logger.debug("data_gc", extra={"self.req": self.requirements[req_type][req_name]["data"]})
+                self.logger.debug("data_gc", extra={"self.req": self.requirements[req_type][req_name]["data"]})
             except Exception as e:
                 self.logger.error("data_gc", extra={"reason": e})
-            await asyncio.sleep(time_to_next(10))
+            await asyncio.sleep(time_to_next(30))
             
     # async def update_status(self, status):
 
