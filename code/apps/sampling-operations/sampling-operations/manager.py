@@ -78,7 +78,7 @@ class SamplingOperationsManagerConfig(BaseSettings):
 
     knative_broker: str | None = None
 
-    system_init_control: Literal["auto", "manual"] = "auto"
+    system_init_control: str = "auto"
     system_init_mode: str | None = None
 
     class Config:
