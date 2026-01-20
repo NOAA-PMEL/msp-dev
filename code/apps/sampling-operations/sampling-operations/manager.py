@@ -111,44 +111,46 @@ class SamplingAction:
         # asyncio.create_task(self.update_status_loop())
 
     def configure(self):
+        try:
+            if not self.config:
+                return
 
-        if not self.config:
-            return
+            kind = self.config["kind"]
+            name = self.config["metadata"]["name"]
 
-        kind = self.config["kind"]
-        name = self.config["metadata"]["name"]
+            self.action_module = self.config["metadata"].get("action_module", "default_actions")
+            self.action_def = self.config["metadata"].get("action_def", "default_def")
 
-        self.action_module = self.config["metadata"].get("action_module", "default_actions")
-        self.action_def = self.config["metadata"].get("action_def", "default_def")
+            # set default max age of 60s
+            self.source_max_age = self.config.get("source_max_age", 60)
 
-        # set default max age of 60s
-        self.source_max_age = self.config.get("source_max_age", 60)
+            if "sources" in self.config:
+                for src_name, src_config in self.config["sources"].items():
+                    if src_name not in self.sources["variables"]:
+                        self.sources["variables"][src_name] = dict()
+                    self.sources["variables"][src_name] = src_config
 
-        if "sources" in self.config:
-            for src_name, src_config in self.config["sources"].items():
-                if src_name not in self.sources["variables"]:
-                    self.sources["variables"][src_name] = dict()
-                self.sources["variables"][src_name] = src_config
+                    vm_name = src_config["variablemap_name"]
+                    vs_name = src_config["variableset_name"]
+                    src_id = "::".join([vm_name][vs_name])
+                    v_name = src_config["variable"]
 
-                vm_name = src_config["variablemap_name"]
-                vs_name = src_config["variableset_name"]
-                src_id = "::".join([vm_name][vs_name])
-                v_name = src_config["variable"]
+                    if src_id not in self.sources["data"]:
+                        self.sources["data"][src_id] = dict()
+                    if v_name not in self.sources["data"][src_id]:
+                        self.sources["data"][src_id][v_name] = dict()
 
-                if src_id not in self.sources["data"]:
-                    self.sources["data"][src_id] = dict()
-                if v_name not in self.sources["data"][src_id]:
-                    self.sources["data"][src_id][v_name] = dict()
+            if "targets" in self.config:
+                for src_name, src_config in self.config["targets"].items():
+                    if src_name not in self.targets["variables"]:
+                        self.targets["variables"][src_name] = dict()
+                    self.targets["variables"][src_name] = src_config
 
-        if "targets" in self.config:
-            for src_name, src_config in self.config["targets"].items():
-                if src_name not in self.targets["variables"]:
-                    self.targets["variables"][src_name] = dict()
-                self.targets["variables"][src_name] = src_config
-
-        mod_ = importlib.import_module(self.action_module)
-        self.method = getattr(mod_, self.action_def)
-
+            mod_ = importlib.import_module(self.action_module)
+            self.method = getattr(mod_, self.action_def)
+        except Exception as e:
+            self.logger.error("configure-action", extra={"reason": e})
+            
     async def run(self):
         source_vars = dict()
 
