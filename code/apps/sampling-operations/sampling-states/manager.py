@@ -503,7 +503,8 @@ class SamplingStatesManager:
                 state_valid_time = status["status"]["valid_config_time"]
 
                 source_id = (
-                    f"envds.{self.config.daq_id}.sampling-state.{state_name}"
+                    # f"envds.{self.config.daq_id}.sampling-state.{state_name}"
+                    f"envds.{self.config.daq_id}.sampling-states"
                 )
                 self.logger.debug("state_status_monitor", extra={"source_id": source_id})
                 
