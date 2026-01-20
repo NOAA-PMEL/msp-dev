@@ -231,7 +231,7 @@ class SamplingMode:
         self.configure()
         asyncio.create_task(self.update_monitor())
         asyncio.create_task(self.requirements_monitor())
-        # asyncio.create_task(self.update_status_loop())
+        asyncio.create_task(self.update_status_loop())
 
     def configure(self):
 
@@ -348,28 +348,28 @@ class SamplingMode:
                                 }
                             }
                             await self.transitions_buffer.put(action)
-                elif (current_secs % 30) == 0:
-                    self.current_state = latest_status
-                    if self.active:
-                        mode_kind = self.config["metadata"]["kind"]
-                        mode_name = self.config["metadata"]["name"]
-                        mode_ns = self.config["metadata"]["sampling_namespace"]
-                        mode_valid_time = self.config["metadata"]["valid_config_time"]
+                # elif (current_secs % 30) == 0:
+                #     self.current_state = latest_status
+                #     if self.active:
+                #         mode_kind = self.config["metadata"]["kind"]
+                #         mode_name = self.config["metadata"]["name"]
+                #         mode_ns = self.config["metadata"]["sampling_namespace"]
+                #         mode_valid_time = self.config["metadata"]["valid_config_time"]
                     
-                        status = {
-                            "status": {
-                                "kind": mode_kind,
-                                "time": get_datetime_string(),
-                                "name": mode_name,
-                                "sampling_namespace": mode_ns,
-                                "valid_config_time": mode_valid_time,
-                                "status": self.current_state
-                            }
-                        }
-                        await self.status_buffer.put(status)
+                #         status = {
+                #             "status": {
+                #                 "kind": mode_kind,
+                #                 "time": get_datetime_string(),
+                #                 "name": mode_name,
+                #                 "sampling_namespace": mode_ns,
+                #                 "valid_config_time": mode_valid_time,
+                #                 "status": self.current_state
+                #             }
+                #         }
+                #         await self.status_buffer.put(status)
 
             except Exception as e:
-                self.logger.error("condition_monitor", extra={"reason": e})
+                self.logger.error("requirements_monitor", extra={"reason": e})
 
             await asyncio.sleep(time_to_next(1))
 
@@ -378,16 +378,18 @@ class SamplingMode:
         while True:
             self.logger.debug("update_state_loop - send update")
 
-            cond_name = self.config["metadata"]["name"]
-            cond_ns = self.config["metadata"]["sampling_namespace"]
-            cond_valid_time = self.config["metadata"]["valid_config_time"]
+            mode_kind = self.config["kind"]
+            mode_name = self.config["metadata"]["name"]
+            mode_ns = self.config["metadata"]["sampling_namespace"]
+            mode_valid_time = self.config["metadata"]["valid_config_time"]
 
             status = {
-                "condition": {
-                    "kind": "SamplingMode",
-                    "name": cond_name,
-                    "sampling_namespace": cond_ns,
-                    "valid_config_time": cond_valid_time,
+                "status": {
+                    "kind": mode_kind,
+                    "time": get_datetime_string(),
+                    "name": mode_name,
+                    "sampling_namespace": mode_ns,
+                    "valid_config_time": mode_valid_time,
                     "status": self.current_state
                 }
             }
