@@ -252,18 +252,28 @@ class SamplingMode:
                         "status": False,
                     }
         if "actions" in self.config:
-            for act_config in self.config["actions"]:
-                for act_true in self.config["actions"]["true"]:
-                    self.actions["true"].append(act_true)
-                for act_false in self.config["actions"]["false"]:
-                    self.actions["true"].append(act_false)
+            for act_test, act_list in self.config["actions"].items():
+                if act_test in self.actions:
+                    for act in act_list:
+                        if act not in act_list:
+                            self.actions[act_test].append(act)
+                # for act_true in self.config["actions"]["true"]:
+                #     self.actions["true"].append(act_true)
+                # for act_false in self.config["actions"]["false"]:
+                #     self.actions["true"].append(act_false)
 
         if "transitions" in self.config:
-            for act_config in self.config["transitions"]:
-                for act_true in self.config["transitions"]["true"]:
-                    self.transitions["true"].append(act_true)
-                for act_false in self.config["transitions"]["false"]:
-                    self.transitions["true"].append(act_false)
+            for act_test, act_list in self.config["transitions"].items():
+                if act_test in self.transitions:
+                    for act in act_list:
+                        if act not in act_list:
+                            self.transitions[act_test].append(act)
+        # if "transitions" in self.config:
+        #     for act_config in self.config["transitions"]:
+        #         for act_true in self.config["transitions"]["true"]:
+        #             self.transitions["true"].append(act_true)
+        #         for act_false in self.config["transitions"]["false"]:
+        #             self.transitions["true"].append(act_false)
 
     def activate(self, active:bool):
         self.active = active
