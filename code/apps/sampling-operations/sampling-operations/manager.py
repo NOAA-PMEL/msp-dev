@@ -410,7 +410,8 @@ class SamplingOperationsManager:
         self.sampling_modes = dict()
         # self.sampling_mode_groups = dict()
         self.sampling_actions = dict()
-
+        
+        self.actions_source_map = dict()
         self.mode_requirements_map = dict()
         self.mode_transition_map = dict()
         self.active_modes = {
@@ -492,7 +493,23 @@ class SamplingOperationsManager:
                     "action": SamplingAction(action, self.actions_target_buffer)
                 }
 
-
+                if "sources" in action:
+                    for src_name, src in actions["sources"]:
+                        vm_name = src["variablemap_name"]
+                        vs_name = src["variableset_name"]
+                        src_id = "::".join([vm_name, vs_name])
+                        v_name = src["variable"]
+                        if src_id not in self.actions_source_map:
+                            self.actions_source_map[src_id] = []
+                        # if v_name not in self.actions_source_map[src_id]:
+                        #     self.actions_source_map[src_id][v_name] = []
+                        self.actions_source_map[src_id].append(
+                            {
+                                "kind": kind,
+                                "name": name,
+                                # "variable": src_name
+                            }
+                        )
             # with open("/app/config/sampling_mode_groups.json", "r") as f:
             #     mode_groups = json.load(f)
             
@@ -881,51 +898,58 @@ class SamplingOperationsManager:
             # get target from dict and send source data to all databuffers
             src_id = ce["source"].split(".")[-1]
 
-            data_map = dict()
+            if src_id in self.actions_source_map:
+                for action_map in self.actions_source_map[src_id]:
+                    kind = action_map["kind"]
+                    name = action_map["name"]
+                    action = self.actions[kind][name]["action"]
+                    await action.update(ce)
 
-            # self.logger.debug("variableset_data_update", extra={"src_id": src_id, "sampling_conditions": self.sampling_conditions})
-            for target in self.sampling_conditions["sources"][src_id]["targets"]:
-                # self.logger.debug("variableset_data_update", extra={"target": target})
-                cond_name = target["condition"]
-                # self.logger.debug("variableset_data_update", extra={"cond_name": cond_name})
-                if cond_name not in data_map:
-                    data_map[cond_name] = {"variables": dict()}
+            # data_map = dict()
 
-                # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
-                condition = self.sampling_conditions["conditions"][cond_name]
-                # self.logger.debug("variableset_data_update", extra={"condition": condition})
-                dt = ce.data["variables"]["time"]
+            # # self.logger.debug("variableset_data_update", extra={"src_id": src_id, "sampling_conditions": self.sampling_conditions})
+            # for target in self.sampling_conditions["sources"][src_id]["targets"]:
+            #     # self.logger.debug("variableset_data_update", extra={"target": target})
+            #     cond_name = target["condition"]
+            #     # self.logger.debug("variableset_data_update", extra={"cond_name": cond_name})
+            #     if cond_name not in data_map:
+            #         data_map[cond_name] = {"variables": dict()}
 
-                # if "time" not in data_map[cond_name]["variables"]:
-                #     data_map[cond_name]["variables"]["time"] = {"data": dt["data"]}
+            #     # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
+            #     condition = self.sampling_conditions["conditions"][cond_name]
+            #     # self.logger.debug("variableset_data_update", extra={"condition": condition})
+            #     dt = ce.data["variables"]["time"]
 
-                # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
+            #     # if "time" not in data_map[cond_name]["variables"]:
+            #     #     data_map[cond_name]["variables"]["time"] = {"data": dt["data"]}
 
-                if target["source_variable"] in ce.data["variables"]:
-                    val = ce.data["variables"][target["source_variable"]]
-                    if target["source_name"] not in data_map[cond_name]["variables"]:
-                        data_map[cond_name]["variables"][target["source_name"]] = {
-                            "data": val
-                        }
-            # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
+            #     # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
 
-            # once all condition data compiled, send all to condition for processing
-            for cond_name, cond_data in data_map.items():
-                cond_data["variables"]["time"] = dt
-                payload = {"condition_variables": cond_data["variables"]}
-                self.logger.debug("variableset_data_update", extra={"cond_payload": payload})
-                # db = self.sampling_conditions["conditions"][cond_name]["data_buffer"]
-                # self.logger.debug("variableset_data_update", extra={"data_buffer": db})
-                # await db.put(payload)
-                # self.logger.debug("variableset_data_update", extra={"db_q": db.qsize()})
-                await self.sampling_conditions["conditions"][cond_name]["condition"].update(payload)
-                # payload = {
-                #     "variables": {
-                #         "time": {"data": dt["data"]},
-                #         condition["source_name"]: {"data": val["data"]}
-                #     }
-                # }
-                # await condition["data_buffer"].put(payload)
+            #     if target["source_variable"] in ce.data["variables"]:
+            #         val = ce.data["variables"][target["source_variable"]]
+            #         if target["source_name"] not in data_map[cond_name]["variables"]:
+            #             data_map[cond_name]["variables"][target["source_name"]] = {
+            #                 "data": val
+            #             }
+            # # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
+
+            # # once all condition data compiled, send all to condition for processing
+            # for cond_name, cond_data in data_map.items():
+            #     cond_data["variables"]["time"] = dt
+            #     payload = {"condition_variables": cond_data["variables"]}
+            #     self.logger.debug("variableset_data_update", extra={"cond_payload": payload})
+            #     # db = self.sampling_conditions["conditions"][cond_name]["data_buffer"]
+            #     # self.logger.debug("variableset_data_update", extra={"data_buffer": db})
+            #     # await db.put(payload)
+            #     # self.logger.debug("variableset_data_update", extra={"db_q": db.qsize()})
+            #     await self.sampling_conditions["conditions"][cond_name]["condition"].update(payload)
+            #     # payload = {
+            #     #     "variables": {
+            #     #         "time": {"data": dt["data"]},
+            #     #         condition["source_name"]: {"data": val["data"]}
+            #     #     }
+            #     # }
+            #     # await condition["data_buffer"].put(payload)
 
         except Exception as e:
             self.logger.error("variableset_data_update", extra={"reason": e})
