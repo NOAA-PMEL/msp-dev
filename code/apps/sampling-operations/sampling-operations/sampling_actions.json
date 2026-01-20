@@ -1,0 +1,54 @@
+[
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "SamplingAction",
+        "metadata": {
+            "name": "set_nominal_inlet_flow",
+            "action_module": "beacons_msp",
+            "action_def": "set_nominal_inlet_flow",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        },
+        "source_max_age": 60,
+        "sources": {
+            "nominal_flow_rate": {
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
+                "variable": "nominal_flow_rate"
+            }
+        },
+        "targets": {
+            "inlet_flow_sp": {
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
+                "variable": "inlet_flow_sp"
+            }
+        }
+    },
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "SystemSamplingAction",
+        "metadata": {
+            "name": "set_isokintic_inlet_flow",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        },
+        "source_max_age": 10,
+        "sources": {
+            "relative_wind_speed": {
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
+                "variable": "relative_wind_speed"
+            }
+        },
+        "targets": {
+            "inlet_flow_sp": {
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
+                "variable": "inlet_flow_sp"
+            }
+        }
+    }
+]

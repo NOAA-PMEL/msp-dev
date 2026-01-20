@@ -302,19 +302,15 @@ class SamplingMode:
                     for req_name, req in req_kind.items():
                         mode_status.append(req["status"])
 
-
+                current_dt = get_datetime().replace(tzinfo=timezone.utc)
+                current_secs = current_dt.second
                 latest_status = all(mode_status)
                 self.logger.debug("requirements_monitor", extra={"current_state": self.current_state, "new_state": latest_status})
                 if latest_status != self.current_state:
                     # send event with updated condition state
                     self.logger.debug("requirements_monitor - send update with new state")
             
-                    cond_name = self.config["metadata"]["name"]
-                    cond_ns = self.config["metadata"]["sampling_namespace"]
-                    cond_valid_time = self.config["metadata"]["valid_config_time"]
-
                     self.current_state = latest_status
-
                     if self.active:
                         mode_kind = self.config["metadata"]["kind"]
                         mode_name = self.config["metadata"]["name"]
@@ -352,6 +348,25 @@ class SamplingMode:
                                 }
                             }
                             await self.transitions_buffer.put(action)
+                elif (current_secs % 30) == 0:
+                    self.current_state = latest_status
+                    if self.active:
+                        mode_kind = self.config["metadata"]["kind"]
+                        mode_name = self.config["metadata"]["name"]
+                        mode_ns = self.config["metadata"]["sampling_namespace"]
+                        mode_valid_time = self.config["metadata"]["valid_config_time"]
+                    
+                        status = {
+                            "status": {
+                                "kind": mode_kind,
+                                "time": get_datetime_string(),
+                                "name": mode_name,
+                                "sampling_namespace": mode_ns,
+                                "valid_config_time": mode_valid_time,
+                                "status": self.current_state
+                            }
+                        }
+                        await self.status_buffer.put(status)
 
             except Exception as e:
                 self.logger.error("condition_monitor", extra={"reason": e})
@@ -393,7 +408,7 @@ class SamplingOperationsManager:
         self.logger.debug("SamplingOperationsManager instantiated")
 
         self.sampling_modes = dict()
-        self.sampling_mode_groups = dict()
+        # self.sampling_mode_groups = dict()
         self.sampling_actions = dict()
 
         self.mode_requirements_map = dict()
@@ -442,7 +457,9 @@ class SamplingOperationsManager:
         self.mqtt_buffer = asyncio.Queue()
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
-        asyncio.create_task(self.condition_status_monitor())
+        asyncio.create_task(self.mode_status_monitor())
+        asyncio.create_task(self.mode_action_monitor())
+        asyncio.create_task(self.mode_transition_monitor())
         # asyncio.create_tasks(self.sampling_mode_monitor())
         # asyncio.create_tasks(self.sampling_state_monitor())
         # asyncio.create_task(self.sampling_condition_monitor())
@@ -476,19 +493,19 @@ class SamplingOperationsManager:
                 }
 
 
-            with open("/app/config/sampling_mode_groups.json", "r") as f:
-                mode_groups = json.load(f)
+            # with open("/app/config/sampling_mode_groups.json", "r") as f:
+            #     mode_groups = json.load(f)
             
-            for group in mode_groups:
-                kind = group["kind"]
-                name = group["metadata"]["name"]
-                if kind not in self.sampling_mode_groups:
-                    self.sampling_mode_groups[kind] = dict()
-                self.sampling_mode_groups[kind][name] = {
-                    "config": group,
-                    "modes": [],
-                    "active_modes": []
-                }
+            # for group in mode_groups:
+            #     kind = group["kind"]
+            #     name = group["metadata"]["name"]
+            #     if kind not in self.sampling_mode_groups:
+            #         self.sampling_mode_groups[kind] = dict()
+            #     self.sampling_mode_groups[kind][name] = {
+            #         "config": group,
+            #         "modes": [],
+            #         "active_modes": []
+            #     }
 
             with open("/app/config/sampling_modes.json", "r") as f:
                 modes = json.load(f)
@@ -675,43 +692,6 @@ class SamplingOperationsManager:
             self.logger.error("submit_request", extra={"reason": e})
             return {}
 
-    async def condition_status_monitor(self):
-        while True:
-            try:
-                status = await self.status_buffer.get()
-
-                cond_name = status["condition"]["name"]
-                cond_ns = status["condition"]["sampling_namespace"]
-                cond_valid_time = status["condition"]["valid_config_time"]
-
-                source_id = (
-                    f"envds.{self.config.daq_id}.sampling-condition.{cond_name}"
-                )
-                self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
-                
-                source_topic = source_id.replace(".", "/")
-
-                event = SamplingEvent.create_sampling_condition_status_update(
-                    # source="sensor.mockco-mock1-1234", data=record
-                    source=source_id,
-                    data=status,
-                )
-                self.logger.debug("condition_status_monitor", extra={"event-type": event["type"]})
-                destpath = f"{source_topic}/status/update"
-                event["destpath"] = destpath
-                event["samplingnamespace"] = cond_ns
-                event["validconfigtime"] = cond_valid_time
-                self.logger.debug(
-                    "evaluate_criteria",
-                    extra={"data": event, "destpath": destpath},
-                )
-
-                await self.send_event(event)
-            except Exception as e:
-                self.logger.error("condition_event_monitor", extra={"reason": e})
-            
-            await asyncio.sleep(0.001)
-            self.status_buffer.task_done()
 
     async def get_from_mqtt_loop(self):
         reconnect = 10
@@ -832,7 +812,8 @@ class SamplingOperationsManager:
                 mode_valid_time = status["status"]["valid_config_time"]
 
                 source_id = (
-                    f"envds.{self.config.daq_id}.sampling-mode.{mode_name}"
+                    # f"envds.{self.config.daq_id}.sampling-mode.{mode_name}"
+                    f"envds.{self.config.daq_id}.sampling-operations"
                 )
                 self.logger.debug("mode_status_monitor", extra={"source_id": source_id})
                 
