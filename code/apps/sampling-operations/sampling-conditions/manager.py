@@ -304,7 +304,7 @@ class SamplingCondition:
             self.current_state = state
 
             status = {
-                "condition": {
+                "status": {
                     "kind": "SamplingCondition",
                     "time": timestamp,
                     "name": cond_name,
@@ -335,7 +335,7 @@ class SamplingCondition:
             cond_valid_time = self.config["metadata"]["valid_config_time"]
 
             status = {
-                "condition": {
+                "status": {
                     "kind": "SamplingCondition",
                     "name": cond_name,
                     "sampling_namespace": cond_ns,
@@ -536,9 +536,9 @@ class SamplingConditionsManager:
             try:
                 status = await self.status_buffer.get()
 
-                cond_name = status["condition"]["name"]
-                cond_ns = status["condition"]["sampling_namespace"]
-                cond_valid_time = status["condition"]["valid_config_time"]
+                cond_name = status["status"]["name"]
+                cond_ns = status["status"]["sampling_namespace"]
+                cond_valid_time = status["status"]["valid_config_time"]
 
                 source_id = (
                     f"envds.{self.config.daq_id}.sampling-condition.{cond_name}"
