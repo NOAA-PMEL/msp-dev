@@ -12,7 +12,10 @@ sampling_states = [
             {
                 "kind": "SamplingCondition",
                 "name": "cn_limit",
-                "required_time_to_transition": 5
+                "required_time_to_transition": {
+                    "to_become_false": 5,
+                    "to_become_true": 10
+                }
             }
         ]
     },

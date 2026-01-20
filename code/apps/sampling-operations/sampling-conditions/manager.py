@@ -541,7 +541,8 @@ class SamplingConditionsManager:
                 cond_valid_time = status["status"]["valid_config_time"]
 
                 source_id = (
-                    f"envds.{self.config.daq_id}.sampling-condition.{cond_name}"
+                    # f"envds.{self.config.daq_id}.sampling-condition.{cond_name}"
+                    f"envds.{self.config.daq_id}.sampling-conditions"
                 )
                 self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
                 
