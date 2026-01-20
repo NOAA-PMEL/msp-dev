@@ -122,7 +122,7 @@ class SamplingAction:
         self.action_def = self.config["metadata"].get("action_def", "default_def")
 
         # set default max age of 60s
-        self.source_max_age = self.config["source_max_age", 60]
+        self.source_max_age = self.config.get("source_max_age", 60)
 
         if "sources" in self.config:
             for src_name, src_config in self.config["sources"].items():
