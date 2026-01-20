@@ -490,7 +490,7 @@ class SamplingOperationsManager:
     def configure(self):
         # set clients
 
-        self.logger.debug("configure", extra={"self.config": self.config})
+        # self.logger.debug("configure", extra={"self.config": self.config})
 
         try:
 
@@ -498,7 +498,7 @@ class SamplingOperationsManager:
             # load modes
             # (in init) start monitors
             # (in init) start handlers for state and mode status information
-            self.logger.debug("configure-manager", extra={"self.config", self.config})
+            print(f"self.config:  {self.config}")
             with open("/app/config/sampling_operations_actions.json", "r") as f:
                 actions = json.load(f)
             
@@ -604,8 +604,8 @@ class SamplingOperationsManager:
             self.logger.error("configure", extra={"reason": e})
 
     def init_modes(self):
-        self.activate_system_mode(self.config["system_init_mode"])
-        self.set_system_control(self.config["system_init_control"])
+        self.activate_system_mode(self.config.system_init_mode)
+        self.set_system_control(self.config.system_init_control)
 
     def set_system_control(self, control="auto"):
         self.system_control = control
