@@ -115,42 +115,54 @@ class SamplingAction:
             if not self.config:
                 return
 
+            print("here:1")
             kind = self.config["kind"]
             name = self.config["metadata"]["name"]
 
+            print("here:2")
             self.action_module = self.config["metadata"].get("action_module", "default_actions")
+            print("here:3")
             self.action_def = self.config["metadata"].get("action_def", "default_def")
+            print("here:4")
 
             # set default max age of 60s
             self.source_max_age = self.config.get("source_max_age", 60)
+            print("here:5")
 
             if "sources" in self.config:
                 for src_name, src_config in self.config["sources"].items():
                     if src_name not in self.sources["variables"]:
                         self.sources["variables"][src_name] = dict()
                     self.sources["variables"][src_name] = src_config
+                    print("here:6")
 
                     vm_name = src_config["variablemap_name"]
                     vs_name = src_config["variableset_name"]
                     src_id = "::".join([vm_name][vs_name])
                     v_name = src_config["variable"]
+                    print("here:7")
 
                     if src_id not in self.sources["data"]:
                         self.sources["data"][src_id] = dict()
+                    print("here:8")
                     if v_name not in self.sources["data"][src_id]:
                         self.sources["data"][src_id][v_name] = dict()
+                    print("here:9")
 
             if "targets" in self.config:
                 for src_name, src_config in self.config["targets"].items():
                     if src_name not in self.targets["variables"]:
                         self.targets["variables"][src_name] = dict()
                     self.targets["variables"][src_name] = src_config
+                    print("here:10")
 
             mod_ = importlib.import_module(self.action_module)
+            print("here:11")
             self.method = getattr(mod_, self.action_def)
+            print("here:12")
         except Exception as e:
             self.logger.error("configure-action", extra={"reason": e})
-            
+
     async def run(self):
         source_vars = dict()
 
