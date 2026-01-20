@@ -281,7 +281,7 @@ class SamplingMode:
             #             self.transitions["true"].append(act_false)
         except Exception as e:
             self.logger.error("configure-samplemode", extra={"reason": e})
-            
+
     def activate(self, active:bool):
         self.active = active
 
@@ -498,7 +498,7 @@ class SamplingOperationsManager:
             # load modes
             # (in init) start monitors
             # (in init) start handlers for state and mode status information
-
+            self.logger.debug("configure-manager", extra={"self.config", self.config})
             with open("/app/config/sampling_operations_actions.json", "r") as f:
                 actions = json.load(f)
             
@@ -529,6 +529,7 @@ class SamplingOperationsManager:
                                 # "variable": src_name
                             }
                         )
+            self.logger.debug("configure-manager", extra={"self.actions", self.sampling_actions})
             # with open("/app/config/sampling_mode_groups.json", "r") as f:
             #     mode_groups = json.load(f)
             
@@ -577,6 +578,7 @@ class SamplingOperationsManager:
                                 )
                         except KeyError:
                             continue
+                self.logger.debug("configure-manager", extra={"self.mode", self.sampling_modes})
                     # if "states" in mode["requirements"]:
                     #     for req_mode in mode["requirements"]["states"]:
                     #         try:
