@@ -584,9 +584,6 @@ class SamplingOperationsManager:
         except Exception as e:
             self.logger.error("configure", extra={"reason": e})
 
-    system_init_control: Literal["auto", "manual"] = "auto"
-    system_init_mode: str | None = None
-
     def init_modes(self):
         self.activate_system_mode(self.config["system_init_mode"])
         self.set_system_control(self.config["system_init_control"])
@@ -644,12 +641,12 @@ class SamplingOperationsManager:
             else:
                 await asyncio.sleep(time_to_next(1))
 
-    async def activate_system_mode(self, name:str):
-        if name not in self.samping_modes["SystemMode"]:
-            return
-        mode_entry = self.samping_modes["SystemMode"][name]
-        if mode_entry["instance"] is None:
-            mode = self.create_mode(mode_entry["config"])
+    # async def activate_system_mode(self, name:str):
+    #     if name not in self.samping_modes["SystemMode"]:
+    #         return
+    #     mode_entry = self.samping_modes["SystemMode"][name]
+    #     if mode_entry["instance"] is None:
+    #         mode = self.create_mode(mode_entry["config"])
 
     def open_http_client(self):
         # create a new client for each request
