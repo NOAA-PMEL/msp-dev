@@ -235,46 +235,53 @@ class SamplingMode:
 
     def configure(self):
 
-        if not self.config:
-            return
+        try:
+            self.logger.debug("configure-samplingmode")
+            if not self.config:
+                return
 
-        kind = req_config["kind"]
-        name = req_config["metadata"]["name"]
-        if "requirements" in self.config:
-            for req_config in self.config["requirements"]:
+            kind = req_config["kind"]
+            name = req_config["metadata"]["name"]
+            if "requirements" in self.config:
+                for req_config in self.config["requirements"]:
 
-                if kind not in self.requirements:
-                    self.requirements[kind] = dict()
-                if name not in self.requirements[kind]:
-                    self.requirements[kind][name] = {
-                        "config": req_config,
-                        "data": {},
-                        "status": False,
-                    }
-        if "actions" in self.config:
-            for act_test, act_list in self.config["actions"].items():
-                if act_test in self.actions:
-                    for act in act_list:
-                        if act not in act_list:
-                            self.actions[act_test].append(act)
-                # for act_true in self.config["actions"]["true"]:
-                #     self.actions["true"].append(act_true)
-                # for act_false in self.config["actions"]["false"]:
-                #     self.actions["true"].append(act_false)
+                    if kind not in self.requirements:
+                        self.requirements[kind] = dict()
+                    if name not in self.requirements[kind]:
+                        self.requirements[kind][name] = {
+                            "config": req_config,
+                            "data": {},
+                            "status": False,
+                        }
+            self.logger.debug("configure-samplingmode", extra={"self.requirements": self.requirements})
+            if "actions" in self.config:
+                for act_test, act_list in self.config["actions"].items():
+                    if act_test in self.actions:
+                        for act in act_list:
+                            if act not in act_list:
+                                self.actions[act_test].append(act)
+                    # for act_true in self.config["actions"]["true"]:
+                    #     self.actions["true"].append(act_true)
+                    # for act_false in self.config["actions"]["false"]:
+                    #     self.actions["true"].append(act_false)
 
-        if "transitions" in self.config:
-            for act_test, act_list in self.config["transitions"].items():
-                if act_test in self.transitions:
-                    for act in act_list:
-                        if act not in act_list:
-                            self.transitions[act_test].append(act)
+            self.logger.debug("configure-samplingmode", extra={"self.actions": self.actions})
+            if "transitions" in self.config:
+                for act_test, act_list in self.config["transitions"].items():
+                    if act_test in self.transitions:
+                        for act in act_list:
+                            if act not in act_list:
+                                self.transitions[act_test].append(act)
+            self.logger.debug("configure-samplingmode", extra={"self.transitions": self.transitions})
         # if "transitions" in self.config:
-        #     for act_config in self.config["transitions"]:
-        #         for act_true in self.config["transitions"]["true"]:
-        #             self.transitions["true"].append(act_true)
-        #         for act_false in self.config["transitions"]["false"]:
-        #             self.transitions["true"].append(act_false)
-
+            #     for act_config in self.config["transitions"]:
+            #         for act_true in self.config["transitions"]["true"]:
+            #             self.transitions["true"].append(act_true)
+            #         for act_false in self.config["transitions"]["false"]:
+            #             self.transitions["true"].append(act_false)
+        except Exception as e:
+            self.logger.error("configure-samplemode", extra={"reason": e})
+            
     def activate(self, active:bool):
         self.active = active
 
