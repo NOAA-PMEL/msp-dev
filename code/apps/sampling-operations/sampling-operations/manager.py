@@ -527,7 +527,7 @@ class SamplingOperationsManager:
                 }
 
                 if "sources" in action:
-                    for src_name, src in action["sources"]:
+                    for src_name, src in action["sources"].items():
                         vm_name = src["variablemap_name"]
                         vs_name = src["variableset_name"]
                         src_id = "::".join([vm_name, vs_name])
