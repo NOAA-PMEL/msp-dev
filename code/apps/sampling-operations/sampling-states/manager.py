@@ -181,10 +181,11 @@ class SamplingState:
                         self.logger.debug("requirement_monitor", extra={"state_status": state_status, "req_status": req_status})
                 # current_dt = get_datetime()
                 current_secs = current_dt.second
-                if self.current_status:
-                    latest_status = any(state_status)
-                else:
-                    latest_status = all(state_status)
+                # if self.current_status:
+                #     latest_status = any(state_status)
+                # else:
+                #     latest_status = all(state_status)
+                latest_status = all(state_status)
                 # latest_status = all(state_status)
                 if self.current_status != latest_status or (current_secs % 30) == 0:
                     self.logger.info("status change", extra={"old_status": self.current_status, "new_status": latest_status})
@@ -195,7 +196,7 @@ class SamplingState:
                     state_valid_time = self.config["metadata"]["valid_config_time"]
 
                     status = {
-                        "condition": {
+                        "status": {
                             "kind": "SamplingState",
                             "time": get_datetime_string(),
                             "name": state_name,
@@ -354,7 +355,7 @@ class SamplingState:
             cond_valid_time = self.config["metadata"]["valid_config_time"]
 
             status = {
-                "condition": {
+                "status": {
                     "kind": "SamplingState",
                     "name": cond_name,
                     "sampling_namespace": cond_ns,
@@ -497,9 +498,9 @@ class SamplingStatesManager:
             try:
                 status = await self.status_buffer.get()
 
-                state_name = status["condition"]["name"]
-                state_ns = status["condition"]["sampling_namespace"]
-                state_valid_time = status["condition"]["valid_config_time"]
+                state_name = status["status"]["name"]
+                state_ns = status["status"]["sampling_namespace"]
+                state_valid_time = status["status"]["valid_config_time"]
 
                 source_id = (
                     f"envds.{self.config.daq_id}.sampling-state.{state_name}"
@@ -611,23 +612,21 @@ class SamplingStatesManager:
             
             self.logger.debug("requirement_status_update", extra={"ce": ce})
 
-            for req_type, status in ce.data.items():
-                # req_type = ce.data["condition"]
-                if "kind" in status and "name" in status:
-                    req_kind = status["kind"]
-                    req_name = status["name"]
-
-                try:
-                    self.logger.debug("requirement_status_update", extra={"sampling_states": self.sampling_states})
-                    for state_name in self.sampling_states["requirement_map"][req_kind][req_name]:
-                        state = self.sampling_states["states"][state_name]["state"]
-                        await state.update(status)
-                except KeyError:
-                    self.logger.error("requirement_status_update", extra={"reason": e})
-                    continue
+            # for req_type, status in ce.data.items():
+            try:
+                status = ce.data["status"]
+                req_kind = status["kind"]
+                req_name = status["name"]
+                self.logger.debug("requirement_status_update", extra={"sampling_states": self.sampling_states})
+                for state_name in self.sampling_states["requirement_map"][req_kind][req_name]:
+                    state = self.sampling_states["states"][state_name]["state"]
+                    await state.update(status)
+            except KeyError:
+                self.logger.error("requirement_status_update", extra={"reason": e})
+                    
 
         except Exception as e:
-            self.logger.error("condition_status_update", extra={"reason": e})
+            self.logger.error("requirement_status_update", extra={"reason": e})
         pass            
 
 
