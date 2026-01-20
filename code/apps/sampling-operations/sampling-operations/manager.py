@@ -482,7 +482,7 @@ class SamplingOperationsManager:
             # (in init) start monitors
             # (in init) start handlers for state and mode status information
 
-            with open("/app/config/sampling_actions.json", "r") as f:
+            with open("/app/config/sampling_operations_actions.json", "r") as f:
                 actions = json.load(f)
             
             for action in actions:
@@ -526,7 +526,7 @@ class SamplingOperationsManager:
             #         "active_modes": []
             #     }
 
-            with open("/app/config/sampling_modes.json", "r") as f:
+            with open("/app/config/sampling_operations_modes.json", "r") as f:
                 modes = json.load(f)
             
             for mode in modes:
