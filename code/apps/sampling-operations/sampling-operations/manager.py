@@ -527,7 +527,7 @@ class SamplingOperationsManager:
                 }
 
                 if "sources" in action:
-                    for src_name, src in actions["sources"]:
+                    for src_name, src in action["sources"]:
                         vm_name = src["variablemap_name"]
                         vs_name = src["variableset_name"]
                         src_id = "::".join([vm_name, vs_name])
@@ -615,7 +615,7 @@ class SamplingOperationsManager:
 
 
         except Exception as e:
-            self.logger.error("configure", extra={"reason": e})
+            self.logger.error("configure-manager", extra={"reason": e})
 
     def init_modes(self):
         self.activate_system_mode(self.config.system_init_mode)
