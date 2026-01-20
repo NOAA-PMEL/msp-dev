@@ -138,7 +138,7 @@ class SamplingAction:
 
                     vm_name = src_config["variablemap_name"]
                     vs_name = src_config["variableset_name"]
-                    src_id = "::".join([vm_name][vs_name])
+                    src_id = "::".join([vm_name, vs_name])
                     v_name = src_config["variable"]
                     print("here:7")
 
