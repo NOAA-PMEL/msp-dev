@@ -134,7 +134,7 @@ class SamplingAction:
                     if src_name not in self.sources["variables"]:
                         self.sources["variables"][src_name] = dict()
                     self.sources["variables"][src_name] = src_config
-                    print("here:6")
+                    print(f"here:6 - {src_config}")
 
                     vm_name = src_config["variablemap_name"]
                     vs_name = src_config["variableset_name"]
