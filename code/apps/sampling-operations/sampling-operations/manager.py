@@ -543,7 +543,7 @@ class SamplingOperationsManager:
                                 # "variable": src_name
                             }
                         )
-            self.logger.debug("configure-manager", extra={"self.actions", self.sampling_actions})
+            print(f"configure-manager - self.actions {self.sampling_actions}")
             # with open("/app/config/sampling_mode_groups.json", "r") as f:
             #     mode_groups = json.load(f)
             
