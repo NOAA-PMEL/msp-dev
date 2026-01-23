@@ -258,7 +258,7 @@ class SamplingMode:
                 for req_config in self.config["requirements"]:
 
                     kind = req_config["kind"]
-                    name = req_config["metadata"]["name"]
+                    name = req_config["name"]
 
                     if kind not in self.requirements:
                         self.requirements[kind] = dict()
