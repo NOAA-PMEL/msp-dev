@@ -92,11 +92,11 @@ class SamplingEvent(envdsEvent):
 
     @staticmethod
     def create_sampling_mode_status_request(source: str, data: dict = {}, extra_header: dict = None):
-        return SamplingEvent.create(type=et.sampling_state_mode_request(), source=source, data=data, extra_header=extra_header)
+        return SamplingEvent.create(type=et.sampling_mode_status_request(), source=source, data=data, extra_header=extra_header)
 
     @staticmethod
     def create_sampling_mode_status_update(source: str, data: dict = {}, extra_header: dict = None):
-        return SamplingEvent.create(type=et.sampling_state_mode_update(), source=source, data=data, extra_header=extra_header)
+        return SamplingEvent.create(type=et.sampling_mode_status_update(), source=source, data=data, extra_header=extra_header)
 
 
     # @staticmethod
