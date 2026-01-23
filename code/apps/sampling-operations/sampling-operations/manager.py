@@ -853,7 +853,7 @@ class SamplingOperationsManager:
             self.action_buffer.task_done()
 
     async def mode_status_monitor(self):
-        
+
         while True:
             try:
                 status = await self.status_buffer.get()
@@ -911,7 +911,7 @@ class SamplingOperationsManager:
 
                 for req_map in self.mode_requirements_map[req_kind][req_name]:
                     
-                    mode = self.modes[req_map["kind"]][req_map["name"]]["mode"]
+                    mode = self.sampling_modes[req_map["kind"]][req_map["name"]]["mode"]
                     await mode.update(status)
 
             except KeyError:
