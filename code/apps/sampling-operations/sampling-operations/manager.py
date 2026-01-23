@@ -323,7 +323,7 @@ class SamplingMode:
     async def requirements_monitor(self):
 
         while True:
-            # self.logger.debug("condition_monitor", extra={"data_buffer": self.data_buffer})
+            self.logger.debug("condition_monitor", extra={"data_buffer": self.requirements})
 
             # all delays are done at state level so current status is directly updated
             try:
