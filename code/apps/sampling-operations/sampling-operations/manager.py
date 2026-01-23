@@ -934,7 +934,7 @@ class SamplingOperationsManager:
                 for action_map in self.actions_source_map[src_id]:
                     kind = action_map["kind"]
                     name = action_map["name"]
-                    action = self.actions[kind][name]["action"]
+                    action = self.sampling_actions[kind][name]["action"]
                     await action.update(ce)
 
             # data_map = dict()
