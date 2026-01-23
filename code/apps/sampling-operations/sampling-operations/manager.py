@@ -593,7 +593,7 @@ class SamplingOperationsManager:
                                 )
                         except KeyError:
                             continue
-                self.logger.debug("configure-manager", extra={"self.mode", self.sampling_modes})
+                print(f"configure-manager self.mode {self.sampling_modes}")
                     # if "states" in mode["requirements"]:
                     #     for req_mode in mode["requirements"]["states"]:
                     #         try:
