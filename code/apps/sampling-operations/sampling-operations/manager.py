@@ -284,7 +284,7 @@ class SamplingMode:
                     if act_test in self.actions:
                         for act in act_list:
                             self.logger.debug("configure-samplingmode", extra={"act": act})
-                            if act not in act_list:
+                            if act not in self.actions[act_test]:
                                 self.actions[act_test].append(act)
                                 self.logger.debug("configure-samplingmode", extra={"act_test": act_test, "actions": self.actions[act_test]})
                     # for act_true in self.config["actions"]["true"]:
@@ -297,7 +297,7 @@ class SamplingMode:
                 for act_test, act_list in self.config["transitions"].items():
                     if act_test in self.transitions:
                         for act in act_list:
-                            if act not in act_list:
+                            if act not in self.transitions[act_test]:
                                 self.transitions[act_test].append(act)
             print(f"configure-samplingmode self.transitions {self.transitions}")
         # if "transitions" in self.config:
