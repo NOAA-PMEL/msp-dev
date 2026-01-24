@@ -324,6 +324,7 @@ class SamplingMode:
                     self.requirements[status["kind"]][status["name"]]["status"] = (
                         status["status"]
                     )
+                    self.logger.debug("mode.update_monitor", extra={"reqs": self.requirements})
                 except KeyError:
                     continue
             except Exception as e:
