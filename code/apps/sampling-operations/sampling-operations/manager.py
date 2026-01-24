@@ -1008,6 +1008,7 @@ class SamplingOperationsManager:
                     kind = action_map["kind"]
                     name = action_map["name"]
                     action = self.sampling_actions[kind][name]["action"]
+                    self.logger.debug("variableset_data_update", extra={"action": action, "update_ce": ce})
                     await action.update(ce)
 
             # data_map = dict()
