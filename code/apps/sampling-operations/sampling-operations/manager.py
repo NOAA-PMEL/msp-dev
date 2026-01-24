@@ -923,28 +923,28 @@ class SamplingOperationsManager:
 
         try:
             
-            self.logger.debug("requirement_status_update", extra={"ce": ce})
+            self.logger.debug("SOM.requirement_status_update", extra={"ce": ce})
 
             # for req_type, status in ce.data.items():
             try:
                 status = ce.data["status"]
                 req_kind = status["kind"]
                 req_name = status["name"]
-                self.logger.debug("requirement_status_update", extra={"sampling_modes": self.sampling_modes})
-                print(f"requirement_status_update - mode_req_map: {self.mode_requirements_map}")
+                self.logger.debug("SOM.requirement_status_update", extra={"sampling_modes": self.sampling_modes})
+                print(f"SOM.requirement_status_update - mode_req_map: {self.mode_requirements_map}")
                 for req_map in self.mode_requirements_map[req_kind][req_name]:
-                    print(f"requirement_status_update - req_map: {req_map}")
+                    print(f"SOM.requirement_status_update - req_map: {req_map}")
                     mode = self.sampling_modes[req_map["kind"]][req_map["name"]]["mode"]
-                    print(f"requirement_status_update - mode: {mode}")
+                    print(f"SOM.requirement_status_update - mode: {mode}")
                     await mode.update(status)
 
             except KeyError as e:
-                self.logger.error("requirement_status_update", extra={"reason": e})
+                self.logger.error("SOM.requirement_status_update", extra={"reason": e})
                 pass
                     
 
         except Exception as e:
-            self.logger.error("requirement_status_update", extra={"reason": e})
+            self.logger.error("SOM.requirement_status_update", extra={"reason": e})
         pass            
 
     async def variableset_data_update(self, ce: CloudEvent):
