@@ -85,6 +85,7 @@ class SamplingOperationsManagerConfig(BaseSettings):
         env_prefix = "SAMPLING_OPERATIONS_"
         case_sensitive = False
 
+
 class SamplingAction:
     """
     Docstring for SamplingAction
@@ -120,7 +121,9 @@ class SamplingAction:
             name = self.config["metadata"]["name"]
 
             print("here:2")
-            self.action_module = self.config["metadata"].get("action_module", "default_actions")
+            self.action_module = self.config["metadata"].get(
+                "action_module", "default_actions"
+            )
             print("here:3")
             self.action_def = self.config["metadata"].get("action_def", "default_def")
             print("here:4")
@@ -172,25 +175,28 @@ class SamplingAction:
         for src_name, src in self.sources["variables"].items():
             src_id = "::".join([src["variablemap_name"], src["variableset_name"]])
             last_var = self.sources["data"][src_id][src_name][src["variable"]]
-            if string_to_datetime(last_var["latest_update"]).replace(tzinfo=timezone.utc) < min_dt:
+            if (
+                string_to_datetime(last_var["latest_update"]).replace(
+                    tzinfo=timezone.utc
+                )
+                < min_dt
+            ):
                 return None
             source_vars[src_name] = last_var["data"]
 
         result = await self.method(**source_vars)
-        
+
         target_vars = dict()
         for trg_name, trg in self.targets["variables"].items():
             if trg_name in result:
-                target_vars[trg_name] = {
-                    "data": result[trg_name],
-                    "metadata": trg
-                }
+                target_vars[trg_name] = {"data": result[trg_name], "metadata": trg}
         await self.target_buffer.put(target_vars)
 
-        self.logger.debug("run - send set settings event", extra={"target_vars": target_vars})
+        self.logger.debug(
+            "run - send set settings event", extra={"target_vars": target_vars}
+        )
 
-
-    async def update(self, data:CloudEvent):
+    async def update(self, data: CloudEvent):
         self.logger.debug("update", extra={"update_data": data})
         await self.data_buffer.put(data)
 
@@ -215,7 +221,6 @@ class SamplingAction:
             self.logger.debug("action.update_monitor", extra={"sources": self.sources})
             await asyncio.sleep(0.001)
             self.data_buffer.task_done()
-
 
 
 class SamplingMode:
@@ -290,15 +295,15 @@ class SamplingMode:
                                 self.transitions[act_test].append(act)
             print(f"configure-samplingmode self.transitions {self.transitions}")
         # if "transitions" in self.config:
-            #     for act_config in self.config["transitions"]:
-            #         for act_true in self.config["transitions"]["true"]:
-            #             self.transitions["true"].append(act_true)
-            #         for act_false in self.config["transitions"]["false"]:
-            #             self.transitions["true"].append(act_false)
+        #     for act_config in self.config["transitions"]:
+        #         for act_true in self.config["transitions"]["true"]:
+        #             self.transitions["true"].append(act_true)
+        #         for act_false in self.config["transitions"]["false"]:
+        #             self.transitions["true"].append(act_false)
         except Exception as e:
             self.logger.error("configure-samplemode", extra={"reason": e})
 
-    def activate(self, active:bool):
+    def activate(self, active: bool):
         self.active = active
 
     def is_active(self) -> bool:
@@ -316,7 +321,9 @@ class SamplingMode:
                 self.logger.debug("update_monitor", extra={"update_status": status})
                 try:
                     # self.requirements[status["kind"]][status["name"]]["data"][status["time"]] = status["status"]
-                    self.requirements[status["kind"]][status["name"]]["status"] = status["status"]
+                    self.requirements[status["kind"]][status["name"]]["status"] = (
+                        status["status"]
+                    )
                 except KeyError:
                     continue
             except Exception as e:
@@ -328,7 +335,10 @@ class SamplingMode:
     async def requirements_monitor(self):
 
         while True:
-            self.logger.debug("SamplingMode.requirements_monitor", extra={"data_buffer": self.requirements})
+            self.logger.debug(
+                "SamplingMode.requirements_monitor",
+                extra={"data_buffer": self.requirements},
+            )
 
             # all delays are done at state level so current status is directly updated
             try:
@@ -337,23 +347,37 @@ class SamplingMode:
                 for req_type, req_kind in self.requirements.items():
                     for req_name, req in req_kind.items():
                         mode_status.append(req["status"])
-                        self.logger.debug("SamplingMode.requirements_monitor", extra={"req_name": req_name, "mode_status": mode_status})
+                        self.logger.debug(
+                            "SamplingMode.requirements_monitor",
+                            extra={"req_name": req_name, "mode_status": mode_status},
+                        )
 
                 current_dt = get_datetime().replace(tzinfo=timezone.utc)
                 current_secs = current_dt.second
                 latest_status = all(mode_status)
-                self.logger.debug("SamplingMode.requirements_monitor", extra={"current_state": self.current_state, "new_state": latest_status})
+                self.logger.debug(
+                    "SamplingMode.requirements_monitor:last_check",
+                    extra={
+                        "mode_name": self.config["metadata"]["name"],
+                        "active": self.is_active(),
+                        "mode_status": mode_status,
+                        "current_state": self.current_state,
+                        "new_state": latest_status,
+                    },
+                )
                 if latest_status != self.current_state:
                     # send event with updated condition state
-                    self.logger.debug("SamplingMode.requirements_monitor - send update with new state")
-            
+                    self.logger.debug(
+                        "SamplingMode.requirements_monitor - send update with new state"
+                    )
+
                     self.current_state = latest_status
                     if self.active:
                         mode_kind = self.config["metadata"]["kind"]
                         mode_name = self.config["metadata"]["name"]
                         mode_ns = self.config["metadata"]["sampling_namespace"]
                         mode_valid_time = self.config["metadata"]["valid_config_time"]
-                    
+
                         status = {
                             "status": {
                                 "kind": mode_kind,
@@ -361,20 +385,19 @@ class SamplingMode:
                                 "name": mode_name,
                                 "sampling_namespace": mode_ns,
                                 "valid_config_time": mode_valid_time,
-                                "status": self.current_state
+                                "status": self.current_state,
                             }
                         }
-                        self.logger.debug("active.status", extra={"current_status": status})
+                        self.logger.debug(
+                            "active.status", extra={"current_status": status}
+                        )
                         await self.status_buffer.put(status)
 
                         run_type = str(self.current_state).lower()
 
                         for act in self.actions[run_type]:
                             action = {
-                                "action": {
-                                    "kind": act["kind"],
-                                    "name": act["name"]
-                                }
+                                "action": {"kind": act["kind"], "name": act["name"]}
                             }
                             self.logger.debug("active.action", extra={"action": action})
                             await self.actions_buffer.put(action)
@@ -383,10 +406,12 @@ class SamplingMode:
                             transition = {
                                 "transition": {
                                     "kind": tran["kind"],
-                                    "name": tran["name"]
+                                    "name": tran["name"],
                                 }
                             }
-                            self.logger.debug("active.transition", extra={"transition": transition})
+                            self.logger.debug(
+                                "active.transition", extra={"transition": transition}
+                            )
                             await self.transitions_buffer.put(transition)
                 # elif (current_secs % 30) == 0:
                 #     self.current_state = latest_status
@@ -395,7 +420,7 @@ class SamplingMode:
                 #         mode_name = self.config["metadata"]["name"]
                 #         mode_ns = self.config["metadata"]["sampling_namespace"]
                 #         mode_valid_time = self.config["metadata"]["valid_config_time"]
-                    
+
                 #         status = {
                 #             "status": {
                 #                 "kind": mode_kind,
@@ -413,13 +438,12 @@ class SamplingMode:
 
             await asyncio.sleep(time_to_next(1))
 
-
     async def update_status_loop(self):
         while True:
             try:
                 if self.active:
                     self.logger.debug("SamplingMode.update_state_loop - send update")
-                    
+
                     mode_kind = self.config["kind"]
                     mode_name = self.config["metadata"]["name"]
                     mode_ns = self.config["metadata"]["sampling_namespace"]
@@ -432,18 +456,20 @@ class SamplingMode:
                             "name": mode_name,
                             "sampling_namespace": mode_ns,
                             "valid_config_time": mode_valid_time,
-                            "status": self.current_state
+                            "status": self.current_state,
                         }
                     }
-                    self.logger.debug("SamplingMode.update_state_loop - send update", extra={"sampling_status": status})
+                    self.logger.debug(
+                        "SamplingMode.update_state_loop - send update",
+                        extra={"sampling_status": status},
+                    )
                     await self.status_buffer.put(status)
 
                 # await self.update_status(status)
             except Exception as e:
                 self.logger.error("SamplingMode.update_state_loop", extra={"reason": e})
-            
-            await asyncio.sleep(10)
 
+            await asyncio.sleep(10)
 
 
 class SamplingOperationsManager:
@@ -457,14 +483,11 @@ class SamplingOperationsManager:
         self.sampling_modes = dict()
         # self.sampling_mode_groups = dict()
         self.sampling_actions = dict()
-        
+
         self.actions_source_map = dict()
         self.mode_requirements_map = dict()
         self.mode_transition_map = dict()
-        self.active_modes = {
-            "SystemMode": [],
-            "SamplingMode": []
-        }
+        self.active_modes = {"SystemMode": [], "SamplingMode": []}
 
         # self.sampling_mode_control = True
         # self.sampling_modes = dict()
@@ -531,7 +554,7 @@ class SamplingOperationsManager:
             print(f"self.config:  {self.config}")
             with open("/app/config/sampling_operations_actions.json", "r") as f:
                 actions = json.load(f)
-            
+
             for action in actions:
                 kind = action["kind"]
                 name = action["metadata"]["name"]
@@ -539,7 +562,7 @@ class SamplingOperationsManager:
                     self.sampling_actions[kind] = dict()
                 self.sampling_actions[kind][name] = {
                     "config": action,
-                    "action": SamplingAction(action, self.actions_target_buffer)
+                    "action": SamplingAction(action, self.actions_target_buffer),
                 }
 
                 if "sources" in action:
@@ -562,7 +585,7 @@ class SamplingOperationsManager:
             print(f"configure-manager - self.actions {self.sampling_actions}")
             # with open("/app/config/sampling_mode_groups.json", "r") as f:
             #     mode_groups = json.load(f)
-            
+
             # for group in mode_groups:
             #     kind = group["kind"]
             #     name = group["metadata"]["name"]
@@ -576,7 +599,7 @@ class SamplingOperationsManager:
 
             with open("/app/config/sampling_operations_modes.json", "r") as f:
                 modes = json.load(f)
-            
+
             for mode in modes:
                 kind = mode["kind"]
                 name = mode["metadata"]["name"]
@@ -584,7 +607,12 @@ class SamplingOperationsManager:
                     self.sampling_modes[kind] = dict()
                 self.sampling_modes[kind][name] = {
                     "config": mode,
-                    "mode": SamplingMode(mode, self.status_buffer, self.actions_buffer, self.transitions_buffer)
+                    "mode": SamplingMode(
+                        mode,
+                        self.status_buffer,
+                        self.actions_buffer,
+                        self.transitions_buffer,
+                    ),
                 }
 
                 # map each requirement to the modes listening for them
@@ -598,37 +626,32 @@ class SamplingOperationsManager:
                                 self.mode_requirements_map[req_kind] = dict()
                                 if req_name not in self.mode_requirements_map[req_kind]:
                                     self.mode_requirements_map[req_kind][req_name] = []
-                                
+
                                 self.mode_requirements_map[req_kind][req_name].append(
-                                    {
-                                        "kind": kind,
-                                        "name": name,
-                                        "active": False
-                                    }
+                                    {"kind": kind, "name": name, "active": False}
                                 )
                         except KeyError:
                             continue
                 print(f"configure-manager self.mode {self.sampling_modes}")
-                    # if "states" in mode["requirements"]:
-                    #     for req_mode in mode["requirements"]["states"]:
-                    #         try:
-                    #             req_kind = req_mode["kind"]
-                    #             req_name = req_mode["metadata"]["name"]
-                    #             if req_kind not in self.mode_requirements_map:
-                    #                 self.mode_requirements_map[req_kind] = dict()
-                    #                 if req_name not in self.mode_requirements_map[req_kind]:
-                    #                     self.mode_requirements_map[req_kind][req_name] = []
-                                    
-                    #                 self.mode_requirements_map[req_kind][req_name].append(
-                    #                     {
-                    #                         "kind": kind,
-                    #                         "name": name,
-                    #                         "active": False
-                    #                     }
-                    #                 )
-                    #         except KeyError:
-                    #             continue
+                # if "states" in mode["requirements"]:
+                #     for req_mode in mode["requirements"]["states"]:
+                #         try:
+                #             req_kind = req_mode["kind"]
+                #             req_name = req_mode["metadata"]["name"]
+                #             if req_kind not in self.mode_requirements_map:
+                #                 self.mode_requirements_map[req_kind] = dict()
+                #                 if req_name not in self.mode_requirements_map[req_kind]:
+                #                     self.mode_requirements_map[req_kind][req_name] = []
 
+                #                 self.mode_requirements_map[req_kind][req_name].append(
+                #                     {
+                #                         "kind": kind,
+                #                         "name": name,
+                #                         "active": False
+                #                     }
+                #                 )
+                #         except KeyError:
+                #             continue
 
         except Exception as e:
             self.logger.error("configure-manager", extra={"reason": e})
@@ -640,20 +663,20 @@ class SamplingOperationsManager:
     def set_system_control(self, control="auto"):
         self.system_control = control
 
-    def activate_required_modes(self, required_mode:dict):
-        
+    def activate_required_modes(self, required_mode: dict):
+
         kind = required_mode["kind"]
         name = required_mode["name"]
-        
+
         if kind not in self.active_modes:
             return
         self.active_modes[kind].append(name)
-        reqs  = self.sampling_modes[kind][name]["config"].get("requirements", [])
-        
+        reqs = self.sampling_modes[kind][name]["config"].get("requirements", [])
+
         for req in reqs:
             self.activate_required_modes(req)
 
-    def activate_system_mode(self, name:str):
+    def activate_system_mode(self, name: str):
         try:
             self.logger.debug("activate_system_mode")
             # self.active_modes = {
@@ -661,19 +684,23 @@ class SamplingOperationsManager:
 
             # }
             if name not in self.sampling_modes["SystemMode"]:
-                self.logger.info("activate_system_mode-can't activate non SystemMode", extra={"req_name": name})
+                self.logger.info(
+                    "activate_system_mode-can't activate non SystemMode",
+                    extra={"req_name": name},
+                )
                 return
             # if name in self.sampling_modes["SystemMode"]:
-            self.active_modes = {
-                "SystemMode": [name],
-                "SamplingMode": []
-            }
-            reqs  = self.sampling_modes["SystemMode"][name]["config"].get("requirements", [])
+            self.active_modes = {"SystemMode": [name], "SamplingMode": []}
+            reqs = self.sampling_modes["SystemMode"][name]["config"].get(
+                "requirements", []
+            )
 
             for req in reqs:
                 self.activate_required_modes(req)
 
-            self.logger.debug("activate_system_mode", extra={"active_modes": self.active_modes})
+            self.logger.debug(
+                "activate_system_mode", extra={"active_modes": self.active_modes}
+            )
 
             # deactivate all modes
             for mod_type, modes in self.sampling_modes.items():
@@ -685,7 +712,10 @@ class SamplingOperationsManager:
                 for mode_name in modes:
                     mode = self.sampling_modes[mode_type][mode_name]
                     mode["mode"].activate(True)
-                    self.logger.debug("activate_system_mode", extra={mode_name: mode["mode"].is_active()})
+                    self.logger.debug(
+                        "activate_system_mode",
+                        extra={mode_name: mode["mode"].is_active()},
+                    )
         except Exception as e:
             self.logger.error("activate_system_mode", extra={"reason": e})
 
@@ -698,7 +728,7 @@ class SamplingOperationsManager:
                 pass
             else:
                 pass
-                
+
             await asyncio.sleep(time_to_next(1))
 
     # async def activate_system_mode(self, name:str):
@@ -767,7 +797,6 @@ class SamplingOperationsManager:
         except Exception as e:
             self.logger.error("submit_request", extra={"reason": e})
             return {}
-
 
     async def get_from_mqtt_loop(self):
         reconnect = 10
@@ -854,11 +883,14 @@ class SamplingOperationsManager:
 
                 action_result = await self.sampling_actions[kind][name]["action"].run()
 
-                self.logger.debug("mode_action_monitor - build settings request", extra={"action_result": action_result})
+                self.logger.debug(
+                    "mode_action_monitor - build settings request",
+                    extra={"action_result": action_result},
+                )
 
             except Exception as e:
                 self.logger.error("mode_action_monitor", extra={"reason": e})
-            
+
             await asyncio.sleep(0.001)
             self.action_buffer.task_done()
 
@@ -872,11 +904,14 @@ class SamplingOperationsManager:
 
                     if kind == "SystemMode":
                         self.activate_system_mode(name)
-                        self.logger.debug("mode_transition_monitor - transition mode", extra={"transition_request": transition})
-                    
+                        self.logger.debug(
+                            "mode_transition_monitor - transition mode",
+                            extra={"transition_request": transition},
+                        )
+
             except Exception as e:
                 self.logger.error("mode_action_monitor", extra={"reason": e})
-            
+
             await asyncio.sleep(0.001)
             self.transitions_buffer.task_done()
 
@@ -895,7 +930,7 @@ class SamplingOperationsManager:
                     f"envds.{self.config.daq_id}.sampling-operations"
                 )
                 self.logger.debug("mode_status_monitor", extra={"source_id": source_id})
-                
+
                 source_topic = source_id.replace(".", "/")
 
                 event = SamplingEvent.create_sampling_mode_status_update(
@@ -911,7 +946,7 @@ class SamplingOperationsManager:
                     "mode_status_monitor",
                     extra={"data": event, "destpath": destpath},
                 )
-                
+
                 # update local requirements
                 await self.requirement_status_update(event)
 
@@ -920,14 +955,14 @@ class SamplingOperationsManager:
 
             except Exception as e:
                 self.logger.error("mode_status_monitor", extra={"reason": e})
-            
+
             await asyncio.sleep(0.001)
             self.status_buffer.task_done()
 
     async def requirement_status_update(self, ce: CloudEvent):
 
         try:
-            
+
             self.logger.debug("SOM.requirement_status_update", extra={"ce": ce})
 
             # for req_type, status in ce.data.items():
@@ -935,27 +970,33 @@ class SamplingOperationsManager:
                 status = ce.data["status"]
                 req_kind = status["kind"]
                 req_name = status["name"]
-                self.logger.debug("SOM.requirement_status_update", extra={"sampling_modes": self.sampling_modes})
-                print(f"SOM.requirement_status_update - mode_req_map: {self.mode_requirements_map}")
+                self.logger.debug(
+                    "SOM.requirement_status_update",
+                    extra={"sampling_modes": self.sampling_modes},
+                )
+                print(
+                    f"SOM.requirement_status_update - mode_req_map: {self.mode_requirements_map}"
+                )
                 for req_map in self.mode_requirements_map[req_kind][req_name]:
                     print(f"SOM.requirement_status_update - req_map: {req_map}")
                     mode = self.sampling_modes[req_map["kind"]][req_map["name"]]["mode"]
-                    print(f"SOM.requirement_status_update - mode: {mode}, status: {status}")
+                    print(
+                        f"SOM.requirement_status_update - mode: {mode}, status: {status}"
+                    )
                     await mode.update(status)
 
             except KeyError as e:
                 self.logger.error("SOM.requirement_status_update", extra={"reason": e})
                 pass
-                    
 
         except Exception as e:
             self.logger.error("SOM.requirement_status_update", extra={"reason": e})
-        pass            
+        pass
 
     async def variableset_data_update(self, ce: CloudEvent):
 
         try:
-            
+
             self.logger.debug("variableset_data_update", extra={"ce": ce})
             # get source_id
             # src_id = "111::222::aaa"
@@ -1017,7 +1058,7 @@ class SamplingOperationsManager:
 
         except Exception as e:
             self.logger.error("variableset_data_update", extra={"reason": e})
-        pass            
+        pass
 
     async def handle_condition_request(self, ce: CloudEvent):
 
@@ -1070,7 +1111,6 @@ class SamplingOperationsManager:
         #     except Exception as e:
         #         self.logger.error("device_data_update", extra={"reason": e})
         #     pass
-
 
         # async def index_monitor(self):
         while True:
@@ -1145,6 +1185,7 @@ class SamplingOperationsManager:
 
             except Exception as e:
                 self.logger.error("index_monitor", extra={"reason": e})
+
 
 async def shutdown():
     print("shutting down")
