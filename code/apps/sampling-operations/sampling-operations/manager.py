@@ -328,13 +328,17 @@ class SamplingMode:
                     self.requirements[status["kind"]][status["name"]]["status"] = (
                         status["status"]
                     )
-                    self.logger.debug(
-                        "mode.update_monitor",
-                        extra={
-                            "mode_name": self.config["metadata"]["name"],
-                            "active": self.is_active(),
-                            "reqs": self.requirements,
-                        },
+                    if self.active:
+                        self.logger.debug(
+                            "mode.update_monitor",
+                            extra={
+                                "mode_name": self.config["metadata"]["name"],
+                                "active": self.is_active(),
+                                "req_kind": status["kind"],
+                                "req_name": status["name"],
+                                "req_status": status["status"],
+                                "reqs": self.requirements,
+                            },
                     )
                 except KeyError:
                     continue
@@ -359,24 +363,26 @@ class SamplingMode:
                 for req_type, req_kind in self.requirements.items():
                     for req_name, req in req_kind.items():
                         mode_status.append(req["status"])
-                        self.logger.debug(
-                            "SamplingMode.requirements_monitor",
-                            extra={"req_name": req_name, "mode_status": mode_status},
-                        )
+                        if self.active:
+                            self.logger.debug(
+                                "SamplingMode.requirements_monitor",
+                                extra={"req_name": req_name, "mode_status": mode_status},
+                            )
 
                 current_dt = get_datetime().replace(tzinfo=timezone.utc)
                 current_secs = current_dt.second
                 latest_status = all(mode_status)
-                self.logger.debug(
-                    "SamplingMode.requirements_monitor:last_check",
-                    extra={
-                        "mode_name": self.config["metadata"]["name"],
-                        "active": self.is_active(),
-                        "mode_status": mode_status,
-                        "current_state": self.current_state,
-                        "new_state": latest_status,
-                    },
-                )
+                if self.active:
+                    self.logger.debug(
+                        "SamplingMode.requirements_monitor:last_check",
+                        extra={
+                            "mode_name": self.config["metadata"]["name"],
+                            "active": self.is_active(),
+                            "mode_status": mode_status,
+                            "current_state": self.current_state,
+                            "new_state": latest_status,
+                        },
+                    )
                 if latest_status != self.current_state:
                     # send event with updated condition state
                     self.logger.debug(
