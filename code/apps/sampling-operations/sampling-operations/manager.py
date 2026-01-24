@@ -330,7 +330,7 @@ class SamplingMode:
                     )
                     if self.active:
                         self.logger.debug(
-                            "mode.update_monitor",
+                            "mode.update_monitor:active",
                             extra={
                                 "mode_name": self.config["metadata"]["name"],
                                 "active": self.is_active(),
