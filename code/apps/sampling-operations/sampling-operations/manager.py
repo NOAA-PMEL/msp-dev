@@ -578,7 +578,7 @@ class SamplingOperationsManager:
                     for req_mode in mode["requirements"]:
                         try:
                             req_kind = req_mode["kind"]
-                            req_name = req_mode["metadata"]["name"]
+                            req_name = req_mode["name"]
                             if req_kind not in self.mode_requirements_map:
                                 self.mode_requirements_map[req_kind] = dict()
                                 if req_name not in self.mode_requirements_map[req_kind]:
