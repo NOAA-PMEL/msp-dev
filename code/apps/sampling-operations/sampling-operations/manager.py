@@ -650,6 +650,7 @@ class SamplingOperationsManager:
                                 )
                         except KeyError:
                             continue
+                print(f"configure-manager self.mode {name}: {self.mode_requirements_map}")
                 print(f"configure-manager self.mode {self.sampling_modes}")
                 # if "states" in mode["requirements"]:
                 #     for req_mode in mode["requirements"]["states"]:
