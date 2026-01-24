@@ -205,7 +205,9 @@ class SamplingAction:
         while True:
             try:
                 event = await self.data_buffer.get()
-                self.logger.debug("action.update_monitor", extra={"update_status": event})
+                self.logger.debug(
+                    "action.update_monitor", extra={"update_status": event}
+                )
                 try:
                     src_id = event["source"].split(".")[-1]
                     dt = event.data["variables"]["time"]
@@ -318,13 +320,22 @@ class SamplingMode:
         while True:
             try:
                 status = await self.update_buffer.get()
-                self.logger.debug("mode.update_monitor", extra={"update_status": status})
+                self.logger.debug(
+                    "mode.update_monitor", extra={"update_status": status}
+                )
                 try:
                     # self.requirements[status["kind"]][status["name"]]["data"][status["time"]] = status["status"]
                     self.requirements[status["kind"]][status["name"]]["status"] = (
                         status["status"]
                     )
-                    self.logger.debug("mode.update_monitor", extra={"reqs": self.requirements})
+                    self.logger.debug(
+                        "mode.update_monitor",
+                        extra={
+                            "mode_name": self.config["metadata"]["name"],
+                            "active": self.is_active(),
+                            "reqs": self.requirements,
+                        },
+                    )
                 except KeyError:
                     continue
             except Exception as e:
@@ -1009,7 +1020,10 @@ class SamplingOperationsManager:
                     kind = action_map["kind"]
                     name = action_map["name"]
                     action = self.sampling_actions[kind][name]["action"]
-                    self.logger.debug("variableset_data_update", extra={"action": action, "update_ce": ce})
+                    self.logger.debug(
+                        "variableset_data_update",
+                        extra={"action": action, "update_ce": ce},
+                    )
                     await action.update(ce)
 
             # data_map = dict()
