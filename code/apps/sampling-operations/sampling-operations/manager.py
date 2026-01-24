@@ -908,10 +908,11 @@ class SamplingOperationsManager:
                 req_kind = status["kind"]
                 req_name = status["name"]
                 self.logger.debug("requirement_status_update", extra={"sampling_modes": self.sampling_modes})
-
+                print(f"requirement_status_update - mode_req_map: {self.mode_requirements_map}")
                 for req_map in self.mode_requirements_map[req_kind][req_name]:
-                    
+                    print(f"requirement_status_update - req_map: {req_map}")
                     mode = self.sampling_modes[req_map["kind"]][req_map["name"]]["mode"]
+                    print(f"requirement_status_update - mode: {mode}")
                     await mode.update(status)
 
             except KeyError as e:
