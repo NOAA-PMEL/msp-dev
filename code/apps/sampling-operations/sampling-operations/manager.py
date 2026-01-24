@@ -642,12 +642,12 @@ class SamplingOperationsManager:
                             req_name = req_mode["name"]
                             if req_kind not in self.mode_requirements_map:
                                 self.mode_requirements_map[req_kind] = dict()
-                                if req_name not in self.mode_requirements_map[req_kind]:
-                                    self.mode_requirements_map[req_kind][req_name] = []
+                            if req_name not in self.mode_requirements_map[req_kind]:
+                                self.mode_requirements_map[req_kind][req_name] = []
 
-                                self.mode_requirements_map[req_kind][req_name].append(
-                                    {"kind": kind, "name": name, "active": False}
-                                )
+                            self.mode_requirements_map[req_kind][req_name].append(
+                                {"kind": kind, "name": name, "active": False}
+                            )
                         except KeyError:
                             continue
                 print(f"configure-manager self.mode {name}: {self.mode_requirements_map}")
