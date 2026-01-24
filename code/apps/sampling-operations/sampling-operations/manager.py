@@ -503,6 +503,7 @@ class SamplingOperationsManager:
         asyncio.create_task(self.mode_status_monitor())
         asyncio.create_task(self.mode_action_monitor())
         asyncio.create_task(self.mode_transition_monitor())
+        asyncio.create_task(self.system_mode_loop())
         # asyncio.create_tasks(self.sampling_mode_monitor())
         # asyncio.create_tasks(self.sampling_state_monitor())
         # asyncio.create_task(self.sampling_condition_monitor())
@@ -644,7 +645,7 @@ class SamplingOperationsManager:
         reqs  = self.sampling_modes[kind][name]["config"].get("requirements", [])
         
         for req in reqs:
-            self.activate_modes(req)
+            self.activate_required_modes(req)
 
     def activate_system_mode(self, name:str):
         
@@ -660,7 +661,7 @@ class SamplingOperationsManager:
             reqs  = self.sampling_modes["SystemMode"][name]["config"].get("requirements", [])
 
             for req in reqs:
-                self.activate_modes(req)
+                self.activate_required_modes(req)
 
         # deactivate all modes
         for mod_type, modes in self.sampling_modes.items():
