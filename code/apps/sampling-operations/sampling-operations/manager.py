@@ -205,7 +205,7 @@ class SamplingAction:
         while True:
             try:
                 event = await self.data_buffer.get()
-                self.logger.debug("update_monitor", extra={"update_status": event})
+                self.logger.debug("action.update_monitor", extra={"update_status": event})
                 try:
                     src_id = event["source"].split(".")[-1]
                     dt = event.data["variables"]["time"]
@@ -216,7 +216,7 @@ class SamplingAction:
                 except KeyError:
                     continue
             except Exception as e:
-                self.logger.error("update_monitor", extra={"reason": e})
+                self.logger.error("action.update_monitor", extra={"reason": e})
 
             self.logger.debug("action.update_monitor", extra={"sources": self.sources})
             await asyncio.sleep(0.001)
@@ -318,7 +318,7 @@ class SamplingMode:
         while True:
             try:
                 status = await self.update_buffer.get()
-                self.logger.debug("update_monitor", extra={"update_status": status})
+                self.logger.debug("mode.update_monitor", extra={"update_status": status})
                 try:
                     # self.requirements[status["kind"]][status["name"]]["data"][status["time"]] = status["status"]
                     self.requirements[status["kind"]][status["name"]]["status"] = (
@@ -327,7 +327,7 @@ class SamplingMode:
                 except KeyError:
                     continue
             except Exception as e:
-                self.logger.error("update_monitor", extra={"reason": e})
+                self.logger.error("mode.update_monitor", extra={"reason": e})
 
             await asyncio.sleep(0.001)
             self.update_buffer.task_done()
