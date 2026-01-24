@@ -300,6 +300,9 @@ class SamplingMode:
     def activate(self, active:bool):
         self.active = active
 
+    def is_active(self) -> bool:
+        return self.active
+
     async def update(self, status):
         self.logger.debug("update", extra={"update_data": status})
         await self.update_buffer.put(status)
@@ -409,25 +412,26 @@ class SamplingMode:
     async def update_status_loop(self):
         while True:
             try:
-                self.logger.debug("SamplingMode.update_state_loop - send update")
+                if self.active:
+                    self.logger.debug("SamplingMode.update_state_loop - send update")
+                    
+                    mode_kind = self.config["kind"]
+                    mode_name = self.config["metadata"]["name"]
+                    mode_ns = self.config["metadata"]["sampling_namespace"]
+                    mode_valid_time = self.config["metadata"]["valid_config_time"]
 
-                mode_kind = self.config["kind"]
-                mode_name = self.config["metadata"]["name"]
-                mode_ns = self.config["metadata"]["sampling_namespace"]
-                mode_valid_time = self.config["metadata"]["valid_config_time"]
-
-                status = {
-                    "status": {
-                        "kind": mode_kind,
-                        "time": get_datetime_string(),
-                        "name": mode_name,
-                        "sampling_namespace": mode_ns,
-                        "valid_config_time": mode_valid_time,
-                        "status": self.current_state
+                    status = {
+                        "status": {
+                            "kind": mode_kind,
+                            "time": get_datetime_string(),
+                            "name": mode_name,
+                            "sampling_namespace": mode_ns,
+                            "valid_config_time": mode_valid_time,
+                            "status": self.current_state
+                        }
                     }
-                }
-                self.logger.debug("SamplingMode.update_state_loop - send update", extra={"sampling_status": status})
-                await self.status_buffer.put(status)
+                    self.logger.debug("SamplingMode.update_state_loop - send update", extra={"sampling_status": status})
+                    await self.status_buffer.put(status)
 
                 # await self.update_status(status)
             except Exception as e:
