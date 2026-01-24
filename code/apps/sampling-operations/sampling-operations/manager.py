@@ -324,7 +324,7 @@ class SamplingMode:
     async def requirements_monitor(self):
 
         while True:
-            self.logger.debug("condition_monitor", extra={"data_buffer": self.requirements})
+            self.logger.debug("SamplingMode.requirements_monitor", extra={"data_buffer": self.requirements})
 
             # all delays are done at state level so current status is directly updated
             try:
@@ -337,10 +337,10 @@ class SamplingMode:
                 current_dt = get_datetime().replace(tzinfo=timezone.utc)
                 current_secs = current_dt.second
                 latest_status = all(mode_status)
-                self.logger.debug("requirements_monitor", extra={"current_state": self.current_state, "new_state": latest_status})
+                self.logger.debug("SamplingMode.requirements_monitor", extra={"current_state": self.current_state, "new_state": latest_status})
                 if latest_status != self.current_state:
                     # send event with updated condition state
-                    self.logger.debug("requirements_monitor - send update with new state")
+                    self.logger.debug("SamplingMode.requirements_monitor - send update with new state")
             
                     self.current_state = latest_status
                     if self.active:
@@ -408,27 +408,31 @@ class SamplingMode:
 
     async def update_status_loop(self):
         while True:
-            self.logger.debug("update_state_loop - send update")
+            try:
+                self.logger.debug("SamplingMode.update_state_loop - send update")
 
-            mode_kind = self.config["kind"]
-            mode_name = self.config["metadata"]["name"]
-            mode_ns = self.config["metadata"]["sampling_namespace"]
-            mode_valid_time = self.config["metadata"]["valid_config_time"]
+                mode_kind = self.config["kind"]
+                mode_name = self.config["metadata"]["name"]
+                mode_ns = self.config["metadata"]["sampling_namespace"]
+                mode_valid_time = self.config["metadata"]["valid_config_time"]
 
-            status = {
-                "status": {
-                    "kind": mode_kind,
-                    "time": get_datetime_string(),
-                    "name": mode_name,
-                    "sampling_namespace": mode_ns,
-                    "valid_config_time": mode_valid_time,
-                    "status": self.current_state
+                status = {
+                    "status": {
+                        "kind": mode_kind,
+                        "time": get_datetime_string(),
+                        "name": mode_name,
+                        "sampling_namespace": mode_ns,
+                        "valid_config_time": mode_valid_time,
+                        "status": self.current_state
+                    }
                 }
-            }
-            await self.status_buffer.put(status)
+                self.logger.debug("SamplingMode.update_state_loop - send update", extra={"sampling_status": status})
+                await self.status_buffer.put(status)
 
-            # await self.update_status(status)
-
+                # await self.update_status(status)
+            except Exception as e:
+                self.logger.error("SamplingMode.update_state_loop", extra={"reason": e})
+            
             await asyncio.sleep(10)
 
 
@@ -917,6 +921,7 @@ class SamplingOperationsManager:
 
             except KeyError as e:
                 self.logger.error("requirement_status_update", extra={"reason": e})
+                pass
                     
 
         except Exception as e:
