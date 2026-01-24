@@ -689,7 +689,7 @@ class SamplingOperationsManager:
         while True:
             # if no active mode, set to init value
             if not self.active_modes["SystemMode"]:
-                await self.activate_system_mode(self.config.system_init_mode)
+                self.activate_system_mode(self.config.system_init_mode)
                 pass
             else:
                 pass
