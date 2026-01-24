@@ -914,7 +914,7 @@ class SamplingOperationsManager:
                     mode = self.sampling_modes[req_map["kind"]][req_map["name"]]["mode"]
                     await mode.update(status)
 
-            except KeyError:
+            except KeyError as e:
                 self.logger.error("requirement_status_update", extra={"reason": e})
                     
 
