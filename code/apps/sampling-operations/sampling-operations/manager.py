@@ -212,6 +212,7 @@ class SamplingAction:
             except Exception as e:
                 self.logger.error("update_monitor", extra={"reason": e})
 
+            self.logger.debug("action.update_monitor", extra={"sources": self.sources})
             await asyncio.sleep(0.001)
             self.data_buffer.task_done()
 
@@ -362,6 +363,7 @@ class SamplingMode:
                                 "status": self.current_state
                             }
                         }
+                        self.logger.debug("active.status", extra={"current_status": status})
                         await self.status_buffer.put(status)
 
                         run_type = str(self.current_state).lower()
@@ -373,6 +375,7 @@ class SamplingMode:
                                     "name": act["name"]
                                 }
                             }
+                            self.logger.debug("active.action", extra={"action": action})
                             await self.actions_buffer.put(action)
 
                         for tran in self.transitions[run_type]:
@@ -382,7 +385,8 @@ class SamplingMode:
                                     "name": tran["name"]
                                 }
                             }
-                            await self.transitions_buffer.put(action)
+                            self.logger.debug("active.transition", extra={"transition": transition})
+                            await self.transitions_buffer.put(transition)
                 # elif (current_secs % 30) == 0:
                 #     self.current_state = latest_status
                 #     if self.active:
