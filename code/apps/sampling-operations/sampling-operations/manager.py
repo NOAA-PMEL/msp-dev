@@ -337,6 +337,7 @@ class SamplingMode:
                 for req_type, req_kind in self.requirements.items():
                     for req_name, req in req_kind.items():
                         mode_status.append(req["status"])
+                        self.logger.debug("SamplingMode.requirements_monitor", extra={"req_name": req_name, "mode_status": mode_status})
 
                 current_dt = get_datetime().replace(tzinfo=timezone.utc)
                 current_secs = current_dt.second
