@@ -388,49 +388,52 @@ class SamplingMode:
                     self.logger.debug(
                         "SamplingMode.requirements_monitor - send update with new state"
                     )
+                    try:
+                        self.current_state = latest_status
+                        if self.active:
+                            mode_kind = self.config["kind"]
+                            mode_name = self.config["metadata"]["name"]
+                            mode_ns = self.config["metadata"]["sampling_namespace"]
+                            mode_valid_time = self.config["metadata"]["valid_config_time"]
 
-                    self.current_state = latest_status
-                    if self.active:
-                        mode_kind = self.config["metadata"]["kind"]
-                        mode_name = self.config["metadata"]["name"]
-                        mode_ns = self.config["metadata"]["sampling_namespace"]
-                        mode_valid_time = self.config["metadata"]["valid_config_time"]
-
-                        status = {
-                            "status": {
-                                "kind": mode_kind,
-                                "time": get_datetime_string(),
-                                "name": mode_name,
-                                "sampling_namespace": mode_ns,
-                                "valid_config_time": mode_valid_time,
-                                "status": self.current_state,
-                            }
-                        }
-                        self.logger.debug(
-                            "active.status", extra={"current_status": status}
-                        )
-                        await self.status_buffer.put(status)
-
-                        run_type = str(self.current_state).lower()
-
-                        for act in self.actions[run_type]:
-                            action = {
-                                "action": {"kind": act["kind"], "name": act["name"]}
-                            }
-                            self.logger.debug("active.action", extra={"action": action})
-                            await self.actions_buffer.put(action)
-
-                        for tran in self.transitions[run_type]:
-                            transition = {
-                                "transition": {
-                                    "kind": tran["kind"],
-                                    "name": tran["name"],
+                            status = {
+                                "status": {
+                                    "kind": mode_kind,
+                                    "time": get_datetime_string(),
+                                    "name": mode_name,
+                                    "sampling_namespace": mode_ns,
+                                    "valid_config_time": mode_valid_time,
+                                    "status": self.current_state,
                                 }
                             }
                             self.logger.debug(
-                                "active.transition", extra={"transition": transition}
+                                "active.status", extra={"current_status": status}
                             )
-                            await self.transitions_buffer.put(transition)
+                            await self.status_buffer.put(status)
+
+                            run_type = str(self.current_state).lower()
+
+                            for act in self.actions[run_type]:
+                                action = {
+                                    "action": {"kind": act["kind"], "name": act["name"]}
+                                }
+                                self.logger.debug("active.action", extra={"action": action})
+                                await self.actions_buffer.put(action)
+
+                            for tran in self.transitions[run_type]:
+                                transition = {
+                                    "transition": {
+                                        "kind": tran["kind"],
+                                        "name": tran["name"],
+                                    }
+                                }
+                                self.logger.debug(
+                                    "active.transition", extra={"transition": transition}
+                                )
+                                await self.transitions_buffer.put(transition)
+                    except Exception as e:
+                        self.logger.error("requirments_monitor - update active modes", extra={"reason": e})
+                        
                 # elif (current_secs % 30) == 0:
                 #     self.current_state = latest_status
                 #     if self.active:
