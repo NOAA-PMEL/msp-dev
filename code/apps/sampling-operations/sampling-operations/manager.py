@@ -648,32 +648,38 @@ class SamplingOperationsManager:
             self.activate_required_modes(req)
 
     def activate_system_mode(self, name:str):
-        
-        self.active_modes = {
-            "SystemMode": None,
-
-        }
-        if name in self.sampling_modes["SystemMode"]:
+        try:
+            self.logger.debug("activate_system_mode")
             self.active_modes = {
-                "SystemMode": [name],
-                "SamplingMode": []
+                "SystemMode": None,
+
             }
-            reqs  = self.sampling_modes["SystemMode"][name]["config"].get("requirements", [])
+            if name in self.sampling_modes["SystemMode"]:
+                self.active_modes = {
+                    "SystemMode": [name],
+                    "SamplingMode": []
+                }
+                reqs  = self.sampling_modes["SystemMode"][name]["config"].get("requirements", [])
 
-            for req in reqs:
-                self.activate_required_modes(req)
+                for req in reqs:
+                    self.activate_required_modes(req)
 
-        # deactivate all modes
-        for mod_type, modes in self.sampling_modes.items():
-            for mode_name, mode in modes.items():
-                mode["mode"].activate(False)
+            self.logger.debug("activate_system_mode", extra={"active_modes": self.active_modes})
 
-        # activate modes in active map
-        for mode_type, modes in self.active_modes.items():
-            for mode_name in modes:
-                mode = self.sampling_modes[mode_type][mode_name]
-                mode["mode"].activate(True)
+            # deactivate all modes
+            for mod_type, modes in self.sampling_modes.items():
+                for mode_name, mode in modes.items():
+                    mode["mode"].activate(False)
 
+            # activate modes in active map
+            for mode_type, modes in self.active_modes.items():
+                for mode_name in modes:
+                    mode = self.sampling_modes[mode_type][mode_name]
+                    mode["mode"].activate(True)
+                    self.logger.debug("activate_system_mode", extra={mode_name: mode["mode"].is_active()})
+        except Exception as e:
+            self.logger.error("activate_system_mode", extra={"reason": e})
+            
     async def system_mode_loop(self):
         if self.current_system_mode is None:
             await self.activate_system_mode(self.config.system_init_mode)
@@ -682,7 +688,9 @@ class SamplingOperationsManager:
             if self.current_system_mode:
                 pass
             else:
-                await asyncio.sleep(time_to_next(1))
+                pass
+                
+            await asyncio.sleep(time_to_next(1))
 
     # async def activate_system_mode(self, name:str):
     #     if name not in self.samping_modes["SystemMode"]:
@@ -849,17 +857,17 @@ class SamplingOperationsManager:
         while True:
             try:
                 transition = await self.transitions_buffer.get()
+                if self.system_control == "auto":
+                    kind = transition["transition"]["kind"]
+                    name = transition["transition"]["name"]
 
-                kind = transition["transition"]["kind"]
-                name = transition["transition"]["name"]
-
-                self.logger.debug("mode_transition_monitor - transition mode", extra={"transition_request": transition})
+                    self.logger.debug("mode_transition_monitor - transition mode", extra={"transition_request": transition})
 
             except Exception as e:
                 self.logger.error("mode_action_monitor", extra={"reason": e})
             
             await asyncio.sleep(0.001)
-            self.action_buffer.task_done()
+            self.transitions_buffer.task_done()
 
     async def mode_status_monitor(self):
 
