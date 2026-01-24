@@ -413,6 +413,7 @@ class SamplingMode:
 
                             run_type = str(self.current_state).lower()
 
+                            self.logger.debug("active.action.list", extra={"actions": self.actions})
                             for act in self.actions[run_type]:
                                 action = {
                                     "action": {"kind": act["kind"], "name": act["name"]}
@@ -433,7 +434,7 @@ class SamplingMode:
                                 await self.transitions_buffer.put(transition)
                     except Exception as e:
                         self.logger.error("requirments_monitor - update active modes", extra={"reason": e})
-                        
+
                 # elif (current_secs % 30) == 0:
                 #     self.current_state = latest_status
                 #     if self.active:
