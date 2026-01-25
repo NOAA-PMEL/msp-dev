@@ -357,6 +357,7 @@ class SamplingState:
             status = {
                 "status": {
                     "kind": "SamplingState",
+                    "time": get_datetime_string(),
                     "name": cond_name,
                     "sampling_namespace": cond_ns,
                     "valid_config_time": cond_valid_time,
