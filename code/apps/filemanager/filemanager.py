@@ -530,9 +530,9 @@ class Filemanager:
                 parts = src.split(".")
                 # device_name = parts[-1].split(self.ID_DELIM)
                 if ce["type"] in [
-                    "envds.data.update",
-                    det.device_data_update(),
-                    det.sensor_data_update(),
+                    # "envds.data.update",
+                    det.data_update(),
+                    # det.sensor_data_update(),
                 ]:
                     device_name = parts[-1].split(self.ID_DELIM)
                     file_path = os.path.join("/data", "device", *device_name)
