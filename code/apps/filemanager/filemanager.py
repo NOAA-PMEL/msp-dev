@@ -575,7 +575,7 @@ class Filemanager:
 
                 file_path = os.path.join("/logs", *log_name)
                 
-                self.file_map["logs"][src] = DataFile(base_path=file_path)
+                self.file_map["logs"][src] = LogFile(base_path=file_path)
             
             self.logger.debug("logs_save", extra={"src": src, "ce": ce})
             await self.file_map["logs"][src].write(ce)
