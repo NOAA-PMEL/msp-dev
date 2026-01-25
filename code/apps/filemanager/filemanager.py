@@ -503,9 +503,8 @@ class Filemanager:
                 ce = await self.save_buffer.get()
 
                 if ce["type"] in [
-                    "envds.data.update",
-                    det.device_data_update(),
-                    det.sensor_data_update(),
+                    # "envds.data.update",
+                    det.data_update(),
                     det.controller_data_update(),
                 ]:
                     # await self.device_data_update(ce)
@@ -519,7 +518,7 @@ class Filemanager:
                 ]:
                     await self.log_save(ce)
             except Exception as e:
-                L.error("handle_mqtt_buffer", extra={"reason": e})
+                L.error("handle_save_buffer", extra={"reason": e})
 
             await asyncio.sleep(0.0001)
             self.save_buffer.task_done()
