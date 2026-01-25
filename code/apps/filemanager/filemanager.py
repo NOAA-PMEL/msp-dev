@@ -36,7 +36,7 @@ from envds.util.util import (
 # from envds.daq.event import DAQEvent
 from envds.daq.types import DAQEventType as det
 from envds.sampling.types import SamplingEventType as sampet
-
+from envds.core import envdsBase
 import uvicorn
 
 handler = logging.StreamHandler()
@@ -427,7 +427,7 @@ class Filemanager:
         self.logger.setLevel(logging.DEBUG)
 
         self.file_map = {"data": dict(), "logs": dict()}
-
+        self.ID_DELIM = envdsBase.ID_DELIM
         self.config = FilemanagerConfig()
         self.configure()
 
