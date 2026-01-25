@@ -516,7 +516,7 @@ class Filemanager:
                     sampet.sampling_state_status_update(),
                     sampet.sampling_mode_status_update(),
                 ]:
-                    await self.log_save(ce)
+                    await self.logs_save(ce)
             except Exception as e:
                 L.error("handle_save_buffer", extra={"reason": e})
 
@@ -526,6 +526,7 @@ class Filemanager:
     async def data_save(self, ce: CloudEvent):
         try:
             src = ce["source"]
+            self.logger.debug("data_save", extra={"src": src, "ce": ce})
             if src not in self.file_map["data"]:
                 parts = src.split(".")
                 # device_name = parts[-1].split(self.ID_DELIM)
@@ -542,15 +543,17 @@ class Filemanager:
                 else:
                     return
                 
-                self.file_map[src] = DataFile(base_path=file_path)
+                self.file_map["data"][src] = DataFile(base_path=file_path)
 
-            await self.file_map[src].write(ce)
+            self.logger.debug("data_save", extra={"src": src, "ce": ce})
+            await self.file_map["data"][src].write(ce)
         except Exception as e:
             self.logger.error("data_save", extra={"reason": e})
 
-    async def log_save(self, ce: CloudEvent):
+    async def logs_save(self, ce: CloudEvent):
         try:
             src = ce["source"]
+            self.logger.debug("logs_save", extra={"src": src, "ce": ce})
             if src not in self.file_map["logs"]:
                 parts = src.split(".")
                 log_name = parts[1:]
@@ -572,9 +575,10 @@ class Filemanager:
 
                 file_path = os.path.join("/logs", *log_name)
                 
-                self.file_map[src] = DataFile(base_path=file_path)
+                self.file_map["logs"][src] = DataFile(base_path=file_path)
             
-            await self.file_map[src].write(ce)
+            self.logger.debug("logs_save", extra={"src": src, "ce": ce})
+            await self.file_map["logs"][src].write(ce)
         except Exception as e:
             self.logger.error("log_update", extra={"reason": e})
 

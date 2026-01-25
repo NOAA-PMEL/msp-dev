@@ -99,7 +99,7 @@ filemanager = Filemanager()
 
 @app.get("/")
 async def root():
-    return {"message": "Hello World from Datastore"}
+    return {"message": "Hello World from Filemanager"}
 
 # @app.post("/device/data/save/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/data/save/")
@@ -130,7 +130,7 @@ async def logs_save(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(
-            "logs+_save", extra={"ce": ce}
+            "logs_save", extra={"ce": ce}
         )  # , "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
