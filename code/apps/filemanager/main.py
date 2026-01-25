@@ -125,12 +125,12 @@ async def data_save(request: Request):
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
-@app.post("/log/save/")
-async def log_save(request: Request):
+@app.post("/logs/save/")
+async def logs_save(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(
-            "log_save", extra={"ce": ce}
+            "logs_save", extra={"ce": ce}
         )  # , "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)

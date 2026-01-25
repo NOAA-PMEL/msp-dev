@@ -67,7 +67,8 @@ class FilemanagerConfig(BaseSettings):
     # # erddap_author: str = "fake_author"
 
     daq_id: str | None = None
-    base_path: str | None = None
+    data_base_path: str | None = None
+    logs_base_path: str | None = None
     save_interval: int = 60
     file_interval: str = "day"
 
