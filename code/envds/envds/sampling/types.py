@@ -5,13 +5,16 @@ class SamplingEventType(BaseEventType):
     """docstring for envdsBaseType."""
     TYPE_BASE = "envds"
 
-    TYPE_VARIABLEMAP_DEFINITION = "variablemap-definition"
-    TYPE_VARIABLESET_DEFINITION = "variableset-definition"
+    TYPE_VARIABLEMAP_DEFINITION = "variablemapdefinition"
+    TYPE_VARIABLESET_DEFINITION = "variablesetdefinition"
     TYPE_VARIABLESET = "variableset"
     TYPE_DATASET = "dataset"
     TYPE_PROJECT = "project"
     TYPE_PLATFORM = "platform"
     TYPE_SAMPLING = "sampling"
+    TYPE_SAMPLING_CONDITION = "samplingcondition"
+    TYPE_SAMPLING_STATE = "samplingstate"
+    TYPE_SAMPLING_MODE = "samplingmode"
     
     # ACTION_RECV = "recv"
     # ACTION_SEND = "send"
@@ -48,7 +51,7 @@ class SamplingEventType(BaseEventType):
 
     @staticmethod
     def dataset_data_request():
-        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_DATAESET), BaseEventType.TYPE_DATA, BaseEventType.ACTION_REQUEST])
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_DATASET), BaseEventType.TYPE_DATA, BaseEventType.ACTION_REQUEST])
 
     @staticmethod
     def dataset_data_update():
@@ -78,3 +81,26 @@ class SamplingEventType(BaseEventType):
     def sampling_data_update():
         return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING), BaseEventType.TYPE_DATA, BaseEventType.ACTION_UPDATE])
 
+    @staticmethod
+    def sampling_condition_status_request():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING_CONDITION), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def sampling_condition_status_update():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING_CONDITION), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def sampling_state_status_request():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING_STATE), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def sampling_state_status_update():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING_STATE), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def sampling_mode_status_request():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING_MODE), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def sampling_mode_status_update():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING_MODE), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_UPDATE])

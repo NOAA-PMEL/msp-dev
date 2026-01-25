@@ -1,0 +1,56 @@
+events = [
+    {
+        "version": "v1",
+        "kind": "ProjectPlatformEvent",
+        "metadata": {
+            "name": "BEACONS",
+            "project": "BEACONS",
+            "platform": "MarjorieC",
+            "event_type": "Deployment",
+            "long_name": "",
+            "description": "",
+            "contacts": [""],
+            "start_time": "2026-05-01T00:00:00Z",
+            "end_time": "",
+        },
+    },
+    {
+        "version": "v1",
+        "kind": "ProjectPlatformEvent",
+        "metadata": {
+            "name": "Phase1",
+            "event_type": "Deployment",
+            "long_name": "",
+            "description": "",
+            "contacts": [""],
+            "project": "BEACONS",
+            "platform": "MarjorieC",
+            "start_time": "2026-05-01T00:00:00Z",
+            "end_time": "2026-11-01T00:00:00Z",
+            "creation_time": "",
+            "modified_time": "",
+        },
+    },
+    {
+        "version": "v1",
+        "kind": "ProjectPlatformEvent",
+        "metadata": {
+            "name": "Phase2",
+            # "project": "BEACONS",
+            # "platform": "MarjorieC",
+            # "event_type": "Deployment",
+            "long_name": "",
+            "description": "",
+            "contacts": [""],
+            # "start_time": "2026-11-01T00:00:00Z",
+            # "end_time": ""
+        },
+        "spec": {  # events don't generally have a spec
+            "project": "BEACONS",
+            "platform": "MarjorieC",
+            "event_type": "deployment",
+            "start_time": "2026-11-01T00:00:00Z",
+            "end_time": "",
+        },
+    },
+]

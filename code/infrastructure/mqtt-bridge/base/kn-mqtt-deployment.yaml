@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kn-mqtt-adapter
+  namespace: msp-system
+  labels:
+    app: kn-mqtt-adapter
+spec:
+  selector:
+    matchLabels:
+      app: kn-mqtt-adapter
+  template:
+    metadata:
+      labels:
+        app: kn-mqtt-adapter
+    spec:
+      containers:
+      - name: kn-mqtt-adapter
+        # image: uasbase2.pmel.noaa.gov:448/test/kn-mqtt-adapter@sha256:1efee0c698b3037b822d00237114e25aacad59942c9dd9199168cc2631143d8d
+        image: registry-msp:5000/msp/kn-mqtt-adapter:0.1.3
+        imagePullPolicy: "Always"
+        env:
+          - name: KN_MQTT_MQTT_BROKER
+            valueFrom:
+              configMapKeyRef:
+                name: kn-mqtt-adapter
+                key: mqtt_broker
+          - name: KN_MQTT_MQTT_PORT
+            valueFrom:
+              configMapKeyRef:
+                name: kn-mqtt-adapter
+                key: mqtt_port
+          - name: KN_MQTT_MQTT_TOPIC_SUBSCRIPTIONS
+            valueFrom:
+              configMapKeyRef:
+                name: kn-mqtt-adapter
+                key: mqtt_topic_subscriptions
+          - name: KN_MQTT_KNATIVE_BROKER
+            valueFrom:
+              configMapKeyRef:
+                name: kn-mqtt-adapter
+                key: knative_broker
+        resources:
+          requests:
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        ports:
+        - name: http
+          # containerPort: 8000
+          containerPort: 80
+          protocol: TCP

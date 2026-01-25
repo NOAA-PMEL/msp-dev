@@ -773,52 +773,86 @@ class SamplingSystem:
 
     def get_variablemap_id(self, vm:dict):
         try:
-            variablemap_type = vm["data"]["attributes"]["variablemap_index_type"]
-            if variablemap_type == "Platform":
-                variablemap_type_id = vm["data"]["attributes"]["platform"]
-            else:
-                return ""
+            print(f"get_variablemap_id: {vm}")
+            # variablemap_type = vm["data"]["attributes"]["variablemap_index_type"]
+            # if variablemap_type == "Platform":
+            #     variablemap_type_id = vm["data"]["attributes"]["platform"]
+            # else:
+            #     return ""
             
             # variable_map_type_id = vm["data"]["attributes"]["variablemap_index_type_id"]
-            variablemap_name = vm["metadata"]["name"]
-            valid_config_time = vm["data"]["attributes"]["valid_config_time"]
+            # variablemap_name = vm["metadata"]["name"]
+            # valid_config_time = vm["data"]["attributes"]["valid_config_time"]
 
-            return "::".join([variablemap_type_id, variablemap_name, valid_config_time])
+            vm_type = vm["variablemap"]["data"]["attributes"]["variablemap_type"]
+            vm_name = vm["variablemap"]["metadata"]["name"]
+            vm_ns = vm["variablemap"]["data"]["attributes"]["sampling_namespace"]
+            vm_valid_config_time = vm["variablemap"]["data"]["attributes"]["valid_config_time"]
+
+            # return "::".join([f"{vm_name}.{vm_ns}", vm_valid_config_time])
+            return "::".join([vm_name, vm_valid_config_time])
+
+            # return "::".join([variablemap_type_id, variablemap_name, valid_config_time])
         except Exception as e:
-            self.logger.error("get_variable_map_id", extra={"reason": e})
+            self.logger.error("get_variablemap_id", extra={"reason": e})
             return ""
 
-    def get_variableset_id(self, variableset_name:str, variableset:dict):
+    def get_variableset_id(self, variablemap:dict, variableset_name:str, variableset:dict):
         try:
-            variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
+            # variablemap_id = self.get_variablemap_id(vm=variablemap)
+
+            #variableset_id should not be bound to a valid_config
+            vm_name = variablemap["variablemap"]["metadata"]["name"]
+            # variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
             
             # variableset_name = variableset["metadata"]["name"]
+            # self.logger.debug("get_variableset_id", extra={"vm_name": vm_name, "variableset_name": variableset_name})
 
-            return "::".join([variablemap_id, variableset_name])
+            return "::".join([vm_name, variableset_name])
         
         except Exception as e:
-            self.logger.error("get_variable_map_id", extra={"reason": e})
+            self.logger.error("get_variableset_id", extra={"reason": e})
             return ""
+
+    def get_variablemap_namespace(self, variablemap:dict):
+        return variablemap["variablemap"]["data"]["attributes"]["sampling_namespace"]
 
     def get_id_components(self, vm_id:str=None, vs_id:str=None) -> dict:
         try:
             if vs_id:
                 parts = vs_id.split("::")
-                comp = {
-                    "variablemap_index_type_id": parts[0],
-                    "variablemap_name": parts[1],
-                    "valid_config_time": parts[2],
-                    "variableset_name": parts[3],
+                # comp = {
+                #     "variablemap_index_type_id": parts[0],
+                #     "variablemap_name": parts[1],
+                #     "valid_config_time": parts[2],
+                #     "variableset_name": parts[3],
 
+                # }
+                comp = {
+                    "variablemap_name": parts[0],
+                    # "valid_config_time": parts[1],
+                    "variableset_name": parts[1]
                 }
+                # vm_name = parts[0].split(".")
+                # vm_ns = ".".join(parts[0].split(".")[1:])
+                # comp["variablemap_name"] = vm_name
+                # comp["sampling_namespace"] = vm_ns
                 return comp
             elif vm_id:
                 parts = vm_id.split("::")
+                # comp = {
+                #     "variablemap_index_type_id": parts[0],
+                #     "variablemap_name": parts[1],
+                #     "valid_config_time": parts[2],
+                # }
                 comp = {
-                    "variablemap_index_type_id": parts[0],
-                    "variablemap_name": parts[1],
-                    "valid_config_time": parts[2],
+                    "variablemap_name": parts[0],
+                    "valid_config_time": parts[1],
                 }
+                # vm_name = parts[0].split(".")
+                # vm_ns = ".".join(parts[0].split(".")[1:])
+                # comp["variablemap_name"] = vm_name
+                # comp["sampling_namespace"] = vm_ns
                 return comp
         except Exception as e:
             self.logger.error("get_id_components", extra={"reason": e})
@@ -1523,18 +1557,33 @@ class SamplingSystem:
     #         self.logger.error("update_timebase_variableset_by_index", extra={"reason": e})
 
     async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict):
-        pass
+        map_type = "direct"
         try:
+            self.logger.debug("update_direct_variable_by_time_index", extra={"time_index": time_index})
 
             index_type = time_index["index_type"]
             index_value = time_index["index_value"]
             update_type = time_index["update_type"]
             target_time = time_index["index_ready"]
 
+            for k,v in variablemap.items():
+                print(f"update_direct_variable_by_time_index: {k}: {v}")
+
+            self.logger.debug("update_direct_variable_by_time_index", extra={"var_map": type(variablemap)})
+
             # variableset = variablemap["variablesets"][variableset_name]
             # indexed_data = variablemap["indexed"]["data"][time_index["index_ready"]][variableset_name]
-            indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][variableset_name]
+            indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][map_type][variableset_name][variable_name]
             
+            # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type]})
+            # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type][index_value]})
+            # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type][index_value]["data"]})
+
+            self.logger.debug("update_direct_variable_by_time_index", extra={"indexed_data": indexed_data})
+            
+            self.logger.debug("update_direct_variable_by_time_index", extra={"variableset_record": variableset_record})
+
+
             #TODO handle multi-d data
             if len(indexed_data) == 0:
                 if variableset_record["type"] in ["string", "str", "char"]:
@@ -1553,7 +1602,7 @@ class SamplingSystem:
                         3,
                     )
 
-            variableset_record[variable_name]["data"] = val
+            variableset_record["variables"][variable_name]["data"] = val
         except Exception as e:
             self.logger.error("update_direct_variable_by_time_index", extra={"reason": e})
 
@@ -1567,6 +1616,7 @@ class SamplingSystem:
 
         try:
             self.logger.debug("update_variablesets_by_time_index", extra={"time_index": time_index})
+            # self.logger.debug("update_variablesets_by_time_index", extra={"var_map": variablemap})
             # print(f"update_variablesets_by_time_index: {variablemap}")
             # vm_name = time_index["variablemap"]
             # vm_cfg_time = time_index["variablemap_revision_time"]
@@ -1591,15 +1641,24 @@ class SamplingSystem:
                 for vs_name, vs_data in target_variablesets[map_type].items():
                     variableset = variablemap["variablesets"][vs_name].copy()
                     for v_name, v_data in vs_data.items():
-                        variable_updates[map_type](
+                        self.logger.debug("update_variablesets_by_time_index", extra={"vs_name": vs_name, "vset": variableset})
+                        self.logger.debug("update_variablesets_by_time_index", extra={"variable_updates": variable_updates})
+                        await variable_updates[map_type](
                             variablemap=variablemap,
                             variableset_name=vs_name,
                             variableset_record=variableset,
                             variable_name=v_name,
                             time_index=time_index
                             )
-
-
+                        self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
+                    
+                    if "time" not in variableset["variables"]:
+                        variableset["variables"]["time"] = {
+                            "shape": ["time"],
+                            "type": "string",
+                            "data": ""
+                        }
+                    variableset["variables"]["time"]["data"] = target_time
 
             #         indexed_data = variablemap["indexed"]["data"][target_time][vs_name]
             #         variableset = variablemap["variablesets"][vs_name].copy()
@@ -1626,12 +1685,23 @@ class SamplingSystem:
 
                     self.logger.debug("update_variablesets_by_time_index", extra={"vs_record": variableset})
                     
-                    varset_id = self.get_variableset_id(variableset_name=vs_name, variableset=variableset)
+                    varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
+
+                    varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
                     source_id = (
-                        f"envds.{self.config.daq_id}.variableset::{varset_id}"
+                        f"envds.{self.config.daq_id}.variableset.{varset_id}"
                     )
+                    self.logger.debug("update_variablesets_by_time_index", extra={"source_id": source_id})
+                    
                     source_topic = source_id.replace(".", "/")
                     if variableset:
+
+                        # if "time" not in variableset["variables"]:
+                        #     variableset["variables"]["time"] = dict()
+                        # variableset["variables"]["time"]["data"] = target_time
+                        # self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
+
+
                         event = SamplingEvent.create_variableset_data_update(
                             # source="sensor.mockco-mock1-1234", data=record
                             source=source_id,
@@ -1639,6 +1709,7 @@ class SamplingSystem:
                         )
                         destpath = f"{source_topic}/data/update"
                         event["destpath"] = destpath
+                        event["samplingnamespace"] = varmap_ns
                         self.logger.debug(
                             "update_variablesets_by_time_index",
                             extra={"data": event, "destpath": destpath},

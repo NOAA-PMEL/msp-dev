@@ -1,0 +1,180 @@
+[
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "SystemMode",
+        "metadata": {
+            "name": "normal",
+            "mode_group": "system-operations",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        },
+        "requirements": [
+            {
+                "kind": "SamplingMode",
+                "name": "nominal_conditions"
+            }
+        ]
+    },
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "SystemMode",
+        "metadata": {
+            "name": "startup",
+            "mode_group": "system-operations",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        },
+        "requirements": [
+            {
+                "kind": "SamplingMode",
+                "name": "system_startup"
+            }
+        ],
+        "transitions": {
+            "true": [
+                {
+                    "kind": "SystemMode",
+                    "name": "normal"
+                }
+            ]
+        }
+    },
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "SamplingMode",
+        "metadata": {
+            "name": "nominal_conditions",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        },
+        "requirements": [
+            {
+                "kind": "SamplingState",
+                "name": "in_sector"
+            },
+            {
+                "kind": "SamplingState",
+                "name": "sampling_limits"
+            }
+        ],
+        "actions": {
+            "true": [
+                {
+                    "kind": "SamplingAction",
+                    "name": "set_isokinetic_inlet_flow"
+                }
+            ],
+            "false": [
+                {
+                    "kind": "SamplingAction",
+                    "name": "set_reverse_inlet_flow"
+                }
+            ]
+        }
+    },
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "SamplingMode",
+        "metadata": {
+            "name": "nominal_location",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        },
+        "requirements": [
+            {
+                "kind": "SamplingState",
+                "name": "beacons_at_sea",
+                "actions": {
+                    "true": [
+                        {
+                            "kind": "SamplingAction",
+                            "name": "set_isokinetic_inlet_flow"
+                        },
+                        {
+                            "kind": "SamplingAction",
+                            "name": "physics_payload_normal"
+                        },
+                        {
+                            "kind": "SamplingAction",
+                            "name": "optics_payload_normal"
+                        }
+                    ],
+                    "false": [
+                        {
+                            "kind": "SamplingAction",
+                            "name": "set_reverse_inlet_flow"
+                        },
+                        {
+                            "kind": "SamplingAction",
+                            "name": "physics_payload_shutdown"
+                        },
+                        {
+                            "kind": "SamplingAction",
+                            "name": "optics_payload_shutdown"
+                        }
+                    ]
+                },
+                "set-modes": {
+                    "true": [
+                        {
+                            "kind": "SamplingMode",
+                            "name": "physics_payload_shutdown"
+                        },
+                        {
+                            "kind": "SamplingMode",
+                            "name": "optics_payload_shutdown"
+                        }
+                    ]
+                }
+            },
+            {
+                "kind": "SamplingState",
+                "name": "sampling_limits",
+                "actions": {
+                    "true": {
+                        "kind": "SamplingAction",
+                        "name": "set_isokinetic_inlet_flow"
+                    },
+                    "false": {
+                        "kind": "SamplingAction",
+                        "name": "set_reverse_inlet_flow"
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "PlatformSamplingMode",
+        "metadata": {
+            "name": "powerup",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        }
+    },
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "PlatformSamplingMode",
+        "metadata": {
+            "name": "startup",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        }
+    },
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "PlatformSamplingMode",
+        "metadata": {
+            "name": "shutdown_inport",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        }
+    }
+]

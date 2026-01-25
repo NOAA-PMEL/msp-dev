@@ -49,7 +49,15 @@ class Settings(BaseSettings):
     # port: int = 8787
     # debug: bool = False
     daq_id: str = "default"
-    ws_hostname: str = "localhost:8080"
+
+    external_hostname: str = "localhost"
+    http_use_tls: bool = False
+    http_port: int = 80
+    https_port: int = 443
+    ws_use_tls: bool = False
+    ws_port: int = 80
+    wss_port: int = 443
+
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
@@ -243,7 +251,16 @@ config = Settings()
 # db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 
 datastore_url = f"datastore.{config.daq_id}-system"
-link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
+# link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
+
+http_url_base = f"http://{config.external_hostname}:{config.http_port}"
+if config.http_use_tls:
+    http_url_base = f"https://{config.external_hostname}:{config.https_port}"
+ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}:"
+if config.ws_use_tls:
+    ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
+
+link_url_base = f"{http_url_base}/msp/dashboardtest"
 
 # websocket = WebSocket(
 #     id="ws-sensor", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/main"
@@ -1018,8 +1035,9 @@ def layout(controller_id=None):
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/{sensor_id}",
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/{sensor_id}",
                 # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor/{sensor_id}"
-                # url=f"ws://mspbase01:8080/msp/dashboardtest/ws/sensor/{sensor_id}"
-                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/controller/{controller_id}",
+                # url=f"ws://mspbase01:8080/msp/dashbexternal_hostname/sensor/{sensor_id}"
+                # url=f"{config.ws_protocol}://{config.ws_hostname}/msp/dashboardtest/ws/controller/{controller_id}",
+                url=f"{ws_url_base}/msp/dashboardtest/ws/controller/{controller_id}",
             ),
             ws_send_buffer,
             dcc.Store(id="controller-definition", data=controller_definition),
@@ -1775,6 +1793,7 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
                 for col in col_defs:
                     i += 1
                     if row_data:
+                        name = col["field"]
                         if controller_settings["settings"][name]["data"]["actual"] != row_data[0][col['field']]:
                             break
                         elif i == len(col_defs):
