@@ -1,0 +1,140 @@
+[
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "SamplingCondition",
+        "metadata": {
+            "name": "cn_limit",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        },
+        "sources": {
+            "cn": {
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
+                "variable": "cn"
+            }
+        },
+        "criteria": {
+            "all": [
+                {
+                    "criterion_class": "LimitMinMax",
+                    "sources": [
+                        "cn"
+                    ],
+                    "max_val": 2000,
+                    "min_val": 10,
+                    "true_if": "inside"
+                }
+            ]
+        }
+    },
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "SamplingCondition",
+        "metadata": {
+            "name": "at_sea",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        },
+        "sources": {
+            "gps_latitude": {
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
+                "variable": "latitude"
+            },
+            "gps_longitude": {
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
+                "variable": "longitude"
+            }
+        },
+        "criteria": {
+            "none": [
+                {
+                    "kind": "LatLonRegionLocation",
+                    "label": "San Diego, CA",
+                    "sources": [
+                        "gps_latitude",
+                        "gps_longitude"
+                    ],
+                    "coordinates": {
+                        "latitude": "gps_latitude",
+                        "longitude": "gps_longitude"
+                    },
+                    "region": [
+                        {
+                            "latitude": 32.94368,
+                            "longitude": -117.264183
+                        },
+                        {
+                            "latitude": 32.726873,
+                            "longitude": -117.563043
+                        },
+                        {
+                            "latitude": 32.314643,
+                            "longitude": -117.016473
+                        }
+                    ]
+                },
+                {
+                    "kind": "LatLonRegionLocation",
+                    "label": "Hawaii",
+                    "coordinates": {
+                        "latitude": "gps_latitude",
+                        "longitude": "gps_longitude"
+                    },
+                    "region": [
+                        {
+                            "latitude": 32.94368,
+                            "longitude": -117.264183
+                        },
+                        {
+                            "latitude": 32.726873,
+                            "longitude": -117.563043
+                        },
+                        {
+                            "latitude": 32.314643,
+                            "longitude": -117.016473
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    {
+        "version": "envds.sampling.operations/v1",
+        "kind": "SamplingCondition",
+        "metadata": {
+            "name": "isokinetic_inlet",
+            "sampling_namespace": "pmel.noaa.gov",
+            "valid_config_time": "2025-10-01T00:00:00Z",
+            "revision": 1
+        },
+        "sources": {
+            "relative_wind_velocity": {
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
+                "variable": "relative_wind_velocity"
+            },
+            "inlet_nozzle_velocity": {
+                "variablemap_name": "MSPPayload01",
+                "variableset_name": "main",
+                "variable": "inlet_nozzle_velocity"
+            }
+        },
+        "criteria": {
+            "all": [
+                {
+                    "kind": "CompareMean",
+                    "sources": [
+                        "relative_wind_velocity",
+                        "inlet_nozzle_velocity"
+                    ],
+                    "tolerance_pct": 5
+                }
+            ]
+        }
+    }
+]

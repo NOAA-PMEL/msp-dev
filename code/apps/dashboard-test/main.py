@@ -51,11 +51,19 @@ L = logging.getLogger(__name__)
 L.setLevel(logging.DEBUG)
 
 class Settings(BaseSettings):
-    host: str = "0.0.0.0"
-    port: int = 8787
+    host: str = "0.0.0.0" # for docker container
+    port: int = 8787      # for docker container
     debug: bool = False
     daq_id: str = "default"
-    ws_hostname: str = "localhost:8080"
+
+    external_hostname: str = "localhost" # for access outside the cluster
+    http_use_tls: bool = False
+    http_port: int = 80
+    https_port: int = 443
+    ws_use_tls: bool = False
+    ws_port: int = 80
+    wss_port: int = 443
+
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )

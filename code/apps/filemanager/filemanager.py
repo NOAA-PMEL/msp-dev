@@ -1,27 +1,26 @@
 import asyncio
 import json
 import logging
+
 # import math
 import sys
 from time import sleep
+
 # from typing import List
 
 # import numpy as np
-# from ulid import ULID
+from ulid import ULID
 from pathlib import Path
 import os
 
 # import httpx
 from logfmter import Logfmter
 
-# from registry import registry
-# from flask import Flask, request
-from pydantic import BaseSettings
-from cloudevents.http import CloudEvent
-
-# from cloudevents.http.conversion import from_http
-# from cloudevents.conversion import to_structured  # , from_http
-# from cloudevents.exceptions import InvalidStructuredJSON
+from pydantic import BaseSettings, BaseModel, Field
+from cloudevents.http import CloudEvent, from_http, from_json, to_json
+from cloudevents.conversion import to_structured  # , from_http
+from cloudevents.exceptions import InvalidStructuredJSON
+from aiomqtt import Client, MqttError
 
 # from datetime import datetime, timedelta, timezone
 from envds.util.util import (
@@ -31,12 +30,13 @@ from envds.util.util import (
     # get_datetime_with_delta,
     # string_to_timestamp,
     # timestamp_to_string,
-    time_to_next
+    time_to_next,
 )
 
 # from envds.daq.event import DAQEvent
 from envds.daq.types import DAQEventType as det
-
+from envds.sampling.types import SamplingEventType as sampet
+from envds.core import envdsBase
 import uvicorn
 
 handler = logging.StreamHandler()
@@ -44,6 +44,7 @@ handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
 L.setLevel(logging.INFO)
+
 
 class FilemanagerConfig(BaseSettings):
     host: str = "0.0.0.0"
@@ -66,14 +67,26 @@ class FilemanagerConfig(BaseSettings):
     # # erddap_author: str = "fake_author"
 
     daq_id: str | None = None
-    base_path: str | None = None
+    data_base_path: str | None = None
+    logs_base_path: str | None = None
     save_interval: int = 60
     file_interval: str = "day"
 
+    mqtt_broker: str = "mosquitto.default"
+    mqtt_port: int = 1883
+    # mqtt_topic_filter: str = 'aws-id/acg-daq/+'
+    mqtt_topic_subscriptions: str = (
+        "envds/+/+/+/data/#"  # ['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
+    )
+    # mqtt_client_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    mqtt_client_id: str = Field(str(ULID()))
+
     knative_broker: str | None = None
+
     class Config:
         env_prefix = "FILEMANAGER_"
         case_sensitive = False
+
 
 class DataFile:
     def __init__(
@@ -124,7 +137,7 @@ class DataFile:
         qsize = self.data_buffer.qsize()
         if qsize > 5:
             self.logger.warning("write buffer filling up", extra={"qsize": qsize})
-
+        
     async def __write(self):
 
         while True:
@@ -152,6 +165,8 @@ class DataFile:
 
             except KeyError:
                 pass
+
+            self.data_buffer.task_done()
 
             # if data and ('DATA' in data):
             #     d_and_t = data['DATA']['DATETIME'].split('T')
@@ -237,6 +252,172 @@ class DataFile:
                 self.save_now = True
                 await asyncio.sleep(1)
 
+class LogFile:
+    def __init__(
+        self,
+        base_path="/logs",
+        save_interval=60,
+        file_interval="day",
+        # config=None,
+    ):
+
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+        self.base_path = base_path
+
+        # unless specified, flush file every 60 sec
+        self.save_interval = save_interval
+
+        # allow for cases where we want hour files
+        #   options: 'day', 'hour'
+        self.file_interval = file_interval
+
+        # if config:
+        #     self.setup(config)
+
+        # if self.base_path[-1] != '/':
+        #     self.base_path += '/'
+
+        self.save_now = True
+        # if save_interval == 0:
+        #     self.save_now = True
+
+        self.current_file_name = ""
+
+        self.data_buffer = asyncio.Queue()
+
+        self.task_list = []
+        # self.loop = asyncio.get_event_loop()
+
+        self.file = None
+
+        self.open()
+
+    async def write(self, data_event: CloudEvent):
+        # add message to queue and return
+        # print(f'write: {data}')
+        # print(f"write: {data_event}")
+        await self.data_buffer.put(data_event.data)
+        qsize = self.data_buffer.qsize()
+        if qsize > 5:
+            self.logger.warning("write buffer filling up", extra={"qsize": qsize})
+        
+    async def __write(self):
+
+        while True:
+
+            data = await self.data_buffer.get()
+            # print(f'datafile.__write: {data}')
+
+            try:
+                # dts = data["variables"]["time"]["data"]
+                dts = data["status"]["time"]
+                d_and_t = dts.split("T")
+                ymd = d_and_t[0]
+                hour = d_and_t[1].split(":")[0]
+                # print(f"__write: {dts}, {ymd}, {hour}")
+                self.__open(ymd, hour=hour)
+                if not self.file:
+                    return
+
+                json.dump(data, self.file)
+                self.file.write("\n")
+
+                if self.save_now:
+                    self.file.flush()
+                    if self.save_interval > 0:
+                        self.save_now = False
+
+            except KeyError as e:
+                self.logger.error("__write", extra={"reason": e})
+                pass
+
+            self.data_buffer.task_done()
+
+            # if data and ('DATA' in data):
+            #     d_and_t = data['DATA']['DATETIME'].split('T')
+            #     ymd = d_and_t[0]
+            #     hour = d_and_t[1].split(':')[0]
+
+            #     self.__open(ymd, hour=hour)
+
+            #     if not self.file:
+            #         return
+
+            #     json.dump(data, self.file)
+            #     self.file.write('\n')
+
+            #     if self.save_now:
+            #         self.file.flush()
+            #         if self.save_interval > 0:
+            #             self.save_now = False
+
+    def __open(self, ymd, hour=None):
+
+        fname = ymd
+        if self.file_interval == "hour":
+            fname += "_" + hour
+        fname += ".jsonl"
+
+        # print(f"__open: {self.file}")
+        if (
+            self.file is not None
+            and not self.file.closed
+            and os.path.basename(self.file.name) == fname
+        ):
+            return
+
+        # TODO: change to raise error so __write can catch it
+        try:
+            # print(f"base_path: {self.base_path}")
+            if not os.path.exists(self.base_path):
+                os.makedirs(self.base_path, exist_ok=True)
+        except OSError as e:
+            self.logger.error("OSError", extra={"error": e})
+            # print(f'OSError: {e}')
+            self.file = None
+            return
+        # print(f"self.file: before")
+        self.file = open(
+            # self.base_path+fname,
+            os.path.join(self.base_path, fname),
+            mode="a",
+        )
+        self.logger.debug(
+            "_open",
+            extra={"file": self.file, "base_path": self.base_path, "fname": fname},
+        )
+        # print(f"open: {self.file}, {self.base_path}, {fname}")
+
+    def open(self):
+        self.logger.debug("LogFile.open")
+        self.task_list.append(asyncio.create_task(self.save_file_loop()))
+        self.task_list.append(asyncio.create_task(self.__write()))
+
+    def close(self):
+
+        for t in self.task_list:
+            t.cancel()
+
+        if self.file:
+            try:
+                self.file.flush()
+                self.file.close()
+                self.file = None
+            except ValueError:
+                self.logger.info("file already closed")
+                # print("file already closed")
+
+    async def save_file_loop(self):
+
+        while True:
+            if self.save_interval > 0:
+                await asyncio.sleep(time_to_next(self.save_interval))
+                self.save_now = True
+            else:
+                self.save_now = True
+                await asyncio.sleep(1)
+
 
 class Filemanager:
     """docstring for Filemanager."""
@@ -246,29 +427,174 @@ class Filemanager:
         self.logger.debug("Filemanager instantiated")
         self.logger.setLevel(logging.DEBUG)
 
-        self.file_map = dict()
-
+        self.file_map = {"data": dict(), "logs": dict()}
+        self.ID_DELIM = envdsBase.ID_DELIM
         self.config = FilemanagerConfig()
         self.configure()
+
+        self.save_buffer = asyncio.Queue()
+        asyncio.create_task(self.get_from_mqtt_loop())
+        asyncio.create_task(self.handle_save_buffer())
 
     def configure(self):
         # set clients
 
         self.logger.debug("configure", extra={"self.config": self.config})
 
-    async def data_save(self, ce, data_type="device"):
+    async def get_from_mqtt_loop(self):
+        reconnect = 10
+        while True:
+            try:
+                L.debug("listen", extra={"config": self.config})
+                client_id = str(ULID())
+                async with Client(
+                    self.config.mqtt_broker,
+                    port=self.config.mqtt_port,
+                    identifier=client_id,
+                ) as self.client:
+                    # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+                    for topic in self.config.mqtt_topic_subscriptions.split(","):
+                        # print(f"run - topic: {topic.strip()}")
+                        # L.debug("run", extra={"topic": topic})
+                        if topic.strip():
+                            L.debug("subscribe", extra={"topic": topic.strip()})
+                            await self.client.subscribe(
+                                f"$share/datastore/{topic.strip()}"
+                            )
+
+                        # await client.subscribe(config.mqtt_topic_subscription, qos=2)
+                    # async with client.messages() as messages:
+                    async for message in self.client.messages:  # () as messages:
+
+                        try:
+                            ce = from_json(message.payload)
+                            topic = message.topic.value
+                            ce["sourcepath"] = topic
+                            await self.save(ce)
+                            L.debug(
+                                "get_from_mqtt_loop",
+                                extra={"cetype": ce["type"], "topic": topic},
+                            )
+                        except Exception as e:
+                            L.error("get_from_mqtt_loop", extra={"reason": e})
+                        # try:
+                        #     L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
+                        #     await self.send_to_knbroker(ce)
+                        # except Exception as e:
+                        #     L.error("Error sending to knbroker", extra={"reason": e})
+            except MqttError as error:
+                L.error(
+                    f"{error}. Trying again in {reconnect} seconds",
+                    extra={
+                        k: v
+                        for k, v in self.config.dict().items()
+                        if k.lower().startswith("mqtt_")
+                    },
+                )
+                await asyncio.sleep(reconnect)
+            finally:
+                await asyncio.sleep(0.0001)
+
+    async def save(self, ce):
+        await self.save_buffer.put(ce)
+
+    async def handle_save_buffer(self):
+        while True:
+            try:
+                ce = await self.save_buffer.get()
+
+                if ce["type"] in [
+                    # "envds.data.update",
+                    det.data_update(),
+                    det.controller_data_update(),
+                ]:
+                    # await self.device_data_update(ce)
+                    await self.data_save(ce)
+                # elif ce["type"] in [det.controller_data_update()]: #"envds.controller.data.update":
+                #     await self.controller_data_update(ce)
+                elif ce["type"] in [
+                    sampet.sampling_condition_status_update(),
+                    sampet.sampling_state_status_update(),
+                    sampet.sampling_mode_status_update(),
+                ]:
+                    await self.logs_save(ce)
+            except Exception as e:
+                L.error("handle_save_buffer", extra={"reason": e})
+
+            await asyncio.sleep(0.0001)
+            self.save_buffer.task_done()
+
+    async def data_save(self, ce: CloudEvent):
         try:
             src = ce["source"]
-            if src not in self.file_map:
+            self.logger.debug("data_save", extra={"src": src, "ce": ce})
+            if src not in self.file_map["data"]:
                 parts = src.split(".")
-                device_name = parts[-1].split(self.ID_DELIM)
-                file_path = os.path.join("/data", data_type, *device_name)
+                # device_name = parts[-1].split(self.ID_DELIM)
+                if ce["type"] in [
+                    # "envds.data.update",
+                    det.data_update(),
+                    # det.sensor_data_update(),
+                ]:
+                    device_name = parts[-1].split(self.ID_DELIM)
+                    file_path = os.path.join("/data", "device", *device_name)
+                elif ce["type"] in [det.controller_data_update()]:
+                    controller_name = parts[-1].split(self.ID_DELIM)
+                    file_path = os.path.join("/data", "controller", *controller_name)
+                else:
+                    return
+                
+                self.file_map["data"][src] = DataFile(base_path=file_path)
 
-                self.file_map[src] = DataFile(base_path=file_path)
-            await self.file_map[src].write(ce)
+            self.logger.debug("data_save", extra={"src": src, "ce": ce})
+            await self.file_map["data"][src].write(ce)
         except Exception as e:
             self.logger.error("data_save", extra={"reason": e})
-               
+
+    async def logs_save(self, ce: CloudEvent):
+        try:
+            src = ce["source"]
+            self.logger.debug("logs_save", extra={"src": src, "ce": ce})
+            if src not in self.file_map["logs"]:
+                parts = src.split(".")
+                log_name = parts[1:]
+                # # device_name = parts[-1].split(self.ID_DELIM)
+                # if ce["type"] in [
+                #     "envds.data.update",
+                #     det.device_data_update(),
+                #     det.sensor_data_update(),
+                # ]:
+                #     device_name = parts[-1].split(self.ID_DELIM)
+                # if ce["type"] == sampet.sampling_condition_status_update():
+                #     file_type = "conditions"
+                # elif ce["type"] == sampet.sampling_state_status_update():
+                #     file_type = "states"
+                # elif ce["type"] == sampet.sampling_state_status_update():
+                #     file_type = "modes"
+                # else:
+                #     return
+
+                file_path = os.path.join("/logs", *log_name)
+                
+                self.file_map["logs"][src] = LogFile(base_path=file_path)
+            
+            self.logger.debug("logs_save", extra={"src": src, "ce": ce})
+            await self.file_map["logs"][src].write(ce)
+        except Exception as e:
+            self.logger.error("log_update", extra={"reason": e})
+
+    # async def data_save(self, ce, data_type="device"):
+    #     try:
+    #         src = ce["source"]
+    #         if src not in self.file_map:
+    #             parts = src.split(".")
+    #             device_name = parts[-1].split(self.ID_DELIM)
+    #             file_path = os.path.join("/data", data_type, *device_name)
+
+    #             self.file_map[src] = DataFile(base_path=file_path)
+    #         await self.file_map[src].write(ce)
+    #     except Exception as e:
+    #         self.logger.error("data_save", extra={"reason": e})
 
     # async def send_event(self, ce):
     #     try:
@@ -295,7 +621,6 @@ class Filemanager:
     #     except Exception as e:
     #         print("error", e)
     #     await asyncio.sleep(0.01)
-
 
     # def find_one(self):  # , database: str, collection: str, query: dict):
     #     # self.connect()
@@ -456,7 +781,6 @@ class Filemanager:
     #     if query.end_time:
     #         query.end_timestamp = string_to_timestamp(query.end_time)
 
-
     #     if query.last_n_seconds:
     #         # this overrides explicit start,end times
     #         start_dt = get_datetime_with_delta(-(query.last_n_seconds))
@@ -545,11 +869,11 @@ class Filemanager:
     #     pass
 
     # async def device_definition_registry_get(self, query: DeviceDefinitionRequest) -> dict:
-        
+
     #     # TODO add in logic to get/sync from erddap if available
     #     if self.db_client:
     #         return await self.db_client.device_definition_registry_get(query)
-        
+
     #     return {"results": []}
 
     # async def device_instance_registry_update(self, ce: CloudEvent):
@@ -576,7 +900,7 @@ class Filemanager:
     #                         # serial_number = parts[2]
     #                     self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
     #                     return
-                    
+
     #                 # if device_id is None:
     #                 device_id = "::".join([make, model, serial_number])
 
@@ -625,11 +949,11 @@ class Filemanager:
     #     pass
 
     # async def device_instance_registry_get(self, query: DeviceInstanceRequest) -> dict:
-        
+
     #     # TODO add in logic to get/sync from erddap if available?
     #     if self.db_client:
     #         return await self.db_client.device_instance_registry_get(query)
-        
+
     #     return {"results": []}
 
     # # TODO Add controller_data_update
@@ -722,7 +1046,6 @@ class Filemanager:
     #         L.error("device_data_update", extra={"reason": e})
     #     pass
 
-
     # async def controller_data_get(self, query: DataRequest):
 
     #     # fill in useful values based on user request
@@ -748,7 +1071,6 @@ class Filemanager:
 
     #     if query.end_time:
     #         query.end_timestamp = string_to_timestamp(query.end_time)
-
 
     #     if query.last_n_seconds:
     #         # this overrides explicit start,end times
@@ -839,11 +1161,11 @@ class Filemanager:
     #     pass
 
     # async def controller_definition_registry_get(self, query: ControllerDefinitionRequest) -> dict:
-        
+
     #     # TODO add in logic to get/sync from erddap if available
     #     if self.db_client:
     #         return await self.db_client.controller_definition_registry_get(query)
-        
+
     #     return {"results": []}
 
     # async def controller_instance_registry_update(self, ce: CloudEvent):
@@ -870,7 +1192,7 @@ class Filemanager:
     #                         # serial_number = parts[2]
     #                     self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
     #                     return
-                    
+
     #                 # if controller_id is None:
     #                 controller_id = "::".join([make, model, serial_number])
 
@@ -919,12 +1241,13 @@ class Filemanager:
     #     pass
 
     # async def controller_instance_registry_get(self, query: ControllerInstanceRequest) -> dict:
-        
+
     #     # TODO add in logic to get/sync from erddap if available?
     #     if self.db_client:
     #         return await self.db_client.controller_instance_registry_get(query)
-        
+
     #     return {"results": []}
+
 
 async def shutdown():
     print("shutting down")

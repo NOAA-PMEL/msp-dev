@@ -53,7 +53,10 @@ class RedisClient(DBClient):
                 self.logger.debug("connect", extra={"self.config": self.config})
                 if self.config["port"] is None:
                     self.config["port"] = 6379
-                self.client = redis.Redis(host=self.config["hostname"], port=self.config["port"])
+                if self.config["password"]:
+                    self.client = redis.Redis(host=self.config["hostname"], port=self.config["port"], password=self.config["password"])
+                else:
+                    self.client = redis.Redis(host=self.config["hostname"], port=self.config["port"])
             except Exception as e:
                 self.logger.error("redis connect", extra={"reason": e})
                 self.client = None
@@ -215,7 +218,7 @@ class RedisClient(DBClient):
                 self.client.ft(self.registry_variableset_definition_index_name).info()
             except Exception as e:
                 schema = (
-                    TagField("$.registration.variableset_definition_id", as_name="variablemap_definition_id"),
+                    TagField("$.registration.variableset_definition_id", as_name="variableset_definition_id"),
                     TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
                     TagField("$.registration.variableset", as_name="variableset"),
                     TagField("$.registration.index_type", as_name="index_type"),

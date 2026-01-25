@@ -24,7 +24,15 @@ class Settings(BaseSettings):
     port: int = 8787
     debug: bool = False
     daq_id: str = "default"
-    ws_hostname: str = "localhost:8080"
+
+    external_hostname: str = "localhost"
+    http_use_tls: bool = False
+    http_port: int = 80
+    https_port: int = 443
+    ws_use_tls: bool = False
+    ws_port: int = 80
+    wss_port: int = 443
+
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
@@ -232,13 +240,22 @@ print(f"config: {config}")
 ws_send_buffer = html.Div(id="ws-send-buffer", style={"display": "none"})
 
 datastore_url = f"datastore.{config.daq_id}-system"
-link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
+# link_url_base = f"http://{config.external_hostname}/msp/dashboardtest"
 # query = {"device_type": "sensor"}
 # url = f"http://{datastore_url}/device-definition/registry/get/"
 # print(f"device-definition-get: {url}")
 # results = httpx.get(url, params=query)
 # print(f"results: {results}")
+http_url_base = f"http://{config.external_hostname}:{config.http_port}"
+if config.http_use_tls:
+    http_url_base = f"https://{config.external_hostname}:{config.https_port}"
+ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}:"
+if config.ws_use_tls:
+    ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
 
+link_url_base = f"{http_url_base}/msp/dashboardtest"
+
+print(f"urls: {ws_url_base}/msp/dashboardtest/ws/sensor-registry/main, {link_url_base}")
 
 def get_layout():
     # print("here:1")
@@ -321,7 +338,8 @@ def get_layout():
                 # url=f"ws:/dashboard/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor-registry/main",
                 # url=f"ws://mspbase01.pmel.noaa.gov:8080/msp/dashboardtest/ws/sensor-registry/main",
-                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor-registry/main"
+                # url=f"{config.ws_protocol}://{config.external_hostname}/msp/dashboardtest/ws/sensor-registry/main"
+                url=f"{ws_url_base}/msp/dashboardtest/ws/sensor-registry/main"
             ),
             ws_send_buffer,
             dcc.Store(id="sensor-defs-changes", data=[]),
@@ -557,7 +575,7 @@ def update_active_sensors(count, table_data):
                     "model": model,
                     "serial_number": serial_number,
                     # "sampling_system_id": f"[{sampling_system_id}](http://uasdaq.pmel.noaa.gov/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
-                    "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
+                    "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/dash/sampling-system/{sampling_system_id})",
                     # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
                 }
                 if sensor not in table_data:

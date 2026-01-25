@@ -49,7 +49,15 @@ class Settings(BaseSettings):
     # port: int = 8787
     # debug: bool = False
     daq_id: str = "default"
-    ws_hostname: str = "localhost:8080"
+
+    external_hostname: str = "localhost"
+    http_use_tls: bool = False
+    http_port: int = 80
+    https_port: int = 443
+    ws_use_tls: bool = False
+    ws_port: int = 80
+    wss_port: int = 443
+ 
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
@@ -244,7 +252,15 @@ config = Settings()
 
 datastore_url = f"datastore.{config.daq_id}-system"
 # datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
-link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
+
+http_url_base = f"http://{config.external_hostname}:{config.http_port}"
+if config.http_use_tls:
+    http_url_base = f"https://{config.external_hostname}:{config.https_port}"
+ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}:"
+if config.ws_use_tls:
+    ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
+
+link_url_base = f"{http_url_base}/msp/dashboardtest"
 
 # websocket = WebSocket(
 #     id="ws-sensor", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/main"
@@ -1307,8 +1323,8 @@ def layout(sensor_id=None):
                 # url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/{sensor_id}",
                 # url=f"wss://k8s.pmel-dev.oarcloud.noaa.gov:443/uasdaq/dashboard/ws/sensor/{sensor_id}"
                 # url=f"ws://mspbase01:8080/msp/dashboardtest/ws/sensor/{sensor_id}"
-                url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor/{sensor_id}"
-
+                # url=f"{ws_protocol}://{config.external_hostname}/msp/dashboardtest/ws/sensor/{sensor_id}"
+                url=f"{ws_url_base}/msp/dashboardtest/ws/sensor/{sensor_id}"
             ),
             ws_send_buffer,
             dcc.Store(id="sensor-definition", data=sensor_definition),
