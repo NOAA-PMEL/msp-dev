@@ -495,7 +495,7 @@ class Filemanager:
                 await asyncio.sleep(0.0001)
 
     async def save(self, ce):
-        await self.save_buffer.put()
+        await self.save_buffer.put(ce)
 
     async def handle_save_buffer(self):
         while True:

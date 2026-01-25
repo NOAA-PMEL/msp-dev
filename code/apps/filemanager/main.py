@@ -130,7 +130,7 @@ async def logs_save(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(
-            "logs_save", extra={"ce": ce}
+            "logs+_save", extra={"ce": ce}
         )  # , "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
