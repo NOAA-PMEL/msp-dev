@@ -310,7 +310,7 @@ class LogFile:
             # print(f'datafile.__write: {data}')
 
             try:
-                dts = data["variables"]["time"]["data"]
+                # dts = data["variables"]["time"]["data"]
                 dts = data["status"]["time"]
                 d_and_t = dts.split("T")
                 ymd = d_and_t[0]
@@ -328,7 +328,8 @@ class LogFile:
                     if self.save_interval > 0:
                         self.save_now = False
 
-            except KeyError:
+            except KeyError as e:
+                self.logger.error("__write", extra={"reason": e})
                 pass
 
             self.data_buffer.task_done()
@@ -389,7 +390,7 @@ class LogFile:
         # print(f"open: {self.file}, {self.base_path}, {fname}")
 
     def open(self):
-        self.logger.debug("DataFile.open")
+        self.logger.debug("LogFile.open")
         self.task_list.append(asyncio.create_task(self.save_file_loop()))
         self.task_list.append(asyncio.create_task(self.__write()))
 
