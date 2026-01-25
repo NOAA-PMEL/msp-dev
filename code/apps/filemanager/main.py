@@ -4,18 +4,19 @@ from datetime import datetime, timezone
 import logging
 
 from fastapi import FastAPI, Request, Query, status, Response  # , APIRouter
-# from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
-from cloudevents.http import from_http
-# from cloudevents.conversion import to_structured, to_json  # , from_http
-# from cloudevents.exceptions import InvalidStructuredJSON
-# from cloudevents.pydantic import CloudEvent
+from cloudevents.http import CloudEvent, from_http, from_json
+from cloudevents.conversion import to_structured, to_json  # , from_http
+from cloudevents.exceptions import InvalidStructuredJSON
+from cloudevents.pydantic import CloudEvent
 
 import httpx
 from logfmter import Logfmter
 from typing import Annotated, List
 from pydantic import BaseSettings
+from ulid import ULID
 
 
 from filemanager import Filemanager
@@ -101,8 +102,8 @@ async def root():
     return {"message": "Hello World from Datastore"}
 
 # @app.post("/device/data/save/", status_code=status.HTTP_202_ACCEPTED)
-@app.post("/device/data/save/")
-async def device_data_save(request: Request):
+@app.post("/data/save/")
+async def data_save(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(
@@ -110,7 +111,8 @@ async def device_data_save(request: Request):
         )  # , "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
-        await filemanager.data_save(ce, data_type="device")
+        # await filemanager.data_save(ce, data_type="device")
+        await filemanager.save(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "OK"}
         # return get_response_event(msg, 202)
@@ -123,25 +125,48 @@ async def device_data_save(request: Request):
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
 
-# @app.post("/controller/data/save/", status_code=status.HTTP_202_ACCEPTED)
-@app.post("/controller/data/save/")
-async def controller_data_save(request: Request):
+@app.post("/log/save/")
+async def log_save(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(
-            "data_save", extra={"ce": ce}
+            "log_save", extra={"ce": ce}
         )  # , "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await datastore.data_sensor_update(ce)
-        await filemanager.data_save(ce, data_type="controller")
+        # await filemanager.data_save(ce, data_type="device")
+        await filemanager.save(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "OK"}
         # return get_response_event(msg, 202)
+
     except Exception as e:
         # print(e)
         L.error("send", extra={"reason": e})
         # return "", 204
-        # return Response(status_code=status.HTTP_204_NO_CONTENT)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
         # msg = {"result": "NOTOK"}
         # return get_response_event(msg, 500)
+
+# # @app.post("/controller/data/save/", status_code=status.HTTP_202_ACCEPTED)
+# @app.post("/controller/data/save/")
+# async def controller_data_save(request: Request):
+#     try:
+#         ce = from_http(request.headers, await request.body())
+#         L.debug(
+#             "data_save", extra={"ce": ce}
+#         )  # , "destpath": ce["destpath"]})
+#         # await adapter.send_to_mqtt(ce)
+#         # await datastore.data_sensor_update(ce)
+#         await filemanager.data_save(ce, data_type="controller")
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
+#         # msg = {"result": "OK"}
+#         # return get_response_event(msg, 202)
+#     except Exception as e:
+#         # print(e)
+#         L.error("send", extra={"reason": e})
+#         # return "", 204
+#         # return Response(status_code=status.HTTP_204_NO_CONTENT)
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
+#         # msg = {"result": "NOTOK"}
+#         # return get_response_event(msg, 500)
