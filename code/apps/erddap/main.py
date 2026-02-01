@@ -127,6 +127,7 @@ async def reload_datasets():
 @app.api_route("/erddap/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_erddap(request: Request, path_name: str):
     
+    L.debug("proxy_erddap", extra={"req": request, "pn": path_name})
     # 1. Build the target URL for the internal Tomcat server
     #    If path_name is empty (e.g. just /erddap/), handle gracefully
     target_path = path_name if path_name else "index.html"
@@ -161,7 +162,7 @@ async def proxy_erddap(request: Request, path_name: str):
         content=await request.body(),
         params=request.query_params # Forward query parameters (e.g. ?searchFor=...)
     )
-    
+    L.debug("proxy_erddap", extra={"req": rp_req, "h": headers})
     # 4. Send Request to Tomcat
     try:
         rp_resp = await client.send(rp_req, stream=True)
@@ -175,6 +176,7 @@ async def proxy_erddap(request: Request, path_name: str):
         headers=rp_resp.headers,
         background=BackgroundTask(rp_resp.aclose),
     )# # @app.post("/device/data/save/", status_code=status.HTTP_202_ACCEPTED)
+    L.debug("proxy_erddap", extra={"resp": rp_resp})
 # @app.post("/data/save/")
 # async def data_save(request: Request):
 #     try:
