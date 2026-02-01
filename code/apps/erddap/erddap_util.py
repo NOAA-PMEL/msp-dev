@@ -266,7 +266,7 @@ async def main(config):
         host=config.host,
         port=config.port,
         # log_level=server_config.log_level,
-        root_path="/msp/filemanager",
+        root_path="/msp/erddap-util",
         # log_config=dict_config,
     )
 
