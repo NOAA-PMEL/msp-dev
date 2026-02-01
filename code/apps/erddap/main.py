@@ -126,25 +126,55 @@ async def reload_datasets():
 # --- 2. ERDDAP Proxy (Standard) ---
 @app.api_route("/erddap/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_erddap(request: Request, path_name: str):
-    url = httpx.URL(path=path_name, query=request.url.query.encode("utf-8"))
+    
+    # 1. Build the target URL for the internal Tomcat server
+    #    If path_name is empty (e.g. just /erddap/), handle gracefully
+    target_path = path_name if path_name else "index.html"
+    url = f"{ERDDAP_SERVICE_URL}/{target_path}"
+    
+    # 2. Prepare Headers
+    #    We convert the immutable Headers object to a mutable dict
+    req_headers = dict(request.headers)
+    
+    # --- CRITICAL SECTION: HEADER MANIPULATION ---
+    
+    # A. Remove 'host' header. 
+    #    If we leave it, Tomcat sees the external hostname (e.g. domain.com)
+    #    but might reject it if configured strictly. It's safer to let httpx 
+    #    set the Host header to '127.0.0.1:8080' automatically.
+    req_headers.pop("host", None)
+    
+    # B. Set X-Forwarded-Prefix
+    #    This tells ERDDAP: "I am actually living at /msp/dataserver"
+    req_headers["X-Forwarded-Prefix"] = "/msp"
+    
+    # C. (Optional) Ensure Proto/Port are correct if your Ingress doesn't set them
+    # req_headers["X-Forwarded-Proto"] = "https" 
+    
+    # ---------------------------------------------
+
+    # 3. Build the Proxy Request
     rp_req = client.build_request(
         request.method,
-        f"{ERDDAP_SERVICE_URL}/{path_name}",
-        # f"erddap/erddap/{path_name}"
-        headers=request.headers.raw,
-        content=await request.body()
+        url,
+        headers=req_headers,
+        content=await request.body(),
+        params=request.query_params # Forward query parameters (e.g. ?searchFor=...)
     )
+    
+    # 4. Send Request to Tomcat
     try:
         rp_resp = await client.send(rp_req, stream=True)
-        return StreamingResponse(
-            rp_resp.aiter_raw(),
-            status_code=rp_resp.status_code,
-            headers=rp_resp.headers,
-            background=BackgroundTask(rp_resp.aclose),
-        )
     except httpx.ConnectError:
-        return Response("ERDDAP container is not ready yet.", status_code=503)
-# # @app.post("/device/data/save/", status_code=status.HTTP_202_ACCEPTED)
+        return Response("ERDDAP container is not ready or reachable.", status_code=503)
+
+    # 5. Stream the Response back to the client
+    return StreamingResponse(
+        rp_resp.aiter_raw(),
+        status_code=rp_resp.status_code,
+        headers=rp_resp.headers,
+        background=BackgroundTask(rp_resp.aclose),
+    )# # @app.post("/device/data/save/", status_code=status.HTTP_202_ACCEPTED)
 # @app.post("/data/save/")
 # async def data_save(request: Request):
 #     try:
