@@ -84,7 +84,7 @@ class ERDDAPUtilConfig(BaseSettings):
     knative_broker: str | None = None
 
     class Config:
-        env_prefix = "ERDDAPUTIL_"
+        env_prefix = "ERDDAP_"
         case_sensitive = False
 
 
