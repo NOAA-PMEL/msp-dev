@@ -147,7 +147,7 @@ async def proxy_erddap(request: Request, path_name: str):
     
     # B. Set X-Forwarded-Prefix
     #    This tells ERDDAP: "I am actually living at /msp/dataserver"
-    req_headers["X-Forwarded-Prefix"] = "/msp/erddap-util"
+    req_headers["X-Forwarded-Prefix"] = "/msp/data"
     
     # C. (Optional) Ensure Proto/Port are correct if your Ingress doesn't set them
     # req_headers["X-Forwarded-Proto"] = "https" 
