@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     # )
 
     class Config:
-        env_prefix = "FILEMANAGER_"
+        env_prefix = "ERDDAP_"
         case_sensitive = False
 
 
@@ -130,6 +130,7 @@ async def proxy_erddap(request: Request, path_name: str):
     rp_req = client.build_request(
         request.method,
         f"{ERDDAP_SERVICE_URL}/{path_name}",
+        # f"erddap/erddap/{path_name}"
         headers=request.headers.raw,
         content=await request.body()
     )
