@@ -162,7 +162,7 @@ async def proxy_erddap(request: Request, path_name: str):
         content=await request.body(),
         params=request.query_params # Forward query parameters (e.g. ?searchFor=...)
     )
-    L.debug("proxy_erddap", extra={"req": rp_req, "h": headers})
+    L.debug("proxy_erddap", extra={"req": rp_req, "h": req_headers})
     # 4. Send Request to Tomcat
     try:
         rp_resp = await client.send(rp_req, stream=True)
