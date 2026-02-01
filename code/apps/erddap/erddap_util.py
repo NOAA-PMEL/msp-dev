@@ -67,10 +67,10 @@ class ERDDAPUtilConfig(BaseSettings):
     # # erddap_author: str = "fake_author"
 
     daq_id: str | None = None
-    data_base_path: str | None = None
-    logs_base_path: str | None = None
-    save_interval: int = 60
-    file_interval: str = "day"
+    # data_base_path: str | None = None
+    # logs_base_path: str | None = None
+    # save_interval: int = 60
+    # file_interval: str = "day"
 
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883

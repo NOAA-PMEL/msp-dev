@@ -107,7 +107,7 @@ util = ERDDAPUtil()
 async def shutdown_event():
     await client.aclose()
 
-@app.get("/utiltest/")
+@app.get("/")
 async def root():
     return {"message": "Hello World from ERDDAPUtil"}
 
