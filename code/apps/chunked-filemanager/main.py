@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     
     # Paths for certificates (to be mounted via K8s Secret)
     ca_cert_path: str = "/app/certs/AmazonRootCA1.pem"
-    client_cert_path: str = "/app/certs/device-certificate"
-    client_key_path: str = "/app/certs/private-key"
+    client_cert_path: str = "/app/certs/cert.crt"
+    client_key_path: str = "/app/certs/private.key"
     
     storage_base_path: str = "/data/files"
 
