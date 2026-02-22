@@ -15,7 +15,7 @@ from pydantic import BaseModel, BaseSettings
 # --- Configuration (Similar to Settings in filemanager/main.py) ---
 class Settings(BaseSettings):
     mqtt_broker: str = "iot.pmel-dev.oarcloud.noaa.gov"
-    mqtt_port: int = 8883
+    mqtt_port: int = 443
     mqtt_client_id: str = "pmel-pco2-data-testserver"
     mqtt_sub_topic: str = "pmel/pco2/+/file/update"
     
@@ -113,8 +113,12 @@ async def mqtt_loop():
     tls_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=settings.ca_cert_path)
     tls_context.load_cert_chain(certfile=settings.client_cert_path, keyfile=settings.client_key_path)
 
+    # Set ALPN protocols for AWS IoT Core over port 443
+    tls_context.set_alpn_protocols(["x-amzn-mqtt-ca"])
+    
     while True:
         try:
+            print(f"settings: {settings}")
             async with aiomqtt.Client(
                 hostname=settings.mqtt_broker,
                 port=settings.mqtt_port,
