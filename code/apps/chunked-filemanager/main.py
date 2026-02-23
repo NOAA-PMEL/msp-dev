@@ -110,12 +110,20 @@ async def health():
     return {"status": "healthy"}
 
 async def mqtt_loop():
+# TLS Setup with ALPN for AWS IoT
     tls_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=settings.ca_cert_path)
-    tls_context.load_cert_chain(certfile=settings.client_cert_path, keyfile=settings.client_key_path)
-
-    # Set ALPN protocols for AWS IoT Core over port 443
-    tls_context.set_alpn_protocols(["x-amzn-mqtt-ca"])
     
+    # Load cert and key using the specific filenames from Secret keys
+    try:
+        tls_context.load_cert_chain(
+            certfile=settings.client_cert_path, 
+            keyfile=settings.client_key_path
+        )
+        # Set the ALPN protocol requested
+        tls_context.set_alpn_protocols(["x-amzn-mqtt-ca"])
+    except Exception as e:
+        logging.error(f"Failed to load SSL context: {e}")
+        return    
     while True:
         try:
             print(f"settings: {settings}")
