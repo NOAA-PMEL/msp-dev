@@ -2,7 +2,7 @@ name: Build and Push shelly-shellypro4pm
 
 on:
 
-  push:
+  push: 
     branches: [ dev-* ]
     paths:
       - 'code/apps/daq/controllers/Shelly/ShellyPro4PM/**'

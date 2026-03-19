@@ -1,6 +1,6 @@
 name: Build and Push shelly-shellypro2
 
-on:
+on: 
 
   push:
     branches: [ dev-* ]
