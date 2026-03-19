@@ -28,7 +28,7 @@ jobs:
             working-directory: './code/apps/daq/controllers/Shelly/ShellyPro4PM'
       
     permissions:
-        contents: read
+        contents: read 
         packages: write
         attestations: write
         id-token: write
