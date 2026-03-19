@@ -231,7 +231,7 @@ class ShellyPro2(Controller):
             if status_sub not in client_subscriptions:
                 client_subscriptions.append(status_sub)
 
-
+ 
             self.logger.debug("conf", extra={"data": conf})
 
             attrs = self.metadata["attributes"]
