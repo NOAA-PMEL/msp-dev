@@ -13,7 +13,6 @@ from envds.util.util import time_to_next
 
 from labjack import ljm
 
-
 class LabJackClient(DAQClient):
     """docstring for self.LabJackClient."""
 
