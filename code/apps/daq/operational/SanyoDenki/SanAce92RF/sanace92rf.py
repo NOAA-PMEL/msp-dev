@@ -45,7 +45,6 @@ import json
 
 task_list = []
 
-
 class SanAce92RF(Operational):
     """docstring for SanAce92RF."""
 
