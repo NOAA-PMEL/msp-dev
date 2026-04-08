@@ -350,6 +350,12 @@ class PWMClient(LabJackClient):
             ]
             pwm_channel = self.config.properties["pwm_channel"]["data"]
 
+            # ensure we are able to use 16-bit pwm
+            if clock_channel != 0:
+                ljm.eWriteName(
+                    self.labjack, f"DIO_EF_CLOCK0_ENABLE", 0
+                )  # disable clock0 which used 1 and 2.
+
             self.logger.debug("send_to_client:clock disable", extra={"clock_channel": clock_channel})
             ljm.eWriteName(
                 self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 0
