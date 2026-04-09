@@ -14,7 +14,7 @@ dash
 dash_daq
 dash_extensions
 dash-bootstrap-components
-dash_ag_grid
+dash_ag_grid<33.0.0
 pandas
 websockets
 datetime
