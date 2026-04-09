@@ -203,7 +203,7 @@ class ADCClient(LabJackClient):
 
                 
 
-            self.logger.debug("ADCCLient.send_to_client", extra={"channel": channel})
+            self.logger.debug("ADCCLient.send_to_client", extra={"channel": channel, "lj_channel": lj_channel})
             dataRead = ljm.eReadName(self.labjack, lj_channel)
             self.logger.debug("ADCCLient.send_to_client", extra={"dataRead": dataRead})
             output = {"data": dataRead}
