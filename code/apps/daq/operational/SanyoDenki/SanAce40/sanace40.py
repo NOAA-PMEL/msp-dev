@@ -233,7 +233,8 @@ class SanAce40(Operational):
             requested_sp = self.settings.get_setting("fan_speed_sp")["requested"]
             duty_cycle = data["data"]["data"].get("duty_cycle", None)
             if duty_cycle:
-                sp = (duty_cycle-50.0) * 2
+                # sp = (duty_cycle-50.0) * 2
+                sp = duty_cycle
                 self.logger.debug("check_fan_speed_sp", extra={"sp": sp, "minus": (sp-5), "plus": (sp+5)})
                 if (sp > (requested_sp-5)) and (sp < (requested_sp+5)):
                     self.logger.debug("check_fan_speed_sp: here1")
