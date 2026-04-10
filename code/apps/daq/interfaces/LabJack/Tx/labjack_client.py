@@ -207,7 +207,7 @@ class ADCClient(LabJackClient):
                 self.logger.debug("ADCCLient.send_to_client:5")
                 ch_neg = self.config.properties["diff_ch_negative"]["data"]
                 lj_channel = f"{lj_channel}_AIN{ch_neg}"
-                self.logger.debug("ADCClient.send_to_client", extra={"lj_channel"})
+                self.logger.debug("ADCClient.send_to_client", extra={"lj_channel": lj_channel})
                 self.logger.debug("ADCCLient.send_to_client:6")
 
                 
