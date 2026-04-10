@@ -521,7 +521,8 @@ class SanAce40(Operational):
                         if name in ["fan_speed_sp"]:
                             sp = setting["requested"]
                             # convert +/- pct to duty_cycle
-                            pwm_data = float((sp / 2.0) + 50.0)
+                            # pwm_data = float((sp / 2.0) + 50.0)
+                            pwm_data = sp
                             data = {"data": {"pwm-data": pwm_data}}
                             # self.logger.debug("settings_check:set_channel_power", extra={"ch": ch, "requested": setting["requested"]})
                             # await self.set_channel_power(ch, setting["requested"])
