@@ -200,21 +200,23 @@ class ADCClient(LabJackClient):
                 self.logger.debug("ADCCLient.send_to_client", extra={"range": ljm.eReadName(self.labjack, f"{lj_channel}_RANGE")})
                 self.logger.debug("ADCCLient.send_to_client:3")
 
+                self.logger.debug("ADCCLient.send_to_client:4")
+                if self.config.properties["input_type"]["data"] in ["differential", "double"]:
+                    self.logger.debug("ADCCLient.send_to_client:5")
+                    ch_neg = self.config.properties["diff_ch_negative"]["data"]
+                    lj_channel = f"{lj_channel}_AIN{ch_neg}"
+                    self.logger.debug("ADCClient.send_to_client", extra={"lj_channel": lj_channel})
+                    self.logger.debug("ADCCLient.send_to_client:6")
+                    ljm.eWriteName(self.labjack, f"AIN{channel}_NEGATIVE_CH", ch_neg)
                 self.config_required = False
 
-            self.logger.debug("ADCCLient.send_to_client:4")
-            if self.config.properties["input_type"]["data"] in ["differential", "double"]:
-                self.logger.debug("ADCCLient.send_to_client:5")
-                ch_neg = self.config.properties["diff_ch_negative"]["data"]
-                lj_channel = f"{lj_channel}_AIN{ch_neg}"
-                self.logger.debug("ADCClient.send_to_client", extra={"lj_channel": lj_channel})
-                self.logger.debug("ADCCLient.send_to_client:6")
 
                 
 
             self.logger.debug("ADCCLient.send_to_client:7")
             self.logger.debug("ADCCLient.send_to_client", extra={"channel": channel, "lj_channel": lj_channel})
-            dataRead = ljm.eReadName(self.labjack, lj_channel)
+            # dataRead = ljm.eReadName(self.labjack, lj_channel)
+            dataRead = ljm.eReadName(self.labjack, channel)
             self.logger.debug("ADCCLient.send_to_client:8")
             self.logger.debug("ADCCLient.send_to_client", extra={"dataRead": dataRead})
             self.logger.debug("ADCCLient.send_to_client:9")
