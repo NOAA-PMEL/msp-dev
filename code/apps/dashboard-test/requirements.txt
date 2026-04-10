@@ -1,5 +1,5 @@
 # asyncio_mqtt==0.12.1
-cloudevents
+cloudevents>=1.6.0,<1.7.0
 flask
 # fastapi>=0.68.0,<0.69.0
 fastapi>=0.93.0, < 0.99.0
