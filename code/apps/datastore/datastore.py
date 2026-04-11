@@ -108,6 +108,7 @@ class DatastoreConfig(BaseSettings):
     db_client_port: str | None = None
     db_client_username: str | None = None
     db_client_password: str | None = None
+    db_clear_db: bool = False
 
     db_data_ttl: int = 600  # seconds
     db_reg_device_definition_ttl: int = 0  # permanent
@@ -165,6 +166,7 @@ class Datastore:
                 "port": self.config.db_client_port,
                 "username": self.config.db_client_username,
                 "password": self.config.db_client_password,
+                "clear_db": self.config.db_clear_db
             },
         )
         self.logger.debug("configure", extra={"db_client_config": db_client_config})

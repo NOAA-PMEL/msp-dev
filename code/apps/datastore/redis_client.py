@@ -64,7 +64,8 @@ class RedisClient(DBClient):
     def build_indexes(self):
 
         self.connect()
-        
+        if self.config["clear_db"]:
+            self.client.flushall()
         # change to only create index if it doesn't exist. This allows replicas
 
         # data:device

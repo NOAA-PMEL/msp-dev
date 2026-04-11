@@ -50,7 +50,8 @@ class DBClientConfig(BaseModel):
         "hostname": "", 
         "port": None,
         "username": "",
-        "password": ""
+        "password": "",
+        "clear_db": False
     }
 
 
