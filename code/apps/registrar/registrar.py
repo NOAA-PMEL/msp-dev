@@ -301,7 +301,7 @@ class Registrar:
             try:
                 message = await self.sync_bcast_buffer.get()
                 await self.handle_registry_sync(message)
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.001)
             except Exception as e:
                 self.logger.error("handle_registry_sync_loop", extra={"reason": e})
 

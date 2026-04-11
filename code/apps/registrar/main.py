@@ -125,8 +125,8 @@ async def root():
 async def registry_sync(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
-        L.debug(request.headers)
-        L.debug("registry-sync", extra={"ce": ce, "destpath": ce["destpath"]})
+        # L.debug(request.headers)
+        # L.debug("registry-sync", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await registrar.handle_registry_sync(ce)
         await registrar.sync_bcast_buffer.put(ce)
