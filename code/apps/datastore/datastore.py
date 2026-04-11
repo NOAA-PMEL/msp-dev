@@ -108,7 +108,7 @@ class DatastoreConfig(BaseSettings):
     db_client_port: str | None = None
     db_client_username: str | None = None
     db_client_password: str | None = None
-    db_clear_db: bool = False
+    db_clear_db: bool | None = False
 
     db_data_ttl: int = 600  # seconds
     db_reg_device_definition_ttl: int = 0  # permanent
