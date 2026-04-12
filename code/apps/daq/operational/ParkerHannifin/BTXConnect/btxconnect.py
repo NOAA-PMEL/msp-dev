@@ -40,7 +40,6 @@ import json
 
 task_list = []
 
-
 class BTXConnect(Operational):
     """docstring for BTXConnect."""
 

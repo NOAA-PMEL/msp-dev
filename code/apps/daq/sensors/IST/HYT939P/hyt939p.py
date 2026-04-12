@@ -297,6 +297,8 @@ class HYT939P(Sensor):
             if self.sampling():
                 await self.interface_send_data(data=data)
                 await asyncio.sleep(time_to_next(self.sampling_interval))
+            else:
+                await asyncio.sleep(1)
 
 
     # async def sampling_monitor(self):
