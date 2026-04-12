@@ -158,6 +158,7 @@ class LabJackClient(DAQClient):
                 await asyncio.sleep(time_to_next(self.config.properties["unpolled_sample_frequency_sec"]["data"]))
             except Exception as e:
                 self.logger.error("unpolled_sample_loop", extra={"reason": e})
+                await asyncio.sleep(0.01)
 
         # ljm.cleanInterval(handle)
 

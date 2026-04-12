@@ -342,6 +342,8 @@ class SanAce92RF(Operational):
                 if self.sampling():
                     await self.interface_send_data(data=data, path_id="default")
                     await asyncio.sleep(time_to_next(self.sampling_interval))
+                else:
+                    await asyncio.sleep(1)
             else:
                 await asyncio.sleep(5)
     # async def sampling_monitor(self):
