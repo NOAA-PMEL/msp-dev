@@ -1,4 +1,4 @@
-name: Build and Push parkerhannifin_btxconnect
+name: Build and Push parkerhannifin-btxconnect
 
 on:
 
@@ -18,13 +18,13 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: parkerhannifin_btxconnect
+  IMAGE_NAME: parkerhannifin-btxconnect
   # IMAGE_TAG: ${{ github.sha }}
   # IMAGE_TAG: $(cat VERSION)
 
 jobs:
 
-  build-and-push-parkerhannifin_btxconnect:
+  build-and-push-parkerhannifin-btxconnect:
 
     runs-on: ubuntu-latest
     defaults:
@@ -112,7 +112,7 @@ jobs:
             # dockerfile: code/apps/daq/sensors/AerosolDynamics/MAGIC250/Dockerfile
             push: true
             tags: |
-              ghcr.io/noaa-pmel/msp/parkerhannifin_btxconnect:${{env.IMAGE_TAG}}
+              ghcr.io/noaa-pmel/msp/parkerhannifin-btxconnect:${{env.IMAGE_TAG}}
             platforms: linux/amd64,linux/arm64
             
             # build_args: |

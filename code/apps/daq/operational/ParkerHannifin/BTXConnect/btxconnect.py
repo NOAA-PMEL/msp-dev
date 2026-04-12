@@ -555,7 +555,6 @@ async def shutdown(sensor):
         if task:
             task.cancel()
 
-
 async def main(server_config: ServerConfig = None):
     # uiconfig = UIConfig(**config)
     if server_config is None:
