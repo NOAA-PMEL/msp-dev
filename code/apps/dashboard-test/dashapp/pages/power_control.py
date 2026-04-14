@@ -65,6 +65,7 @@ CONTENT_STYLE = {
 }
 
 
+
 shelly_channels = dbc.Row([
                 dbc.Col(html.Div([daq.PowerButton(id='shelly_power-button-0', label="Channel 1", color='#14c208', persistence=True)])),
                 dbc.Col(html.Div([daq.PowerButton(id='shelly_power-button-1', label="Channel 2", color='#14c208', persistence=True)])),
@@ -113,8 +114,10 @@ def get_layout():
     layout = html.Div([
         html.H1('Power Control'),
         html.Hr(),
+        html.Div(id = 'controller-list'),
         html.Div([
             dbc.Card(
+                html.H5("Main Payload", className="card-title"),
                 dbc.Stack([
                     dbc.Row(dbc.Col(html.Div("Main Control Shelly"))),
                     shelly_channels
@@ -242,3 +245,14 @@ def send_pb_state(s_pb1, s_pb2, s_pb3, pdu_pb1, pdu_pb2, pdu_pb3, pdu_pb4, pdu_p
 
 # # startup code
 # send("startup request")
+
+
+
+@callback(
+    Output('controller-list', 'children'),
+    Input('active-controller-table', 'rowData')
+)
+def display_data(active_controllers):
+    # for sensor in active_sensors:
+        # return sensor
+        return active_controllers

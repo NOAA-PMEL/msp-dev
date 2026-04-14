@@ -345,6 +345,7 @@ def get_layout():
             ws_send_buffer,
             dcc.Store(id="controller-defs-changes", data=[]),
             dcc.Store(id="active-controller-changes", data=[]),
+            dcc.Store(id="active-controller-table", storage_type="session"),
             # dcc.Interval(id="test-interval", interval=(10*1000)),
             dcc.Interval(
                 id="table-update-interval", interval=(5 * 1000), n_intervals=0
