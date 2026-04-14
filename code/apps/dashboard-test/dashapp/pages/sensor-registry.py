@@ -268,6 +268,10 @@ def get_layout():
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
+                                dashGridOptions={
+                                    "pagination": True,
+                                    "paginationPageSize": 50
+                                },
                                 id="sensor-defs-table",
                                 rowData=[],
                                 columnDefs=[
