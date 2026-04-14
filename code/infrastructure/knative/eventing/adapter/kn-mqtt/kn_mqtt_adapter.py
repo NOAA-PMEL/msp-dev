@@ -135,8 +135,9 @@ class KNMQTTClient():
         self.to_mqtt_buffer = asyncio.Queue()
         self.to_knbroker_buffer = asyncio.Queue()
 
-        asyncio.create_task(self.send_to_mqtt_loop())
-        asyncio.create_task(self.get_from_mqtt_loop())
+        # asyncio.create_task(self.send_to_mqtt_loop())
+        # asyncio.create_task(self.get_from_mqtt_loop())
+        asyncio.create_task(self.master_mqtt_loop())
         asyncio.create_task(self.send_to_knbroker_loop())
 
         self.client = None
@@ -145,6 +146,81 @@ class KNMQTTClient():
     async def send_to_mqtt(self, ce: CloudEvent):
         await self.to_mqtt_buffer.put(ce)
 
+    async def master_mqtt_loop(self):
+        reconnect = 5
+        while True:
+            try:
+                client_id = str(ULID())
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as client:
+                    L.info("MQTT Connected. Starting workers.")
+                    
+                    # Start the publisher and subscriber concurrently *inside* the context
+                    publish_task = asyncio.create_task(self.send_to_mqtt_worker(client))
+                    subscribe_task = asyncio.create_task(self.get_from_mqtt_worker(client))
+                    
+                    # Wait for either to fail
+                    await asyncio.gather(publish_task, subscribe_task)
+                    
+            except MqttError as error:
+                L.error(f'MQTT Error: {error}. Reconnecting...')
+                await asyncio.sleep(reconnect)
+
+    async def send_to_mqtt_worker(self, client):
+        L.info("Started send_to_mqtt_worker")
+        while True:
+            # Wait for a CloudEvent to arrive in the queue from the FastAPI endpoint
+            ce = await self.to_mqtt_buffer.get()
+            L.debug("Processing CloudEvent for MQTT", extra={"ce": ce})
+            
+            try:
+                # Safely extract the destination topic
+                destpath = ce.get("destpath")
+                if not destpath:
+                    L.error("CloudEvent missing 'destpath'. Cannot route to MQTT.", extra={"ce": ce})
+                    continue
+
+                # Publish the CloudEvent payload to the MQTT broker
+                await client.publish(destpath, payload=to_json(ce))
+                L.debug("Successfully published to MQTT", extra={"destpath": destpath})
+
+            except MqttError as e:
+                # If the connection drops mid-publish, aiomqtt throws an MqttError.
+                # We re-raise it here so the master_mqtt_loop catches it, tears down 
+                # the broken connection, and restarts everything safely.
+                L.error("MQTT connection error during publish", extra={"reason": e})
+                raise e
+                
+            except Exception as e:
+                # Catch serialization or generic errors so a bad message doesn't kill the worker
+                L.error("Unexpected error in send_to_mqtt_worker", extra={"reason": e})
+
+    async def get_from_mqtt_worker(self, client):
+        L.info("Started get_from_mqtt_worker")
+        
+        # Subscribe to all configured topics
+        for topic in self.config.mqtt_topic_subscriptions.split(","):
+            if topic.strip():
+                L.debug("Subscribing to MQTT topic", extra={"topic": topic.strip()})
+                await client.subscribe(f"$share/knative/{topic.strip()}")
+
+        # Listen for incoming messages
+        async for message in client.messages:
+            try:
+                # Safely attempt to parse the incoming MQTT payload as a CloudEvent
+                ce = from_json(message.payload)
+                ce["sourcepath"] = message.topic.value
+                
+                L.debug("Received valid CloudEvent from MQTT", extra={"sourcepath": ce["sourcepath"]})
+                
+                # Push it to the Knative broker queue
+                await self.send_to_knbroker(ce)
+                
+            except Exception as e:
+                # If someone publishes bad JSON or a raw string to the topic, 
+                # catch the error here, log it, and skip to the next message.
+                L.error("Failed to parse MQTT message as CloudEvent", extra={"topic": message.topic.value, "reason": e})
+                continue
+            
     async def send_to_mqtt_loop(self):
 
         reconnect = 5
@@ -252,7 +328,7 @@ class KNMQTTClient():
 
                 L.debug(ce)#, extra=template)
                 try:
-                    timeout = httpx.Timeout(5.0, read=0.5)
+                    timeout = httpx.Timeout(5.0, read=10.0)
                     ce["datacontenttype"] = "application/json"
                     attrs = {
                         # "type": "envds.controller.control.request",
