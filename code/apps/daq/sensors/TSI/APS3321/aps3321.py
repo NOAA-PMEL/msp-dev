@@ -443,10 +443,9 @@ class APS3321(Sensor):
             daq_id=conf["daq_id"],
         )
 
-        # self.sampling_frequency = 30
-        self.sampling_frequency = 35
-        # if "sampling_frequency_sec" in conf:
-        #     self.sampling_frequency = conf["sampling_frequency_sec"]
+        self.sampling_frequency = 30
+        if "sampling_frequency_sec" in conf:
+            self.sampling_frequency = conf["sampling_frequency_sec"]
 
         print(f"self.config: {self.config}")
 
@@ -516,7 +515,7 @@ class APS3321(Sensor):
         # start_command = f"Log,{self.sampling_interval}\n"
         # start_command = "Log,1\n"
         # stop_command = "Log,0\n"
-        start_commands = ['S0\r', f'SMT2,{self.sampling_frequency}\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
+        start_commands = ['S0\r', f'SMT2,{self.sampling_frequency}\r', f'STU,{self.sampling_frequency}\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
         # start_commands = ['S1\r']
         stop_command = 'S0\r'
 
