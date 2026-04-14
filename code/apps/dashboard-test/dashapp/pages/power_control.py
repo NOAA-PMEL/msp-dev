@@ -255,4 +255,4 @@ def send_pb_state(s_pb1, s_pb2, s_pb3, pdu_pb1, pdu_pb2, pdu_pb3, pdu_pb4, pdu_p
 def display_data(active_controllers):
     # for sensor in active_sensors:
         # return sensor
-        return active_controllers
+        return [active_controllers]
