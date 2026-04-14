@@ -114,23 +114,23 @@ def get_layout():
     layout = html.Div([
         html.H1('Power Control'),
         html.Hr(),
-        # html.Div(id = 'controller-list'),
+        html.Div(id = 'controller-list'),
         html.Div([
-            dbc.Card(
+            dbc.Card([
                 html.H5("Main Payload", className="card-title"),
                 dbc.Stack([
                     dbc.Row(dbc.Col(html.Div("Main Control Shelly"))),
                     shelly_channels
                 ], gap=3)
-            ),
+        ]),
         ]),
         html.Div([
-            dbc.Card(
+            dbc.Card([
                 dbc.Stack([
                     dbc.Row(dbc.Col(html.Div("Physics Instruments PDU"))),
                     pdu_outlets
                 ], gap=3)
-            ),
+        ]),
         ]),
         # dbc.Card('This is our Home page content.', body=True),
         # html.Div('This is our Home page content.'),
@@ -248,11 +248,11 @@ def send_pb_state(s_pb1, s_pb2, s_pb3, pdu_pb1, pdu_pb2, pdu_pb3, pdu_pb4, pdu_p
 
 
 
-# @callback(
-#     Output('controller-list', 'children'),
-#     Input('active-controller-table', 'rowData')
-# )
-# def display_data(active_controllers):
-#     # for sensor in active_sensors:
-#         # return sensor
-#         return [active_controllers]
+@callback(
+    Output('controller-list', 'children'),
+    Input('active-controller-table', 'rowData')
+)
+def display_data(active_controllers):
+    # for sensor in active_sensors:
+        # return sensor
+        return [active_controllers]
