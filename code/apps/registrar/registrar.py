@@ -164,7 +164,7 @@ class Registrar:
             #     # return results
             # else:
             self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
-            results = self.http_client.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+            results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
             self.logger.debug("submit_request", extra={"results": results.json()})
             return results.json()
         except Exception as e:
@@ -185,7 +185,7 @@ class Registrar:
             #     # return results
             # else:
             self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/", "query": query})
-            results = self.http_client.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
+            results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
             self.logger.debug("submit_request", extra={"results": results.json()})
             return results.json()
         except Exception as e:
