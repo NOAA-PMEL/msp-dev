@@ -140,7 +140,7 @@ class KNMQTTClient():
         asyncio.create_task(self.master_mqtt_loop())
         # asyncio.create_task(self.send_to_knbroker_loop())
 
-        self.MAX_WORKERS = 50
+        self.MAX_WORKERS = 5
         for _ in range(self.MAX_WORKERS):
             asyncio.create_task(self.knbroker_worker())
         self.client = None
