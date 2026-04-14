@@ -111,19 +111,23 @@ link_url_base = f"{http_url_base}/msp/dashboardtest"
 # print("here:1")
 def get_layout():
     layout = html.Div([
-        html.H1('This is our power control page'),
+        html.H1('Power Control'),
         html.Hr(),
         html.Div([
-            dbc.Stack([
-                dbc.Row(dbc.Col(html.Div("Main Control Shelly"))),
-                shelly_channels
-            ], gap=3)
+            dbc.Card(
+                dbc.Stack([
+                    dbc.Row(dbc.Col(html.Div("Main Control Shelly"))),
+                    shelly_channels
+                ], gap=3)
+            ),
         ]),
         html.Div([
-            dbc.Stack([
-                dbc.Row(dbc.Col(html.Div("Physics Instruments PDU"))),
-                pdu_outlets
-            ], gap=3)
+            dbc.Card(
+                dbc.Stack([
+                    dbc.Row(dbc.Col(html.Div("Physics Instruments PDU"))),
+                    pdu_outlets
+                ], gap=3)
+            ),
         ]),
         # dbc.Card('This is our Home page content.', body=True),
         # html.Div('This is our Home page content.'),
