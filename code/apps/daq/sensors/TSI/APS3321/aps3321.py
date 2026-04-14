@@ -443,9 +443,10 @@ class APS3321(Sensor):
             daq_id=conf["daq_id"],
         )
 
-        self.sampling_frequency = 30
-        if "sampling_frequency_sec" in conf:
-            self.sampling_frequency = conf["sampling_frequency_sec"]
+        # self.sampling_frequency = 30
+        self.sampling_frequency = 35
+        # if "sampling_frequency_sec" in conf:
+        #     self.sampling_frequency = conf["sampling_frequency_sec"]
 
         print(f"self.config: {self.config}")
 
