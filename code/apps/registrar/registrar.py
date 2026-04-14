@@ -104,11 +104,9 @@ class Registrar:
         # create a new client for each request
         self.http_client = httpx.AsyncClient()
 
-    def close_http_client(self):
-        # create a new client for each request
-        # self.http_client = httpx.AsyncClient()
+    async def close_http_client(self):
         if self.http_client:
-            asyncio.create_task(self.http_client.aclose())
+            await self.http_client.aclose()
 
     async def send_event(self, ce):
         try:
@@ -116,7 +114,7 @@ class Registrar:
             if not self.http_client:
                 self.open_http_client()
             try:
-                timeout = httpx.Timeout(5.0, read=0.1)
+                timeout = httpx.Timeout(5.0, read=10.0)
                 headers, body = to_structured(ce)
                 self.logger.debug(
                     "send_event",

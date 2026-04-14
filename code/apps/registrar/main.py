@@ -125,7 +125,7 @@ async def start_system():
 
 @app.on_event("shutdown")
 async def shutdown_system():
-    registrar.close_http_client()
+    await registrar.close_http_client()
 
 @app.get("/")
 async def root():
