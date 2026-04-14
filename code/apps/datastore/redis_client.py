@@ -412,7 +412,7 @@ class RedisClient(DBClient):
         qstring = " ".join(query_args)
         self.logger.debug("device_data_get", extra={"query_string": qstring})
         q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
-        docs = await self.client.ft(self.data_device_index_name).search(q).docs
+        docs = (await self.client.ft(self.data_device_index_name).search(q)).docs
         results = []
         for doc in docs:
             try:
@@ -475,7 +475,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("device_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = await self.client.ft(self.registry_device_definition_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_device_definition_index_name).search(q)).docs
         self.logger.debug("device_definition_registry_get", extra={"docs": docs})
         results = []
         for doc in docs:
@@ -592,7 +592,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = await self.client.ft(self.registry_device_instance_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_device_instance_index_name).search(q)).docs
         results = []
         for doc in docs:
             try:
@@ -718,7 +718,7 @@ class RedisClient(DBClient):
         qstring = " ".join(query_args)
         self.logger.debug("controller_data_get", extra={"query_string": qstring})
         q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
-        docs = await self.client.ft(self.data_controller_index_name).search(q).docs
+        docs = (await self.client.ft(self.data_controller_index_name).search(q)).docs
         results = []
         for doc in docs:
             try:
@@ -775,7 +775,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("controller_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = await self.client.ft(self.registry_controller_definition_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_controller_definition_index_name).search(q)).docs
         self.logger.debug("controller_definition_registry_get", extra={"docs": docs})
         results = []
         for doc in docs:
@@ -867,7 +867,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("controller_instance_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = await self.client.ft(self.registry_controller_instance_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_controller_instance_index_name).search(q)).docs
         results = []
         for doc in docs:
             try:
@@ -970,7 +970,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = await self.client.ft(self.registry_variablemap_definition_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_variablemap_definition_index_name).search(q)).docs
         self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"docs": docs})
         results = []
         for doc in docs:
@@ -1071,7 +1071,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("redis_client: variableset_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = await self.client.ft(self.registry_variableset_definition_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_variableset_definition_index_name).search(q)).docs
         self.logger.debug("redis_client: variableset_definition_registry_get", extra={"docs": docs})
         results = []
         for doc in docs:
