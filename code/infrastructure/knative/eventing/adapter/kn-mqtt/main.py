@@ -112,6 +112,7 @@ app = FastAPI()
 
 
 # adapter = KNMQTTClient(config)
+adapter = None
 @app.on_event("startup")
 async def start_system():
     global adapter
