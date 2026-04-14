@@ -104,6 +104,11 @@ class Registrar:
         # create a new client for each request
         self.http_client = httpx.AsyncClient()
 
+    def close_http_client(self):
+        # create a new client for each request
+        # self.http_client = httpx.AsyncClient()
+        if self.http_client:
+            asyncio.create_task(self.http_client.aclose())
 
     async def send_event(self, ce):
         try:
@@ -153,14 +158,15 @@ class Registrar:
         try:
             self.logger.debug("submit_request", extra={"path": path})
             timeout = httpx.Timeout(10.0, read=None)
-            # if query is None:
+            if not self.http_client:
+                self.open_http_client()            # if query is None:
             #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
             #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
             #     self.logger.debug("submit_request", extra={"results": results})
             #     # return results
             # else:
             self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
-            results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+            results = self.http_client.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
             self.logger.debug("submit_request", extra={"results": results.json()})
             return results.json()
         except Exception as e:
@@ -172,6 +178,8 @@ class Registrar:
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
             timeout = httpx.Timeout(10.0, read=None)
+            if not self.http_client:
+                self.open_http_client()            # if query is None:
             # if query is None:
             #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
             #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
@@ -179,7 +187,7 @@ class Registrar:
             #     # return results
             # else:
             self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/", "query": query})
-            results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
+            results = self.http_client.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
             self.logger.debug("submit_request", extra={"results": results.json()})
             return results.json()
         except Exception as e:

@@ -114,7 +114,18 @@ app = FastAPI()
 #     end_time: str | None = None
 #     custom: dict | None = None
 
-registrar = Registrar()
+# registrar = Registrar()
+registrar = None
+
+@app.on_event("startup")
+async def start_system():
+    global registrar
+    registrar = Registrar()
+    L.info("Registrar initialized and background tasks started.")
+
+@app.on_event("shutdown")
+async def shutdown_system():
+    registrar.close_http_client()
 
 @app.get("/")
 async def root():
