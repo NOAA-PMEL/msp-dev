@@ -138,13 +138,77 @@ class KNMQTTClient():
         # asyncio.create_task(self.send_to_mqtt_loop())
         # asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.master_mqtt_loop())
-        asyncio.create_task(self.send_to_knbroker_loop())
+        # asyncio.create_task(self.send_to_knbroker_loop())
 
+        self.MAX_WORKERS = 50
+        for _ in range(self.MAX_WORKERS):
+            asyncio.create_task(self.knbroker_worker())
         self.client = None
         self.http_client = None
 
     async def send_to_mqtt(self, ce: CloudEvent):
         await self.to_mqtt_buffer.put(ce)
+
+    async def knbroker_worker(self):
+        """A dedicated worker that pulls from the queue and sends to Knative."""
+        # Ensure HTTP client exists for this worker
+        if not self.http_client:
+            self.open_http_client()
+            
+        while True:
+            try:
+                # 1. Wait for a message (sleeps if queue is empty)
+                ce = await self.to_knbroker_buffer.get()
+                
+                # 2. Process the HTTP request (awaits completion)
+                await self._post_ce_to_knative(ce)
+                
+                # 3. Mark the task as successfully completed in the queue
+                self.to_knbroker_buffer.task_done()
+                
+            except Exception as e:
+                L.error(f"Worker encountered an error: {e}")
+                
+            # Yield control back to the event loop briefly
+            await asyncio.sleep(0.0001)
+
+    async def _post_ce_to_knative(self, ce: CloudEvent):
+        try:
+            # Safer timeout for Knative cold-starts
+            timeout = httpx.Timeout(10.0, read=10.0) 
+            
+            ce["datacontenttype"] = "application/json"
+            attrs = {
+                "type": ce["type"],
+                "source": ce["source"],
+                "id": ce["id"],
+                "datacontenttype": "application/json",
+            }
+
+            if "destpath" in ce:
+                attrs["destpath"] = ce["destpath"]
+            if "sourcepath" in ce:
+                attrs["sourcepath"] = ce["sourcepath"]
+                
+            ce_out = CloudEvent(attributes=attrs, data=ce.data)
+            headers, body = to_structured(ce_out)
+            
+            # Use content=body, not data=body
+            r = await self.http_client.post(
+                self.config.knative_broker,
+                headers=headers,
+                content=body,
+                timeout=timeout
+            )
+            r.raise_for_status()
+
+        except InvalidStructuredJSON:
+            L.error(f"INVALID MSG: {ce}")
+        except httpx.TimeoutException as e:
+            # Log the timeout so it isn't invisible!
+            L.error(f"Timeout posting to Knative: {e}")
+        except httpx.HTTPError as e:
+            L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
 
     async def master_mqtt_loop(self):
         reconnect = 5
