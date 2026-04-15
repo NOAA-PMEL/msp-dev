@@ -564,7 +564,7 @@ def update_active_sensors(count, table_data):
 
         query = {
             "device_type": "sensor",
-            "limit": 40
+            # "limit": 40
             }
         url = f"http://{datastore_url}/device-instance/registry/get/"
         print(f"device-definition-get: {url}")
