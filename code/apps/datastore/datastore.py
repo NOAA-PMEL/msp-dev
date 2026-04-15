@@ -108,6 +108,7 @@ class DatastoreConfig(BaseSettings):
     db_client_port: str | None = None
     db_client_username: str | None = None
     db_client_password: str | None = None
+    db_clear_db: bool | None = False
 
     db_data_ttl: int = 600  # seconds
     db_reg_device_definition_ttl: int = 0  # permanent
@@ -149,10 +150,23 @@ class Datastore:
         self.config = DatastoreConfig()
         self.configure()
 
+        # self.mqtt_buffer = asyncio.Queue()
+        # asyncio.create_task(self.get_from_mqtt_loop())
+        # asyncio.create_task(self.handle_mqtt_buffer())
+
+    async def setup(self):
+        self.logger.info("Running Datastore async setup...")
+        
+        # Start background tasks safely inside the event loop
         self.mqtt_buffer = asyncio.Queue()
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
 
+        # Build Redis indexes if the client supports it
+        if hasattr(self.db_client, "build_indexes"):
+            await self.db_client.build_indexes()
+            self.logger.info("Redis indexes built successfully.")
+            
     def configure(self):
         # set clients
 
@@ -165,6 +179,7 @@ class Datastore:
                 "port": self.config.db_client_port,
                 "username": self.config.db_client_username,
                 "password": self.config.db_client_password,
+                "clear_db": self.config.db_clear_db
             },
         )
         self.logger.debug("configure", extra={"db_client_config": db_client_config})

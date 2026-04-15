@@ -114,7 +114,15 @@ app = FastAPI()
 #     end_time: str | None = None
 #     custom: dict | None = None
 
-datastore = Datastore()
+# datastore = Datastore()
+datastore = None
+
+@app.on_event("startup")
+async def start_system():
+    global datastore
+    datastore = Datastore()
+    await datastore.setup()
+    L.info("Datastore initialized and background tasks started.")
 
 def get_response_event(msg, status):
     # response_data = {"processed_data": event.data}
