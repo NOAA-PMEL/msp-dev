@@ -568,7 +568,9 @@ def update_active_controllers(count, table_data):
         results = response.json()
         print(f"results: {results}")
         if "results" in results and results["results"]:
+            print(f"update_active_controllers 1")
             for doc in results["results"]:
+                print(f"update_active_controllers 1.5: {doc}")
                 make = doc["make"]
                 model = doc["model"]
                 serial_number = doc["serial_number"]
@@ -587,6 +589,7 @@ def update_active_controllers(count, table_data):
                     "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
                     # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
                 }
+                print(f"update_active_controllers 1.75: {controller}")
                 if table_data is None:
                     table_data = []
                 if controller not in table_data:
