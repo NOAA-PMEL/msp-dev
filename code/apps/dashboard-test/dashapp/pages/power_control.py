@@ -102,7 +102,7 @@ datastore_url = f"datastore.{config.daq_id}-system"
 http_url_base = f"http://{config.external_hostname}:{config.http_port}"
 if config.http_use_tls:
     http_url_base = f"https://{config.external_hostname}:{config.https_port}"
-ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}:"
+ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 if config.ws_use_tls:
     ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
 
