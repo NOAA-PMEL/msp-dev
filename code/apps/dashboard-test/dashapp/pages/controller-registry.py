@@ -11,6 +11,7 @@ import pandas as pd
 # import pymongo
 
 import httpx 
+import traceback
 
 dash.register_page(
     __name__,
@@ -332,6 +333,7 @@ def get_layout():
                     ),
                 ],
                 id="controller-accordion",
+                always_open=True
             ),
             WebSocket(
                 id="ws-controller-registry",
@@ -606,6 +608,7 @@ def update_active_controllers(count, table_data):
 
     except Exception as e:
         print(f"update_active_controllers error: {e}")
+        print(traceback.format_exc())
         return dash.no_update
 
 
