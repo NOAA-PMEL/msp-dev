@@ -352,7 +352,7 @@ def get_layout():
             ws_send_buffer,
             dcc.Store(id="sensor-defs-changes", data=[]),
             dcc.Store(id="active-sensor-changes", data=[]),
-            dcc.Store(id="active-sensor-table", storage_type="session"),
+            # dcc.Store(id="active-sensor-table", storage_type="session"),
             # dcc.Store(id="active-sensors", data=[]),
             # dcc.Interval(id="test-interval", interval=(10*1000)),
             dcc.Interval(
