@@ -339,6 +339,7 @@ def get_layout():
                     ),
                 ],
                 id="sensor-accordion",
+                always_open=True
                 # multiple=True
             ),
             WebSocket(
@@ -562,10 +563,7 @@ def update_active_sensors(count, table_data):
         # results = httpx.get(f"http://{datastore_url}/device-instance/registry/get/", params=query)
         # print(f"results: {results}")
 
-        query = {
-            "device_type": "sensor",
-            "limit": 40
-            }
+        query = {"device_type": "sensor"}
         url = f"http://{datastore_url}/device-instance/registry/get/"
         print(f"device-definition-get: {url}")
         response = httpx.get(url, params=query)
