@@ -339,7 +339,7 @@ def get_layout():
                     ),
                 ],
                 id="sensor-accordion",
-                multiple=True
+                # multiple=True
             ),
             WebSocket(
                 id="ws-sensor-registry",
