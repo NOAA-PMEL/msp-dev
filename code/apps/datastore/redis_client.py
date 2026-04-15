@@ -591,9 +591,9 @@ class RedisClient(DBClient):
         else:
             qstring = "*"
         self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
-        q = Query(qstring).paging(offset=0, num=max_results)#.sort_by("version", asc=False)
-        res = self.client.ft(self.registry_device_instance_index_name).search(q)
-        self.logger.debug("Redis found", extra={"total": res.total, "query": qstring})
+        q = Query(qstring).paging(0, 20)#.sort_by("version", asc=False)
+        # res = self.client.ft(self.registry_device_instance_index_name).search(q)
+        # self.logger.debug("Redis found", extra={"total": res.total, "query": qstring})
         docs = self.client.ft(self.registry_device_instance_index_name).search(q).docs
         results = []
         for doc in docs:
