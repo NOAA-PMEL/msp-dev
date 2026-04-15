@@ -567,7 +567,7 @@ class RedisClient(DBClient):
 
     async def device_instance_registry_get(self, request: DeviceInstanceRequest):
         await super(RedisClient, self).device_instance_registry_get(request)
-        max_results = 100
+        max_results = 20
 
         query_args = []
         if request.device_id:
@@ -592,6 +592,8 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
         q = Query(qstring).paging(offset=0, num=max_results)#.sort_by("version", asc=False)
+        res = self.client.ft(self.registry_device_instance_index_name).search(q)
+        print(f"DEBUG: Redis found {res.total} total documents matching '{qstring}'")
         docs = self.client.ft(self.registry_device_instance_index_name).search(q).docs
         results = []
         for doc in docs:
