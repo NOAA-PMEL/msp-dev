@@ -591,7 +591,7 @@ class RedisClient(DBClient):
         else:
             qstring = "*"
         self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
-        q = Query(qstring).paging(0, 20)#.sort_by("version", asc=False)
+        q = Query(qstring).paging(0, 50)#.sort_by("version", asc=False)
 
         docs = (await self.client.ft(self.registry_device_instance_index_name).search(q)).docs
         self.logger.debug("device_instance_registry_get", extra={"docs": docs})
