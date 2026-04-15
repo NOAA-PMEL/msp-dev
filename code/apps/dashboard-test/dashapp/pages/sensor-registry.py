@@ -589,6 +589,8 @@ def update_active_sensors(count, table_data):
                     "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/dash/sampling-system/{sampling_system_id})",
                     # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
                 }
+                if table_data is None:
+                    table_data = []
                 if sensor not in table_data:
                     table_data.append(sensor)
                     update = True
