@@ -601,7 +601,7 @@ class RedisClient(DBClient):
                 if doc.json:
                     reg = json.loads(doc.json)
                     results.append(reg["registration"])
-                    self.logger.debug("device_instance_registry_get", extra={"results": results})
+                    self.logger.debug("device_instance_registry_get", extra={"num_results": len(results), "results": results})
             except Exception as e:
                 self.logger.error("device_instance_registry_get", extra={"reason": e})
                 continue
