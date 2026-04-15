@@ -122,16 +122,31 @@ def get_layout():
                     dbc.Row(dbc.Col(html.Div("Main Control Shelly"))),
                     shelly_channels
                 ], gap=3)
-        ]),
-        ]),
+            ]),
+        ],
+        className="p-4"
+        ),
         html.Div([
             dbc.Card([
+                html.H5("Physics Payload", className="card-title"),
                 dbc.Stack([
                     dbc.Row(dbc.Col(html.Div("Physics Instruments PDU"))),
                     pdu_outlets
                 ], gap=3)
-        ]),
-        ]),
+            ]),
+        ],
+        className="p-4"
+        ),
+        html.Div([
+            dbc.Card([
+                html.H5("Optics Payload", className="card-title"),
+                dbc.Stack([
+                    # dbc.Row(dbc.Col(html.Div("Physics Instruments PDU"))),
+                    pdu_outlets
+                ], gap=3)
+            ]),
+        ], className="p-4"
+        ),
         # dbc.Card('This is our Home page content.', body=True),
         # html.Div('This is our Home page content.'),
         # dcc.Input(id="input", autoComplete="off", debounce=True),
