@@ -515,7 +515,8 @@ class APS3321(Sensor):
         # start_command = f"Log,{self.sampling_interval}\n"
         # start_command = "Log,1\n"
         # stop_command = "Log,0\n"
-        start_commands = ['S0\r', f'SMT2,{self.sampling_frequency}\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
+        # start_commands = ['S0\r', f'SMT2,{self.sampling_frequency}\r', 'UC\r', 'UD\r', 'US\r', 'UY\r', 'U1\r', 'S1\r']
+        start_commands = ['S0\r', f'SMT2,{self.sampling_frequency}\r', 'UC1\r', 'UD1\r', 'US1\r', 'UY1\r', 'U1\r', 'S1\r']
         # start_commands = ['S1\r']
         stop_command = 'S0\r'
 

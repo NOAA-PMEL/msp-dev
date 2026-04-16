@@ -1,6 +1,6 @@
 import asyncio
 import json
-import redis
+import redis.asyncio as redis
 from redis.commands.json.path import Path
 # import redis.commands.search.aggregation as aggregations
 # import redis.commands.search.reducers as reducers
@@ -45,7 +45,7 @@ class RedisClient(DBClient):
         self.registry_variablemap_definition_index_name = "idx:registry-variablemap-definition"
         self.registry_variableset_definition_index_name = "idx:registry-variableset-definition"
 
-        self.build_indexes()
+        # self.build_indexes()
 
     def connect(self):
         if not self.client:
@@ -61,10 +61,11 @@ class RedisClient(DBClient):
                 self.logger.error("redis connect", extra={"reason": e})
                 self.client = None
 
-    def build_indexes(self):
+    async def build_indexes(self):
 
         self.connect()
-        
+        if self.config["clear_db"]:
+            await self.client.flushall()
         # change to only create index if it doesn't exist. This allows replicas
 
         # data:device
@@ -90,7 +91,7 @@ class RedisClient(DBClient):
         try:
             # data:device
             try:
-                self.client.ft(self.data_device_index_name).info()
+                await self.client.ft(self.data_device_index_name).info()
             except Exception as e:
                 schema = (
                     TagField("$.record.device_id", as_name="device_id"),
@@ -105,11 +106,11 @@ class RedisClient(DBClient):
                     prefix=["data:device:"],
                     index_type=IndexType.JSON
                 )
-                self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
+                await self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
 
             # registry:device-definition
             try:
-                self.client.ft(self.registry_device_definition_index_name).info()
+                await self.client.ft(self.registry_device_definition_index_name).info()
             except Exception as e:
                 schema = (
                     TagField("$.registration.device_definition_id", as_name="device_definition_id"),
@@ -122,11 +123,11 @@ class RedisClient(DBClient):
                     prefix=["registry:device-definition:"],
                     index_type=IndexType.JSON
                 )
-                self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
+                await self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
 
             # registry:device-instance
             try:
-                self.client.ft(self.registry_device_instance_index_name).info()
+                await self.client.ft(self.registry_device_instance_index_name).info()
             except Exception as e:
                 schema = (
                     TagField("$.registration.device_id", as_name="device_id"),
@@ -140,11 +141,11 @@ class RedisClient(DBClient):
                     prefix=["registry:device-instance:"],
                     index_type=IndexType.JSON
                 )
-                self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
+                await self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
 
             # data:controller
             try:
-                self.client.ft(self.data_controller_index_name).info()
+                await self.client.ft(self.data_controller_index_name).info()
             except Exception as e:
                 schema = (
                     TagField("$.record.controller_id", as_name="controller_id"),
@@ -159,11 +160,11 @@ class RedisClient(DBClient):
                     prefix=["data:controller:"],
                     index_type=IndexType.JSON
                 )
-                self.client.ft(self.data_controller_index_name).create_index(schema, definition=definition)
+                await self.client.ft(self.data_controller_index_name).create_index(schema, definition=definition)
 
             # registry:controller-definition
             try:
-                self.client.ft(self.registry_controller_definition_index_name).info()
+                await self.client.ft(self.registry_controller_definition_index_name).info()
             except Exception as e:
                 schema = (
                     TagField("$.registration.controller_definition_id", as_name="controller_definition_id"),
@@ -176,11 +177,11 @@ class RedisClient(DBClient):
                     prefix=["registry:controller-definition:"],
                     index_type=IndexType.JSON
                 )
-                self.client.ft(self.registry_controller_definition_index_name).create_index(schema, definition=definition)
+                await self.client.ft(self.registry_controller_definition_index_name).create_index(schema, definition=definition)
 
             # registry:controller-instance
             try:
-                self.client.ft(self.registry_controller_instance_index_name).info()
+                await self.client.ft(self.registry_controller_instance_index_name).info()
             except Exception as e:
                 schema = (
                     TagField("$.registration.controller_id", as_name="controller_id"),
@@ -194,11 +195,11 @@ class RedisClient(DBClient):
                     prefix=["registry:controller-instance:"],
                     index_type=IndexType.JSON
                 )
-                self.client.ft(self.registry_controller_instance_index_name).create_index(schema, definition=definition)
+                await self.client.ft(self.registry_controller_instance_index_name).create_index(schema, definition=definition)
 
             # registry:variablemap-definition
             try:
-                self.client.ft(self.registry_variablemap_definition_index_name).info()
+                await self.client.ft(self.registry_variablemap_definition_index_name).info()
             except Exception as e:
                 schema = (
                     TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
@@ -211,11 +212,11 @@ class RedisClient(DBClient):
                     prefix=["registry:variablemap-definition:"],
                     index_type=IndexType.JSON
                 )
-                self.client.ft(self.registry_variablemap_definition_index_name).create_index(schema, definition=definition)
+                await self.client.ft(self.registry_variablemap_definition_index_name).create_index(schema, definition=definition)
 
             # registry:variableset-definition
             try:
-                self.client.ft(self.registry_variableset_definition_index_name).info()
+                await self.client.ft(self.registry_variableset_definition_index_name).info()
             except Exception as e:
                 schema = (
                     TagField("$.registration.variableset_definition_id", as_name="variableset_definition_id"),
@@ -228,7 +229,7 @@ class RedisClient(DBClient):
                     prefix=["registry:variableset-definition:"],
                     index_type=IndexType.JSON
                 )
-                self.client.ft(self.registry_variableset_definition_index_name).create_index(schema, definition=definition)
+                await self.client.ft(self.registry_variableset_definition_index_name).create_index(schema, definition=definition)
 
         except Exception as e:
             self.logger.error("build_indexes", extra={"reason": e})
@@ -296,12 +297,12 @@ class RedisClient(DBClient):
 
             key = f"{database}:{collection}:{device_id}:{timestamp}"
             self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
-            self.client.json().set(
+            await self.client.json().set(
                 key,
                 "$",
                 {"record": document}
             )
-            self.client.expire(key, ttl)
+            await self.client.expire(key, ttl)
 
         except Exception as e:
             self.logger.error("device_data_update", extra={"reason": e})
@@ -363,13 +364,13 @@ class RedisClient(DBClient):
                 self.logger.debug("check_results", extra={"results": check_results["results"]})
                 result = True
             else:
-                result = self.client.json().set(
+                result = await self.client.json().set(
                     key,
                     "$",
                     {"registration": document}
                 )
             if result and ttl > 0:
-                self.client.expire(key, ttl)
+                await self.client.expire(key, ttl)
 
             self.logger.debug("device_definition_registry_update", extra={"check_request": check_request, "result": result})
             return result
@@ -411,7 +412,7 @@ class RedisClient(DBClient):
         qstring = " ".join(query_args)
         self.logger.debug("device_data_get", extra={"query_string": qstring})
         q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
-        docs = self.client.ft(self.data_device_index_name).search(q).docs
+        docs = (await self.client.ft(self.data_device_index_name).search(q)).docs
         results = []
         for doc in docs:
             try:
@@ -431,7 +432,7 @@ class RedisClient(DBClient):
         ids = []
         try:
             self.logger.debug("device_definition_registry_get_ids")
-            for key in self.client.scan_iter("registry:device-definition:*"):
+            async for key in self.client.scan_iter("registry:device-definition:*"):
                 self.logger.debug("device_definition_registry_get_ids", extra={"def_id": key})
                 id = key.decode('utf-8').replace("registry:device-definition:", "")
                 # id = key.split(".")[-1]
@@ -474,7 +475,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("device_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = self.client.ft(self.registry_device_definition_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_device_definition_index_name).search(q)).docs
         self.logger.debug("device_definition_registry_get", extra={"docs": docs})
         results = []
         for doc in docs:
@@ -543,20 +544,20 @@ class RedisClient(DBClient):
             #     self.logger.debug("check_results", extra={"results": check_results["results"]})
             #     result = True
             # else:
-            #     result = self.client.json().set(
+            #     result = await self.client.json().set(
             #         key,
             #         "$",
             #         {"registration": document}
             #     )
 
             # update device instance every time to keep up to date
-            result = self.client.json().set(
+            result = await self.client.json().set(
                 key,
                 "$",
                 {"registration": document}
             )
             if result:
-                self.client.expire(key, ttl)
+                await self.client.expire(key, ttl)
 
             # self.logger.debug("device_instance_registry_update", extra={"check_request": check_request, "result": result})
             return result
@@ -591,7 +592,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = self.client.ft(self.registry_device_instance_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_device_instance_index_name).search(q)).docs
         results = []
         for doc in docs:
             try:
@@ -630,12 +631,12 @@ class RedisClient(DBClient):
 
             key = f"{database}:{collection}:{controller_id}:{timestamp}"
             self.logger.debug("redis_client", extra={"key": key, "controller-doc": document})
-            self.client.json().set(
+            await self.client.json().set(
                 key,
                 "$",
                 {"record": document}
             )
-            self.client.expire(key, ttl)
+            await self.client.expire(key, ttl)
 
         except Exception as e:
             self.logger.error("controller_data_update", extra={"reason": e})
@@ -676,13 +677,13 @@ class RedisClient(DBClient):
                 self.logger.debug("check_results", extra={"results": check_results["results"]})
                 result = True
             else:
-                result = self.client.json().set(
+                result = await self.client.json().set(
                     key,
                     "$",
                     {"registration": document}
                 )
             if result and ttl > 0:
-                self.client.expire(key, ttl)
+                await self.client.expire(key, ttl)
 
             self.logger.debug("controller_definition_registry_update", extra={"check_request": check_request, "result": result})
             return result
@@ -717,7 +718,7 @@ class RedisClient(DBClient):
         qstring = " ".join(query_args)
         self.logger.debug("controller_data_get", extra={"query_string": qstring})
         q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
-        docs = self.client.ft(self.data_controller_index_name).search(q).docs
+        docs = (await self.client.ft(self.data_controller_index_name).search(q)).docs
         results = []
         for doc in docs:
             try:
@@ -736,7 +737,7 @@ class RedisClient(DBClient):
         ids = []
         try:
             self.logger.debug("controller_definition_registry_get_ids")
-            for key in self.client.scan_iter("registry:controller-definition:*"):
+            async for key in self.client.scan_iter("registry:controller-definition:*"):
                 self.logger.debug("controller_definition_registry_get_ids", extra={"def_id": key})
                 id = key.decode('utf-8').replace("registry:controller-definition:", "")
                 # id = key.split(".")[-1]
@@ -774,7 +775,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("controller_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = self.client.ft(self.registry_controller_definition_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_controller_definition_index_name).search(q)).docs
         self.logger.debug("controller_definition_registry_get", extra={"docs": docs})
         results = []
         for doc in docs:
@@ -832,13 +833,13 @@ class RedisClient(DBClient):
             #     )
 
             # update instance every time to keep up to date
-            result = self.client.json().set(
+            result = await self.client.json().set(
                 key,
                 "$",
                 {"registration": document}
             )
             if result:
-                self.client.expire(key, ttl)
+                await self.client.expire(key, ttl)
 
             # self.logger.debug("controller_instance_registry_update", extra={"check_request": check_request, "result": result})
             return result
@@ -866,7 +867,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("controller_instance_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = self.client.ft(self.registry_controller_instance_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_controller_instance_index_name).search(q)).docs
         results = []
         for doc in docs:
             try:
@@ -923,13 +924,13 @@ class RedisClient(DBClient):
                 self.logger.debug("redis_client: variablemap_definition_registry_update check_results", extra={"results": check_results["results"]})
                 result = True
             else:
-                result = self.client.json().set(
+                result = await self.client.json().set(
                     key,
                     "$",
                     {"registration": document}
                 )
             if result and ttl > 0:
-                self.client.expire(key, ttl)
+                await self.client.expire(key, ttl)
 
             self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"check_request": check_request, "result": result})
             return result
@@ -969,7 +970,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = self.client.ft(self.registry_variablemap_definition_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_variablemap_definition_index_name).search(q)).docs
         self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"docs": docs})
         results = []
         for doc in docs:
@@ -1021,13 +1022,13 @@ class RedisClient(DBClient):
                 self.logger.debug("redis_client: variableset_definition_registry_update check_results", extra={"results": check_results["results"]})
                 result = True
             else:
-                result = self.client.json().set(
+                result = await self.client.json().set(
                     key,
                     "$",
                     {"registration": document}
                 )
             if result and ttl > 0:
-                self.client.expire(key, ttl)
+                await self.client.expire(key, ttl)
 
             self.logger.debug("redis_client: variableset_definition_registry_update", extra={"check_request": check_request, "result": result})
             return result
@@ -1070,7 +1071,7 @@ class RedisClient(DBClient):
             qstring = "*"
         self.logger.debug("redis_client: variableset_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
-        docs = self.client.ft(self.registry_variableset_definition_index_name).search(q).docs
+        docs = (await self.client.ft(self.registry_variableset_definition_index_name).search(q)).docs
         self.logger.debug("redis_client: variableset_definition_registry_get", extra={"docs": docs})
         results = []
         for doc in docs:

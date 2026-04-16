@@ -114,7 +114,18 @@ app = FastAPI()
 #     end_time: str | None = None
 #     custom: dict | None = None
 
-registrar = Registrar()
+# registrar = Registrar()
+registrar = None
+
+@app.on_event("startup")
+async def start_system():
+    global registrar
+    registrar = Registrar()
+    L.info("Registrar initialized and background tasks started.")
+
+@app.on_event("shutdown")
+async def shutdown_system():
+    await registrar.close_http_client()
 
 @app.get("/")
 async def root():
@@ -125,8 +136,8 @@ async def root():
 async def registry_sync(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
-        L.debug(request.headers)
-        L.debug("registry-sync", extra={"ce": ce, "destpath": ce["destpath"]})
+        # L.debug(request.headers)
+        # L.debug("registry-sync", extra={"ce": ce, "destpath": ce["destpath"]})
         # await adapter.send_to_mqtt(ce)
         # await registrar.handle_registry_sync(ce)
         await registrar.sync_bcast_buffer.put(ce)

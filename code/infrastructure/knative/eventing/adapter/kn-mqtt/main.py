@@ -111,7 +111,13 @@ app = FastAPI()
 #                 await asyncio.sleep(reconnect)
 
 
-adapter = KNMQTTClient(config)
+# adapter = KNMQTTClient(config)
+adapter = None
+@app.on_event("startup")
+async def start_system():
+    global adapter
+    adapter = KNMQTTClient(config)
+    L.info("KN-MQTT Adapter initialized and background tasks started.")
 
 @app.get("/")
 async def root():

@@ -13,7 +13,6 @@ from envds.util.util import time_to_next
 
 from labjack import ljm
 
-
 class LabJackClient(DAQClient):
     """docstring for self.LabJackClient."""
 
@@ -159,6 +158,7 @@ class LabJackClient(DAQClient):
                 await asyncio.sleep(time_to_next(self.config.properties["unpolled_sample_frequency_sec"]["data"]))
             except Exception as e:
                 self.logger.error("unpolled_sample_loop", extra={"reason": e})
+                await asyncio.sleep(0.01)
 
         # ljm.cleanInterval(handle)
 
@@ -188,30 +188,46 @@ class ADCClient(LabJackClient):
 
     async def send_to_client(self, data):
         try:
+            self.logger.debug("ADCCLient.send_to_client:1")
             channel = self.config.properties["channel"]["data"]
             lj_channel = f"AIN{channel}"
+            # self.logger.debug("ADCCLient.send_to_client", extra={"props": self.config.properties})
             if self.config_required:
+                self.logger.debug("ADCCLient.send_to_client:2")
+
                 range_val = self.config.properties["input_voltage_range"]["data"]
                 # range_val = 1.0
                 ljm.eWriteName(self.labjack, f"{lj_channel}_RANGE", range_val)
                 self.logger.debug("ADCCLient.send_to_client", extra={"range": ljm.eReadName(self.labjack, f"{lj_channel}_RANGE")})
+                self.logger.debug("ADCCLient.send_to_client:3")
 
+                self.logger.debug("ADCCLient.send_to_client:4")
                 if self.config.properties["input_type"]["data"] in ["differential", "double"]:
+                    self.logger.debug("ADCCLient.send_to_client:5")
                     ch_neg = self.config.properties["diff_ch_negative"]["data"]
-                    lj_channel = f"{lj_channel}_AIN{ch_neg}"
-
+                    # lj_channel = f"{lj_channel}_AIN{ch_neg}"
+                    # self.logger.debug("ADCClient.send_to_client", extra={"lj_channel": lj_channel})
+                    self.logger.debug("ADCCLient.send_to_client:6")
+                    ljm.eWriteName(self.labjack, f"AIN{channel}_NEGATIVE_CH", ch_neg)
                 self.config_required = False
+
 
                 
 
-            self.logger.debug("ADCCLient.send_to_client", extra={"channel": channel})
+            self.logger.debug("ADCCLient.send_to_client:7")
+            self.logger.debug("ADCCLient.send_to_client", extra={"channel": channel, "lj_channel": lj_channel})
+            # dataRead = ljm.eReadName(self.labjack, lj_channel)
             dataRead = ljm.eReadName(self.labjack, lj_channel)
+            self.logger.debug("ADCCLient.send_to_client:8")
             self.logger.debug("ADCCLient.send_to_client", extra={"dataRead": dataRead})
+            self.logger.debug("ADCCLient.send_to_client:9")
             output = {"data": dataRead}
+            self.logger.debug("ADCCLient.send_to_client:10")
             await self.data_buffer.put(output)
+            self.logger.debug("ADCCLient.send_to_client:11")
 
         except Exception as e:
-            self.logger.error("send_to_client")
+            self.logger.error("ADCClient.send_to_client", extra={"reason": e})
 
 
 class DACClient(LabJackClient):
@@ -327,7 +343,7 @@ class PWMClient(LabJackClient):
             # client_config = self.client_map[client_id]["client_config"]
             # data_buffer = self.client_map[client_id]["data_buffer"]
             # get i2c commands
-            self.logger.debug("send_to_client", extra={"pwm-data": data, "config": self.config})
+            self.logger.debug("PWM:send_to_client", extra={"pwm-data": data, "config": self.config})
             clock_divisor = self.config.properties["clock_divisor"][
                 "data"
             ]
@@ -351,44 +367,55 @@ class PWMClient(LabJackClient):
             ]
             pwm_channel = self.config.properties["pwm_channel"]["data"]
 
-            self.logger.debug("send_to_client:clock disable", extra={"clock_channel": clock_channel})
+            # ensure we are able to use 16-bit pwm
+            if clock_channel != 0:
+                self.logger.debug("PWM:send_to_client:16-bit client: clock0 disable", extra={"clock_channel": clock_channel})
+                ljm.eWriteName(
+                    self.labjack, f"DIO_EF_CLOCK0_ENABLE", 0
+                )  # disable clock0 which used 1 and 2.
+
+            self.logger.debug("PWM:send_to_client:clock disable", extra={"clock_channel": clock_channel})
             ljm.eWriteName(
                 self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 0
             )  # Enable Clock#, this will start the PWM signal.
 
             # configure clock
-            self.logger.debug("send_to_client:div", extra={"clock_divisor": clock_divisor})
+            self.logger.debug("PWM:send_to_client:div", extra={"clock_divisor": clock_divisor})
             ljm.eWriteName(
                 self.labjack, f"DIO_EF_CLOCK{clock_channel}_DIVISOR", int(clock_divisor)
             )  # Set Clock Divisor.
-            self.logger.debug("send_to_client:roll", extra={"roll_value": clockRollValue})
+            self.logger.debug("PWM:send_to_client:roll", extra={"roll_value": clockRollValue})
             ljm.eWriteName(
                 self.labjack, f"DIO_EF_CLOCK{clock_channel}_ROLL_VALUE", int(clockRollValue)
             )  # Set calculated Clock Roll Value.
 
-            self.logger.debug("send_to_client: clock enable", extra={"clock_channel": clock_channel})
+            self.logger.debug("PWM:send_to_client: clock enable", extra={"clock_channel": clock_channel})
             ljm.eWriteName(
                 self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 1
             )  # Enable Clock#, this will start the PWM signal.
-            self.logger.debug("send_to_client:done")
+            self.logger.debug("PWM:send_to_client:done")
 
             # Configure PWM Registers
             self.logger.debug("send_to_client:pwm disable", extra={"pwm_channel": pwm_channel})
             ljm.eWriteName(
                 self.labjack, f"DIO{pwm_channel}_EF_ENABLE", 0
             )  
-            self.logger.debug("send_to_client:index", extra={"ef_index": 0})
+            self.logger.debug("PWM:send_to_client:index", extra={"ef_index": 0})
             ljm.eWriteName(
                 self.labjack, f"DIO{pwm_channel}_EF_INDEX", 0
             )  # Set DIO#_EF_INDEX to 0 - PWM Out.
             # ljm.eWriteName(
             #     self.labjack, f"DIO{pwm_channel}_EF_CLOCK_SOURCE", clock_channel
             # )  # Set DIO#_EF to use clock 0. Formerly DIO#_EF_OPTIONS, you may need to switch to this name on older LJM versions.
-            self.logger.debug("send_to_client: ef_config", extra={"ef_config": pwmConfigA})
+            self.logger.debug("PWM:send_to_client: clock_source", extra={"clock_source": clock_channel})
+            ljm.eWriteName(
+                self.labjack, f"DIO{pwm_channel}_EF_CLOCK_SOURCE", clock_channel
+            )  
+            self.logger.debug("PWM:send_to_client: ef_config", extra={"ef_config": pwmConfigA})
             ljm.eWriteName(
                 self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A", pwmConfigA
             )  # Set DIO#_EF_CONFIG_A to the calculated value.
-            self.logger.debug("send_to_client: pwm enable", extra={"pwm_channel": pwm_channel})
+            self.logger.debug("PWM:send_to_client: pwm enable", extra={"pwm_channel": pwm_channel})
             ljm.eWriteName(
                 self.labjack, f"DIO{pwm_channel}_EF_ENABLE", 1
             )  # Enable the DIO#_EF Mode, PWM signal will not start until DIO_EF and CLOCK are enabled.
@@ -403,7 +430,7 @@ class PWMClient(LabJackClient):
             duty_cycle = (pwmConfigA/clockRollValue)*100.0
             # output = {"input-value": pwmConfigA, "data": {"raw": dataRead, "duty_cycle": duty_cycle }}
             output = {"input-value": pwmConfigA, "data": {"raw": pwmConfigA, "duty_cycle": duty_cycle }}
-            self.logger.debug("send_to_client: read", extra={"pwm-output": output})
+            self.logger.debug("PWM:send_to_client: read", extra={"pwm-output": output})
             await self.data_buffer.put(output)
 
         except Exception as e:
