@@ -104,6 +104,9 @@ class Registrar:
         # create a new client for each request
         self.http_client = httpx.AsyncClient()
 
+    async def close_http_client(self):
+        if self.http_client:
+            await self.http_client.aclose()
 
     async def send_event(self, ce):
         try:
@@ -111,7 +114,7 @@ class Registrar:
             if not self.http_client:
                 self.open_http_client()
             try:
-                timeout = httpx.Timeout(5.0, read=0.1)
+                timeout = httpx.Timeout(5.0, read=10.0)
                 headers, body = to_structured(ce)
                 self.logger.debug(
                     "send_event",
@@ -153,14 +156,15 @@ class Registrar:
         try:
             self.logger.debug("submit_request", extra={"path": path})
             timeout = httpx.Timeout(10.0, read=None)
-            # if query is None:
+            if not self.http_client:
+                self.open_http_client()            # if query is None:
             #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
             #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
             #     self.logger.debug("submit_request", extra={"results": results})
             #     # return results
             # else:
             self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
-            results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+            results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
             self.logger.debug("submit_request", extra={"results": results.json()})
             return results.json()
         except Exception as e:
@@ -172,6 +176,8 @@ class Registrar:
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
             timeout = httpx.Timeout(10.0, read=None)
+            if not self.http_client:
+                self.open_http_client()            # if query is None:
             # if query is None:
             #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
             #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
@@ -179,7 +185,7 @@ class Registrar:
             #     # return results
             # else:
             self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/", "query": query})
-            results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
+            results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
             self.logger.debug("submit_request", extra={"results": results.json()})
             return results.json()
         except Exception as e:
@@ -301,7 +307,7 @@ class Registrar:
             try:
                 message = await self.sync_bcast_buffer.get()
                 await self.handle_registry_sync(message)
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.001)
             except Exception as e:
                 self.logger.error("handle_registry_sync_loop", extra={"reason": e})
 

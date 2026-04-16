@@ -9,7 +9,6 @@ import logging
 
 import logging.config
 
-
 import yaml
 import random
 from envds.core import envdsLogger  # , envdsBase, envdsStatus
@@ -41,15 +40,14 @@ import json
 
 task_list = []
 
-
-class SanAce40(Operational):
-    """docstring for SanAce40."""
+class BTXConnect(Operational):
+    """docstring for BTXConnect."""
 
     metadata = {
         "attributes": {
-            "make": {"type": "string", "data": "SanyoDenki"},
-            "model": {"type": "string", "data": "SanAce40"},
-            "description": {"type": "string", "data": "9GA0424P3J0011"},
+            "make": {"type": "string", "data": "ParkerHannifin"},
+            "model": {"type": "string", "data": "BTXConnect"},
+            "description": {"type": "string", "data": "Miniature Diaphrahm Pump for TAP (B1C-090V24AN-03)"},
             "tags": {"type": "char", "data": "flow"},
             "format_version": {"type": "char", "data": "1.0.0"},
             "variable_types": {"type": "string", "data": "main, setting, calibration"},
@@ -65,23 +63,23 @@ class SanAce40(Operational):
                     "long_name": {"type": "string", "data": "Time"},
                 },
             },
-            "rpm": {
+            "pump_speed": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Fan RPM"},
-                    "units": {"type": "char", "data": "count"},
+                    "long_name": {"type": "char", "data": "Pump Speed - RPM"},
+                    "units": {"type": "char", "data": "RPM"},
                 },
             },
-            "fan_speed": {
+            "pump_speed_sp": {
                 "type": "float",
                 "shape": ["time"],
                 "attributes": {
                     "variable_type": {"type": "string", "data": "setting"},
-                    "long_name": {"type": "char", "data": "Fan Speed"},
+                    "long_name": {"type": "char", "data": "Pump Speed SP"},
                     "units": {"type": "string", "data": "%"},
-                    "valid_min": {"type": "float", "data": -100.0},
+                    "valid_min": {"type": "float", "data": 0},
                     "valid_max": {"type": "int", "data": 100.0},
                     "step_increment": {"type": "int", "data": 10},
                     "default_value": {"type": "int", "data": 0},
@@ -92,7 +90,7 @@ class SanAce40(Operational):
 
 
     def __init__(self, config=None, **kwargs):
-        super(SanAce40, self).__init__(config=config, **kwargs)
+        super(BTXConnect, self).__init__(config=config, **kwargs)
         self.data_task = None
         self.data_rate = 1
         self.sampling_interval = 1
@@ -101,7 +99,7 @@ class SanAce40(Operational):
         self.default_data_buffer = asyncio.Queue()
 
         self.operational_definition_file = (
-            "SanyoDenki_SanAce40_operational_definition.json"
+            "ParkerHannifin_BTXConnect_operational_definition.json"
         )
 
         self.last_read_timestamp = None
@@ -127,7 +125,7 @@ class SanAce40(Operational):
         # self.i2c_address = "28"
 
     def configure(self):
-        super(SanAce40, self).configure()
+        super(BTXConnect, self).configure()
 
         # get config from file
         try:
@@ -225,21 +223,20 @@ class SanAce40(Operational):
     async def handle_interface_message(self, message: Message):
         pass
 
-    def check_fan_speed_sp(self, data):
-        self.logger.debug("check_fan_speed_sp", extra={"fs-data": data})
+    def check_pump_speed_sp(self, data):
+        self.logger.debug("check_pump_speed_sp", extra={"ps-data": data})
         # TODO set setting actual if ok
         
         try:
-            requested_sp = self.settings.get_setting("fan_speed_sp")["requested"]
+            requested_sp = self.settings.get_setting("pump_speed_sp")["requested"]
             duty_cycle = data["data"]["data"].get("duty_cycle", None)
             if duty_cycle:
-                # sp = (duty_cycle-50.0) * 2
-                sp = duty_cycle
-                self.logger.debug("check_fan_speed_sp", extra={"sp": sp, "minus": (sp-5), "plus": (sp+5)})
+                sp = (duty_cycle-50.0) * 2
+                self.logger.debug("check_pump_speed_sp", extra={"sp": sp, "minus": (sp-5), "plus": (sp+5)})
                 if (sp > (requested_sp-5)) and (sp < (requested_sp+5)):
-                    self.logger.debug("check_fan_speed_sp: here1")
-                    self.settings.set_actual("fan_speed_sp", actual=requested_sp)
-                    self.logger.debug("check_fan_speed_sp: here2")
+                    self.logger.debug("check_pump_speed_sp: here1")
+                    self.settings.set_actual("pump_speed_sp", actual=requested_sp)
+                    self.logger.debug("check_pump_speed_sp: here2")
                 
                 # self.logger.debug(
                 #     "check_fan_speed_sp",
@@ -249,10 +246,10 @@ class SanAce40(Operational):
                 #     },
                 # )
         except Exception as e:
-            self.logger.error("check_fan_speed_sp", extra={"reason": e})
+            self.logger.error("check_pump_speed_sp", extra={"reason": e})
 
     async def handle_interface_data(self, message: Message):
-        await super(SanAce40, self).handle_interface_data(message)
+        await super(BTXConnect, self).handle_interface_data(message)
 
         self.logger.debug("interface_recv_data", extra={"data": message})
         if message["type"] == det.interface_data_recv():
@@ -260,7 +257,7 @@ class SanAce40(Operational):
                 self.logger.debug("interface_recv_data", extra={"data": message})
                 path_id = message["path_id"]
                 default_path = self.config.interfaces["default"]["path"]
-                pwm_path = self.config.interfaces["fan_speed_sp"]["path"]
+                pwm_path = self.config.interfaces["pump_speed_sp"]["path"]
                 self.logger.debug(
                     "interface_recv_data",
                     extra={"path_id": path_id, "iface_path": self.config.interfaces["default"]["path"]},
@@ -273,7 +270,7 @@ class SanAce40(Operational):
                     )
                     await self.default_data_buffer.put(message)
                 elif path_id == pwm_path:
-                    self.check_fan_speed_sp(message.data)
+                    self.check_pump_speed_sp(message.data)
             except KeyError:
                 pass
 
@@ -324,6 +321,8 @@ class SanAce40(Operational):
                 if self.sampling():
                     await self.interface_send_data(data=data, path_id="default")
                     await asyncio.sleep(time_to_next(self.sampling_interval))
+                else:
+                    await asyncio.sleep(1)
             else:
                 await asyncio.sleep(5)
     # async def sampling_monitor(self):
@@ -492,7 +491,7 @@ class SanAce40(Operational):
                     ).total_seconds()
                     revs = (dataRead - self.last_read_count) / 2
                     speed = 60.0 * revs / elapsed_time
-                    record["variables"]["fan_speed"]["data"] = round(speed, 3)
+                    record["variables"]["pump_speed"]["data"] = round(speed, 3)
 
                     self.last_read_timestamp = string_to_datetime(timestamp)
                     self.last_read_count = dataRead
@@ -517,17 +516,16 @@ class SanAce40(Operational):
                         # set channel power
                         setting = self.settings.get_setting(name)
                         # TODO: debug here
-                        self.logger.debug("settings_check", extra={"setting": setting, "setting_name": name})
-                        if name in ["fan_speed_sp"]:
+                        # self.logger.debug("settings_check", extra={"setting": setting, "setting_name": name})
+                        if name in ["pump_speed_sp"]:
                             sp = setting["requested"]
                             # convert +/- pct to duty_cycle
-                            # pwm_data = float((sp / 2.0) + 50.0)
-                            pwm_data = sp
+                            pwm_data = float((sp / 2.0) + 50.0)
                             data = {"data": {"pwm-data": pwm_data}}
-                            self.logger.debug("settings_check:pwm", extra={"pwm": pwm_data})
+                            # self.logger.debug("settings_check:set_channel_power", extra={"ch": ch, "requested": setting["requested"]})
                             # await self.set_channel_power(ch, setting["requested"])
                             await self.interface_send_data(
-                                data=data, path_id="fan_speed_sp"
+                                data=data, path_id="pump_speed_sp"
                             )
 
                         # self.logger.debug(
@@ -557,7 +555,6 @@ async def shutdown(sensor):
         if task:
             task.cancel()
 
-
 async def main(server_config: ServerConfig = None):
     # uiconfig = UIConfig(**config)
     if server_config is None:
@@ -582,10 +579,10 @@ async def main(server_config: ServerConfig = None):
         pass
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger(f"SanyoDenki::SanAce40::{sn}")
+    logger = logging.getLogger(f"ParkerHannifin::BTXConnect::{sn}")
 
-    logger.debug("Starting SanAce40")
-    inst = SanAce40()
+    logger.debug("Starting BTXConnect")
+    inst = BTXConnect()
     # print(inst)
     # await asyncio.sleep(2)
     inst.run()
