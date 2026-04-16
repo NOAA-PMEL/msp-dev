@@ -538,6 +538,7 @@ class APS3321(Sensor):
                             continue
                         else:
                             for start_command in start_commands:
+                                self.logger.debug("default_data_loop", extra={"start_command": start_command})
                                 await self.interface_send_data(data={"data": start_command})
                                 await asyncio.sleep(.5)
                             # await self.interface_send_data(data={"data": start_commands[0]})

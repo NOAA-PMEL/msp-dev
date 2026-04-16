@@ -249,7 +249,7 @@ datastore_url = f"datastore.{config.daq_id}-system"
 http_url_base = f"http://{config.external_hostname}:{config.http_port}"
 if config.http_use_tls:
     http_url_base = f"https://{config.external_hostname}:{config.https_port}"
-ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}:"
+ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 if config.ws_use_tls:
     ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
 
@@ -268,6 +268,10 @@ def get_layout():
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
+                                dashGridOptions={
+                                    "pagination": True,
+                                    "paginationPageSize": 50
+                                },
                                 id="sensor-defs-table",
                                 rowData=[],
                                 columnDefs=[
@@ -294,6 +298,10 @@ def get_layout():
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
+                                dashGridOptions={
+                                    "pagination": True,
+                                    "paginationPageSize": 50
+                                },
                                 id="active-sensor-table",
                                 rowData=[],
                                 columnDefs=[
@@ -331,6 +339,8 @@ def get_layout():
                     ),
                 ],
                 id="sensor-accordion",
+                always_open=True
+                # multiple=True
             ),
             WebSocket(
                 id="ws-sensor-registry",
@@ -344,6 +354,7 @@ def get_layout():
             ws_send_buffer,
             dcc.Store(id="sensor-defs-changes", data=[]),
             dcc.Store(id="active-sensor-changes", data=[]),
+            # dcc.Store(id="active-sensor-table", storage_type="session"),
             # dcc.Store(id="active-sensors", data=[]),
             # dcc.Interval(id="test-interval", interval=(10*1000)),
             dcc.Interval(
@@ -578,6 +589,8 @@ def update_active_sensors(count, table_data):
                     "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/dash/sampling-system/{sampling_system_id})",
                     # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
                 }
+                if table_data is None:
+                    table_data = []
                 if sensor not in table_data:
                     table_data.append(sensor)
                     update = True

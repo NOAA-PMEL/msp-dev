@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datastore
+  namespace: msp-system
+  labels:
+    app: datastore
+spec:
+  selector:
+    matchLabels:
+      app: datastore
+  template:
+    metadata:
+      labels:
+        app: datastore
+    spec:
+      imagePullSecrets:
+      - name: ghcr-ro-secret
+      containers:
+      - name: datastore
+        # image: uasbase2.pmel.noaa.gov:448/test/datastore@sha256:1efee0c698b3037b822d00237114e25aacad59942c9dd9199168cc2631143d8d
+        # image: registry-msp:5000/msp/datastore:v1.0.3
+        image: ghcr.io/noaa-pmel/msp/datastore:1.0.5
+        imagePullPolicy: "Always"
+        env:
+        - name: DATASTORE_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: datastore
+              key: port
+        - name: DATASTORE_KNATIVE_BROKER
+          valueFrom:
+            configMapKeyRef:
+              name: datastore
+              key: knative_broker
+        - name: DATASTORE_MONGODB_DATA_USER_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: datastore
+              key: mongodb_data_user_name
+        - name: DATASTORE_MONGODB_REGISTRY_USER_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: datastore
+              key: mongodb_registry_user_name
+        # - name: DATASTORE_MONGODB_DATA_USER_PASSWORD
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: datastore-data-db-user-password
+        #       key: password
+        # - name: DATASTORE_MONGODB_REGISTRY_USER_PASSWORD
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: datastore-registry-db-user-password
+        #       key: password
+        - name: DATASTORE_MONGODB_DATA_CONNECTION
+          valueFrom:
+            configMapKeyRef:
+              name: datastore
+              key: mongodb_data_connection
+        - name: DATASTORE_MONGODB_REGISTRY_CONNECTION
+          valueFrom:
+            configMapKeyRef:
+              name: datastore
+              key: mongodb_registry_connection
+        # - name: DATASTORE_ERDDAP_HTTP_CONNECTION
+        #   valueFrom:
+        #     configMapKeyRef:
+        #       name: datastore
+        #       key: erddap_http_connection
+        # - name: DATASTORE_ERDDAP_HTTPS_CONNECTION
+        #   valueFrom:
+        #     configMapKeyRef:
+        #       name: datastore
+        #       key: erddap_https_connection
+        # - name: DATASTORE_ERDDAP_AUTHOR
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: uasdaq-registry-erddap-author
+        #       key: author
+        # - name: DATASTORE_BACKLOG_MAX_TRIES
+        #   valueFrom:
+        #     configMapKeyRef:
+        #       name: datastore
+        #       key: backlog_max_tries
+        resources:
+          requests:
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "1000m"
+        ports:
+        - name: http
+          # containerPort: 8000
+          containerPort: 8080
+          protocol: TCP
+      #   volumeMounts:
+      #     - name: erddap-datasetd-storage
+      #       mountPath: /datasets.d
+      #       # subPath: datasets.d
+      #     - name: erddap-content-storage
+      #       mountPath: /usr/local/tomcat/content/erddap
+      #       # subPath: erddap
+      #     - name: erddap-data-pv-storage
+      #       mountPath: /erddapData
+      #       # subPath: erddapData
+      # volumes:
+      #   - name: erddap-datasetd-storage
+      #     persistentVolumeClaim:
+      #       claimName: dataserver-erddap-datasetsd-pvc
+      #   - name: erddap-content-storage
+      #     persistentVolumeClaim:
+      #       claimName: dataserver-erddap-content-pvc
+      #   - name: erddap-data-pv-storage
+      #     persistentVolumeClaim:
+      #       claimName: dataserver-erddap-data-pvc

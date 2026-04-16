@@ -65,6 +65,7 @@ CONTENT_STYLE = {
 }
 
 
+
 shelly_channels = dbc.Row([
                 dbc.Col(html.Div([daq.PowerButton(id='shelly_power-button-0', label="Channel 1", color='#14c208', persistence=True)])),
                 dbc.Col(html.Div([daq.PowerButton(id='shelly_power-button-1', label="Channel 2", color='#14c208', persistence=True)])),
@@ -101,7 +102,7 @@ datastore_url = f"datastore.{config.daq_id}-system"
 http_url_base = f"http://{config.external_hostname}:{config.http_port}"
 if config.http_use_tls:
     http_url_base = f"https://{config.external_hostname}:{config.https_port}"
-ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}:"
+ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 if config.ws_use_tls:
     ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
 
@@ -111,20 +112,41 @@ link_url_base = f"{http_url_base}/msp/dashboardtest"
 # print("here:1")
 def get_layout():
     layout = html.Div([
-        html.H1('This is our power control page'),
+        html.H1('Power Control'),
         html.Hr(),
+        html.Div(id = 'controller-list'),
         html.Div([
-            dbc.Stack([
-                dbc.Row(dbc.Col(html.Div("Main Control Shelly"))),
-                shelly_channels
-            ], gap=3)
-        ]),
+            dbc.Card([
+                html.H5("Main Payload", className="card-title"),
+                dbc.Stack([
+                    dbc.Row(dbc.Col(html.Div("Main Control Shelly"))),
+                    shelly_channels
+                ], gap=3)
+            ]),
+        ],
+        className="p-4"
+        ),
         html.Div([
-            dbc.Stack([
-                dbc.Row(dbc.Col(html.Div("Physics Instruments PDU"))),
-                pdu_outlets
-            ], gap=3)
-        ]),
+            dbc.Card([
+                html.H5("Physics Payload", className="card-title"),
+                dbc.Stack([
+                    dbc.Row(dbc.Col(html.Div("Physics Instruments PDU"))),
+                    pdu_outlets
+                ], gap=3)
+            ]),
+        ],
+        className="p-4"
+        ),
+        html.Div([
+            dbc.Card([
+                html.H5("Optics Payload", className="card-title"),
+                dbc.Stack([
+                    # dbc.Row(dbc.Col(html.Div("Physics Instruments PDU"))),
+                    pdu_outlets
+                ], gap=3)
+            ]),
+        ], className="p-4"
+        ),
         # dbc.Card('This is our Home page content.', body=True),
         # html.Div('This is our Home page content.'),
         # dcc.Input(id="input", autoComplete="off", debounce=True),
@@ -238,3 +260,14 @@ def send_pb_state(s_pb1, s_pb2, s_pb3, pdu_pb1, pdu_pb2, pdu_pb3, pdu_pb4, pdu_p
 
 # # startup code
 # send("startup request")
+
+
+
+@callback(
+    Output('controller-list', 'children'),
+    Input('active-controller-table', 'rowData')
+)
+def display_data(active_controllers):
+    # for sensor in active_sensors:
+        # return sensor
+        return [active_controllers]
