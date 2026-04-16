@@ -747,13 +747,13 @@ class RedisClient(DBClient):
                 # ids.append(id.decode('utf-8'))
                 ids.append(id)
                 self.logger.debug("controller_definition_registry_get_ids", extra={"ids": ids})
-            results = {"results": ids}
+            # results = {"results": ids}
             # return {"results": ids}
         except Exception as e:
             self.logger.error("controller_definition_registry_get_ids", extra={"reason": e})
             # return {"results": []}
-        self.logger.debug("controller_definition_registry_get_ids", extra={"results": results})
-        return results
+        self.logger.debug("controller_definition_registry_get_ids", extra={"results": ids})
+        return {"results": ids}
     
 
     async def controller_definition_registry_get(
