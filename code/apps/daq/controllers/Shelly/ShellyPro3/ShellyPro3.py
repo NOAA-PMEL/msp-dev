@@ -48,7 +48,7 @@ class ShellyPro3(Controller):
             },
             "client_module": {"type": "string", "data": "envds.daq.clients.mqtt_client"},
             "client_class": {"type": "string", "data": "MQTT_Client"},
-            "client_host": {"type": "string", "data": 'mqtt.default'},
+            "client_host": {"type": "string", "data": 'mqtt.payload01-system'},
             "client_port": {"type": "int", "data": 1883},
             "subscriptions": {"type": "string", "data": None}
         },
