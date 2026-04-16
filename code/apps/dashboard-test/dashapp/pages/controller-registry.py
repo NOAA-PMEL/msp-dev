@@ -590,6 +590,7 @@ def update_active_controllers(count, table_data):
                     # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
                 }
                 print(f"update_active_controllers 1.75: {controller}")
+                print(f"update_active_controllers table data: {table_data}")
                 if table_data is None:
                     table_data = []
                 if controller not in table_data:
