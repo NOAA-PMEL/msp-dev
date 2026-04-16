@@ -206,7 +206,7 @@ class ShellyPro3(Controller):
 
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
-        self.default_client_host = "mqtt.default"
+        self.default_client_host = "mqtt.payload01-system"
         self.default_client_port = 1883        
 
 
