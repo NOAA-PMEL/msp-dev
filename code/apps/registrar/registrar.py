@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 
 from envds.daq.event import DAQEvent
 from envds.daq.types import DAQEventType as det
+from envds.sampling.event import SamplingEvent
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -90,6 +91,12 @@ class Registrar:
         self.task_list.append(self.get_controller_definitions_loop())
         self.task_list.append(self.get_controller_instances_loop())
         self.task_list.append(self.handle_registry_sync_loop())
+        # self.task_list.append(self.get_platform_definitions_loop())
+        # self.task_list.append(self.get_project_definitions_loop())
+        self.task_list.append(self.get_variablemap_definitions_loop())        
+        self.task_list.append(self.get_variableset_definitions_loop())
+        for resource in ["platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
+            self.task_list.append(self.create_sampling_sync_loop(resource))
         for task in self.task_list:
             asyncio.create_task(task)
 
@@ -302,6 +309,43 @@ class Registrar:
 
             await asyncio.sleep(5)
 
+    # async def get_platform_definitions_loop(self):
+    #     while True:
+    #         try:
+    #             results = await self.submit_get(path="platform-definition/registry/ids/get")
+    #             if "results" in results and results["results"]:
+    #                 def_list = results["results"]
+    #                 self.current_platform_definition_list = def_list
+                    
+    #                 # Create sync broadcast event (similar to DAQEvent.create_registry_sync_bcast)
+    #                 # Use SamplingEvent from envds if available
+    #                 bcast = {
+    #                     "type": "sampling.platform.registry.sync",
+    #                     "source": f"envds.{self.config.daq_id}.registrar",
+    #                     "data": {"platform-definition-list": def_list}
+    #                 }
+    #                 destpath = f"envds/{self.config.daq_id}/registry/sync-bcast"
+    #                 bcast["destpath"] = destpath
+    #                 await self.send_event(bcast)
+    #         except Exception as e:
+    #             self.logger.error("get_platform_definitions_loop", extra={"reason": e})
+    #         await asyncio.sleep(60) # Sampling definitions change less frequently
+
+    async def get_variablemap_definitions_loop(self):
+        while True:
+            try:
+                results = await self.submit_get(path="variablemap-definition/registry/ids/get")
+                if "results" in results and results["results"]:
+                    self.current_variablemap_definition_list = results["results"]
+                    bcast = {
+                        "type": "sampling.variablemap.registry.sync",
+                        "source": f"envds.{self.config.daq_id}.registrar",
+                        "data": {"variablemap-definition-list": results["results"]}
+                    }
+                    await self.send_event(bcast)
+            except Exception as e:
+                self.logger.error("get_variablemap_definitions_loop", extra={"reason": e})
+            await asyncio.sleep(60)
     async def handle_registry_sync_loop(self):
         while True:
             try:
@@ -367,6 +411,21 @@ class Registrar:
                     )
                     event["destpath"] = destpath
                     await self.send_event(event)
+
+                # Dynamic catch-all utilizing the SamplingEvent factory
+                elif update_type.endswith("-definition-update"):
+                    resource_type = update_type.replace("-update", "") # Leaves "-definition"
+                    
+                    event = SamplingEvent.create_definition_registry_update(
+                        resource=resource_type,
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={resource_type: update}
+                    )
+                    
+                    destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+                    event["destpath"] = destpath
+                    await self.send_event(event)
+
         except Exception as e:
             self.logger.error("register_device_definition", extra={"reason": e})
 
@@ -609,6 +668,274 @@ class Registrar:
             
             elif bcast_type == "controller-instance-list":
                 pass
+
+    async def get_variableset_definitions_loop(self):
+        while True:
+            try:
+                results = await self.submit_get(path="variableset-definition/registry/ids/get")
+                if "results" in results and results["results"]:
+                    self.current_variableset_definition_list = results["results"]
+                    bcast = {
+                        "type": "sampling.variableset.registry.sync",
+                        "source": f"envds.{self.config.daq_id}.registrar",
+                        "data": {"variableset-definition-list": results["results"]}
+                    }
+                    await self.send_event(bcast)
+            except Exception as e:
+                self.logger.error("get_variableset_definitions_loop", extra={"reason": e})
+            await asyncio.sleep(60)
+
+    # async def get_project_definitions_loop(self):
+    #     while True:
+    #         try:
+    #             results = await self.submit_get(path="project-definition/registry/ids/get")
+    #             if "results" in results and results["results"]:
+    #                 self.current_project_definition_list = results["results"]
+    #                 # Broadcast to trigger registry_compare_bcast on other nodes
+    #                 bcast = {
+    #                     "type": "sampling.project.registry.sync",
+    #                     "source": f"envds.{self.config.daq_id}.registrar",
+    #                     "data": {"project-definition-list": results["results"]}
+    #                 }
+    #                 await self.send_event(bcast)
+    #         except Exception as e:
+    #             self.logger.error("get_project_definitions_loop", extra={"reason": e})
+    #         await asyncio.sleep(300) # Projects change very rarely
+
+    async def registry_compare_bcast(self, message: CloudEvent):
+        data = message.data
+        # ... existing device/controller logic ...
+
+    async def registry_compare_bcast(self, message: CloudEvent):
+
+        data = message.data
+        for bcast_type, bcast_list in data.items():
+            if bcast_type == "device-definition-list":
+
+                # send updates for items remote is missing
+                missing_remote = [
+                    item
+                    for item in self.current_device_definition_list
+                    if item not in bcast_list
+                ]
+                self.logger.debug("missing_remote", extra={"missing": missing_remote})
+                try:
+                    if len(missing_remote) > 0:
+                        for id in missing_remote:
+                            await self.send_device_definition_update(id)
+                            # query = {"device_definition_id": id}
+                            # results = await self.submit_request(
+                            #     path="device-definition/registry/get", query=query
+                            # )
+                            # if results:
+                            #     update = DAQEvent.create_registry_sync_update(
+                            #         source=f"envds.{self.config.daq_id}.registrar",
+                            #         data={
+                            #             "device-definition-update": results[0]
+                            #         },  # just send the dict
+                            #     )
+                            #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+
+                            #     # update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                            #     destpath = f"envds/{self.config.daq_id}/registry/sync-update"
+                            #     if self.config.mqtt_bridge_prefix:
+                            #         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                                
+                            #     # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                            #     update["destpath"] = destpath
+
+                            #     await self.send_event(update)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
+
+                missing_local = [
+                    item
+                    for item in bcast_list
+                    if item not in self.current_device_definition_list
+                ]
+                self.logger.debug("missing_local", extra={"missing": missing_local})
+                try:
+                    if len(missing_local) > 0:
+                        request = DAQEvent.create_registry_sync_request(
+                            source=f"envds.{self.config.daq_id}.registrar",
+                            data={
+                                "device-definition-request": missing_local
+                            },  # just send the dict
+                        )
+                        # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+
+                        # request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+                        destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+                        if self.config.mqtt_bridge_prefix:
+                            destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                        
+                        # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                        request["destpath"] = destpath
+
+                        await self.send_event(request)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
+
+            elif bcast_type == "device-instance-list":
+                pass
+
+            elif bcast_type == "controller-definition-list":
+
+                # send updates for items remote is missing
+                missing_remote = [
+                    item
+                    for item in self.current_controller_definition_list
+                    if item not in bcast_list
+                ]
+                self.logger.debug("missing_remote", extra={"missing": missing_remote})
+                try:
+                    if len(missing_remote) > 0:
+                        for id in missing_remote:
+                            await self.send_controller_definition_update(id)
+                            # query = {"controller_definition_id": id}
+                            # results = await self.submit_request(
+                            #     path="controller-definition/registry/get", query=query
+                            # )
+                            # if results:
+                            #     update = DAQEvent.create_registry_sync_update(
+                            #         source=f"envds.{self.config.daq_id}.registrar",
+                            #         data={
+                            #             "controller-definition-update": results[0]
+                            #         },  # just send the dict
+                            #     )
+                            #     # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+                            #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+                            #     await self.send_event(update)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
+
+                missing_local = [
+                    item
+                    for item in bcast_list
+                    if item not in self.current_controller_definition_list
+                ]
+                self.logger.debug("missing_local", extra={"missing": missing_local})
+                try:
+                    if len(missing_local) > 0:
+                        request = DAQEvent.create_registry_sync_request(
+                            source=f"envds.{self.config.daq_id}.registrar",
+                            data={
+                                "controller-definition-request": missing_local
+                            },  # just send the dict
+                        )
+                        # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+
+                        # request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+                        destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+                        if self.config.mqtt_bridge_prefix:
+                            destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                        
+                        # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                        request["destpath"] = destpath
+
+                        await self.send_event(request)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
+            
+            elif bcast_type == "controller-instance-list":
+                pass
+
+
+        # VariableMap Sync
+        if "variablemap-definition-list" in data:
+            remote_list = data["variablemap-definition-list"]
+            missing_remote = [item for item in self.current_variablemap_definition_list if item not in remote_list]
+            for id in missing_remote:
+                await self.send_sampling_update("variablemap", id)
+                
+            missing_local = [item for item in remote_list if item not in self.current_variablemap_definition_list]
+            if missing_local:
+                await self.request_sampling_definitions("variablemap", missing_local)
+
+        # VariableSet Sync
+        if "variableset-definition-list" in data:
+            remote_list = data["variableset-definition-list"]
+            missing_remote = [item for item in self.current_variableset_definition_list if item not in remote_list]
+            for id in missing_remote:
+                await self.send_sampling_update("variableset", id)
+
+            missing_local = [item for item in remote_list if item not in self.current_variableset_definition_list]
+            if missing_local:
+                await self.request_sampling_definitions("variableset", missing_local)
+
+        RESOURCES_TO_SYNC = ["platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]
+
+        for res in RESOURCES_TO_SYNC:
+            list_key = f"{res}-definition-list"
+            if list_key in data:
+                remote_list = data[list_key]
+                local_list = getattr(self, f"current_{res}_definition_list", [])
+                
+                # Identify what remote needs
+                missing_remote = [item for item in local_list if item not in remote_list]
+                for id in missing_remote:
+                    await self.send_sampling_update(res, id)
+                    
+                # Identify what we need
+                missing_local = [item for item in remote_list if item not in local_list]
+                if missing_local:
+                    await self.request_sampling_definitions(res, missing_local)
+
+    async def send_sampling_update(self, resource_type: str, definition_id: str):
+        try:
+            path = f"{resource_type}-definition/registry/get"
+            # Some queries use 'name', some use 'variablemap_definition_id'. Support both via query schema
+            query = {"name": definition_id} 
+            
+            results = await self.submit_request(path=path, query=query)
+            if "results" in results and results["results"]:
+                # Reuse existing DAQEvent.create_registry_sync_update
+                update = DAQEvent.create_registry_sync_update(
+                    source=f"envds.{self.config.daq_id}.registrar",
+                    data={f"{resource_type}-definition-update": results["results"][0]}
+                )
+                destpath = f"envds/{self.config.daq_id}/registry/sync-update"
+                if self.config.mqtt_bridge_prefix:
+                    destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                update["destpath"] = destpath
+                await self.send_event(update)
+        except Exception as e:
+            self.logger.error(f"send_{resource_type}_update", extra={"reason": e})
+
+    async def request_sampling_definitions(self, resource_type: str, ids: list):
+        try:
+            # Reuse existing DAQEvent.create_registry_sync_request
+            request = DAQEvent.create_registry_sync_request(
+                source=f"envds.{self.config.daq_id}.registrar",
+                data={f"{resource_type}-definition-request": ids}
+            )
+            destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+            if self.config.mqtt_bridge_prefix:
+                destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+            request["destpath"] = destpath
+            await self.send_event(request)
+        except Exception as e:
+            self.logger.error(f"request_{resource_type}_definitions", extra={"reason": e})
+
+    async def create_sampling_sync_loop(self, resource: str):
+        while True:
+            try:
+                path = f"{resource}-definition/registry/ids/get"
+                results = await self.submit_get(path=path)
+                if "results" in results:
+                    # Reuse existing DAQEvent.create_registry_sync_bcast
+                    bcast = DAQEvent.create_registry_sync_bcast(
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={f"{resource}-definition-list": results["results"]}
+                    )
+                    destpath = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    if self.config.mqtt_bridge_prefix:
+                        destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                    bcast["destpath"] = destpath
+                    await self.send_event(bcast)
+            except Exception as e:
+                self.logger.error(f"sync_loop_{resource}", extra={"reason": e})
+            await asyncio.sleep(60)
 
 # def build_sensor_registry_document(sensor_def: dict):
 #     L.debug("build_sensor_registry_document", extra={"sd": sensor_def})
