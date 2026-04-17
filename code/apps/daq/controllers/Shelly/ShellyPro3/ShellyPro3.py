@@ -441,7 +441,7 @@ class ShellyPro3(Controller):
                         #     output = 1
                         # elif output.lower() == "false":
                         #     output = 0 
-                        # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
+                        self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
                         if channel == 0:
                             record = self.build_data_record(meta=False)
                             self.logger.debug("recv_data_loop1", extra={"record": record})
