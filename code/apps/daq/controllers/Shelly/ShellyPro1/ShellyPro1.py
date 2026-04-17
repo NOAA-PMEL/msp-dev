@@ -187,7 +187,8 @@ class ShellyPro1(Controller):
             else:
                 client_subscriptions = client_subscriptions_list.split(",")
 
-            status_sub = f"{self.controller_id_prefix}/status/#"
+            # status_sub = f"{self.controller_id_prefix}/status/#"
+            status_sub = f"{self.controller_id_prefix}-status/rpc"
             if status_sub not in client_subscriptions:
                 client_subscriptions.append(status_sub)
 
@@ -301,8 +302,9 @@ class ShellyPro1(Controller):
             for channel in range(0,1):
 
                 data = {
-                    "path": f"{self.controller_id_prefix}/command/switch:{channel}",
-                    "message": "status_update"
+                    "path": f"{self.controller_id_prefix}/rpc",
+                    "message": {"id":channel, "src":f"{self.controller_id_prefix}-status",
+                                "method":"Shelly.GetStatus"}
                 }
                 self.logger.debug("get_status_loop", extra={"payload": data})
                 await self.send_data(data)
@@ -356,12 +358,8 @@ class ShellyPro1(Controller):
                     try:
                         
                         channel = data["data"]["id"]
-                        output = data["data"]["output"]
-                        # if output.lower() == "true":
-                        #     output = 1
-                        # elif output.lower() == "false":
-                        #     output = 0 
-                        # self.logger.debug("recv_data_loop", extra={"channel": channel, "output": int(output)})
+                        output = data["data"]["switch:0"]["output"]
+
                         if channel == 0:
                             record = self.build_data_record(meta=False)
                             self.logger.debug("recv_data_loop1", extra={"record": record})
@@ -369,7 +367,7 @@ class ShellyPro1(Controller):
                             record["variables"]["time"]["data"] = data["timestamp"]
                             self.logger.debug("recv_data_loop2", extra={"ts": data["timestamp"], "record": record})
 
-                            temperature = data["data"]["temperature"]["tC"]
+                            temperature = data["data"]["switch:0"]["temperature"]["tC"]
                             # record = self.build_data_record(meta=False)
                             record["variables"]["temperature"]["data"] = temperature
                             # channel 0 temperature data record
