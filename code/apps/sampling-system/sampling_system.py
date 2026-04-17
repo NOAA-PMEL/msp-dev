@@ -146,6 +146,7 @@ class SamplingSystem:
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
         asyncio.create_task(self.index_monitor())
+        asyncio.create_task(self.sync_sampling_definitions_loop())
         print("SamplingSystem: init: here:8")
 
 
@@ -174,9 +175,21 @@ class SamplingSystem:
             # self.logger.debug("configure", extra={"platforms": self.platforms})
             # # load layout configmaps
 
-            # load variablemap configmaps
-            with open("/app/config/platform_variablemaps.json", "r") as f:
-                variablemaps = json.load(f)
+            # # load variablemap configmaps
+            # with open("/app/config/platform_variablemaps.json", "r") as f:
+            #     variablemaps = json.load(f)
+
+            # load variablemap configmaps safely and allow for missing file 
+            variablemaps_path = "/app/config/platform_variablemaps.json"
+            variablemaps = []
+            
+            if os.path.exists(variablemaps_path):
+                with open(variablemaps_path, "r") as f:
+                    variablemaps = json.load(f)
+                self.logger.debug("configure", extra={"variablemaps": variablemaps})
+            else:
+                self.logger.info("configure", extra={"message": f"{variablemaps_path} not found. Skipping local variablemaps load."})
+
 
             # TODO allow for multiple configs of a given map that are retrieved from datastore or loaded
 
@@ -646,11 +659,42 @@ class SamplingSystem:
         except Exception as e:
             self.logger.error("configure error", extra={"reason": e})
 
+    def open_http_client(self):
+        self.http_client = httpx.AsyncClient()
+
+    async def submit_get(self, path: str):
+        try:
+            timeout = httpx.Timeout(10.0, read=None)
+            if not getattr(self, 'http_client', None):
+                self.open_http_client()
+            
+            datastore_url = f"datastore.{self.config.daq_id}-system"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", timeout=timeout)
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_get", extra={"reason": e})
+            return {}
+
+    async def submit_request(self, path: str, query: dict):
+        try:
+            timeout = httpx.Timeout(10.0, read=None)
+            if not getattr(self, 'http_client', None):
+                self.open_http_client()
+                
+            datastore_url = f"datastore.{self.config.daq_id}-system"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", params=query, timeout=timeout)
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_request", extra={"reason": e})
+            return {}
+
     async def send_event(self, ce):
         try:
             self.logger.debug(ce)  # , extra=template)
             try:
-                timeout = httpx.Timeout(5.0, read=0.1)
+                timeout = httpx.Timeout(5.0, read=None)
+                if not getattr(self, 'http_client', None):
+                    self.open_http_client()
                 headers, body = to_structured(ce)
                 self.logger.debug(
                     "send_event",
@@ -661,14 +705,15 @@ class SamplingSystem:
                     },
                 )
                 # send to knative broker
-                async with httpx.AsyncClient() as client:
-                    r = await client.post(
-                        self.config.knative_broker,
-                        headers=headers,
-                        data=body,
-                        timeout=timeout,
-                    )
-                    r.raise_for_status()
+                # async with httpx.AsyncClient() as client:
+                # r = await client.post(
+                r = await self.http_client.post(
+                    self.config.knative_broker,
+                    headers=headers,
+                    data=body,
+                    timeout=timeout,
+                )
+                r.raise_for_status()
             except InvalidStructuredJSON:
                 self.logger.error(f"INVALID MSG: {ce}")
             except httpx.TimeoutException:
@@ -678,6 +723,78 @@ class SamplingSystem:
         except Exception as e:
             print("error", e)
         await asyncio.sleep(0.01)
+
+    async def sync_sampling_definitions_loop(self):
+        """
+        Background loop to continuously fetch and update variablemaps 
+        and variablesets from the datastore/registrar.
+        """
+        while True:
+            try:
+                # 1. Fetch and Update VariableMaps
+                vmap_ids_resp = await self.submit_get(path="variablemap-definition/registry/ids/get")
+                if vmap_ids_resp and "results" in vmap_ids_resp:
+                    for vmap_id in vmap_ids_resp["results"]:
+                        query = {"variablemap_definition_id": vmap_id}
+                        vmap_resp = await self.submit_request(path="variablemap-definition/registry/get", query=query)
+                        
+                        if vmap_resp and "results" in vmap_resp and vmap_resp["results"]:
+                            vm = vmap_resp["results"][0]
+                            
+                            metadata = vm.get("metadata", {})
+                            attributes = vm.get("data", {}).get("attributes", {})
+                            
+                            vm_name = metadata.get("name")
+                            platform_name = attributes.get("platform")
+                            valid_config_time = attributes.get("valid_config_time")
+                            
+                            if not all([vm_name, platform_name, valid_config_time]):
+                                continue
+
+                            if "platform" not in self.variablemaps:
+                                self.variablemaps["platform"] = dict()
+                            if platform_name not in self.variablemaps["platform"]:
+                                self.variablemaps["platform"][platform_name] = dict()
+                            if vm_name not in self.variablemaps["platform"][platform_name]:
+                                self.variablemaps["platform"][platform_name][vm_name] = dict()
+                                
+                            if valid_config_time not in self.variablemaps["platform"][platform_name][vm_name]:
+                                # Initialize structure for newly discovered map
+                                self.variablemaps["platform"][platform_name][vm_name][valid_config_time] = {
+                                    "variablemap": vm,
+                                    "variablesets": dict(),
+                                    "indexed": dict(),
+                                    "sources": dict()
+                                }
+                                # Note: You can optionally run your `configure` parsing logic here 
+                                # to unpack `vm["data"]["variables"]` into the `variablesets` keys
+                                # to actively process data for this dynamically fetched map.
+
+                # 2. Fetch and Update VariableSets
+                vset_ids_resp = await self.submit_get(path="variableset-definition/registry/ids/get")
+                if vset_ids_resp and "results" in vset_ids_resp:
+                    for vset_id in vset_ids_resp["results"]:
+                        query = {"variableset_definition_id": vset_id}
+                        vset_resp = await self.submit_request(path="variableset-definition/registry/get", query=query)
+                        
+                        if vset_resp and "results" in vset_resp and vset_resp["results"]:
+                            vs = vset_resp["results"][0]
+                            if "variablesets" not in self.variablesets:
+                                self.variablesets["variablesets"] = dict()
+                            self.variablesets["variablesets"][vset_id] = vs
+
+                self.logger.debug(
+                    "sync_sampling_definitions_loop", 
+                    extra={
+                        "variablemaps_platforms": list(self.variablemaps.get("platform", {}).keys()),
+                        "variablesets_count": len(self.variablesets.get("variablesets", {}))
+                    }
+                )
+
+            except Exception as e:
+                self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+            
+            await asyncio.sleep(60)
 
     async def get_from_mqtt_loop(self):
         reconnect = 10

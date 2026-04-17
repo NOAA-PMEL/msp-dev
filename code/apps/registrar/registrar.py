@@ -64,7 +64,8 @@ class Settings(BaseSettings):
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
-
+    # NEW: Comma-separated list of allowed sources (e.g., "payload01,payload02,raz1")
+    allowed_sync_sources: str | None = None
     class Config:
         env_prefix = "REGISTRAR_"
         case_sensitive = False
@@ -199,6 +200,20 @@ class Registrar:
             self.logger.error("submit_request", extra={"reason": e})
             return {}
 
+    def is_sync_allowed(self, source: str) -> bool:
+        """
+        Checks if the incoming sync message source is allowed based on the 
+        REGISTRAR_ALLOWED_SYNC_SOURCES configuration.
+        """
+        if not self.config.allowed_sync_sources:
+            return True
+        
+        allowed_list = [s.strip() for s in self.config.allowed_sync_sources.split(",") if s.strip()]
+        if not allowed_list:
+            return True
+            
+        return any(a in source for a in allowed_list)
+    
     async def get_device_definitions_loop(self):
 
         while True:
@@ -357,7 +372,16 @@ class Registrar:
 
     async def handle_registry_sync(self, message: CloudEvent):
 
+        # Extract the source of the CloudEvent
+        source = message.get("source", "")
+
         if message["type"] == det.registry_sync_bcast():
+
+            # Drop broadcasts from unallowed sources (e.g., servers pushing down to raz1)
+            if not self.is_sync_allowed(source):
+                self.logger.debug("handle_registry_sync: dropping bcast from unallowed source", extra={"source": source})
+                return
+
             self.logger.debug(
                 "handle_registry_sync",
                 extra={"ce-type": message["type"], "data": message.data},
@@ -366,6 +390,12 @@ class Registrar:
             await self.registry_compare_bcast(message)
 
         elif message["type"] == det.registry_sync_update():
+
+            # Drop proactive updates from unallowed sources
+            if not self.is_sync_allowed(source):
+                self.logger.debug("handle_registry_sync: dropping update from unallowed source", extra={"source": source})
+                return
+
             self.logger.debug(
                 "handle_registry_sync",
                 extra={"ce-type": message["type"], "data": message.data},

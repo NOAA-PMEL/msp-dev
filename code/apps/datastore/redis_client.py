@@ -1164,17 +1164,17 @@ class RedisClient(DBClient):
             self.logger.error("platform_definition_registry_get_ids", extra={"reason": e})
         return {"results": ids}
 
-    async def build_indexes(self):
-        # ... existing index logic ...
-        for resource in ["systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
-            index_name = f"idx:registry-{resource}-definition"
-            prefix = f"registry:{resource}-definition:"
-            try:
-                await self.client.ft(index_name).info()
-            except Exception:
-                schema = (TagField("$.registration.metadata.name", as_name="name"),)
-                definition = IndexDefinition(prefix=[prefix], index_type=IndexType.JSON)
-                await self.client.ft(index_name).create_index(schema, definition=definition)
+    # async def build_indexes(self):
+    #     # ... existing index logic ...
+    #     for resource in ["systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
+    #         index_name = f"idx:registry-{resource}-definition"
+    #         prefix = f"registry:{resource}-definition:"
+    #         try:
+    #             await self.client.ft(index_name).info()
+    #         except Exception:
+    #             schema = (TagField("$.registration.metadata.name", as_name="name"),)
+    #             definition = IndexDefinition(prefix=[prefix], index_type=IndexType.JSON)
+    #             await self.client.ft(index_name).create_index(schema, definition=definition)
 
     async def sampling_definition_registry_get_ids(self, resource: str) -> dict:
         ids = []
