@@ -689,3 +689,79 @@ async def variablemap_definition_registry_get(
         valid_config_time=valid_config_time,
     )
     return await datastore.variablemap_definition_registry_get(query)
+@app.get("/project-definition/registry/ids/get/")
+async def project_definition_get_ids():
+    return await datastore.project_definition_registry_get_ids()
+
+@app.get("/platform-definition/registry/ids/get/")
+async def platform_definition_get_ids():
+    return await datastore.platform_definition_registry_get_ids()
+
+@app.get("/variableset-definition/registry/ids/get/")
+async def variableset_definition_get_ids():
+    return await datastore.variableset_definition_registry_get_ids()
+
+@app.get("/variablemap-definition/registry/ids/get/")
+async def variablemap_definition_get_ids():
+    return await datastore.variablemap_definition_registry_get_ids()
+
+# @app.get("/platform-definition/registry/get/")
+# async def platform_definition_registry_get(
+#     name: str | None = None,
+#     platform_type: str | None = None,
+# ):
+#     # This assumes a PlatformDefinitionRequest model exists or uses params directly
+#     query = {"name": name, "platform_type": platform_type}
+#     return await datastore.platform_definition_registry_get(query)
+
+# @app.post("/platform-definition/registry/update/")
+# async def platform_definition_registry_update(request: Request):
+#     try:
+#         ce = from_http(request.headers, await request.body())
+#         await datastore.platform_definition_registry_update(ce)
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
+#     except Exception as e:
+#         L.error("platform_definition_registry_update", extra={"reason": e})
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+# @app.get("/project-definition/registry/get/")
+# async def project_definition_registry_get(name: str | None = None):
+#     query = {"name": name}
+#     return await datastore.project_definition_registry_get(query)
+
+# @app.post("/project-definition/registry/update/")
+# async def project_definition_registry_update(request: Request):
+#     try:
+#         ce = from_http(request.headers, await request.body())
+#         await datastore.project_definition_registry_update(ce)
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
+#     except Exception as e:
+#         L.error("project_definition_registry_update", extra={"reason": e})
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
+    
+SAMPLING_RESOURCE_TYPES = [
+    "platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"
+]
+
+def create_sampling_routes(resource: str):
+    @app.get(f"/{resource}-definition/registry/ids/get/")
+    async def get_ids():
+        return await datastore.sampling_definition_registry_get_ids(resource)
+
+    @app.get(f"/{resource}-definition/registry/get/")
+    async def get_def(name: str | None = None):
+        query = {"name": name}
+        return await datastore.sampling_definition_registry_get(resource, query)
+
+    @app.post(f"/{resource}-definition/registry/update/")
+    async def update_def(request: Request):
+        try:
+            ce = from_http(request.headers, await request.body())
+            await datastore.sampling_definition_registry_update(resource, ce)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception:
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+# Initialize routes for each resource type
+for res in SAMPLING_RESOURCE_TYPES:
+    create_sampling_routes(res)

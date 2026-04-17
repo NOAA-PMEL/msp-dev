@@ -286,3 +286,20 @@ class DBClient:
             request: VariableSetDataRequest
     ) -> dict:
         return {"results": []}
+
+    async def sampling_definition_registry_update(
+        self,
+        resource: str,
+        database: str,
+        collection: str,
+        request: dict,
+        ttl: int = 0
+    ) -> bool:
+        return False
+
+    async def sampling_definition_registry_get(
+        self,
+        resource: str,
+        query: dict
+    ) -> dict:
+        return {"results": []}
