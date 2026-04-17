@@ -298,7 +298,7 @@ class ShellyPro1(Controller):
         pass
 
         while True:
-            for channel in range(0,2):
+            for channel in range(0,1):
 
                 data = {
                     "path": f"{self.controller_id_prefix}/command/switch:{channel}",
