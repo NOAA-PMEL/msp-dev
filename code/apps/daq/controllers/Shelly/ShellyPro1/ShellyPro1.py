@@ -303,8 +303,8 @@ class ShellyPro1(Controller):
 
                 data = {
                     "path": f"{self.controller_id_prefix}/rpc",
-                    "message": {"id":channel, "src":f"{self.controller_id_prefix}-status",
-                                "method":"Shelly.GetStatus"}
+                    "message": json.dumps({"id":channel, "src":f"{self.controller_id_prefix}-status",
+                                "method":"Shelly.GetStatus"})
                 }
                 self.logger.debug("get_status_loop", extra={"payload": data})
                 await self.send_data(data)
