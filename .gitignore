@@ -177,3 +177,5 @@ secrets/**
 !code/**/lib 
 certs/*
 bootstrap/**
+code/apps/datastore/tmp/**
+aerosoldynamics/**
