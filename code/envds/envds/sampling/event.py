@@ -15,8 +15,16 @@ from envds.sampling.types import SamplingEventType as et
 
 class SamplingEvent(envdsEvent):
     """docstring for DAQEvent."""
-    def __init__(self,):
+    def __init__(self):
         super(SamplingEvent, self).__init__()
+
+    @staticmethod
+    def create_definition_registry_update(resource: str, source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.definition_registry_update(resource), source=source, data=data, extra_header=extra_header)
+
+    @staticmethod
+    def create_definition_registry_request(resource: str, source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.definition_registry_request(resource), source=source, data=data, extra_header=extra_header)
 
     @staticmethod
     def create_variablemap_definition_registry_request(source: str, data: dict = {}, extra_header: dict = None):

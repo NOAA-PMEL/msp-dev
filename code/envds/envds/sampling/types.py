@@ -5,8 +5,15 @@ class SamplingEventType(BaseEventType):
     """docstring for envdsBaseType."""
     TYPE_BASE = "envds"
 
-    TYPE_VARIABLEMAP_DEFINITION = "variablemapdefinition"
-    TYPE_VARIABLESET_DEFINITION = "variablesetdefinition"
+    TYPE_PROJECT_DEFINITION = "project-definition"
+    TYPE_PLATFORM_DEFINITION = "platform-definition"
+    TYPE_VARIABLEMAP_DEFINITION = "variablemap-definition"
+    TYPE_VARIABLESET_DEFINITION = "variableset-definition"
+    TYPE_SYSTEMMODE_DEFINITION = "systemmode-definition"
+    TYPE_SAMPLINGMODE_DEFINITION = "samplingmode-definition"
+    TYPE_SAMPLINGSTATE_DEFINITION = "samplingstate-definition"
+    TYPE_SAMPLINGCONDITION_DEFINITION = "samplingcondition-definition"
+    TYPE_ACTION_DEFINITION = "action-definition"
     TYPE_VARIABLESET = "variableset"
     TYPE_DATASET = "dataset"
     TYPE_PROJECT = "project"
@@ -21,9 +28,19 @@ class SamplingEventType(BaseEventType):
     # ACTION_KEEPALIVE = "keepalive"
 
     def __init__(self):
-        super(BaseEventType, self).__init__()
+        super(SamplingEventType, self).__init__()
 
     # helper functions
+    @staticmethod
+    def definition_registry_update(resource: str):
+        """Dynamically build registry update types for various sampling resources
+           e.g. returns 'envds.project-definition.registry.update'
+        """
+        return ".".join([BaseEventType.get_type(resource), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_UPDATE])
+    
+    @staticmethod
+    def definition_registry_request(resource: str):
+        return ".".join([BaseEventType.get_type(resource), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_REQUEST])
 
     @staticmethod
     def variablemap_definition_registry_request():
