@@ -1066,6 +1066,21 @@ class Datastore:
 
     #     return {"results": []}
 
+    async def project_definition_registry_get_ids(self) -> dict:
+        if self.db_client:
+            return await self.db_client.project_definition_registry_get_ids()
+        return {"results": []}
+
+    async def platform_definition_registry_get_ids(self) -> dict:
+        if self.db_client:
+            return await self.db_client.platform_definition_registry_get_ids()
+        return {"results": []}
+
+    async def variablemap_definition_registry_get_ids(self) -> dict:
+        if self.db_client:
+            return await self.db_client.variablemap_definition_registry_get_ids()
+        return {"results": []}
+    
     async def variablemap_definition_registry_update(self, ce: CloudEvent):
 
         try:
@@ -1132,6 +1147,11 @@ class Datastore:
         if self.db_client:
             return await self.db_client.variablemap_definition_registry_get(query)
         
+        return {"results": []}
+
+    async def variableset_definition_registry_get_ids(self) -> dict:
+        if self.db_client:
+            return await self.db_client.variableset_definition_registry_get_ids()
         return {"results": []}
 
     async def variableset_definition_registry_update(self, ce: CloudEvent):
@@ -1202,7 +1222,43 @@ class Datastore:
         
         return {"results": []}
 
+    async def sampling_definition_registry_update(self, resource: str, ce: CloudEvent):
+        try:
+            for definition_type, def_data in ce.data.items():
+                name = def_data["metadata"]["name"]
+                
+                # Use a default time if valid_config_time is missing
+                valid_config_time = def_data["metadata"].get("valid_config_time", "2020-01-01T00:00:00Z")
 
+                database = "registry"
+                collection = f"{resource}-definition"
+
+                # Since these share a generic structure, we can pass the dict directly 
+                # instead of creating a strict Pydantic model for each of the 5 types.
+                request = def_data 
+
+                self.logger.debug(
+                    f"{resource}_definition_registry_update", extra={"request": request}
+                )
+
+                if self.db_client:
+                    result = await self.db_client.sampling_definition_registry_update(
+                        resource=resource,
+                        database=database,
+                        collection=collection,
+                        request=request,
+                        ttl=0, # Permanent
+                    )
+
+        except Exception as e:
+            self.logger.error(f"{resource}_definition_registry_update", extra={"reason": e})
+
+
+    async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
+        if self.db_client:
+            return await self.db_client.sampling_definition_registry_get(resource, query)
+        
+        return {"results": []}
 
 
 async def shutdown():

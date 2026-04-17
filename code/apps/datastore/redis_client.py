@@ -44,7 +44,8 @@ class RedisClient(DBClient):
         self.registry_controller_instance_index_name = "idx:registry-controller-instance"
         self.registry_variablemap_definition_index_name = "idx:registry-variablemap-definition"
         self.registry_variableset_definition_index_name = "idx:registry-variableset-definition"
-
+        self.registry_platform_definition_index_name = "idx:registry-platform-definition"
+        self.registry_project_definition_index_name = "idx:registry-project-definition"
         # self.build_indexes()
 
     def connect(self):
@@ -231,6 +232,44 @@ class RedisClient(DBClient):
                 )
                 await self.client.ft(self.registry_variableset_definition_index_name).create_index(schema, definition=definition)
 
+            # # Platform Definition Index
+            # try:
+            #     await self.client.ft(self.registry_platform_definition_index_name).info()
+            # except:
+            #     schema = (
+            #         TagField("$.registration.name", as_name="name"),
+            #         TagField("$.registration.platform_type", as_name="platform_type"),
+            #         TagField("$.registration.sampling_namespace", as_name="namespace"),
+            #     )
+            #     definition = IndexDefinition(prefix=["registry:platform-definition:"], index_type=IndexType.JSON)
+            #     await self.client.ft(self.registry_platform_definition_index_name).create_index(schema, definition=definition)
+
+            # # Check if project index exists; if not, create it
+            # try:
+            #     await self.client.ft(self.registry_project_definition_index_name).info()
+            # except Exception:
+            #     schema = (
+            #         TagField("$.registration.metadata.name", as_name="name"),
+            #         TagField("$.registration.metadata.start_time", as_name="start_time"),
+            #     )
+            #     definition = IndexDefinition(
+            #         prefix=["registry:project-definition:"],
+            #         index_type=IndexType.JSON
+            #     )
+            #     await self.client.ft(self.registry_project_definition_index_name).create_index(schema, definition=definition)
+
+            for resource in ["platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
+                index_name = f"idx:registry-{resource}-definition"
+                prefix = f"registry:{resource}-definition:"
+                try:
+                    await self.client.ft(index_name).info()
+                except Exception:
+                    schema = (TagField("$.registration.metadata.name", as_name="name"),)
+                    definition = IndexDefinition(prefix=[prefix], index_type=IndexType.JSON)
+                    await self.client.ft(index_name).create_index(schema, definition=definition)
+
+        except Exception as e:
+            self.logger.error("build_sampling_indexes", extra={"reason": e})
         except Exception as e:
             self.logger.error("build_indexes", extra={"reason": e})
     # def check_db(self, database):
@@ -883,6 +922,12 @@ class RedisClient(DBClient):
 
         return {"results": results}
 
+    async def variablemap_definition_registry_get_ids(self) -> dict:
+        ids = []
+        async for key in self.client.scan_iter("registry:variablemap-definition:*"):
+            ids.append(key.decode('utf-8').replace("registry:variablemap-definition:", ""))
+        return {"results": ids}
+    
     async def variablemap_definition_registry_update(
         self,
         # document: dict,
@@ -987,6 +1032,17 @@ class RedisClient(DBClient):
         self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"results": results})
         return {"results": results}
 
+    async def variableset_definition_registry_get_ids(self) -> dict:
+        ids = []
+        try:
+            # Scans for keys with variableset-definition prefix
+            async for key in self.client.scan_iter("registry:variableset-definition:*"):
+                id = key.decode('utf-8').replace("registry:variableset-definition:", "")
+                ids.append(id)
+        except Exception as e:
+            self.logger.error("variableset_definition_registry_get_ids", extra={"reason": e})
+        return {"results": ids}
+
     async def variableset_definition_registry_update(
         self,
         # document: dict,
@@ -1086,4 +1142,125 @@ class RedisClient(DBClient):
                 self.logger.error("redis_client: variableset_definition_registry_get", extra={"reason": e})
                 continue
         self.logger.debug("redis_client: variableset_definition_registry_get", extra={"results": results})
+        return {"results": results}
+
+    async def project_definition_registry_get_ids(self) -> dict:
+        ids = []
+        try:
+            # Scans for keys with project-definition prefix
+            async for key in self.client.scan_iter("registry:project-definition:*"):
+                id = key.decode('utf-8').replace("registry:project-definition:", "")
+                ids.append(id)
+        except Exception as e:
+            self.logger.error("project_definition_registry_get_ids", extra={"reason": e})
+        return {"results": ids}
+
+    async def platform_definition_registry_get_ids(self) -> dict:
+        ids = []
+        try:
+            async for key in self.client.scan_iter("registry:platform-definition:*"):
+                ids.append(key.decode('utf-8').replace("registry:platform-definition:", ""))
+        except Exception as e:
+            self.logger.error("platform_definition_registry_get_ids", extra={"reason": e})
+        return {"results": ids}
+
+    async def build_indexes(self):
+        # ... existing index logic ...
+        for resource in ["systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
+            index_name = f"idx:registry-{resource}-definition"
+            prefix = f"registry:{resource}-definition:"
+            try:
+                await self.client.ft(index_name).info()
+            except Exception:
+                schema = (TagField("$.registration.metadata.name", as_name="name"),)
+                definition = IndexDefinition(prefix=[prefix], index_type=IndexType.JSON)
+                await self.client.ft(index_name).create_index(schema, definition=definition)
+
+    async def sampling_definition_registry_get_ids(self, resource: str) -> dict:
+        ids = []
+        prefix = f"registry:{resource}-definition:"
+        async for key in self.client.scan_iter(f"{prefix}*"):
+            ids.append(key.decode('utf-8').replace(prefix, ""))
+        return {"results": ids}
+    
+    async def sampling_definition_registry_update(
+        self,
+        resource: str,
+        database: str,
+        collection: str,
+        request: dict, 
+        ttl: int = 0
+    ) -> bool:
+        try:
+            self.connect()
+
+            self.logger.debug(f"redis_client: {resource}_definition_registry_update", extra={"update-doc": request, "ttl": ttl})
+            document = request
+            
+            name = document["metadata"]["name"]
+            valid_config_time = document["metadata"].get("valid_config_time", "2020-01-01T00:00:00Z")
+            
+            # Change timestamp to exclude colons for the Redis key
+            redis_time = valid_config_time.replace(":", "")
+            id = f"{name}::{redis_time}"
+
+            key = f"{database}:{collection}:{id}"
+            self.logger.debug(f"redis_client: {resource}_definition_registry_update", extra={"key": key, "doc": document})
+            
+            # Check if it already exists
+            check_query = {"name": name}
+            check_results = await self.sampling_definition_registry_get(resource, check_query)
+            
+            if check_results["results"]: 
+                self.logger.debug(f"redis_client: {resource} already exists", extra={"results": check_results["results"]})
+                result = True
+            else:
+                result = await self.client.json().set(
+                    key,
+                    "$",
+                    {"registration": document}
+                )
+            
+            if result and ttl > 0:
+                await self.client.expire(key, ttl)
+
+            return result
+        
+        except Exception as e:
+            self.logger.error(f"redis_client: {resource}_definition_registry_update", extra={"reason": e})
+            return False
+
+    async def sampling_definition_registry_get(
+        self,
+        resource: str,
+        query: dict
+    ) -> dict:
+        query_args = []
+        
+        # Build RediSearch query based on the 'name' field
+        if "name" in query and query["name"]:
+            query_args.append(f"@name:{{{self.escape_query(query['name'])}}}")
+
+        if query_args:
+            qstring = " ".join(query_args)
+        else:
+            qstring = "*"
+            
+        index_name = f"idx:registry-{resource}-definition"
+        self.logger.debug(f"redis_client: {resource}_definition_registry_get", extra={"query_string": qstring})
+        
+        q = Query(qstring)
+        docs = (await self.client.ft(index_name).search(q)).docs
+        
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    results.append(reg["registration"])
+            except Exception as e:
+                self.logger.error(f"redis_client: {resource}_definition_registry_get", extra={"reason": e})
+                continue
+                
+        self.logger.debug(f"redis_client: {resource}_definition_registry_get", extra={"results": results})
         return {"results": results}
