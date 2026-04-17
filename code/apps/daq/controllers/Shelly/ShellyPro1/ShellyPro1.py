@@ -358,7 +358,7 @@ class ShellyPro1(Controller):
                     try:
                         
                         channel = data["data"]["id"]
-                        output = data["data"]["switch:0"]["output"]
+                        output = data["data"]["result"]["switch:0"]["output"]
 
                         if channel == 0:
                             record = self.build_data_record(meta=False)
@@ -367,7 +367,7 @@ class ShellyPro1(Controller):
                             record["variables"]["time"]["data"] = data["timestamp"]
                             self.logger.debug("recv_data_loop2", extra={"ts": data["timestamp"], "record": record})
 
-                            temperature = data["data"]["switch:0"]["temperature"]["tC"]
+                            temperature = data["data"]["result"]["switch:0"]["temperature"]["tC"]
                             # record = self.build_data_record(meta=False)
                             record["variables"]["temperature"]["data"] = temperature
                             # channel 0 temperature data record
