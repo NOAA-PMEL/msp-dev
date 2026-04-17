@@ -146,6 +146,7 @@ class SamplingSystem:
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
         asyncio.create_task(self.index_monitor())
+        asyncio.create_task(self.publish_local_definitions())
         asyncio.create_task(self.sync_sampling_definitions_loop())
         print("SamplingSystem: init: here:8")
 
@@ -972,6 +973,62 @@ class SamplingSystem:
                 self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
             
             await asyncio.sleep(60)
+
+    async def publish_local_definitions(self):
+        """
+        Publishes the locally loaded JSON variablemaps and variablesets 
+        to the event broker so the datastore can register them globally.
+        """
+        # Wait a few seconds to ensure the Knative broker/datastore are ready
+        await asyncio.sleep(5)
+        
+        try:
+            for platform, vm_dict in self.variablemaps.get("platform", {}).items():
+                for vm_name, time_dict in vm_dict.items():
+                    for valid_time, vm_obj in time_dict.items():
+                        
+                        vm = vm_obj["variablemap"]
+                        
+                        # 1. Broadcast the VariableMap
+                        event = CloudEvent({
+                            "source": f"envds.{self.config.daq_id}.sampling-system",
+                            "type": "envds.variablemap-definition.registry.update",
+                            "datacontenttype": "application/json"
+                        }, {"variablemap-definition": vm})
+                        
+                        event["destpath"] = f"envds/{self.config.daq_id}/variablemap-definition/registry/update"
+                        await self.send_event(event)
+
+                        # 2. Broadcast the associated VariableSets
+                        vm_data = vm.get("data", {})
+                        for vs_name, vs_def in vm_data.get("variablesets", {}).items():
+                            vs_payload = {
+                                "metadata": {"name": vs_name},
+                                "data": {
+                                    "attributes": {
+                                        "variablemap_type": vm_data.get("attributes", {}).get("variablemap_type"),
+                                        "platform": platform,
+                                        "valid_config_time": valid_time,
+                                    },
+                                    "variablesets": {vs_name: vs_def},
+                                    # Filter variables mapped to this specific variableset
+                                    "variables": {k: v for k, v in vm_data.get("variables", {}).items() if v.get("variableset") == vs_name}
+                                }
+                            }
+                            
+                            vs_event = CloudEvent({
+                                "source": f"envds.{self.config.daq_id}.sampling-system",
+                                "type": "envds.variableset-definition.registry.update",
+                                "datacontenttype": "application/json"
+                            }, {"variableset-definition": vs_payload})
+                            
+                            vs_event["destpath"] = f"envds/{self.config.daq_id}/variableset-definition/registry/update"
+                            await self.send_event(vs_event)
+                            
+            self.logger.info("publish_local_definitions", extra={"status": "completed"})
+            
+        except Exception as e:
+            self.logger.error("publish_local_definitions", extra={"reason": e})
 
     async def get_from_mqtt_loop(self):
         reconnect = 10

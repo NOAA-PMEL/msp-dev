@@ -681,14 +681,15 @@ async def variablemap_definition_registry_get(
     valid_config_time: str | None = None,
 ):
 
-    query = DeviceDefinitionRequest(
-        variablemap_defnition_id=variablemap_definition_id,
-        variable_map_type=variablemap_type,
-        variable_map_type_id=variablemap_type_id,
+    query = VariableMapDefinitionRequest(
+        variablemap_definition_id=variablemap_definition_id,
+        variablemap_type=variablemap_type,
+        variablemap_type_id=variablemap_type_id,
         variablemap=variablemap,
         valid_config_time=valid_config_time,
     )
     return await datastore.variablemap_definition_registry_get(query)
+
 @app.get("/project-definition/registry/ids/get/")
 async def project_definition_get_ids():
     return await datastore.project_definition_registry_get_ids()
