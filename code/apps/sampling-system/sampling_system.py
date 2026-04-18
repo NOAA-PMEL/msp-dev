@@ -146,6 +146,7 @@ class SamplingSystem:
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
         asyncio.create_task(self.index_monitor())
+        asyncio.create_task(self.publish_local_definitions())
         asyncio.create_task(self.sync_sampling_definitions_loop())
         print("SamplingSystem: init: here:8")
 
@@ -195,121 +196,121 @@ class SamplingSystem:
 
             self.logger.debug("configure", extra={"variablemaps": variablemaps})
             for vm in variablemaps:
-                self.logger.debug("configure", extra={"variablemap": vm})
-                if vm["kind"] != "PlatformVariableMap":
-                    continue
-                vm_name = vm["metadata"]["name"]
-                platform_name = vm["metadata"]["platform"]
-                sampling_namespace = vm["metadata"]["sampling_namespace"]
-                valid_config_time = vm["metadata"]["valid_config_time"]
+                self.load_variablemap(vm)
+                # self.logger.debug("configure", extra={"variablemap": vm})
+                # if vm["kind"] != "PlatformVariableMap":
+                #     continue
+                # vm_name = vm["metadata"]["name"]
+                # platform_name = vm["metadata"]["platform"]
+                # sampling_namespace = vm["metadata"]["sampling_namespace"]
+                # valid_config_time = vm["metadata"]["valid_config_time"]
                 
-                if "platform" not in self.variablemaps:
-                    self.variablemaps["platform"] = dict()
-                if platform_name not in self.variablemaps["platform"]:
-                    self.variablemaps["platform"][platform_name] = dict()
-                if vm_name not in self.variablemaps["platform"][platform_name]:
-                    self.variablemaps["platform"][platform_name][vm_name] = dict()
-                if valid_config_time not in self.variablemaps["platform"][platform_name][vm_name]:
-                    self.variablemaps["platform"][platform_name][vm_name][valid_config_time] = {
-                        "variablemap": vm,
-                        "variablesets": dict(),
-                        "indexed": dict(),
-                        "sources": dict()
-                    }
+                # if "platform" not in self.variablemaps:
+                #     self.variablemaps["platform"] = dict()
+                # if platform_name not in self.variablemaps["platform"]:
+                #     self.variablemaps["platform"][platform_name] = dict()
+                # if vm_name not in self.variablemaps["platform"][platform_name]:
+                #     self.variablemaps["platform"][platform_name][vm_name] = dict()
+                # if valid_config_time not in self.variablemaps["platform"][platform_name][vm_name]:
+                #     self.variablemaps["platform"][platform_name][vm_name][valid_config_time] = {
+                #         "variablemap": vm,
+                #         "variablesets": dict(),
+                #         "indexed": dict(),
+                #         "sources": dict()
+                #     }
 
-                vm_data = vm["data"]
-                current_vm = self.variablemaps["platform"][platform_name][vm_name][valid_config_time]
-                for vs_name, vs_def in vm_data["variablesets"].items():
-                    if vs_name not in current_vm["variablesets"]:
-                        current_vm["variablesets"][vs_name] = {
-                            "attributes": dict(),
-                            "dimensions": dict(),
-                            "variables": dict()
-                        }
-                    current_vm["variablesets"][vs_name]["attributes"] = dict()
-                    for att_name, att_val in vm_data["attributes"].items():
-                        self.logger.debug("configure", extra={"att_name": att_name, "att_val":att_val})
-                        current_vm["variablesets"][vs_name]["attributes"][att_name] = {
-                            "type": f"{type(att_val).__name__}",
-                            "data": att_val
-                        }
-                    current_vm["variablesets"][vs_name]["attributes"]["index_type"] = {"type": "string", "data": vs_def["index"]["index_type"]}
-                    vtype = f"{type(vs_def['index']['index_value']).__name__}"
-                    current_vm["variablesets"][vs_name]["attributes"]["index_value"] = {"type": vtype, "data": vs_def["index"]["index_value"]}
-                    current_vm["variablesets"][vs_name]["attributes"]["variablemap_kind"] = {"type": "string", "data": vm["kind"]}
+                # vm_data = vm["data"]
+                # current_vm = self.variablemaps["platform"][platform_name][vm_name][valid_config_time]
+                # for vs_name, vs_def in vm_data["variablesets"].items():
+                #     if vs_name not in current_vm["variablesets"]:
+                #         current_vm["variablesets"][vs_name] = {
+                #             "attributes": dict(),
+                #             "dimensions": dict(),
+                #             "variables": dict()
+                #         }
+                #     current_vm["variablesets"][vs_name]["attributes"] = dict()
+                #     for att_name, att_val in vm_data["attributes"].items():
+                #         self.logger.debug("configure", extra={"att_name": att_name, "att_val":att_val})
+                #         current_vm["variablesets"][vs_name]["attributes"][att_name] = {
+                #             "type": f"{type(att_val).__name__}",
+                #             "data": att_val
+                #         }
+                #     current_vm["variablesets"][vs_name]["attributes"]["index_type"] = {"type": "string", "data": vs_def["index"]["index_type"]}
+                #     vtype = f"{type(vs_def['index']['index_value']).__name__}"
+                #     current_vm["variablesets"][vs_name]["attributes"]["index_value"] = {"type": vtype, "data": vs_def["index"]["index_value"]}
+                #     current_vm["variablesets"][vs_name]["attributes"]["variablemap_kind"] = {"type": "string", "data": vm["kind"]}
 
-                    current_vm["variablesets"][vs_name]["dimensions"] = {"time": 0}
+                #     current_vm["variablesets"][vs_name]["dimensions"] = {"time": 0}
 
-                    print(f"configure: {current_vm}")
-                    # add variables for variableset
-                    for v_name, v in vm_data["variables"].items():
-                        if v["variableset"] == vs_name:
-                            current_vm["variablesets"][vs_name]["variables"][v_name] = {
-                                "type": v["type"],
-                                "shape": v["shape"],
-                                "attributes": v["attributes"].copy(),
-                            }
+                #     print(f"configure: {current_vm}")
+                #     # add variables for variableset
+                #     for v_name, v in vm_data["variables"].items():
+                #         if v["variableset"] == vs_name:
+                #             current_vm["variablesets"][vs_name]["variables"][v_name] = {
+                #                 "type": v["type"],
+                #                 "shape": v["shape"],
+                #                 "attributes": v["attributes"].copy(),
+                #             }
 
-                            # add in missing dimensions
-                            for sh in v["shape"]:
-                                if sh not in current_vm["variablesets"][vs_name]["dimensions"]:
-                                    current_vm["variablesets"][vs_name]["dimensions"][sh] = 0
+                #             # add in missing dimensions
+                #             for sh in v["shape"]:
+                #                 if sh not in current_vm["variablesets"][vs_name]["dimensions"]:
+                #                     current_vm["variablesets"][vs_name]["dimensions"][sh] = 0
 
-                            # add extra attributes
-                            current_v =  current_vm["variablesets"][vs_name]["variables"][v_name]
-                            current_v["attributes"]["map_type"] = {"type": "string", "data": v["map_type"]}
-                            if v["map_type"] == "direct":
-                                direct_var = v["direct_value"]["source_variable"]
-                                current_v["attributes"]["source_type"] = {"type": "string", "data": v["source"][direct_var]["source_type"]}
-                                current_v["attributes"]["source_id"] = {"type": "string", "data": v["source"][direct_var]["source_id"]}
-                                current_v["attributes"]["source_variable"] = {"type": "string", "data": v["source"][direct_var]["source_variable"]}
+                #             # add extra attributes
+                #             current_v =  current_vm["variablesets"][vs_name]["variables"][v_name]
+                #             current_v["attributes"]["map_type"] = {"type": "string", "data": v["map_type"]}
+                #             if v["map_type"] == "direct":
+                #                 direct_var = v["direct_value"]["source_variable"]
+                #                 current_v["attributes"]["source_type"] = {"type": "string", "data": v["source"][direct_var]["source_type"]}
+                #                 current_v["attributes"]["source_id"] = {"type": "string", "data": v["source"][direct_var]["source_id"]}
+                #                 current_v["attributes"]["source_variable"] = {"type": "string", "data": v["source"][direct_var]["source_variable"]}
                                 
-                                # add x-ref source_id->variable
-                                # if "direct" not in current_vm["sources"]:
-                                #     current_vm["sources"]["direct"] = dict()
-                                if v["source"][direct_var]["source_id"] not in current_vm["sources"]:
-                                    current_vm["sources"][v["source"][direct_var]["source_id"]] = []
-                                source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
+                #                 # add x-ref source_id->variable
+                #                 # if "direct" not in current_vm["sources"]:
+                #                 #     current_vm["sources"]["direct"] = dict()
+                #                 if v["source"][direct_var]["source_id"] not in current_vm["sources"]:
+                #                     current_vm["sources"][v["source"][direct_var]["source_id"]] = []
+                #                 source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
 
-                                if source_entry not in current_vm["sources"][v["source"][direct_var]["source_id"]]:
-                                    current_vm["sources"][v["source"][direct_var]["source_id"]].append(source_entry)
+                #                 if source_entry not in current_vm["sources"][v["source"][direct_var]["source_id"]]:
+                #                     current_vm["sources"][v["source"][direct_var]["source_id"]].append(source_entry)
 
-                            else:
-                                continue
+                #             else:
+                #                 continue
 
 
-                    # this holds list of variablesets for each index and indexed variable data
-                    if vs_def["index"]["index_type"] not in current_vm["indexed"]:
-                        current_vm["indexed"][vs_def["index"]["index_type"]] = dict()
-                        if vs_def["index"]["index_value"] not in current_vm["indexed"][vs_def["index"]["index_type"]]:
-                            current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]] = {
-                                "variablesets": [],
-                                "data": dict()
-                            }
+                #     # this holds list of variablesets for each index and indexed variable data
+                #     if vs_def["index"]["index_type"] not in current_vm["indexed"]:
+                #         current_vm["indexed"][vs_def["index"]["index_type"]] = dict()
+                #         if vs_def["index"]["index_value"] not in current_vm["indexed"][vs_def["index"]["index_type"]]:
+                #             current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]] = {
+                #                 "variablesets": [],
+                #                 "data": dict()
+                #             }
         
-                        # add variableset to list for x-ref
-                        if vs_name not in current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]]["variablesets"]:
-                            current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]]["variablesets"].append(vs_name)
+                #         # add variableset to list for x-ref
+                #         if vs_name not in current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]]["variablesets"]:
+                #             current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]]["variablesets"].append(vs_name)
                 
                         
-                        # create indexing task for current index if necessary
-                        if (index_type:=vs_def["index"]["index_type"]) not in self.index_monitor_tasks:
-                            self.index_monitor_tasks[index_type] = dict()
-                            if index_type == "time":
-                                index_value = vs_def["index"]["index_value"]
-                                self.logger.debug("configure", extra={"index_type": index_type, "index_value": index_value})
-                                if index_value not in self.index_monitor_tasks[index_type] or not self.index_monitor_tasks[index_type][index_value]:
-                                    self.index_monitor_tasks[index_type][index_value] = asyncio.create_task(self.index_time_monitor(timebase=index_value))
-                                # self.index_monitor_tasks[index_type][index_value] = {
-                                #     index_value: asyncio.create_task(
-                                #         self.index_time_monitor(
-                                #             # variablemap=vm_id,
-                                #             timebase=index_value,
-                                #         )
-                                #     )
-                                # }
-                                # self.logger.debug("configure", extra={"index_monitor_tasks": self.index_monitor_tasks})
-
+                #         # create indexing task for current index if necessary
+                #         if (index_type:=vs_def["index"]["index_type"]) not in self.index_monitor_tasks:
+                #             self.index_monitor_tasks[index_type] = dict()
+                #             if index_type == "time":
+                #                 index_value = vs_def["index"]["index_value"]
+                #                 self.logger.debug("configure", extra={"index_type": index_type, "index_value": index_value})
+                #                 if index_value not in self.index_monitor_tasks[index_type] or not self.index_monitor_tasks[index_type][index_value]:
+                #                     self.index_monitor_tasks[index_type][index_value] = asyncio.create_task(self.index_time_monitor(timebase=index_value))
+                #                 # self.index_monitor_tasks[index_type][index_value] = {
+                #                 #     index_value: asyncio.create_task(
+                #                 #         self.index_time_monitor(
+                #                 #             # variablemap=vm_id,
+                #                 #             timebase=index_value,
+                #                 #         )
+                #                 #     )
+                #                 # }
+                #                 # self.logger.debug("configure", extra={"index_monitor_tasks": self.index_monitor_tasks})
 
 
             #     attributes = vm_data["attributes"]
@@ -659,6 +660,115 @@ class SamplingSystem:
         except Exception as e:
             self.logger.error("configure error", extra={"reason": e})
 
+    def load_variablemap(self, vm: dict):
+        if vm.get("kind") != "PlatformVariableMap":
+            return
+            
+        metadata = vm.get("metadata", {})
+        vm_name = metadata.get("name")
+        platform_name = metadata.get("platform")
+        sampling_namespace = metadata.get("sampling_namespace", "")
+        valid_config_time = metadata.get("valid_config_time")
+        
+        if not all([vm_name, platform_name, valid_config_time]):
+            self.logger.error("load_variablemap missing critical metadata")
+            return
+
+        # Check allowed platforms (if you implemented the restriction method previously)
+        if hasattr(self, 'is_platform_allowed') and not self.is_platform_allowed(platform_name):
+            return
+
+        if "platform" not in self.variablemaps:
+            self.variablemaps["platform"] = dict()
+        if platform_name not in self.variablemaps["platform"]:
+            self.variablemaps["platform"][platform_name] = dict()
+        if vm_name not in self.variablemaps["platform"][platform_name]:
+            self.variablemaps["platform"][platform_name][vm_name] = dict()
+            
+        if valid_config_time in self.variablemaps["platform"][platform_name][vm_name]:
+            return # Already parsed
+            
+        self.variablemaps["platform"][platform_name][vm_name][valid_config_time] = {
+            "variablemap": vm,
+            "variablesets": dict(),
+            "indexed": dict(),
+            "sources": dict()
+        }
+
+        vm_data = vm.get("data", {})
+        current_vm = self.variablemaps["platform"][platform_name][vm_name][valid_config_time]
+        
+        for vs_name, vs_def in vm_data.get("variablesets", {}).items():
+            if vs_name not in current_vm["variablesets"]:
+                current_vm["variablesets"][vs_name] = {
+                    "attributes": dict(),
+                    "dimensions": dict(),
+                    "variables": dict()
+                }
+            current_vm["variablesets"][vs_name]["attributes"] = dict()
+            for att_name, att_val in vm_data.get("attributes", {}).items():
+                current_vm["variablesets"][vs_name]["attributes"][att_name] = {
+                    "type": f"{type(att_val).__name__}",
+                    "data": att_val
+                }
+            current_vm["variablesets"][vs_name]["attributes"]["index_type"] = {"type": "string", "data": vs_def["index"]["index_type"]}
+            vtype = f"{type(vs_def['index']['index_value']).__name__}"
+            current_vm["variablesets"][vs_name]["attributes"]["index_value"] = {"type": vtype, "data": vs_def["index"]["index_value"]}
+            current_vm["variablesets"][vs_name]["attributes"]["variablemap_kind"] = {"type": "string", "data": vm["kind"]}
+
+            current_vm["variablesets"][vs_name]["dimensions"] = {"time": 0}
+
+            # Add variables for variableset
+            for v_name, v in vm_data.get("variables", {}).items():
+                if v.get("variableset") == vs_name:
+                    current_vm["variablesets"][vs_name]["variables"][v_name] = {
+                        "type": v["type"],
+                        "shape": v["shape"],
+                        "attributes": v["attributes"].copy(),
+                    }
+
+                    for sh in v["shape"]:
+                        if sh not in current_vm["variablesets"][vs_name]["dimensions"]:
+                            current_vm["variablesets"][vs_name]["dimensions"][sh] = 0
+
+                    current_v = current_vm["variablesets"][vs_name]["variables"][v_name]
+                    current_v["attributes"]["map_type"] = {"type": "string", "data": v["map_type"]}
+                    
+                    if v["map_type"] == "direct":
+                        direct_var = v["direct_value"]["source_variable"]
+                        current_v["attributes"]["source_type"] = {"type": "string", "data": v["source"][direct_var]["source_type"]}
+                        current_v["attributes"]["source_id"] = {"type": "string", "data": v["source"][direct_var]["source_id"]}
+                        current_v["attributes"]["source_variable"] = {"type": "string", "data": v["source"][direct_var]["source_variable"]}
+                        
+                        source_id_val = v["source"][direct_var]["source_id"]
+                        if source_id_val not in current_vm["sources"]:
+                            current_vm["sources"][source_id_val] = []
+                            
+                        source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
+                        if source_entry not in current_vm["sources"][source_id_val]:
+                            current_vm["sources"][source_id_val].append(source_entry)
+
+            # Indexed xrefs
+            index_type = vs_def["index"]["index_type"]
+            index_value = vs_def["index"]["index_value"]
+            
+            if index_type not in current_vm["indexed"]:
+                current_vm["indexed"][index_type] = dict()
+            if index_value not in current_vm["indexed"][index_type]:
+                current_vm["indexed"][index_type][index_value] = {
+                    "variablesets": [],
+                    "data": dict()
+                }
+
+            if vs_name not in current_vm["indexed"][index_type][index_value]["variablesets"]:
+                current_vm["indexed"][index_type][index_value]["variablesets"].append(vs_name)
+
+            if index_type not in self.index_monitor_tasks:
+                self.index_monitor_tasks[index_type] = dict()
+            if index_type == "time":
+                if index_value not in self.index_monitor_tasks[index_type] or not self.index_monitor_tasks[index_type][index_value]:
+                    self.index_monitor_tasks[index_type][index_value] = asyncio.create_task(self.index_time_monitor(timebase=index_value))
+
     def open_http_client(self):
         self.http_client = httpx.AsyncClient()
 
@@ -724,53 +834,121 @@ class SamplingSystem:
             print("error", e)
         await asyncio.sleep(0.01)
 
+    # async def sync_sampling_definitions_loop(self):
+    #     """
+    #     Background loop to continuously fetch and update variablemaps 
+    #     and variablesets from the datastore/registrar.
+    #     """
+    #     while True:
+    #         try:
+    #             # 1. Fetch and Update VariableMaps
+    #             vmap_ids_resp = await self.submit_get(path="variablemap-definition/registry/ids/get")
+    #             if vmap_ids_resp and "results" in vmap_ids_resp:
+    #                 for vmap_id in vmap_ids_resp["results"]:
+    #                     query = {"variablemap_definition_id": vmap_id}
+    #                     vmap_resp = await self.submit_request(path="variablemap-definition/registry/get", query=query)
+                        
+    #                     if vmap_resp and "results" in vmap_resp and vmap_resp["results"]:
+    #                         vm = vmap_resp["results"][0]
+                            
+    #                         metadata = vm.get("metadata", {})
+    #                         attributes = vm.get("data", {}).get("attributes", {})
+                            
+    #                         vm_name = metadata.get("name")
+    #                         platform_name = attributes.get("platform")
+    #                         valid_config_time = attributes.get("valid_config_time")
+                            
+    #                         if not all([vm_name, platform_name, valid_config_time]):
+    #                             continue
+
+    #                         if "platform" not in self.variablemaps:
+    #                             self.variablemaps["platform"] = dict()
+    #                         if platform_name not in self.variablemaps["platform"]:
+    #                             self.variablemaps["platform"][platform_name] = dict()
+    #                         if vm_name not in self.variablemaps["platform"][platform_name]:
+    #                             self.variablemaps["platform"][platform_name][vm_name] = dict()
+                                
+    #                         if valid_config_time not in self.variablemaps["platform"][platform_name][vm_name]:
+    #                             # Initialize structure for newly discovered map
+    #                             self.variablemaps["platform"][platform_name][vm_name][valid_config_time] = {
+    #                                 "variablemap": vm,
+    #                                 "variablesets": dict(),
+    #                                 "indexed": dict(),
+    #                                 "sources": dict()
+    #                             }
+    #                             # Note: You can optionally run your `configure` parsing logic here 
+    #                             # to unpack `vm["data"]["variables"]` into the `variablesets` keys
+    #                             # to actively process data for this dynamically fetched map.
+
+    #             # 2. Fetch and Update VariableSets
+    #             vset_ids_resp = await self.submit_get(path="variableset-definition/registry/ids/get")
+    #             if vset_ids_resp and "results" in vset_ids_resp:
+    #                 for vset_id in vset_ids_resp["results"]:
+    #                     query = {"variableset_definition_id": vset_id}
+    #                     vset_resp = await self.submit_request(path="variableset-definition/registry/get", query=query)
+                        
+    #                     if vset_resp and "results" in vset_resp and vset_resp["results"]:
+    #                         vs = vset_resp["results"][0]
+    #                         if "variablesets" not in self.variablesets:
+    #                             self.variablesets["variablesets"] = dict()
+    #                         self.variablesets["variablesets"][vset_id] = vs
+
+    #             self.logger.debug(
+    #                 "sync_sampling_definitions_loop", 
+    #                 extra={
+    #                     "variablemaps_platforms": list(self.variablemaps.get("platform", {}).keys()),
+    #                     "variablesets_count": len(self.variablesets.get("variablesets", {}))
+    #                 }
+    #             )
+
+    #         except Exception as e:
+    #             self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+            
+    #         await asyncio.sleep(60)
+
     async def sync_sampling_definitions_loop(self):
-        """
-        Background loop to continuously fetch and update variablemaps 
-        and variablesets from the datastore/registrar.
-        """
         while True:
             try:
                 # 1. Fetch and Update VariableMaps
                 vmap_ids_resp = await self.submit_get(path="variablemap-definition/registry/ids/get")
                 if vmap_ids_resp and "results" in vmap_ids_resp:
                     for vmap_id in vmap_ids_resp["results"]:
+                        # Extract platform_name from ID: platform_name::variablemap_name::valid_config_time
+                        parts = vmap_id.split("::")
+                        if len(parts) >= 3:
+                            platform_name = parts[0]
+                            if hasattr(self, 'is_platform_allowed') and not self.is_platform_allowed(platform_name):
+                                continue
+                                
                         query = {"variablemap_definition_id": vmap_id}
                         vmap_resp = await self.submit_request(path="variablemap-definition/registry/get", query=query)
                         
                         if vmap_resp and "results" in vmap_resp and vmap_resp["results"]:
-                            vm = vmap_resp["results"][0]
+                            vm_db = vmap_resp["results"][0]
                             
-                            metadata = vm.get("metadata", {})
-                            attributes = vm.get("data", {}).get("attributes", {})
-                            
-                            vm_name = metadata.get("name")
-                            platform_name = attributes.get("platform")
-                            valid_config_time = attributes.get("valid_config_time")
+                            vm_name = vm_db.get("variablemap")
+                            platform_name = vm_db.get("variablemap_type_id")
+                            valid_config_time = vm_db.get("valid_config_time")
                             
                             if not all([vm_name, platform_name, valid_config_time]):
                                 continue
 
-                            if "platform" not in self.variablemaps:
-                                self.variablemaps["platform"] = dict()
-                            if platform_name not in self.variablemaps["platform"]:
-                                self.variablemaps["platform"][platform_name] = dict()
-                            if vm_name not in self.variablemaps["platform"][platform_name]:
-                                self.variablemaps["platform"][platform_name][vm_name] = dict()
-                                
-                            if valid_config_time not in self.variablemaps["platform"][platform_name][vm_name]:
-                                # Initialize structure for newly discovered map
-                                self.variablemaps["platform"][platform_name][vm_name][valid_config_time] = {
-                                    "variablemap": vm,
-                                    "variablesets": dict(),
-                                    "indexed": dict(),
-                                    "sources": dict()
-                                }
-                                # Note: You can optionally run your `configure` parsing logic here 
-                                # to unpack `vm["data"]["variables"]` into the `variablesets` keys
-                                # to actively process data for this dynamically fetched map.
+                            # Mock the exact JSON structure the parser expects
+                            mock_vm = {
+                                "kind": "PlatformVariableMap",
+                                "metadata": {
+                                    "name": vm_name,
+                                    "platform": platform_name,
+                                    "sampling_namespace": vm_db.get("attributes", {}).get("sampling_namespace", ""),
+                                    "valid_config_time": valid_config_time
+                                },
+                                "data": vm_db
+                            }
+                            
+                            # Safely parse and generate the sources + start the indexing tasks!
+                            self.load_variablemap(mock_vm)
 
-                # 2. Fetch and Update VariableSets
+                # 2. Fetch and Update VariableSets (same as before)
                 vset_ids_resp = await self.submit_get(path="variableset-definition/registry/ids/get")
                 if vset_ids_resp and "results" in vset_ids_resp:
                     for vset_id in vset_ids_resp["results"]:
@@ -795,6 +973,62 @@ class SamplingSystem:
                 self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
             
             await asyncio.sleep(60)
+
+    async def publish_local_definitions(self):
+        """
+        Publishes the locally loaded JSON variablemaps and variablesets 
+        to the event broker so the datastore can register them globally.
+        """
+        # Wait a few seconds to ensure the Knative broker/datastore are ready
+        await asyncio.sleep(5)
+        
+        try:
+            for platform, vm_dict in self.variablemaps.get("platform", {}).items():
+                for vm_name, time_dict in vm_dict.items():
+                    for valid_time, vm_obj in time_dict.items():
+                        
+                        vm = vm_obj["variablemap"]
+                        
+                        # 1. Broadcast the VariableMap
+                        event = CloudEvent({
+                            "source": f"envds.{self.config.daq_id}.sampling-system",
+                            "type": "envds.variablemap-definition.registry.update",
+                            "datacontenttype": "application/json"
+                        }, {"variablemap-definition": vm})
+                        
+                        event["destpath"] = f"envds/{self.config.daq_id}/variablemap-definition/registry/update"
+                        await self.send_event(event)
+
+                        # 2. Broadcast the associated VariableSets
+                        vm_data = vm.get("data", {})
+                        for vs_name, vs_def in vm_data.get("variablesets", {}).items():
+                            vs_payload = {
+                                "metadata": {"name": vs_name},
+                                "data": {
+                                    "attributes": {
+                                        "variablemap_type": vm_data.get("attributes", {}).get("variablemap_type"),
+                                        "platform": platform,
+                                        "valid_config_time": valid_time,
+                                    },
+                                    "variablesets": {vs_name: vs_def},
+                                    # Filter variables mapped to this specific variableset
+                                    "variables": {k: v for k, v in vm_data.get("variables", {}).items() if v.get("variableset") == vs_name}
+                                }
+                            }
+                            
+                            vs_event = CloudEvent({
+                                "source": f"envds.{self.config.daq_id}.sampling-system",
+                                "type": "envds.variableset-definition.registry.update",
+                                "datacontenttype": "application/json"
+                            }, {"variableset-definition": vs_payload})
+                            
+                            vs_event["destpath"] = f"envds/{self.config.daq_id}/variableset-definition/registry/update"
+                            await self.send_event(vs_event)
+                            
+            self.logger.info("publish_local_definitions", extra={"status": "completed"})
+            
+        except Exception as e:
+            self.logger.error("publish_local_definitions", extra={"reason": e})
 
     async def get_from_mqtt_loop(self):
         reconnect = 10
