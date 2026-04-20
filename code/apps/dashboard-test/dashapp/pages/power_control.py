@@ -31,25 +31,6 @@ class Settings(BaseSettings):
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
-    # mongodb_data_user_name: str = ""
-    # mongodb_data_user_password: str = ""
-    # mongodb_registry_user_name: str = ""
-    # mongodb_registry_user_password: str = ""
-    # mongodb_data_connection: str = (
-    #     "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/data?replicaSet=uasdaq-mongodb&ssl=false"
-    # )
-    # mongodb_registry_connection: str = (
-    #     "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/registry?replicaSet=uasdaq-mongodb&ssl=false"
-    # )
-    # erddap_http_connection: str = (
-    #     "http://uasdaq.pmel.noaa.gov/uasdaq/dataserver/erddap"
-    # )
-    # erddap_https_connection: str = (
-    #     "https://uasdaq.pmel.noaa.gov/uasdaq/dataserver/erddap"
-    # )
-    # erddap_author: str = "fake_author"
-
-    # dry_run: bool = False
 
     class Config:
         env_prefix = "DASHBOARD_"
@@ -82,21 +63,6 @@ pdu_outlets = dbc.Row([
                 dbc.Col(html.Div([daq.PowerButton(id='pdu_power-button-5', label="Outlet 5", color='#14c208', persistence=True)])),
                  ])
 
-# pdu_outlets_lights = dbc.Row([
-#                 dbc.Col(html.Div([daq.Indicator(id='pdu_light-1', label="Outlet 1", color='#14c208')])),
-#                 dbc.Col(html.Div([daq.Indicator(id='pdu_light-2', label="Outlet 2", color='#14c208')])),
-#                 dbc.Col(html.Div([daq.Indicator(id='pdu_light-3', label="Outlet 3", color='#14c208')])),
-#                 dbc.Col(html.Div([daq.Indicator(id='pdu_light-4', label="Outlet 4", color='#14c208')])),
-#                 dbc.Col(html.Div([daq.Indicator(id='pdu_light-5', label="Outlet 5", color='#14c208')])),
-#                  ])
-
-# pdu_outlets = dbc.Row([
-#                 dbc.Col(html.Div([html.Button("Outlet 1", id='pdu_power-button-1', n_clicks=0)])),
-#                 dbc.Col(html.Div([html.Button("Outlet 2", id='pdu_power-button-2', n_clicks=0)])),
-#                 dbc.Col(html.Div([html.Button("Outlet 3", id='pdu_power-button-3', n_clicks=0)])),
-#                 dbc.Col(html.Div([html.Button("Outlet 4", id='pdu_power-button-4', n_clicks=0)])),
-#                 dbc.Col(html.Div([html.Button("Outlet 5", id='pdu_power-button-5', n_clicks=0)])),
-#                  ])
 
 datastore_url = f"datastore.{config.daq_id}-system"
 # link_url_base = f"http://{config.external_hostname}/msp/dashboardtest"
@@ -154,23 +120,6 @@ def get_layout():
             ),
         dcc.Store(id='controller-list', data=[], storage_type='memory'),
         html.Div(id='controller-display'),
-        # dbc.Card('This is our Home page content.', body=True),
-        # html.Div('This is our Home page content.'),
-        # dcc.Input(id="input", autoComplete="off", debounce=True),
-        # html.Div(id="message"),
-        # html.Div([
-        #     daq.PowerButton(
-        #         id='power-button-1',
-        #         color='#14c208',
-        #         persistence=True
-        #     )
-        # ]),
-        # html.Div(id="power_button_message"),
-        # html.Div([
-        #     dbc.Stack([
-        #         pdu_outlets_lights
-        #     ], gap=3)
-        # ]),
         # WebSocket(id="ws", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/wwss/sensor/main")
         # WebSocket(id="ws", url=f"{config.ws_protocol}://{config.external_hostname}/msp/dashboardtest/ws/test/testhome"),
         WebSocket(id="ws", url=f"{ws_url_base}/msp/dashboardtest/ws/test/testhome"),
@@ -189,20 +138,6 @@ def get_layout():
 
 layout = get_layout()
 
-# @callback(
-#     Output('ws', "send"),
-#     Input("input", "value")
-# )
-# def send(value):
-#     print(f"sending: {value}")
-#     return value
-
-# @callback(Output("message", "children"), Input("ws", "message"))
-# def message(e):
-#     if e:
-#         return f"Response from websocket: {e['data']}"
-#     else:
-#         return "No response"
     
 
 def send(id, value):
@@ -249,16 +184,6 @@ def message(i):
         else:
             color = '#491a8b'
         return None, color
-        # if "pdu_power-button-1" == ctx.triggered_id:
-        #     return None, color, dash.no_update, dash.no_update, dash.no_update, dash.no_update
-        # if "pdu_power-button-2" == ctx.triggered_id:
-        #     return None, dash.no_update, color, dash.no_update, dash.no_update, dash.no_update
-        # if "pdu_power-button-3" == ctx.triggered_id:
-        #     return None, dash.no_update, dash.no_update, color, dash.no_update, dash.no_update
-        # if "pdu_power-button-4" == ctx.triggered_id:
-        #     return None, dash.no_update, dash.no_update, dash.no_update, color, dash.no_update
-        # if "pdu_power-button-5" == ctx.triggered_id:
-        #     return None, dash.no_update, dash.no_update, dash.no_update, dash.no_update, color
     else:
         color = '#491a8b'
         return None, color
@@ -273,12 +198,17 @@ def message(i):
         Input("controller-list", "data")
 )
 def update_display(stored_data):
-    # If the store is empty, return an empty list or a message
     if not stored_data:
-        return "No controllers found."
-    
-    # Return the list comprehension here
-    return [html.Div(controller) for controller in stored_data]
+            return dbc.Alert("No controllers found.", color="warning")
+        
+        # Extract the info you want to show from the dictionary
+    return [
+        html.Div([
+            html.B(f"Controller: {c['controller_id']}"),
+            html.P(f"Make: {c['make']} | Model: {c['model']}")
+        ], style={'borderBottom': '1px solid #ccc', 'marginBottom': '10px'}) 
+        for c in stored_data
+    ]
 
 @callback(
     Output("controller-list", "data"),
