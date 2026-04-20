@@ -321,7 +321,7 @@ def get_layout():
                                         "filter": True,
                                     },
                                     {
-                                        "field": "sampling_sytem_id",
+                                        "field": "sampling_system_id",
                                         "headerName": "Sampling System ID",
                                         "filter": True,
                                         "cellRenderer": "markdown",
@@ -568,9 +568,7 @@ def update_active_controllers(count, table_data):
         results = response.json()
         print(f"results: {results}")
         if "results" in results and results["results"]:
-            print(f"update_active_controllers 1")
             for doc in results["results"]:
-                print(f"update_active_controllers 1.5: {doc}")
                 make = doc["make"]
                 model = doc["model"]
                 serial_number = doc["serial_number"]
@@ -589,26 +587,20 @@ def update_active_controllers(count, table_data):
                     "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
                     # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
                 }
-                print(f"update_active_controllers 1.75: {controller}")
-                print(f"update_active_controllers table data: {table_data}")
                 if table_data is None:
                     table_data = []
                 if controller not in table_data:
-                    print(f"update_active_controllers 2: {controller}")
                     table_data.append(controller)
-                    print(f"update_active_controllers 3: {table_data}")
                     update = True
                 new_data.append(controller)
 
         remove_data = []
         for index, data in enumerate(table_data):
-            print(f"update_active_controllers 4: {data}")
             if data not in new_data:
                 update = True
                 remove_data.insert(0, index)
         for index in remove_data:
             table_data.pop(index)
-            print(f"update_active_controllers 5: {table_data}")
 
         if update:
             return table_data
