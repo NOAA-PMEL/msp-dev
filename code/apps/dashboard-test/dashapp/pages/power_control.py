@@ -1,5 +1,5 @@
 import dash
-from dash import html, callback, dcc, Input, Output
+from dash import html, callback, dcc, Input, Output, State
 import dash_bootstrap_components as dbc
 from dash_extensions import WebSocket
 from ulid import ULID
@@ -8,6 +8,8 @@ import dash_daq as daq
 import paho.mqtt.client as mqtt
 import json
 from pydantic import BaseSettings
+import traceback
+import httpx
 
 # dash.register_page(__name__, path='/')
 dash.register_page(__name__, path='/powercontrol', name='Power Control')
@@ -147,6 +149,11 @@ def get_layout():
             ]),
         ], className="p-4"
         ),
+        dcc.Interval(
+                id="active-controllers-interval", interval=(1 * 10000), n_intervals=0
+            ),
+        dcc.Store(id='controller-list', data=[], storage_type='memory'),
+        html.Div(id='controller-display'),
         # dbc.Card('This is our Home page content.', body=True),
         # html.Div('This is our Home page content.'),
         # dcc.Input(id="input", autoComplete="off", debounce=True),
@@ -170,7 +177,7 @@ def get_layout():
         # WebSocket(id="ws_pb", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/pb")
         # url=f"ws://{config.ws_hostname}/msp/dashboardtest/ws/sensor-registry/main"
         # WebSocket(id="ws_pb", url=f"{config.ws_protocol}://{config.external_hostname}/msp/dashboardtest/ws/test/pb")
-        WebSocket(id="ws_pb", url=f"{ws_url_base}/msp/dashboardtest/ws/test/pb")
+        WebSocket(id="ws_pb", url=f"{ws_url_base}/msp/dashboardtest/ws/test/pb"),
     # ], style=CONTENT_STYLE)
     ])
     # try:
@@ -261,13 +268,75 @@ def message(i):
 # # startup code
 # send("startup request")
 
-
+@callback(
+        Output("controller-display", "children"),
+        Input("controller-list", "data")
+)
+def update_display(stored_data):
+    # If the store is empty, return an empty list or a message
+    if not stored_data:
+        return "No controllers found."
+    
+    # Return the list comprehension here
+    return [html.Div(controller) for controller in stored_data]
 
 @callback(
-    Output('controller-list', 'children'),
-    Input('active-controller-table', 'rowData')
+    Output("controller-list", "data"),
+    Input("active-controllers-interval", "n_intervals"),
+    State("controller-list", "data")
 )
-def display_data(active_controllers):
-    # for sensor in active_sensors:
-        # return sensor
-        return [active_controllers]
+def retrieve_active_controllers(count, current_list):
+
+    update = False
+    new_data = []
+    rel_path = dash.get_relative_path("/")
+    print(f"*** rel_path: {rel_path}")
+
+    try:
+        query = {"device_type": "controller"}
+        url = f"http://{datastore_url}/controller-instance/registry/get/"
+        print(f"controller-instance-get: {url}")
+        response = httpx.get(url, params=query)
+        results = response.json()
+        print(f"results: {results}")
+        if "results" in results and results["results"]:
+            for doc in results["results"]:
+                make = doc["make"]
+                model = doc["model"]
+                serial_number = doc["serial_number"]
+                controller_id = "::".join([make, model, serial_number])
+                sampling_system_id = "unknown::unknown::unknown"
+
+                controller = {
+                    "controller_id": f"[{controller_id}]({link_url_base}/dash/controller/{controller_id})",
+                    "make": make,
+                    "model": model,
+                    "serial_number": serial_number,
+                    "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
+                }
+                if current_list is None:
+                    current_list = []
+                if controller not in current_list:
+                    current_list.append(controller)
+                    update = True
+                new_data.append(controller)
+
+        remove_data = []
+        for index, data in enumerate(current_list):
+            if data not in new_data:
+                update = True
+                remove_data.insert(0, index)
+        for index in remove_data:
+            current_list.pop(index)
+
+        if update:
+            return current_list
+        else:
+            return dash.no_update
+
+
+    except Exception as e:
+        print(f"update_active_controllers error: {e}")
+        print(traceback.format_exc())
+        return dash.no_update
+
