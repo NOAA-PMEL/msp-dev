@@ -223,39 +223,39 @@ def send_pb_state(s_pb1, s_pb2, s_pb3, pdu_pb1, pdu_pb2, pdu_pb3, pdu_pb4, pdu_p
     print(send(id, value))
     return send(id, value)
 
-# @callback(Output("power_button_message", "children"),
-#           Output("pdu_light-1", "color"),
-#           Output("pdu_light-2", "color"),
-#           Output("pdu_light-3", "color"),
-#           Output("pdu_light-4", "color"),
-#           Output("pdu_light-5", "color"),
-#           Input("ws_pb", "message"))
-# def message(i):
-#     ctx = dash.callback_context
-#     if i:
-#         print('returned i', i)
-#         state = i['data']
-#         if "True" in state:
-#             color = '#14c208'
-#         elif "False" in state:
-#             color = '#e60707'
-#         else:
-#             color = '#491a8b'
-#         return None, color
-#         # if "pdu_power-button-1" == ctx.triggered_id:
-#         #     return None, color, dash.no_update, dash.no_update, dash.no_update, dash.no_update
-#         # if "pdu_power-button-2" == ctx.triggered_id:
-#         #     return None, dash.no_update, color, dash.no_update, dash.no_update, dash.no_update
-#         # if "pdu_power-button-3" == ctx.triggered_id:
-#         #     return None, dash.no_update, dash.no_update, color, dash.no_update, dash.no_update
-#         # if "pdu_power-button-4" == ctx.triggered_id:
-#         #     return None, dash.no_update, dash.no_update, dash.no_update, color, dash.no_update
-#         # if "pdu_power-button-5" == ctx.triggered_id:
-#         #     return None, dash.no_update, dash.no_update, dash.no_update, dash.no_update, color
-#     else:
-#         color = '#491a8b'
-#         return None, color
-#         # return None, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+@callback(Output("power_button_message", "children"),
+          Output("pdu_light-1", "color"),
+          Output("pdu_light-2", "color"),
+          Output("pdu_light-3", "color"),
+          Output("pdu_light-4", "color"),
+          Output("pdu_light-5", "color"),
+          Input("ws_pb", "message"))
+def message(i):
+    ctx = dash.callback_context
+    if i:
+        print('returned i', i)
+        state = i['data']
+        if "True" in state:
+            color = '#14c208'
+        elif "False" in state:
+            color = '#e60707'
+        else:
+            color = '#491a8b'
+        return None, color
+        # if "pdu_power-button-1" == ctx.triggered_id:
+        #     return None, color, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        # if "pdu_power-button-2" == ctx.triggered_id:
+        #     return None, dash.no_update, color, dash.no_update, dash.no_update, dash.no_update
+        # if "pdu_power-button-3" == ctx.triggered_id:
+        #     return None, dash.no_update, dash.no_update, color, dash.no_update, dash.no_update
+        # if "pdu_power-button-4" == ctx.triggered_id:
+        #     return None, dash.no_update, dash.no_update, dash.no_update, color, dash.no_update
+        # if "pdu_power-button-5" == ctx.triggered_id:
+        #     return None, dash.no_update, dash.no_update, dash.no_update, dash.no_update, color
+    else:
+        color = '#491a8b'
+        return None, color
+        # return None, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 
 # # startup code
