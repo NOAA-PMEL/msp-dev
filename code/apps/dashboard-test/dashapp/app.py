@@ -72,6 +72,7 @@ sidebar = html.Div(
                         active="exact",
                     )
                     for page in dash.page_registry.values()
+                    if page.get("nav_bar", True)
                 ],
                 vertical=True,
                 pills=True,
