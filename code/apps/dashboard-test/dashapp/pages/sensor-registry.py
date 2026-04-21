@@ -327,7 +327,7 @@ def get_layout():
                                         "filter": True,
                                     },
                                     {
-                                        "field": "sampling_sytem_id",
+                                        "field": "sampling_system_id",
                                         "headerName": "Sampling System ID",
                                         "filter": True,
                                         "cellRenderer": "markdown",
