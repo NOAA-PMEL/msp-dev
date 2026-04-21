@@ -12,7 +12,7 @@ import traceback
 import httpx
 
 # dash.register_page(__name__, path='/')
-dash.register_page(__name__, path='/powercontrol', name='Power Control', hidden=True)
+dash.register_page(__name__, path='/powercontrol', name='Power Control', hidden=True, nav_bar=False)
 
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
