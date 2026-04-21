@@ -19,7 +19,7 @@ app = Dash(
 
 sidebar_header = dbc.Row(
     [
-        dbc.Col(html.H4("UAS-DAQ", className="display-4")),
+        dbc.Col(html.H4("MSP-DAQ", className="display-4")),
         dbc.Col(
             html.Button(
                 # use the Bootstrap navbar-toggler classes to style the toggle

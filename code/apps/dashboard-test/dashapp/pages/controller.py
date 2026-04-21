@@ -41,6 +41,7 @@ dash.register_page(
     __name__,
     path_template="/controller/<controller_id>",
     title="Controllers",  # , prevent_initial_callbacks=True
+    nav_bar=False
 )
 
 

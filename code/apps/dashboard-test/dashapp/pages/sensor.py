@@ -41,6 +41,7 @@ dash.register_page(
     __name__,
     path_template="/sensor/<sensor_id>",
     title="Sensors",  # , prevent_initial_callbacks=True
+    nav_bar=False
 )
  
 
