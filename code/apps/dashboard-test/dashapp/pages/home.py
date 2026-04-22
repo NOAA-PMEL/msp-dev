@@ -1,5 +1,5 @@
 import dash
-from dash import html, callback, dcc, Input, Output, dash_table
+from dash import html, callback, dcc, Input, Output, State, dash_table
 import dash_bootstrap_components as dbc
 #import dash_daq as daq
 from dash_extensions import WebSocket
@@ -136,6 +136,7 @@ def get_layout():
                 dbc.Button(
                     "Vessel Trajectory (Click to Show/Hide)",
                     id="trajectory-toggle",
+                    n_clicks=0,
                     color="light",
                     className="w-100 text-start shadow-sm",
                     style={"border": "1px solid #dfe2e5", "borderRadius": "5px"}
@@ -273,6 +274,20 @@ def plot_trajectory(_):
     )
     
     return fig
+
+@callback(
+    Output("trajectory-collapse", "is_open"),
+    [Input("trajectory-toggle", "n_clicks")],
+    [State("trajectory-collapse", "is_open")],
+    prevent_initial_call=True # Prevents it from firing before the first click
+)
+def toggle_trajectory_map(n_clicks, is_open):
+    # This will print in your VS Code/Terminal window
+    print(f"Button clicked! Total clicks: {n_clicks}. Current state: {is_open}")
+    
+    if n_clicks:
+        return not is_open
+    return is_open
 
 # @callback(
 #     Output("trajectory", "figure"),
