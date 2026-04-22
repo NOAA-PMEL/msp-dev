@@ -127,19 +127,33 @@ def get_layout():
         ], id="main-status-card", className="mb-4"),
 
         # 2. Expandable Detail Section
-        html.Div(id="detail-container"),
+        html.Div(id="detail-container", className="mb-5"),
     
     dbc.Row([
-        # Wrap the card in a Column and set the width here
-        dbc.Col(width=12, children=[ 
-            dbc.Card([
-                dbc.CardHeader("Vessel Trajectory"),
-                dbc.CardBody([
-                    dcc.Loading(
-                        dcc.Graph(id='trajectory', style={"height": "500px"})
-                    )
-                ])
-            ])
+        dbc.Col(width=12, children=[
+            # Clickable Header that looks like a Card Header
+            html.Div(
+                dbc.Button(
+                    "Vessel Trajectory (Click to Show/Hide)",
+                    id="trajectory-toggle",
+                    color="light",
+                    className="w-100 text-start shadow-sm",
+                    style={"border": "1px solid #dfe2e5", "borderRadius": "5px"}
+                ),
+                className="mb-1"
+            ),
+            # The Collapsible area
+            dbc.Collapse(
+                dbc.Card([
+                    dbc.CardBody([
+                        dcc.Loading(
+                            dcc.Graph(id='trajectory', style={"height": "500px"})
+                        )
+                    ])
+                ]),
+                id="trajectory-collapse",
+                is_open=True, # Set to False if you want it closed by default
+            )
         ]),
     ], className="mb-4")
     ])
