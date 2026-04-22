@@ -128,9 +128,9 @@ def get_layout():
         # 2. Expandable Detail Section
         html.Div(id="detail-container"),
     
-        # dbc.Row(children=[
-        #     dbc.Card(width=1, children=[dcc.Loading(dcc.Graph(id='trajectory'))]),
-        # ]),
+        dbc.Row(children=[
+            dbc.Card(width=1, children=[dcc.Loading(dcc.Graph(id='trajectory'))]),
+        ]),
     ])
 
     return layout
