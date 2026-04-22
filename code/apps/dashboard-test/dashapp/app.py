@@ -1,6 +1,6 @@
 import dash
 from flask import Flask
-from dash import Dash, html, dcc, Input, Output, State, dash_table
+from dash import Dash, html, dcc, Input, Output, State, dash_table, no_update
 import dash_bootstrap_components as dbc
 from dash_extensions import WebSocket
 import os
@@ -110,7 +110,19 @@ app.layout = html.Div([
                     
                     # New Operator Input
                     dbc.Label("Operator Name:"),
-                    dbc.Input(id="global-operator-input", placeholder="e.g., User", type="text", className="mb-3"),
+                    # dbc.Input(id="global-operator-input", placeholder="e.g., User", type="text", className="mb-3"),
+                    dcc.Dropdown(
+                        id="global-operator-input",
+                        options=[
+                            {'label': 'Derek Coffman', 'value': 'Derek Coffman'},
+                            {'label': 'Hanna Best', 'value': 'Hanna Best'},
+                            {'label': 'Lucia Upchurch', 'value': 'Lucia Upchurch'},
+                            {'label': 'Guest', 'value': 'Guest'}
+                        ],
+                        placeholder="Select Operator...",
+                        className="mb-3",
+                        style={'color': '#333'} # Ensure text is dark enough to read
+                    ),
                     
                     dbc.Label("Note:"),
                     dbc.Textarea(id="global-note-input", placeholder="Enter details here...", style={'height': '150px'}),
@@ -221,6 +233,8 @@ def handle_global_notes(save_n, open_n, operator, text):
     trigger = ctx.triggered[0]['prop_id'].split('.')[0]
 
     if trigger == "global-save-note-btn":
+        if not operator:
+            return no_update, no_update
         if text:
             save_shared_note(operator, text)
         
