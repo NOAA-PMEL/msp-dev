@@ -23,6 +23,7 @@ dash.register_page(
     __name__,
     path="/pco2-file-browser",
     title="pCO2 File Browser",
+    nav_bar=False
 )
 
 def get_file_list():
