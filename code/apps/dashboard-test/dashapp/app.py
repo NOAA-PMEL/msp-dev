@@ -211,7 +211,8 @@ def toggle_global_notes(n, is_open):
      Output("global-note-input", "value")],
     [Input("global-save-note-btn", "n_clicks"),
      Input("global-open-notes", "n_clicks")], 
-    [State("global-note-input", "value")],
+    [State("global-operator-input", "value"),
+     State("global-note-input", "value")],
     prevent_initial_call=True
 )
 def handle_global_notes(save_n, open_n, text):
