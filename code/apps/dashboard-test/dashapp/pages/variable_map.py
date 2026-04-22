@@ -115,7 +115,7 @@ def get_layout():
             dcc.Textarea(
                 id='variable-map-editor',
                 value=json.dumps(initial_variable_map, indent=4),
-                style={'width': '100%', 'height': 300, 'font-family': 'monospace'}
+                style={'width': '100%', 'height': 500, 'font-family': 'monospace'}
             ),
             html.Br(),
             html.Button('Save Variable Map', id='save-button', n_clicks=0),
