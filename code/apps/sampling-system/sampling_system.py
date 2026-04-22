@@ -142,13 +142,27 @@ class SamplingSystem:
         self.configure()
         print("here:7")
 
+        # self.mqtt_buffer = asyncio.Queue()
+        # asyncio.create_task(self.get_from_mqtt_loop())
+        # asyncio.create_task(self.handle_mqtt_buffer())
+        # asyncio.create_task(self.index_monitor())
+        # asyncio.create_task(self.publish_local_definitions())
+        # asyncio.create_task(self.sync_sampling_definitions_loop())
+        # print("SamplingSystem: init: here:8")
+
+    async def setup(self):
+        self.logger.info("Running SamplingSystem async setup...")
+        # Create queues inside the active event loop
         self.mqtt_buffer = asyncio.Queue()
+        self.index_ready_buffer = asyncio.Queue()
+
+        # Safely launch tasks on Uvicorn's active event loop
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
         asyncio.create_task(self.index_monitor())
         asyncio.create_task(self.publish_local_definitions())
         asyncio.create_task(self.sync_sampling_definitions_loop())
-        print("SamplingSystem: init: here:8")
+        self.logger.info("SamplingSystem background tasks started successfully.")
 
 
     def configure(self):
@@ -774,7 +788,7 @@ class SamplingSystem:
 
     async def submit_get(self, path: str):
         try:
-            timeout = httpx.Timeout(10.0, read=None)
+            timeout = httpx.Timeout(10.0, read=10.0)
             if not getattr(self, 'http_client', None):
                 self.open_http_client()
             
@@ -787,7 +801,7 @@ class SamplingSystem:
 
     async def submit_request(self, path: str, query: dict):
         try:
-            timeout = httpx.Timeout(10.0, read=None)
+            timeout = httpx.Timeout(10.0, read=10.0)
             if not getattr(self, 'http_client', None):
                 self.open_http_client()
                 
@@ -802,7 +816,7 @@ class SamplingSystem:
         try:
             self.logger.debug(ce)  # , extra=template)
             try:
-                timeout = httpx.Timeout(5.0, read=None)
+                timeout = httpx.Timeout(5.0, read=10.0)
                 if not getattr(self, 'http_client', None):
                     self.open_http_client()
                 headers, body = to_structured(ce)
