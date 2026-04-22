@@ -1010,12 +1010,17 @@ class SamplingSystem:
                         vm = vm_obj["variablemap"]
                         
                         # 1. Broadcast the VariableMap
-                        event = CloudEvent({
-                            "source": f"envds.{self.config.daq_id}.sampling-system",
-                            "type": "envds.variablemap-definition.registry.update",
-                            "datacontenttype": "application/json"
-                        }, {"variablemap-definition": vm})
+                        # event = CloudEvent({
+                        #     "source": f"envds.{self.config.daq_id}.sampling-system",
+                        #     "type": "envds.variablemap-definition.registry.update",
+                        #     "datacontenttype": "application/json"
+                        # }, {"variablemap-definition": vm})
                         
+                        event = SamplingEvent.create_variablemap_definition_registry_update(
+                            source=f"envds.{self.config.daq_id}.sampling-system",
+                            data={"variablemap-definition": vm}
+                        )
+
                         event["destpath"] = f"envds/{self.config.daq_id}/variablemap-definition/registry/update"
                         self.logger.info("publish_local_definitions", extra={"event": event})
                         await self.send_event(event)
@@ -1027,22 +1032,30 @@ class SamplingSystem:
                                 "metadata": {"name": vs_name},
                                 "data": {
                                     "attributes": {
-                                        "variablemap_type": vm_data.get("attributes", {}).get("variablemap_type"),
+                                        # Inject parent map ID so Datastore can link them
+                                        "variablemap_id": vm.get("metadata", {}).get("name"),
+                                        "variablemap_type": vm_data.get("attributes", {}).get("variablemap_type", "Platform"),
                                         "platform": platform,
                                         "valid_config_time": valid_time,
                                     },
-                                    "variablesets": {vs_name: vs_def},
-                                    # Filter variables mapped to this specific variableset
+                                    # Lift index info to root data level for Pydantic model
+                                    "index_type": vs_def.get("index", {}).get("index_type"),
+                                    "index_value": vs_def.get("index", {}).get("index_value"),
+                                    "dimensions": {},
                                     "variables": {k: v for k, v in vm_data.get("variables", {}).items() if v.get("variableset") == vs_name}
                                 }
                             }
                             
-                            vs_event = CloudEvent({
-                                "source": f"envds.{self.config.daq_id}.sampling-system",
-                                "type": "envds.variableset-definition.registry.update",
-                                "datacontenttype": "application/json"
-                            }, {"variableset-definition": vs_payload})
+                            # vs_event = CloudEvent({
+                            #     "source": f"envds.{self.config.daq_id}.sampling-system",
+                            #     "type": "envds.variableset-definition.registry.update",
+                            #     "datacontenttype": "application/json"
+                            # }, {"variableset-definition": vs_payload})
                             
+                            vs_event = SamplingEvent.create_variableset_definition_registry_update(
+                                source=f"envds.{self.config.daq_id}.sampling-system",
+                                data={"variableset-definition": vs_payload}
+                            )
                             vs_event["destpath"] = f"envds/{self.config.daq_id}/variableset-definition/registry/update"
                             self.logger.info("publish_local_definitions", extra={"vs_event": vs_event})
                             await self.send_event(vs_event)
