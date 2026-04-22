@@ -995,76 +995,62 @@ class SamplingSystem:
         """
         Publishes the locally loaded JSON variablemaps and variablesets 
         to the event broker so the datastore can register them globally.
+        Runs on a slow loop to guarantee eventual consistency.
         """
-        # Wait a few seconds to ensure the Knative broker/datastore are ready
+        # Initial wait to let other services boot before the first blast
         await asyncio.sleep(5)
         
-        try:
-            for platform, vm_dict in self.variablemaps.get("platform", {}).items():
-                self.logger.info("publish_local_definitions", extra={"plt": platform})
-                for vm_name, time_dict in vm_dict.items():
-                    self.logger.info("publish_local_definitions", extra={"vm_name": vm_name})
-                    for valid_time, vm_obj in time_dict.items():
-                        self.logger.info("publish_local_definitions", extra={"valid_time": valid_time})
-                        
-                        vm = vm_obj["variablemap"]
-                        
-                        # 1. Broadcast the VariableMap
-                        # event = CloudEvent({
-                        #     "source": f"envds.{self.config.daq_id}.sampling-system",
-                        #     "type": "envds.variablemap-definition.registry.update",
-                        #     "datacontenttype": "application/json"
-                        # }, {"variablemap-definition": vm})
-                        
-                        event = SamplingEvent.create_variablemap_definition_registry_update(
-                            source=f"envds.{self.config.daq_id}.sampling-system",
-                            data={"variablemap-definition": vm}
-                        )
-
-                        event["destpath"] = f"envds/{self.config.daq_id}/variablemap-definition/registry/update"
-                        self.logger.info("publish_local_definitions", extra={"event": event})
-                        await self.send_event(event)
-
-                        # 2. Broadcast the associated VariableSets
-                        vm_data = vm.get("data", {})
-                        for vs_name, vs_def in vm_data.get("variablesets", {}).items():
-                            vs_payload = {
-                                "metadata": {"name": vs_name},
-                                "data": {
-                                    "attributes": {
-                                        # Inject parent map ID so Datastore can link them
-                                        "variablemap_id": vm.get("metadata", {}).get("name"),
-                                        "variablemap_type": vm_data.get("attributes", {}).get("variablemap_type", "Platform"),
-                                        "platform": platform,
-                                        "valid_config_time": valid_time,
-                                    },
-                                    # Lift index info to root data level for Pydantic model
-                                    "index_type": vs_def.get("index", {}).get("index_type"),
-                                    "index_value": vs_def.get("index", {}).get("index_value"),
-                                    "dimensions": {},
-                                    "variables": {k: v for k, v in vm_data.get("variables", {}).items() if v.get("variableset") == vs_name}
-                                }
-                            }
+        while True:
+            try:
+                for platform, vm_dict in self.variablemaps.get("platform", {}).items():
+                    for vm_name, time_dict in vm_dict.items():
+                        for valid_time, vm_obj in time_dict.items():
                             
-                            # vs_event = CloudEvent({
-                            #     "source": f"envds.{self.config.daq_id}.sampling-system",
-                            #     "type": "envds.variableset-definition.registry.update",
-                            #     "datacontenttype": "application/json"
-                            # }, {"variableset-definition": vs_payload})
+                            vm = vm_obj["variablemap"]
                             
-                            vs_event = SamplingEvent.create_variableset_definition_registry_update(
+                            # 1. Broadcast the VariableMap
+                            event = SamplingEvent.create_variablemap_definition_registry_update(
                                 source=f"envds.{self.config.daq_id}.sampling-system",
-                                data={"variableset-definition": vs_payload}
+                                data={"variablemap-definition": vm}
                             )
-                            vs_event["destpath"] = f"envds/{self.config.daq_id}/variableset-definition/registry/update"
-                            self.logger.info("publish_local_definitions", extra={"vs_event": vs_event})
-                            await self.send_event(vs_event)
-                            
-            self.logger.info("publish_local_definitions", extra={"status": "completed"})
-            
-        except Exception as e:
-            self.logger.error("publish_local_definitions", extra={"reason": e})
+                            event["destpath"] = f"envds/{self.config.daq_id}/variablemap-definition/registry/update"
+                            await self.send_event(event)
 
+                            # 2. Broadcast the associated VariableSets
+                            vm_data = vm.get("data", {})
+                            for vs_name, vs_def in vm_data.get("variablesets", {}).items():
+                                vs_payload = {
+                                    "metadata": {"name": vs_name},
+                                    "data": {
+                                        "attributes": {
+                                            "variablemap_id": vm.get("metadata", {}).get("name"),
+                                            "variablemap_type": vm_data.get("attributes", {}).get("variablemap_type", "Platform"),
+                                            "platform": platform,
+                                            "valid_config_time": valid_time,
+                                        },
+                                        "index_type": vs_def.get("index", {}).get("index_type"),
+                                        "index_value": vs_def.get("index", {}).get("index_value"),
+                                        "dimensions": {},
+                                        "variables": {k: v for k, v in vm_data.get("variables", {}).items() if v.get("variableset") == vs_name}
+                                    }
+                                }
+                                
+                                vs_event = SamplingEvent.create_variableset_definition_registry_update(
+                                    source=f"envds.{self.config.daq_id}.sampling-system",
+                                    data={"variableset-definition": vs_payload}
+                                )
+                                vs_event["destpath"] = f"envds/{self.config.daq_id}/variableset-definition/registry/update"
+                                await self.send_event(vs_event)
+                                
+                self.logger.debug("publish_local_definitions", extra={"status": "completed"})
+                
+            except Exception as e:
+                self.logger.error("publish_local_definitions", extra={"reason": e})
+            
+            # Sleep for 5 minutes (300 seconds) before announcing the definitions again
+            # await asyncio.sleep(300)    
+            await asyncio.sleep(60) # just to start
+    
     async def get_from_mqtt_loop(self):
         reconnect = 10
         while True:
