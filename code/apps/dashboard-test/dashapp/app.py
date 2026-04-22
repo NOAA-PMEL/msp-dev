@@ -3,6 +3,9 @@ from flask import Flask
 from dash import Dash, html, dcc, Input, Output, State
 import dash_bootstrap_components as dbc
 from dash_extensions import WebSocket
+import os
+import pandas as pd
+from datetime import datetime
 # from dash_extensions.enrich import html, dcc, Output, Input, DashProxy, State
 
 
@@ -79,55 +82,63 @@ sidebar = html.Div(
             ),
             id="collapse",
         ),
+        html.Hr(),
+        html.Div([
+            html.P("Tools", className="small text-uppercase text-muted fw-bold"),
+            dbc.Button(
+                [html.Span("📜", className="me-2"), "System Logbook"],
+                id="global-open-notes",
+                color="warning", # Yellow distinguishes it from the blue pills
+                className="w-100 shadow-sm fw-bold",
+                style={"borderRadius": "8px"}
+            ),
+        ], style={"padding": "10px"}),
     ],
     id="sidebar"
 )
 
-# footer = html.Div(
-#     [
-#         html.Footer(
-#             children=[
-#                 dbc.Row([
-#                     dbc.Input(id="chat-input", autoComplete="off", debounce=True),
-#                     dbc.Card(id="chat-output", body=True)                    
-#                 ])
-#             ],
-#             id="footer-content"
-#         ),
-#         WebSocket(id="chat-ws", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/chat/dash")
-
-#     ]
-# )
-
-# def get_layout():
-# layout = html.Div(
-#     [
-#         html.H1("Multi-page app with Dash Pages"),
-#         html.Div(
-#             [
-#                 html.Div(
-#                     dcc.Link(
-#                         f"{page['name']} - {page['path']}",
-#                         href=page["relative_path"],
-#                     )
-#                 )
-#                 for page in dash.page_registry.values()
-#             ]
-#         ),
-#         dash.page_container,
-#     ]
-# )
-
-# content = html.Div(id="page-content")
-
-# print("sensor app: get_layout")
-# return layout
-
 
 # app.layout = get_layout()
-app.layout = html.Div([dcc.Location(id="url"), sidebar, dash.page_container,])
-                    #    dcc.Store(id="active-sensors", data=[]),])#, footer])
-# app.layout = html.Div([dcc.Location(id="url"), dash.page_container])
+app.layout = html.Div([
+                dcc.Location(id="url"),
+                sidebar,
+                dash.page_container,
+                dbc.Offcanvas([
+                    html.H5("Notes"),
+                    dbc.Textarea(id="global-note-input", placeholder="Enter notes...", style={'height': '150px'}),
+                    dbc.Button("Post Note", id="global-save-note-btn", color="primary", className="w-100 mt-2 mb-4"),
+                    
+                    html.H6("Recent History:"),
+                    dash.DataTable(
+                        id="global-notes-table",
+                        columns=[{"name": i, "id": i} for i in ["Timestamp", "Note"]],
+                        style_cell={'textAlign': 'left', 'fontSize': '12px', 'whiteSpace': 'normal', 'height': 'auto'},
+                        style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold'},
+                        page_size=15,
+                    )
+                ], id="global-offcanvas", title="Shared System Notes", is_open=False, size="lg"),
+            ])
+
+
+
+NOTES_FILE = "system_notes.csv"
+
+def save_shared_note(user_text):
+    """Appends a note to the shared CSV file."""
+    new_note = pd.DataFrame([{
+        "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Note": user_text
+    }])
+    header = not os.path.exists(NOTES_FILE)
+    new_note.to_csv(NOTES_FILE, mode='a', index=False, header=header)
+
+def load_shared_notes():
+    """Reads the shared CSV file."""
+    if os.path.exists(NOTES_FILE):
+        df = pd.read_csv(NOTES_FILE)
+        return df.sort_values(by="Timestamp", ascending=False)
+    return pd.DataFrame(columns=["Timestamp", "Note"])
+
 
 @app.callback(
     Output("sidebar", "className"),
@@ -167,6 +178,33 @@ def toggle_collapse(n, is_open):
 #     else:
 #         return "No response"
 
+@app.callback(
+    Output("global-offcanvas", "is_open"),
+    Input("global-open-notes", "n_clicks"),
+    State("global-offcanvas", "is_open"),
+)
+def toggle_global_notes(n, is_open):
+    if n:
+        return not is_open
+    return is_open
+
+@app.callback(
+    [Output("global-notes-table", "data"),
+     Output("global-note-input", "value")],
+    [Input("global-save-note-btn", "n_clicks"),
+     Input("global-open-notes", "n_clicks")], 
+    [State("global-note-input", "value")],
+    prevent_initial_call=True
+)
+def handle_global_notes(save_n, open_n, text):
+    ctx = dash.callback_context
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if trigger == "global-save-note-btn" and text:
+        save_shared_note(text)
+        
+    df = load_shared_notes()
+    return df.to_dict('records'), ""
 
 if __name__ == "__main__":
     server.run(debug=True)
