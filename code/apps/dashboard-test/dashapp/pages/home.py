@@ -1,11 +1,26 @@
 import dash
-from dash import html, callback, dcc, Input, Output
+from dash import html, callback, dcc, Input, Output, dash_table
 import dash_bootstrap_components as dbc
 #import dash_daq as daq
 from dash_extensions import WebSocket
 from ulid import ULID
 import dash_daq as daq
 from datetime import date
+import numpy as np
+import pandas as pd
+import httpx
+from pydantic import BaseSettings
+import logging
+from logfmter import Logfmter
+import plotly.express as px
+
+
+handler = logging.StreamHandler()
+handler.setFormatter(Logfmter())
+logging.basicConfig(handlers=[handler])
+L = logging.getLogger(__name__)
+L.setLevel(logging.DEBUG)
+
 
 # dash.register_page(__name__, path='/')
 dash.register_page(__name__, path='/home')
@@ -16,26 +31,72 @@ CONTENT_STYLE = {
     "padding": "2rem 1rem",
 }
 
+
+class Settings(BaseSettings):
+    # host: str = "0.0.0.0"
+    # port: int = 8787
+    # debug: bool = False
+    daq_id: str = "default"
+
+    external_hostname: str = "localhost"
+    http_use_tls: bool = False
+    http_port: int = 80
+    https_port: int = 443
+    ws_use_tls: bool = False
+    ws_port: int = 80
+    wss_port: int = 443
+ 
+    knative_broker: str = (
+        "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
+    )
+    dry_run: bool = False
+
+    class Config:
+        env_prefix = "DASHBOARD_"
+        case_sensitive = False
+
+
+config = Settings()
+
+datastore_url = f"datastore.{config.daq_id}-system"
+http_url_base = f"http://{config.external_hostname}:{config.http_port}"
+if config.http_use_tls:
+    http_url_base = f"https://{config.external_hostname}:{config.https_port}"
+ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}:"
+if config.ws_use_tls:
+    ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
+
+link_url_base = f"{http_url_base}/msp/dashboardtest"
+
+# websocket = WebSocket(
+#     id="ws-sensor", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/ws/sensor/main"
+# )
+ws_send_buffer = html.Div(id="ws-send-instance-buffer", style={"display": "none"})
+
+
+
+def get_device_data(device_id: str, device_type: str="sensor"):
+    
+    query = {"device_type": device_type, "device_id": device_id}
+    url = f"http://{datastore_url}/device/data/get/"
+    print(f"device-data-get: {url}, query: {query}")
+    try:
+        timeout = httpx.Timeout(10.0, read=None)
+        response = httpx.get(url, params=query, timeout=timeout)
+        results = response.json()
+        # print(f"results: {results}")
+        if "results" in results and results["results"]:
+            return results["results"]
+    except Exception as e:
+        L.error("get_device_data", extra={"reason": e})
+    return []
+
+
+
 # print("here:1")
 def get_layout():
     layout = html.Div([
         html.H1('This is our Home page'),
-        # dbc.Card('This is our Home page content.', body=True),
-        # html.Div('This is our Home page content.'),
-        # dcc.Input(id="input", autoComplete="off", debounce=True),
-        # html.Div(id="message"),
-        # html.Div([
-        #     daq.PowerButton(
-        #         id='power-button-1',
-        #         color='#14c208'
-        #     )
-        # ]),
-        # html.Div(id="power_button_message"),
-        # html.Div([
-        #     daq.StopButton(
-        #         id='stop-button-1'
-        #     )
-        # ]),
         html.Div([
             dcc.DatePickerRange(
                 id='my-date-picker-range',
@@ -58,22 +119,19 @@ def get_layout():
                 value=0
             )
         ]),
-        # html.Div([
-        #     daq.Indicator(
-        #         id='indicator-1',
-        #         label='sensor name',
-        #         # color='#14c208'
-        #     )
+        dbc.Card([
+            dbc.CardBody([
+                html.Div(id="global-status-container")
+            ])
+        ], id="main-status-card", className="mb-4"),
+
+        # 2. Expandable Detail Section
+        html.Div(id="detail-container"),
+    
+        # dbc.Row(children=[
+        #     dbc.Card(width=1, children=[dcc.Loading(dcc.Graph(id='trajectory'))]),
         # ]),
-        # WebSocket(id="ws", url=f"ws://uasdaq.pmel.noaa.gov/uasdaq/dashboard/wwss/sensor/main")
-        # WebSocket(id="ws", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/testhome"),
-        # WebSocket(id="ws_pb", url=f"ws://mspbase01:8080/msp/dashboardtest/ws/test/pb")
-    # ], style=CONTENT_STYLE)
     ])
-    # try:
-    #     send("init request")
-    # except Exception as e:
-    #     print(e)
 
     return layout
 
@@ -103,22 +161,7 @@ layout = get_layout()
 #     print(f"sending: {value}")
 #     return str(value)
 
-# @callback(Output("power_button_message", "children"),
-#           Output("indicator-1", "color"),
-#           Input("ws_pb", "message"))
-# def message(i):
-#     if i:
-#         state = i['data']
-#         if "True" in state:
-#             color = '#14c208'
-#         elif "False" in state:
-#             color = '#e60707'
-#         else:
-#             color = '#491a8b'
-#         return f"Response from websocket: {i['data']}", color
-#     else:
-#         color = '#491a8b'
-#         return "No response", color
+
 
 @callback(
     Output('output-container-date-picker-range', 'children'),
@@ -140,5 +183,145 @@ def update_output(start_date, end_date):
         return string_prefix
 
 
-# # startup code
-# send("startup request")
+
+# @callback(
+#     Output("trajectory", "figure"),
+#     Input("dataset_options", "value"),
+#     prevent_initial_call=True
+# )
+# def plot_trajectory(sel_dataset):
+#     if sel_dataset:
+#             ds = get_dataset(sel_dataset)
+            
+#             if ds:
+#                 df = ds.to_dataframe()
+#                 lats = df['latitude']
+#                 lons = df['longitude']
+#                 center_lat = np.mean(lats)
+#                 center_lon = np.mean(lons)
+#                 max_lat_diff = np.max(np.abs(lats - center_lat))
+#                 max_lon_diff = np.max(np.abs(lons - center_lon))
+#                 zoom_level = 8 - np.log2(max(max_lat_diff, max_lon_diff))
+#                 if len(lats) > 500000:
+#                     df_sub = df.iloc[::20, :]
+#                 else:
+#                     df_sub = df
+#                 # fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
+#                 #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
+#                 # input_trig = ctx.triggered_id
+#                 # if (input_trig != '1D_graph') and (input_trig != '2D_graph') :
+#                 #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
+#                 #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
+#                 #     return fig
+
+#                 # if tab_container == 'tab-1':               
+#                 #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
+#                 #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()}) 
+#                 #     try:
+#                 #         start_time = one_zoom_data['xaxis.range[0]']
+#                 #         end_time = one_zoom_data['xaxis.range[1]']
+
+#                 #         df_sel = df_sub.loc[start_time: end_time]
+
+#                 #         trace = go.Scattermap(
+#                 #             lat=df_sel['latitude'],
+#                 #             lon=df_sel['longitude'],
+#                 #             marker={'size': 7, 'color': 'red'})
+#                 #         fig.add_trace(trace)
+
+#                 #     except: 
+#                 #         pass
+
+#                 # if tab_container == 'tab-2':
+#                 #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
+#                 #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
+#                 #     try: 
+#                 #         start_time = two_zoom_data['xaxis.range[0]']
+#                 #         end_time = two_zoom_data['xaxis.range[1]']
+
+#                 #         df_sel = df_sub.loc[start_time: end_time]
+#                 #         trace = go.Scattermap(
+#                 #             lat=df_sel['latitude'],
+#                 #             lon=df_sel['longitude'],
+#                 #             marker={'size': 7, 'color': 'red'})
+#                 #         fig.add_trace(trace)
+#                 #         fig.update_traces()
+#                 #         # fig.update_traces()
+#                 #         # fig.update_layout()
+#                 #         # print('update fig')
+#                 #         # return fig
+#                 #     except:
+#                 #         pass
+#                 #fig.update_maps(zoom=zoom_level, center_lat=center_lat, center_lon=center_lon)
+#                 fig.update_traces()
+#                 fig.update_layout()
+#                 return fig
+#     else:
+#         #fig = go.Figure({'data': [], 'layout': {'autosize': True, 'xaxis': {'autorange': True}, 'yaxis': {'autorange': True}}})
+#         df_empty = pd.DataFrame({'lat': [], 'lon': []})
+#         fig = px.scatter_map(df_empty, lat='lat', lon='lon')
+#         fig.update_layout({'autosize': True})
+#         return fig
+#         #return no_update
+
+
+# Mock data - In a real app, this would come from your SQL or InfluxDB
+def get_sensor_data():
+    data = {
+        'Sensor': ['Flow Meter', 'Laser Diode', 'Vacuum Pump', 'Inlet Temp'],
+        'Value': [12.5, 98.2, 0.85, 22.1],
+        'Status': ['Green', 'Green', 'Red', 'Green'], # Simulated health check
+        'Details': ['Nominal', 'Nominal', 'Low Pressure Alert', 'Nominal']
+    }
+    return pd.DataFrame(data)
+
+
+@callback(
+    [Output("global-status-container", "children"),
+     Output("detail-container", "children"),
+     Output("main-status-card", "color")],
+    [Input("global-status-container", "id")] # Triggered on load
+)
+def update_dashboard(_):
+    df = get_sensor_data()
+    
+    # Determine overall system state
+    if 'Red' in df['Status'].values:
+        system_health = 'Critical'
+        card_color = "danger"
+        # Filter for only the problems to show at the top
+        problems = df[df['Status'] != 'Green']
+    elif 'Yellow' in df['Status'].values:
+        system_health = 'Warning'
+        card_color = "warning"
+        problems = df[df['Status'] != 'Green']
+    else:
+        system_health = 'Healthy'
+        card_color = "success"
+        problems = pd.DataFrame()
+
+    # Header Content
+    header_content = html.H2(f"System Status: {system_health}", className="text-center text-white")
+
+    # Detail Content: Only show table if not "Healthy"
+    if system_health == 'Healthy':
+        detail_content = dbc.Alert("All systems operating within normal parameters.", color="success")
+    else:
+        detail_content = html.Div([
+            html.H4("Action Required: Maintenance Needed on Following Sensors"),
+            dash_table.DataTable(
+                data=problems.to_dict('records'),
+                columns=[{"name": i, "id": i} for i in problems.columns],
+                style_cell={'textAlign': 'left', 'padding': '10px'},
+                style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold'},
+                style_data_conditional=[
+                    {
+                        'if': {'filter_query': '{Status} eq "Red"'},
+                        'backgroundColor': '#ffcccc',
+                        'color': 'black'
+                    }
+                ]
+            )
+        ])
+
+    return header_content, detail_content, card_color
