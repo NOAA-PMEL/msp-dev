@@ -926,7 +926,7 @@ class SamplingSystem:
                 # 1. Fetch and Update VariableMaps
                 vmap_ids_resp = await self.submit_get(path="variablemap-definition/registry/ids/get")
                 if vmap_ids_resp and "results" in vmap_ids_resp:
-                    self.logger.debug("sync_sampling_definitions_loop", extra={"vm_ids", vmap_ids_resp})
+                    # self.logger.debug("sync_sampling_definitions_loop", extra={"vm_ids", vmap_ids_resp})
                     for vmap_id in vmap_ids_resp["results"]:
                         self.logger.debug("sync_sampling_definitions_loop", extra={"vm_id", vmap_id})
                         # Extract platform_name from ID: platform_name::variablemap_name::valid_config_time
@@ -938,7 +938,7 @@ class SamplingSystem:
                                 
                         query = {"variablemap_definition_id": vmap_id}
                         vmap_resp = await self.submit_request(path="variablemap-definition/registry/get", query=query)
-                        self.logger.debug("sync_sampling_definitions_loop", extra={"vmaps", vmap_resp})
+                        # self.logger.debug("sync_sampling_definitions_loop", extra={"vmaps", vmap_resp})
 
                         if vmap_resp and "results" in vmap_resp and vmap_resp["results"]:
                             vm_db = vmap_resp["results"][0]
