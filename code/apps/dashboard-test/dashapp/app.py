@@ -86,9 +86,9 @@ sidebar = html.Div(
         html.Div([
             html.P("Tools", className="small text-uppercase text-muted fw-bold"),
             dbc.Button(
-                [html.Span("📜", className="me-2"), "System Logbook"],
+                "System Logbook",
                 id="global-open-notes",
-                color="warning", # Yellow distinguishes it from the blue pills
+                color="warning",
                 className="w-100 shadow-sm fw-bold",
                 style={"borderRadius": "8px"}
             ),
@@ -105,28 +105,43 @@ app.layout = html.Div([
                 dash.page_container,
                 dbc.Offcanvas([
                     html.H5("Notes"),
-                    dbc.Textarea(id="global-note-input", placeholder="Enter notes...", style={'height': '150px'}),
-                    dbc.Button("Post Note", id="global-save-note-btn", color="primary", className="w-100 mt-2 mb-4"),
+                    html.P("Record Notes.", className="text-muted small"),
+                    
+                    # New Operator Input
+                    dbc.Label("Operator Name:"),
+                    dbc.Input(id="global-operator-input", placeholder="e.g., User", type="text", className="mb-3"),
+                    
+                    dbc.Label("Note:"),
+                    dbc.Textarea(id="global-note-input", placeholder="Enter details here...", style={'height': '150px'}),
+                    
+                    dbc.Button("Post Note", id="global-save-note-btn", color="primary", className="w-100 mt-3 mb-4"),
                     
                     html.H6("Recent History:"),
                     dash_table.DataTable(
                         id="global-notes-table",
-                        columns=[{"name": i, "id": i} for i in ["Timestamp", "Note"]],
+                        # Added Operator to columns list
+                        columns=[{"name": i, "id": i} for i in ["Timestamp", "Operator", "Note"]],
                         style_cell={'textAlign': 'left', 'fontSize': '12px', 'whiteSpace': 'normal', 'height': 'auto'},
                         style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold'},
+                        style_data_conditional=[{
+                            'if': {'column_id': 'Operator'},
+                            'fontWeight': 'bold',
+                            'color': '#007bff'
+                        }],
                         page_size=15,
                     )
                 ], id="global-offcanvas", title="Shared System Notes", is_open=False, style={"width": "600px"}),
-            ])
+                ])
 
 
 
 NOTES_FILE = "system_notes.csv"
 
-def save_shared_note(user_text):
+def save_shared_note(operator, user_text):
     """Appends a note to the shared CSV file."""
     new_note = pd.DataFrame([{
         "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Operator": operator if operator else "Unknown", # Fallback if empty
         "Note": user_text
     }])
     header = not os.path.exists(NOTES_FILE)
@@ -136,8 +151,11 @@ def load_shared_notes():
     """Reads the shared CSV file."""
     if os.path.exists(NOTES_FILE):
         df = pd.read_csv(NOTES_FILE)
+        # Ensure the Operator column exists for older files
+        if "Operator" not in df.columns:
+            df["Operator"] = "-"
         return df.sort_values(by="Timestamp", ascending=False)
-    return pd.DataFrame(columns=["Timestamp", "Note"])
+    return pd.DataFrame(columns=["Timestamp", "Operator", "Note"])
 
 
 @app.callback(
