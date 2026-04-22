@@ -14,6 +14,7 @@ import logging
 from logfmter import Logfmter
 import plotly.express as px
 import json
+import dash_ace
 
 
 handler = logging.StreamHandler()
@@ -112,10 +113,22 @@ def get_layout():
         html.H1('Variable Map'),
         html.Div(id='status-message', style={'margin-bottom': '10px', 'font-weight': 'bold'}),
         html.Div([
-            dcc.Textarea(
+            # dcc.Textarea(
+            #     id='variable-map-editor',
+            #     value=json.dumps(initial_variable_map, indent=4),
+            #     style={'width': '100%', 'height': 500, 'font-family': 'monospace'}
+            # ),
+            dash_ace.DashAceEditor(
                 id='variable-map-editor',
                 value=json.dumps(initial_variable_map, indent=4),
-                style={'width': '100%', 'height': 500, 'font-family': 'monospace'}
+                mode='json',        # Enables JSON syntax highlighting
+                theme='monokai',     # Dark theme (change to 'github' for light)
+                tabSize=4,
+                lineNumberStart=1,
+                showGutter=True,     # This shows the line numbers
+                showPrintMargin=False,
+                autoScrollEditorIntoView=True,
+                style={'width': '100%', 'height': '600px'}
             ),
             html.Br(),
             html.Button('Save Variable Map', id='save-button', n_clicks=0),
