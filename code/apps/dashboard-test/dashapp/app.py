@@ -1,6 +1,6 @@
 import dash
 from flask import Flask
-from dash import Dash, html, dcc, Input, Output, State
+from dash import Dash, html, dcc, Input, Output, State, dash_table
 import dash_bootstrap_components as dbc
 from dash_extensions import WebSocket
 import os
@@ -109,7 +109,7 @@ app.layout = html.Div([
                     dbc.Button("Post Note", id="global-save-note-btn", color="primary", className="w-100 mt-2 mb-4"),
                     
                     html.H6("Recent History:"),
-                    dash.DataTable(
+                    dash_table.DataTable(
                         id="global-notes-table",
                         columns=[{"name": i, "id": i} for i in ["Timestamp", "Note"]],
                         style_cell={'textAlign': 'left', 'fontSize': '12px', 'whiteSpace': 'normal', 'height': 'auto'},
