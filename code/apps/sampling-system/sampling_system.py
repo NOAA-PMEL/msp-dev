@@ -926,7 +926,9 @@ class SamplingSystem:
                 # 1. Fetch and Update VariableMaps
                 vmap_ids_resp = await self.submit_get(path="variablemap-definition/registry/ids/get")
                 if vmap_ids_resp and "results" in vmap_ids_resp:
+                    self.logger.debug("sync_sampling_definitions_loop", extra={"vm_ids", vmap_ids_resp})
                     for vmap_id in vmap_ids_resp["results"]:
+                        self.logger.debug("sync_sampling_definitions_loop", extra={"vm_id", vmap_id})
                         # Extract platform_name from ID: platform_name::variablemap_name::valid_config_time
                         parts = vmap_id.split("::")
                         if len(parts) >= 3:
@@ -936,7 +938,8 @@ class SamplingSystem:
                                 
                         query = {"variablemap_definition_id": vmap_id}
                         vmap_resp = await self.submit_request(path="variablemap-definition/registry/get", query=query)
-                        
+                        self.logger.debug("sync_sampling_definitions_loop", extra={"vmaps", vmap_resp})
+
                         if vmap_resp and "results" in vmap_resp and vmap_resp["results"]:
                             vm_db = vmap_resp["results"][0]
                             
@@ -958,7 +961,7 @@ class SamplingSystem:
                                 },
                                 "data": vm_db
                             }
-                            
+                            self.logger.debug("sync_sampling_definitions_loop", extra={"mock_vm", mock_vm})
                             # Safely parse and generate the sources + start the indexing tasks!
                             self.load_variablemap(mock_vm)
 
@@ -998,8 +1001,11 @@ class SamplingSystem:
         
         try:
             for platform, vm_dict in self.variablemaps.get("platform", {}).items():
+                self.logger.info("publish_local_definitions", extra={"plt": platform})
                 for vm_name, time_dict in vm_dict.items():
+                    self.logger.info("publish_local_definitions", extra={"vm_name": vm_name})
                     for valid_time, vm_obj in time_dict.items():
+                        self.logger.info("publish_local_definitions", extra={"valid_time": valid_time})
                         
                         vm = vm_obj["variablemap"]
                         
@@ -1011,6 +1017,7 @@ class SamplingSystem:
                         }, {"variablemap-definition": vm})
                         
                         event["destpath"] = f"envds/{self.config.daq_id}/variablemap-definition/registry/update"
+                        self.logger.info("publish_local_definitions", extra={"event": event})
                         await self.send_event(event)
 
                         # 2. Broadcast the associated VariableSets
@@ -1037,6 +1044,7 @@ class SamplingSystem:
                             }, {"variableset-definition": vs_payload})
                             
                             vs_event["destpath"] = f"envds/{self.config.daq_id}/variableset-definition/registry/update"
+                            self.logger.info("publish_local_definitions", extra={"vs_event": vs_event})
                             await self.send_event(vs_event)
                             
             self.logger.info("publish_local_definitions", extra={"status": "completed"})
