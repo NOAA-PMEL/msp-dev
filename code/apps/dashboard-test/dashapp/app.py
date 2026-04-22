@@ -116,7 +116,7 @@ app.layout = html.Div([
                         style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold'},
                         page_size=15,
                     )
-                ], id="global-offcanvas", title="Shared System Notes", is_open=False, size="lg"),
+                ], id="global-offcanvas", title="Shared System Notes", is_open=False, style={"width": "600px"}),
             ])
 
 
