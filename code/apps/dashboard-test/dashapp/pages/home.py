@@ -97,7 +97,7 @@ def get_device_data(device_id: str, device_type: str="sensor"):
 # print("here:1")
 def get_layout():
     layout = html.Div([
-        html.H1('This is our Home page'),
+        html.H1('BEACONS MSP Deployment'),
         # html.Div([
         #     dcc.DatePickerRange(
         #         id='my-date-picker-range',
