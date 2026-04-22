@@ -1081,28 +1081,90 @@ class Datastore:
             return await self.db_client.variablemap_definition_registry_get_ids()
         return {"results": []}
     
-    async def variablemap_definition_registry_update(self, ce: CloudEvent):
+    # async def variablemap_definition_registry_update(self, ce: CloudEvent):
 
+    #     try:
+    #         for definition_type, vm_def in ce.data.items():
+    #             # platform = vm_def["metadata"]["platform"]
+    #             variablemap = vm_def["metadata"]["name"]
+    #             attributes = vm_def["data"]["attributes"]
+    #             variablemap_type = attributes["variablemap_type"]
+    #             if variablemap_type == "Platform":
+    #                 variablemap_type_id = attributes["platform"]
+    #             else:
+    #                 L.error("variablemap_definition_registry_update", extra={"reason": f"unknown variablemap_type-{variablemap_type}"})
+    #                 return
+                
+    #             valid_config_time = attributes["valid_config_time"]
+
+    #             database = "registry"
+    #             collection = "variablemap-definition"
+    #             variablesets = vm_def["data"]["variablesets"]
+    #             variables = vm_def["data"]["variables"]
+
+    #             variablemap_definition_id = "::".join([variablemap_type_id,variablemap,valid_config_time])
+    #             request = VariableMapDefinitionUpdate(
+    #                 variablemap_definition_id=variablemap_definition_id,
+    #                 variablemap_type=variablemap_type,
+    #                 variablemap_type_id=variablemap_type_id,
+    #                 variablemap=variablemap,
+    #                 valid_config_time=valid_config_time,
+    #                 attributes=attributes,
+    #                 variablesets=variablesets,
+    #                 variables=variables,
+    #             )
+
+    #         self.logger.debug(
+    #             "variablemap_definition_registry_update", extra={"request": request}
+    #         )
+    #         if self.db_client:
+    #             result = await self.db_client.variablemap_definition_registry_update(
+    #                 database=database,
+    #                 collection=collection,
+    #                 request=request,
+    #                 ttl=self.config.db_reg_variablemap_definition_ttl,
+    #             )
+
+    #             # stop sending ack for now
+    #             # if result:
+    #             #     self.logger.debug("configure", extra={"self.config": self.config})
+    #             #     ack = DAQEvent.create_device_definition_registry_ack(
+    #             #         source=f"envds.{self.config.daq_id}.datastore",
+    #             #         data={"device-definition": {"make": make, "model":model, "version": format_version}}
+
+    #             #     )
+    #             #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+    #             #     ack["destpath"] = f"envds/{self.config.daq_id}/device/registry/ack"
+    #             #     await self.send_event(ack)
+
+    #     except Exception as e:
+    #         self.logger.error("device_definition_registry_update", extra={"reason": e})
+    #     pass
+    async def variablemap_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, vm_def in ce.data.items():
-                # platform = vm_def["metadata"]["platform"]
-                variablemap = vm_def["metadata"]["name"]
-                attributes = vm_def["data"]["attributes"]
-                variablemap_type = attributes["variablemap_type"]
-                if variablemap_type == "Platform":
-                    variablemap_type_id = attributes["platform"]
-                else:
-                    L.error("variablemap_definition_registry_update", extra={"reason": f"unknown variablemap_type-{variablemap_type}"})
-                    return
+                # Use .get() defensively at every layer
+                variablemap = vm_def.get("metadata", {}).get("name")
+                data = vm_def.get("data", {})
+                attributes = data.get("attributes", {})
                 
-                valid_config_time = attributes["valid_config_time"]
+                variablemap_type = attributes.get("variablemap_type", "Platform")
+                if variablemap_type == "Platform":
+                    variablemap_type_id = attributes.get("platform")
+                else:
+                    self.logger.error("variablemap_definition_registry_update", extra={"reason": f"unknown variablemap_type-{variablemap_type}"})
+                    continue
+                
+                valid_config_time = attributes.get("valid_config_time", "2020-01-01T00:00:00Z")
 
                 database = "registry"
                 collection = "variablemap-definition"
-                variablesets = vm_def["data"]["variablesets"]
-                variables = vm_def["data"]["variables"]
+                
+                # FIX: Safely get the dictionaries so missing keys default to {}
+                variablesets = data.get("variablesets", {})
+                variables = data.get("variables", {})
 
-                variablemap_definition_id = "::".join([variablemap_type_id,variablemap,valid_config_time])
+                variablemap_definition_id = "::".join([variablemap_type_id, variablemap, valid_config_time])
                 request = VariableMapDefinitionUpdate(
                     variablemap_definition_id=variablemap_definition_id,
                     variablemap_type=variablemap_type,
@@ -1114,32 +1176,21 @@ class Datastore:
                     variables=variables,
                 )
 
-            self.logger.debug(
-                "variablemap_definition_registry_update", extra={"request": request}
-            )
-            if self.db_client:
-                result = await self.db_client.variablemap_definition_registry_update(
-                    database=database,
-                    collection=collection,
-                    request=request,
-                    ttl=self.config.db_reg_variablemap_definition_ttl,
+                self.logger.debug(
+                    "variablemap_definition_registry_update", extra={"request": request}
                 )
-
-                # stop sending ack for now
-                # if result:
-                #     self.logger.debug("configure", extra={"self.config": self.config})
-                #     ack = DAQEvent.create_device_definition_registry_ack(
-                #         source=f"envds.{self.config.daq_id}.datastore",
-                #         data={"device-definition": {"make": make, "model":model, "version": format_version}}
-
-                #     )
-                #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                #     ack["destpath"] = f"envds/{self.config.daq_id}/device/registry/ack"
-                #     await self.send_event(ack)
+                if self.db_client:
+                    await self.db_client.variablemap_definition_registry_update(
+                        database=database,
+                        collection=collection,
+                        request=request,
+                        ttl=self.config.db_reg_variablemap_definition_ttl,
+                    )
 
         except Exception as e:
-            self.logger.error("device_definition_registry_update", extra={"reason": e})
-        pass
+            # FIX: Corrected the log identifier, and wrapped `e` in `repr()` so KeyErrors 
+            # output "KeyError('variablesets')" instead of just "'variablesets'"
+            self.logger.error("variablemap_definition_registry_update", extra={"reason": repr(e)})
 
     async def variablemap_definition_registry_get(self, query: VariableMapDefinitionRequest) -> dict:
         
