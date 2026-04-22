@@ -182,80 +182,156 @@ layout = get_layout()
 #     else:
 #         return string_prefix
 
+def get_fake_trajectory_data(num_points=100, start_lat=50.0, start_lon=-1.0):
+    """
+    Generates a DataFrame with a simulated ship trajectory.
+    """
+    lats = [start_lat]
+    lons = [start_lon]
+    
+    # Simulate movement: small random changes + a slight northward/eastward drift
+    for i in range(1, num_points):
+        # Adding small increments (~0.01 degree is roughly 1km)
+        new_lat = lats[-1] + np.random.uniform(-0.005, 0.015) 
+        new_lon = lons[-1] + np.random.uniform(-0.005, 0.025)
+        
+        lats.append(new_lat)
+        lons.append(new_lon)
+    
+    df = pd.DataFrame({
+        'latitude': lats,
+        'longitude': lons,
+        'timestamp': pd.date_range(start='2024-01-01', periods=num_points, freq='1min')
+    })
+    
+    return df
 
+
+def get_dataset():
+    """Simple wrapper to return fake data."""
+    return get_fake_trajectory_data()
+
+
+@callback(
+    Output("trajectory", "figure"),
+    Input("global-status-container", "id") # Triggers when the health status container loads
+)
+def plot_trajectory(_):
+    # Directly get the fake data
+    df = get_dataset()
+    
+    lats = df['latitude']
+    lons = df['longitude']
+    
+    center_lat = lats.mean()
+    center_lon = lons.mean()
+    
+    # Dynamic Zoom Logic
+    max_diff = max(np.abs(lats - center_lat).max(), np.abs(lons - center_lon).max(), 0.01)
+    zoom_level = 8 - np.log2(max_diff)
+
+    # Create the Map
+    fig = px.scatter_map(
+        df, 
+        lat='latitude', 
+        lon='longitude', 
+        zoom=zoom_level, 
+        center={"lat": center_lat, "lon": center_lon},
+        title="Current Vessel Trajectory"
+    )
+
+    # Maritime Styling
+    fig.update_traces(marker={'size': 8, 'color': '#007bff'}) # Nautical Blue
+    fig.update_layout(
+        margin={"r":0,"t":30,"l":0,"b":0},
+        mapbox_style="open-street-map" # Reliable, no-token-needed map style
+    )
+    
+    return fig
 
 # @callback(
 #     Output("trajectory", "figure"),
-#     Input("dataset_options", "value"),
-#     prevent_initial_call=True
+#     # Input("dataset_options", "value"),
+#     Input("global-status-container", "id"),
+#     # prevent_initial_call=True
 # )
 # def plot_trajectory(sel_dataset):
-#     if sel_dataset:
-#             ds = get_dataset(sel_dataset)
+#     df = get_dataset()
+#     # if sel_dataset:
+#     #     if sel_dataset:
+#     #         # TESTING MODE: If you select a "Test" option, use the fake function
+#     #         if sel_dataset == "TEST_MODE":
+#     #             df = get_fake_trajectory_data(500)
+#     #         else:
+#     #             ds = get_dataset(sel_dataset)
+#     #             if not ds:
+#     #                 return go.Figure()
+#                 # df = ds.to_dataframe()
+#             # ds = get_dataset(sel_dataset)
             
-#             if ds:
-#                 df = ds.to_dataframe()
-#                 lats = df['latitude']
-#                 lons = df['longitude']
-#                 center_lat = np.mean(lats)
-#                 center_lon = np.mean(lons)
-#                 max_lat_diff = np.max(np.abs(lats - center_lat))
-#                 max_lon_diff = np.max(np.abs(lons - center_lon))
-#                 zoom_level = 8 - np.log2(max(max_lat_diff, max_lon_diff))
-#                 if len(lats) > 500000:
-#                     df_sub = df.iloc[::20, :]
-#                 else:
-#                     df_sub = df
-#                 # fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
-#                 #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
-#                 # input_trig = ctx.triggered_id
-#                 # if (input_trig != '1D_graph') and (input_trig != '2D_graph') :
-#                 #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
-#                 #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
-#                 #     return fig
+#             # if ds:
+#             #     df = ds.to_dataframe()
+#     lats = df['latitude']
+#     lons = df['longitude']
+#     center_lat = np.mean(lats)
+#     center_lon = np.mean(lons)
+#     max_lat_diff = np.max(np.abs(lats - center_lat))
+#     max_lon_diff = np.max(np.abs(lons - center_lon))
+#     zoom_level = 8 - np.log2(max(max_lat_diff, max_lon_diff))
+#     if len(lats) > 500000:
+#         df_sub = df.iloc[::20, :]
+#     else:
+#         df_sub = df
+#     # fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
+#     #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
+#     # input_trig = ctx.triggered_id
+#     # if (input_trig != '1D_graph') and (input_trig != '2D_graph') :
+#     #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
+#     #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
+#     #     return fig
 
-#                 # if tab_container == 'tab-1':               
-#                 #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
-#                 #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()}) 
-#                 #     try:
-#                 #         start_time = one_zoom_data['xaxis.range[0]']
-#                 #         end_time = one_zoom_data['xaxis.range[1]']
+#     # if tab_container == 'tab-1':               
+#     #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
+#     #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()}) 
+#     #     try:
+#     #         start_time = one_zoom_data['xaxis.range[0]']
+#     #         end_time = one_zoom_data['xaxis.range[1]']
 
-#                 #         df_sel = df_sub.loc[start_time: end_time]
+#     #         df_sel = df_sub.loc[start_time: end_time]
 
-#                 #         trace = go.Scattermap(
-#                 #             lat=df_sel['latitude'],
-#                 #             lon=df_sel['longitude'],
-#                 #             marker={'size': 7, 'color': 'red'})
-#                 #         fig.add_trace(trace)
+#     #         trace = go.Scattermap(
+#     #             lat=df_sel['latitude'],
+#     #             lon=df_sel['longitude'],
+#     #             marker={'size': 7, 'color': 'red'})
+#     #         fig.add_trace(trace)
 
-#                 #     except: 
-#                 #         pass
+#     #     except: 
+#     #         pass
 
-#                 # if tab_container == 'tab-2':
-#                 #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
-#                 #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
-#                 #     try: 
-#                 #         start_time = two_zoom_data['xaxis.range[0]']
-#                 #         end_time = two_zoom_data['xaxis.range[1]']
+#     # if tab_container == 'tab-2':
+#     #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
+#     #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
+#     #     try: 
+#     #         start_time = two_zoom_data['xaxis.range[0]']
+#     #         end_time = two_zoom_data['xaxis.range[1]']
 
-#                 #         df_sel = df_sub.loc[start_time: end_time]
-#                 #         trace = go.Scattermap(
-#                 #             lat=df_sel['latitude'],
-#                 #             lon=df_sel['longitude'],
-#                 #             marker={'size': 7, 'color': 'red'})
-#                 #         fig.add_trace(trace)
-#                 #         fig.update_traces()
-#                 #         # fig.update_traces()
-#                 #         # fig.update_layout()
-#                 #         # print('update fig')
-#                 #         # return fig
-#                 #     except:
-#                 #         pass
-#                 #fig.update_maps(zoom=zoom_level, center_lat=center_lat, center_lon=center_lon)
-#                 fig.update_traces()
-#                 fig.update_layout()
-#                 return fig
+#     #         df_sel = df_sub.loc[start_time: end_time]
+#     #         trace = go.Scattermap(
+#     #             lat=df_sel['latitude'],
+#     #             lon=df_sel['longitude'],
+#     #             marker={'size': 7, 'color': 'red'})
+#     #         fig.add_trace(trace)
+#     #         fig.update_traces()
+#     #         # fig.update_traces()
+#     #         # fig.update_layout()
+#     #         # print('update fig')
+#     #         # return fig
+#     #     except:
+#     #         pass
+#     #fig.update_maps(zoom=zoom_level, center_lat=center_lat, center_lon=center_lon)
+#     fig.update_traces()
+#     fig.update_layout()
+#     return fig
 #     else:
 #         #fig = go.Figure({'data': [], 'layout': {'autosize': True, 'xaxis': {'autorange': True}, 'yaxis': {'autorange': True}}})
 #         df_empty = pd.DataFrame({'lat': [], 'lon': []})
