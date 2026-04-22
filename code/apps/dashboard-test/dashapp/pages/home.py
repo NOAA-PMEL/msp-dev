@@ -97,28 +97,28 @@ def get_device_data(device_id: str, device_type: str="sensor"):
 def get_layout():
     layout = html.Div([
         html.H1('This is our Home page'),
-        html.Div([
-            dcc.DatePickerRange(
-                id='my-date-picker-range',
-                min_date_allowed=date(1995, 8, 5),
-                max_date_allowed=date(2017, 9, 19),
-                initial_visible_month=date(2017, 8, 5),
-                end_date=date(2017, 8, 25)
-            ),
-            html.Div(id='output-container-date-picker-range')
-        ]),
-        html.Div([
-            daq.BooleanSwitch(
-                id='boolean-switch-1',
-                on=False
-            )
-        ]),
-        html.Div([
-            daq.NumericInput(
-                id='numeric-input-1',
-                value=0
-            )
-        ]),
+        # html.Div([
+        #     dcc.DatePickerRange(
+        #         id='my-date-picker-range',
+        #         min_date_allowed=date(1995, 8, 5),
+        #         max_date_allowed=date(2017, 9, 19),
+        #         initial_visible_month=date(2017, 8, 5),
+        #         end_date=date(2017, 8, 25)
+        #     ),
+        #     html.Div(id='output-container-date-picker-range')
+        # ]),
+        # html.Div([
+        #     daq.BooleanSwitch(
+        #         id='boolean-switch-1',
+        #         on=False
+        #     )
+        # ]),
+        # html.Div([
+        #     daq.NumericInput(
+        #         id='numeric-input-1',
+        #         value=0
+        #     )
+        # ]),
         dbc.Card([
             dbc.CardBody([
                 html.Div(id="global-status-container")
@@ -163,24 +163,24 @@ layout = get_layout()
 
 
 
-@callback(
-    Output('output-container-date-picker-range', 'children'),
-    Input('my-date-picker-range', 'start_date'),
-    Input('my-date-picker-range', 'end_date'))
-def update_output(start_date, end_date):
-    string_prefix = 'You have selected: '
-    if start_date is not None:
-        start_date_object = date.fromisoformat(start_date)
-        start_date_string = start_date_object.strftime('%B %d, %Y')
-        string_prefix = string_prefix + 'Start Date: ' + start_date_string + ' | '
-    if end_date is not None:
-        end_date_object = date.fromisoformat(end_date)
-        end_date_string = end_date_object.strftime('%B %d, %Y')
-        string_prefix = string_prefix + 'End Date: ' + end_date_string
-    if len(string_prefix) == len('You have selected: '):
-        return 'Select a date to see it displayed here'
-    else:
-        return string_prefix
+# @callback(
+#     Output('output-container-date-picker-range', 'children'),
+#     Input('my-date-picker-range', 'start_date'),
+#     Input('my-date-picker-range', 'end_date'))
+# def update_output(start_date, end_date):
+#     string_prefix = 'You have selected: '
+#     if start_date is not None:
+#         start_date_object = date.fromisoformat(start_date)
+#         start_date_string = start_date_object.strftime('%B %d, %Y')
+#         string_prefix = string_prefix + 'Start Date: ' + start_date_string + ' | '
+#     if end_date is not None:
+#         end_date_object = date.fromisoformat(end_date)
+#         end_date_string = end_date_object.strftime('%B %d, %Y')
+#         string_prefix = string_prefix + 'End Date: ' + end_date_string
+#     if len(string_prefix) == len('You have selected: '):
+#         return 'Select a date to see it displayed here'
+#     else:
+#         return string_prefix
 
 
 
@@ -267,13 +267,85 @@ def update_output(start_date, end_date):
 
 # Mock data - In a real app, this would come from your SQL or InfluxDB
 def get_sensor_data():
-    data = {
-        'Sensor': ['Flow Meter', 'Laser Diode', 'Vacuum Pump', 'Inlet Temp'],
-        'Value': [12.5, 98.2, 0.85, 22.1],
-        'Status': ['Green', 'Green', 'Red', 'Green'], # Simulated health check
-        'Details': ['Nominal', 'Nominal', 'Low Pressure Alert', 'Nominal']
+    # In reality, this dict comes from your sensors/DB
+    raw_data = [
+        {'sensor': 'Flow Meter', 'value': 12.5, 'status_code': 0},
+        {'sensor': 'Laser Diode', 'value': 98.2, 'status_code': 0},
+        {'sensor': 'Vacuum Pump', 'value': 0.85, 'status_code': 14}, # 0x0E
+        {'sensor': 'Inlet Temp', 'value': 22.1, 'status_code': 0}
+    ]
+    
+    processed = []
+    for entry in raw_data:
+        status, details = assign_sensor_status(entry['sensor'], entry['value'], entry['status_code'])
+        processed.append({
+            'Sensor': entry['sensor'],
+            'Value': entry['value'],
+            'Status': status,
+            'Details': details,
+            'Code': f"0x{entry['status_code']:02X}" if entry['status_code'] > 0 else "-"
+        })
+    return pd.DataFrame(processed)
+
+
+def assign_sensor_status(sensor_name, value, status_code=0):
+    """
+    Assigns status based on hex/int codes first, then numerical thresholds.
+    Returns: (color, display_message)
+    """
+    # 1. Handle Status Codes (High Priority)
+    # Convert to hex string for professional display (e.g., 0x05)
+    hex_code = f"0x{int(status_code):02X}" 
+    
+    if status_code != 0:
+        # You can define which codes are 'Yellow' vs 'Red' if you want,
+        # but for now, we assume any non-zero code is an error.
+        return 'Red', f"System Error: {hex_code}"
+
+    # 2. Threshold Configuration (Fallback)
+    # [Lower Critical, Lower Warning, Upper Warning, Upper Critical]
+    thresholds = {
+        'Flow Meter':  [5.0, 8.0, 15.0, 18.0],
+        'Laser Diode': [80.0, 85.0, 105.0, 110.0],
+        'Vacuum Pump': [0.2, 0.4, 0.9, 1.2],
     }
-    return pd.DataFrame(data)
+
+    if sensor_name not in thresholds:
+        return 'Green', "Nominal"
+
+    limits = thresholds[sensor_name]
+
+    # 3. Numerical Logic
+    if value < limits[0] or value > limits[3]:
+        return 'Red', f"Value Alert: {value}"
+    elif value < limits[1] or value > limits[2]:
+        return 'Yellow', f"Value Warning: {value}"
+    
+    return 'Green', "Nominal"
+    
+
+def process_system_health(raw_data_list):
+    """
+    Takes a list of dicts: [{'sensor': 'Flow Meter', 'value': 12.5}, ...]
+    Returns a list of dicts with Status and Details appended.
+    """
+    processed_data = []
+    
+    for entry in raw_data_list:
+        name = entry['sensor']
+        val = entry['value']
+        
+        status, details = assign_sensor_status(name, val, entry.get('status_code', 0))
+        
+        processed_data.append({
+            'Sensor': name,
+            'Value': val,
+            'Status': status,
+            'Details': details
+        })
+        
+    return processed_data
+
 
 
 @callback(
@@ -317,8 +389,11 @@ def update_dashboard(_):
                 style_data_conditional=[
                     {
                         'if': {'filter_query': '{Status} eq "Red"'},
-                        'backgroundColor': '#ffcccc',
-                        'color': 'black'
+                        'backgroundColor': '#ffcccc', 'color': 'black', 'fontWeight': 'bold'
+                    },
+                    {
+                        'if': {'filter_query': '{Status} eq "Yellow"'},
+                        'backgroundColor': '#fff3cd', 'color': 'black'
                     }
                 ]
             )
