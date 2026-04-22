@@ -17,6 +17,7 @@ dash.register_page(
     __name__,
     path="/sensor-registry",
     title="Sensor Registry",  # , prevent_initial_callbacks=True
+    order=1
      )
 
 class Settings(BaseSettings):

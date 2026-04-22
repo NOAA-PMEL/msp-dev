@@ -24,7 +24,7 @@ L.setLevel(logging.DEBUG)
 
 
 # dash.register_page(__name__, path='/')
-dash.register_page(__name__, path='/variable_map', title="Variable Map")
+dash.register_page(__name__, path='/variable_map', title="Variable Map", order=3)
 
 CONTENT_STYLE = {
     "margin-left": "18rem",

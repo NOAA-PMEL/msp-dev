@@ -24,7 +24,7 @@ L.setLevel(logging.DEBUG)
 
 
 # dash.register_page(__name__, path='/')
-dash.register_page(__name__, path='/home')
+dash.register_page(__name__, path='/home', order=0)
 
 CONTENT_STYLE = {
     "margin-left": "18rem",

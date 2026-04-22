@@ -17,6 +17,7 @@ dash.register_page(
     __name__,
     path="/controller-registry",
     title="Controller Registry",  # , prevent_initial_callbacks=True
+    order=2
 )
 
 
