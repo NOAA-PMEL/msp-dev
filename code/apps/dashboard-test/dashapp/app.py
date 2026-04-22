@@ -215,12 +215,13 @@ def toggle_global_notes(n, is_open):
      State("global-note-input", "value")],
     prevent_initial_call=True
 )
-def handle_global_notes(save_n, open_n, text):
+def handle_global_notes(save_n, open_n, operator, text):
     ctx = dash.callback_context
     trigger = ctx.triggered[0]['prop_id'].split('.')[0]
 
-    if trigger == "global-save-note-btn" and text:
-        save_shared_note(text)
+    if trigger == "global-save-note-btn":
+        if text:
+            save_shared_note(operator, text)
         
     df = load_shared_notes()
     return df.to_dict('records'), ""
