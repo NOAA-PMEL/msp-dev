@@ -124,10 +124,8 @@ def get_layout():
                 mode='json',        # Enables JSON syntax highlighting
                 theme='monokai',     # Dark theme (change to 'github' for light)
                 tabSize=4,
-                lineNumberStart=1,
                 showGutter=True,     # This shows the line numbers
                 showPrintMargin=False,
-                autoScrollEditorIntoView=True,
                 style={'width': '100%', 'height': '600px'}
             ),
             html.Br(),
