@@ -13,6 +13,7 @@ from pydantic import BaseSettings
 import logging
 from logfmter import Logfmter
 import plotly.express as px
+import random
 
 
 handler = logging.StreamHandler()
@@ -342,25 +343,62 @@ def plot_trajectory(_):
 
 
 # Mock data - In a real app, this would come from your SQL or InfluxDB
-def get_sensor_data():
-    # In reality, this dict comes from your sensors/DB
-    raw_data = [
-        {'sensor': 'Flow Meter', 'value': 12.5, 'status_code': 0},
-        {'sensor': 'Laser Diode', 'value': 98.2, 'status_code': 0},
-        {'sensor': 'Vacuum Pump', 'value': 0.85, 'status_code': 14}, # 0x0E
-        {'sensor': 'Inlet Temp', 'value': 22.1, 'status_code': 0}
-    ]
+# def get_sensor_data():
+#     # In reality, this dict comes from your sensors/DB
+#     raw_data = [
+#         {'sensor': 'Flow Meter', 'value': 12.5, 'status_code': 0},
+#         {'sensor': 'Laser Diode', 'value': 98.2, 'status_code': 0},
+#         {'sensor': 'Vacuum Pump', 'value': 0.85, 'status_code': 14}, # 0x0E
+#         {'sensor': 'Inlet Temp', 'value': 22.1, 'status_code': 0}
+#     ]
     
+#     processed = []
+#     for entry in raw_data:
+#         status, details = assign_sensor_status(entry['sensor'], entry['value'], entry['status_code'])
+#         processed.append({
+#             'Sensor': entry['sensor'],
+#             'Value': entry['value'],
+#             'Status': status,
+#             'Details': details,
+#             'Code': f"0x{entry['status_code']:02X}" if entry['status_code'] > 0 else "-"
+#         })
+#     return pd.DataFrame(processed)
+
+def get_sensor_data():
+    sensors = ['Flow Meter', 'Laser Diode', 'Vacuum Pump', 'Inlet Temp']
     processed = []
-    for entry in raw_data:
-        status, details = assign_sensor_status(entry['sensor'], entry['value'], entry['status_code'])
+    
+    for s in sensors:
+        # Randomly decide if this sensor is Healthy, Warning, or Critical
+        test_case = random.choice(['nominal', 'warning', 'critical', 'status_code_error'])
+        
+        val = 0.0
+        code = 0
+        
+        if test_case == 'nominal':
+            val = 10.0 # Standard safe value
+            code = 0
+        elif test_case == 'warning':
+            val = 16.5 # Trips the 'Yellow' threshold in your assign_sensor_status
+            code = 0
+        elif test_case == 'critical':
+            val = 99.9 # Trips the 'Red' threshold
+            code = 0
+        elif test_case == 'status_code_error':
+            val = 10.0
+            code = random.choice([0x01, 0x0E, 0xFF]) # Random hex errors
+            
+        # Use your existing logic to get the color and message
+        status, details = assign_sensor_status(s, val, code)
+        
         processed.append({
-            'Sensor': entry['sensor'],
-            'Value': entry['value'],
+            'Sensor': s,
+            'Value': val,
             'Status': status,
             'Details': details,
-            'Code': f"0x{entry['status_code']:02X}" if entry['status_code'] > 0 else "-"
+            'Code': f"0x{code:02X}" if code > 0 else "-"
         })
+        
     return pd.DataFrame(processed)
 
 
