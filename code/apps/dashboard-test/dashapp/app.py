@@ -6,6 +6,7 @@ from dash_extensions import WebSocket
 import os
 import pandas as pd
 from datetime import datetime
+import dash_ace
 # from dash_extensions.enrich import html, dcc, Output, Input, DashProxy, State
 
 
