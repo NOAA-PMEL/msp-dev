@@ -111,10 +111,18 @@ L.debug("main: here:2")
 #     custom: dict | None = None
 
 # datastore = Datastore()
-print("starting sampling_system")
-sampling_system = SamplingSystem()
-print(f"sampling_system started: {sampling_system}")
+# print("starting sampling_system")
+# sampling_system = SamplingSystem()
+# print(f"sampling_system started: {sampling_system}")
 
+sampling_system = None
+
+@app.on_event("startup")
+async def start_system():
+    global sampling_system
+    sampling_system = SamplingSystem()
+    await sampling_system.setup()
+    L.info("SamplingSystem initialized and background tasks started.")
 
 @app.get("/")
 async def root():
