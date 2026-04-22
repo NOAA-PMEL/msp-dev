@@ -1176,15 +1176,15 @@ class Datastore:
                 variables = vm_def["data"]["variables"]
 
                 variablemap_definition_id = "::".join([variablemap_type_id,variablemap,valid_config_time])
-                request = VariableMapDefinitionUpdate(
+                request = VariableSetDefinitionUpdate(
+                    variableset_definition_id=f"{variablemap_definition_id}::{vs_name}",
                     variablemap_definition_id=variablemap_definition_id,
-                    variablemap_type=variablemap_type,
-                    variablemap_type_id=variablemap_type_id,
-                    variablemap=variablemap,
-                    valid_config_time=valid_config_time,
+                    variableset=vs_name,
+                    index_type=data.get("index_type"),
+                    index_value=data.get("index_value"),
                     attributes=attributes,
-                    variablesets=variablesets,
-                    variables=variables,
+                    dimensions=data.get("dimensions", {}),
+                    variables=data.get("variables", {})
                 )
 
             self.logger.debug(
