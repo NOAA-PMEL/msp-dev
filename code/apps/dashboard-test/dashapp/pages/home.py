@@ -461,8 +461,8 @@ def assign_sensor_status(sensor_name, value, status_code=0):
     # [Lower Critical, Lower Warning, Upper Warning, Upper Critical]
     thresholds = {
         'Flow Meter':  [5.0, 8.0, 15.0, 18.0],
-        'Laser Diode': [80.0, 85.0, 105.0, 110.0],
-        'Vacuum Pump': [0.2, 0.4, 0.9, 1.2],
+        'Laser Diode': [5.0, 8.0, 15.0, 18.0],
+        'Vacuum Pump': [5.0, 8.0, 15.0, 18.0],
     }
 
     if sensor_name not in thresholds:
