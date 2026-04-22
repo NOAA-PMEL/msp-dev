@@ -409,8 +409,9 @@ def get_sensor_data():
     
     for s in sensors:
         # Randomly decide if this sensor is Healthy, Warning, or Critical
-        # test_case = random.choice(['nominal', 'warning', 'critical', 'status_code_error'])
-        test_case = random.choice(['nominal', 'warning'])
+        test_case = random.choice(['nominal', 'warning', 'critical', 'status_code_error'],
+                                  weights=[0.90, 0.08, 0.01, 0.01])
+        # test_case = random.choice(['nominal', 'warning'])
         
         val = 0.0
         code = 0
@@ -513,7 +514,7 @@ def update_dashboard(_):
     
     # Determine overall system state
     if 'Red' in df['Status'].values:
-        system_health = 'Critical'
+        system_health = 'Error'
         card_color = "danger"
         # Filter for only the problems to show at the top
         problems = df[df['Status'] != 'Green']
