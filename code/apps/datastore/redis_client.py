@@ -961,7 +961,7 @@ class RedisClient(DBClient):
             key = f"{database}:{collection}:{id}"
             self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"key": key, "device-doc": document})
             check_request = VariableMapDefinitionRequest(
-                variable_map_type_id=variable_map_type_id,
+                variablemap_type_id=variable_map_type_id,
                 variablemap=variablemap,
                 valid_config_time=redis_time
             )
@@ -1103,34 +1103,66 @@ class RedisClient(DBClient):
         await super(RedisClient, self).variableset_definition_registry_get(request)
 
         query_args = []
+        # if request.variableset_definition_id:
+        #     parts = request.variableset_definition_id.split("::")
+        #     parts[2] = parts[2].replace(":", "")
+        #     redis_id = "::".join(parts)
+
+        #     # query_args.append(f"@variableset_definition_id:{{{self.escape_query(request.variableset_definition_id)}}}")
+        #     query_args.append(f"@variableset_definition_id:{{{self.escape_query(redis_id)}}}")
+        # if request.variablemap_definition_id:
+        #     parts = request.variablemap_definition_id.split("::")
+        #     parts[2] = parts[2].replace(":", "")
+        #     redis_id = "::".join(parts)
+
+        #     # query_args.append(f"@platform_id:{{{self.escape_query(request.platform_id)}}}")
+        #     query_args.append(f"@platform_id:{{{self.escape_query(redis_id)}}}")
+        # if request.variableset:
+        #     query_args.append(f"@variablemap:{{{self.escape_query(request.variableset)}}}")
+        # if request.index_type:
+        #     query_args.append(f"@variablemap_revision_time:{{{self.escape_query(request.index_type)}}}")
+        # if request.index_value:
+        #     query_args.append(f"@variablegroup:{{{self.escape_query(request.index_value)}}}")
+
+        # if query_args:
+        #     qstring = " ".join(query_args)
+        # else:
+        #     qstring = "*"
+
         if request.variableset_definition_id:
             parts = request.variableset_definition_id.split("::")
             parts[2] = parts[2].replace(":", "")
             redis_id = "::".join(parts)
-
-            # query_args.append(f"@variableset_definition_id:{{{self.escape_query(request.variableset_definition_id)}}}")
             query_args.append(f"@variableset_definition_id:{{{self.escape_query(redis_id)}}}")
+        
         if request.variablemap_definition_id:
             parts = request.variablemap_definition_id.split("::")
             parts[2] = parts[2].replace(":", "")
             redis_id = "::".join(parts)
-
-            # query_args.append(f"@platform_id:{{{self.escape_query(request.platform_id)}}}")
-            query_args.append(f"@platform_id:{{{self.escape_query(redis_id)}}}")
+            # FIX: Changed from @platform_id to @variablemap_definition_id
+            query_args.append(f"@variablemap_definition_id:{{{self.escape_query(redis_id)}}}")
+            
         if request.variableset:
-            query_args.append(f"@variablemap:{{{self.escape_query(request.variableset)}}}")
+            # FIX: Changed from @variablemap to @variableset
+            query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
+            
         if request.index_type:
-            query_args.append(f"@variablemap_revision_time:{{{self.escape_query(request.index_type)}}}")
+            # FIX: Changed from @variablemap_revision_time to @index_type
+            query_args.append(f"@index_type:{{{self.escape_query(request.index_type)}}}")
+            
         if request.index_value:
-            query_args.append(f"@variablegroup:{{{self.escape_query(request.index_value)}}}")
+            # FIX: Changed from @variablegroup to @index_value. Forced string cast.
+            query_args.append(f"@index_value:{{{self.escape_query(str(request.index_value))}}}")
 
         if query_args:
             qstring = " ".join(query_args)
         else:
             qstring = "*"
+
         self.logger.debug("redis_client: variableset_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
         docs = (await self.client.ft(self.registry_variableset_definition_index_name).search(q)).docs
+
         self.logger.debug("redis_client: variableset_definition_registry_get", extra={"docs": docs})
         results = []
         for doc in docs:
