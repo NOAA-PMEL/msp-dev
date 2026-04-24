@@ -110,11 +110,10 @@ def get_variablemap_def():
         # Return mock data for testing
         return [{"timestamp": "2024-01-01T00:00:00", "value": 1.23, "status": 0}]
 
-get_variablemap_def()
-
 
 # print("here:1")
 def get_layout():
+    get_variablemap_def()
     layout = html.Div([
         html.H1('Variable Map'),
         html.Div(id='status-message', style={'margin-bottom': '10px', 'font-weight': 'bold'}),
