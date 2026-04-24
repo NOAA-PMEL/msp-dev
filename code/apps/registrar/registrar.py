@@ -352,11 +352,21 @@ class Registrar:
                 results = await self.submit_get(path="variablemap-definition/registry/ids/get")
                 if "results" in results and results["results"]:
                     self.current_variablemap_definition_list = results["results"]
-                    bcast = {
-                        "type": "sampling.variablemap.registry.sync",
-                        "source": f"envds.{self.config.daq_id}.registrar",
-                        "data": {"variablemap-definition-list": results["results"]}
-                    }
+                    # bcast = {
+                    #     "type": "sampling.variablemap.registry.sync",
+                    #     "source": f"envds.{self.config.daq_id}.registrar",
+                    #     "data": {"variablemap-definition-list": results["results"]}
+                    # }
+                    # FIX: Use DAQEvent to create a valid CloudEvent
+                    bcast = DAQEvent.create_registry_sync_bcast(
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={"variablemap-definition-list": results["results"]}
+                    )
+                    destpath = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    if self.config.mqtt_bridge_prefix:
+                        destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                    bcast["destpath"] = destpath
+
                     await self.send_event(bcast)
             except Exception as e:
                 self.logger.error("get_variablemap_definitions_loop", extra={"reason": e})
@@ -504,6 +514,16 @@ class Registrar:
                         #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
                         #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
                         #     await self.send_event(update)
+
+            # FIX: Dynamic catch-all for any sampling definition requests 
+            # (e.g., 'variablemap', 'variableset', 'platform', 'project')
+            elif request_type.endswith("-definition-request"):
+                try:
+                    resource = request_type.replace("-definition-request", "")
+                    for id in request_list:
+                        self.logger.debug("registry_send_update", extra={"resource": resource, "definition_id": id})
+                        await self.send_sampling_update(resource, id)
+
                 except Exception as e:
                     self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
 
@@ -705,11 +725,23 @@ class Registrar:
                 results = await self.submit_get(path="variableset-definition/registry/ids/get")
                 if "results" in results and results["results"]:
                     self.current_variableset_definition_list = results["results"]
-                    bcast = {
-                        "type": "sampling.variableset.registry.sync",
-                        "source": f"envds.{self.config.daq_id}.registrar",
-                        "data": {"variableset-definition-list": results["results"]}
-                    }
+                    # bcast = {
+                    #     "type": "sampling.variableset.registry.sync",
+                    #     "source": f"envds.{self.config.daq_id}.registrar",
+                    #     "data": {"variableset-definition-list": results["results"]}
+                    # }
+
+                    # FIX: Use DAQEvent to create a valid CloudEvent
+                    bcast = DAQEvent.create_registry_sync_bcast(
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={"variableset-definition-list": results["results"]}
+                    )
+                    
+                    destpath = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    if self.config.mqtt_bridge_prefix:
+                        destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                    bcast["destpath"] = destpath
+
                     await self.send_event(bcast)
             except Exception as e:
                 self.logger.error("get_variableset_definitions_loop", extra={"reason": e})
@@ -952,20 +984,30 @@ class Registrar:
             try:
                 path = f"{resource}-definition/registry/ids/get"
                 results = await self.submit_get(path=path)
-                if "results" in results:
-                    # Reuse existing DAQEvent.create_registry_sync_bcast
+                
+                # FIX: Check that 'results' exists AND is not empty
+                if "results" in results and results["results"]:
+                    
+                    # FIX: Save the current state so registry_compare_bcast can track it
+                    setattr(self, f"current_{resource}_definition_list", results["results"])
+
                     bcast = DAQEvent.create_registry_sync_bcast(
                         source=f"envds.{self.config.daq_id}.registrar",
                         data={f"{resource}-definition-list": results["results"]}
                     )
+                    
                     destpath = f"envds/{self.config.daq_id}/registry/sync-bcast"
                     if self.config.mqtt_bridge_prefix:
                         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                    
                     bcast["destpath"] = destpath
                     await self.send_event(bcast)
+                    
             except Exception as e:
                 self.logger.error(f"sync_loop_{resource}", extra={"reason": e})
+                
             await asyncio.sleep(60)
+
 
 # def build_sensor_registry_document(sensor_def: dict):
 #     L.debug("build_sensor_registry_document", extra={"sd": sensor_def})
