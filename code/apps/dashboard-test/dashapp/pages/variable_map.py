@@ -86,14 +86,19 @@ initial_variable_map = {
 }
 
 
-def get_device_data(device_id: str, device_type: str="sensor"):
+# def get_variablemap_def(device_id: str, device_type: str="sensor"):
+def get_variablemap_def():
     
-    query = {"device_type": device_type, "device_id": device_id}
-    url = f"http://{datastore_url}/device/data/get/"
-    print(f"device-data-get: {url}, query: {query}")
+    # query = {"device_type": device_type, "device_id": device_id}
+    # url = f"http://{datastore_url}/device/data/get/"
+    url = f"http://{datastore_url}/variablemap-definition/registry/ids/get/"
+    # print(f"variablemap-definition-get: {url}, query: {query}")
+    print(f"variablemap-definition-get: {url}")
+
     try:
         timeout = httpx.Timeout(10.0, read=None)
-        response = httpx.get(url, params=query, timeout=timeout)
+        # response = httpx.get(url, params=query, timeout=timeout)
+        response = httpx.get(url)
         results = response.json()
         # print(f"results: {results}")
         if "results" in results and results["results"]:
@@ -101,10 +106,11 @@ def get_device_data(device_id: str, device_type: str="sensor"):
     except Exception as e:
         # L.error("get_device_data", extra={"reason": e})
         # return []
-        L.warning(f"Connection failed to {device_id}. Returning mock data for testing.")
+        # L.warning(f"Connection failed to {device_id}. Returning mock data for testing.")
         # Return mock data for testing
         return [{"timestamp": "2024-01-01T00:00:00", "value": 1.23, "status": 0}]
 
+get_variablemap_def()
 
 
 # print("here:1")
