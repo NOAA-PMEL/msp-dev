@@ -232,6 +232,19 @@ class RedisClient(DBClient):
                 )
                 await self.client.ft(self.registry_variableset_definition_index_name).create_index(schema, definition=definition)
 
+            # data:variableset
+            try:
+                await self.client.ft("idx:data-variableset").info()
+            except Exception:
+                schema = (
+                    TagField("$.record.variableset_id", as_name="variableset_id"),
+                    TagField("$.record.variablemap_id", as_name="variablemap_id"),
+                    TagField("$.record.variableset", as_name="variableset"),
+                    NumericField("$.record.timestamp", as_name="timestamp")
+                )
+                definition = IndexDefinition(prefix=["data:variableset:"], index_type=IndexType.JSON)
+                await self.client.ft("idx:data-variableset").create_index(schema, definition=definition)
+
             # # Platform Definition Index
             # try:
             #     await self.client.ft(self.registry_platform_definition_index_name).info()
@@ -961,7 +974,7 @@ class RedisClient(DBClient):
             key = f"{database}:{collection}:{id}"
             self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"key": key, "device-doc": document})
             check_request = VariableMapDefinitionRequest(
-                variable_map_type_id=variable_map_type_id,
+                variablemap_type_id=variable_map_type_id,
                 variablemap=variablemap,
                 valid_config_time=redis_time
             )
@@ -1103,34 +1116,66 @@ class RedisClient(DBClient):
         await super(RedisClient, self).variableset_definition_registry_get(request)
 
         query_args = []
+        # if request.variableset_definition_id:
+        #     parts = request.variableset_definition_id.split("::")
+        #     parts[2] = parts[2].replace(":", "")
+        #     redis_id = "::".join(parts)
+
+        #     # query_args.append(f"@variableset_definition_id:{{{self.escape_query(request.variableset_definition_id)}}}")
+        #     query_args.append(f"@variableset_definition_id:{{{self.escape_query(redis_id)}}}")
+        # if request.variablemap_definition_id:
+        #     parts = request.variablemap_definition_id.split("::")
+        #     parts[2] = parts[2].replace(":", "")
+        #     redis_id = "::".join(parts)
+
+        #     # query_args.append(f"@platform_id:{{{self.escape_query(request.platform_id)}}}")
+        #     query_args.append(f"@platform_id:{{{self.escape_query(redis_id)}}}")
+        # if request.variableset:
+        #     query_args.append(f"@variablemap:{{{self.escape_query(request.variableset)}}}")
+        # if request.index_type:
+        #     query_args.append(f"@variablemap_revision_time:{{{self.escape_query(request.index_type)}}}")
+        # if request.index_value:
+        #     query_args.append(f"@variablegroup:{{{self.escape_query(request.index_value)}}}")
+
+        # if query_args:
+        #     qstring = " ".join(query_args)
+        # else:
+        #     qstring = "*"
+
         if request.variableset_definition_id:
             parts = request.variableset_definition_id.split("::")
             parts[2] = parts[2].replace(":", "")
             redis_id = "::".join(parts)
-
-            # query_args.append(f"@variableset_definition_id:{{{self.escape_query(request.variableset_definition_id)}}}")
             query_args.append(f"@variableset_definition_id:{{{self.escape_query(redis_id)}}}")
+        
         if request.variablemap_definition_id:
             parts = request.variablemap_definition_id.split("::")
             parts[2] = parts[2].replace(":", "")
             redis_id = "::".join(parts)
-
-            # query_args.append(f"@platform_id:{{{self.escape_query(request.platform_id)}}}")
-            query_args.append(f"@platform_id:{{{self.escape_query(redis_id)}}}")
+            # FIX: Changed from @platform_id to @variablemap_definition_id
+            query_args.append(f"@variablemap_definition_id:{{{self.escape_query(redis_id)}}}")
+            
         if request.variableset:
-            query_args.append(f"@variablemap:{{{self.escape_query(request.variableset)}}}")
+            # FIX: Changed from @variablemap to @variableset
+            query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
+            
         if request.index_type:
-            query_args.append(f"@variablemap_revision_time:{{{self.escape_query(request.index_type)}}}")
+            # FIX: Changed from @variablemap_revision_time to @index_type
+            query_args.append(f"@index_type:{{{self.escape_query(request.index_type)}}}")
+            
         if request.index_value:
-            query_args.append(f"@variablegroup:{{{self.escape_query(request.index_value)}}}")
+            # FIX: Changed from @variablegroup to @index_value. Forced string cast.
+            query_args.append(f"@index_value:{{{self.escape_query(str(request.index_value))}}}")
 
         if query_args:
             qstring = " ".join(query_args)
         else:
             qstring = "*"
+
         self.logger.debug("redis_client: variableset_definition_registry_get", extra={"query_string": qstring})
         q = Query(qstring)#.sort_by("version", asc=False)
         docs = (await self.client.ft(self.registry_variableset_definition_index_name).search(q)).docs
+
         self.logger.debug("redis_client: variableset_definition_registry_get", extra={"docs": docs})
         results = []
         for doc in docs:
@@ -1263,4 +1308,54 @@ class RedisClient(DBClient):
                 continue
                 
         self.logger.debug(f"redis_client: {resource}_definition_registry_get", extra={"results": results})
+        return {"results": results}
+    
+    async def variableset_data_update(self, database: str, collection: str, request: VariableSetDataUpdate, ttl: int = 300):
+        await super(RedisClient, self).variableset_data_update(database, collection, request, ttl)
+        try:
+            self.connect()
+            document = request.dict()
+            variableset_id = document["variableset_id"]
+            timestamp = document["timestamp"]
+
+            key = f"{database}:{collection}:{variableset_id}:{timestamp}"
+            await self.client.json().set(key, "$", {"record": document})
+            if ttl > 0:
+                await self.client.expire(key, ttl)
+
+        except Exception as e:
+            self.logger.error("redis_client: variableset_data_update", extra={"reason": e})
+
+    async def variableset_data_get(self, request: VariableSetDataRequest):
+        await super(RedisClient, self).variableset_data_get(request)
+        max_results = 10000
+
+        query_args = []
+        if request.variableset_id:
+            query_args.append(f"@variableset_id:{{{self.escape_query(request.variableset_id)}}}")
+        if request.variablemap_id:
+            query_args.append(f"@variablemap_id:{{{self.escape_query(request.variablemap_id)}}}")
+        if request.variableset:
+            query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
+        if request.start_timestamp:
+            query_args.append(f"@timestamp >= {request.start_timestamp}")
+        if request.end_timestamp:
+            query_args.append(f"@timestamp < {request.end_timestamp}")
+
+        qstring = " ".join(query_args) if query_args else "*"
+        self.logger.debug("variableset_data_get", extra={"query_string": qstring})
+        
+        q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
+        docs = (await self.client.ft("idx:data-variableset").search(q)).docs
+        
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    record = json.loads(doc.json)
+                    results.append(record["record"])
+            except Exception as e:
+                self.logger.error("variableset_data_get parsing error", extra={"reason": e})
+                continue
+
         return {"results": results}

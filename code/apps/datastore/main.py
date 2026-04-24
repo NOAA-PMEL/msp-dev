@@ -636,7 +636,7 @@ async def variableset_definition_registry_get(
     variablemap_definition_id: str | None = None,
     variableset: str | None = None,
     index_type: str | None = None,
-    index_value: Any | None = None
+    index_value: str | None = None
 ):
 
     query = VariableSetDefinitionRequest(
