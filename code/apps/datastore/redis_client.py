@@ -1072,12 +1072,20 @@ class RedisClient(DBClient):
             self.logger.debug("redis_client: variableset_definition_registry_update", extra={"update-doc": request, "ttl": ttl})
             document = request.dict()
             
-            variablemap_definition_id = request.variablemap_definition_id
+            # variablemap_definition_id = request.variablemap_definition_id
+            # parts = variablemap_definition_id.split("::")
+            # parts[2] = parts[2].replace(":", "")
+            # redis_id = "::".join(parts)
+
+            # variableset = request.variableset
+
+            # FIX: Use dictionary access on the serialized document
+            variablemap_definition_id = document["variablemap_definition_id"]
             parts = variablemap_definition_id.split("::")
             parts[2] = parts[2].replace(":", "")
             redis_id = "::".join(parts)
 
-            variableset = request.variableset
+            variableset = document["variableset"]
 
             id = "::".join([redis_id,variableset])
 
