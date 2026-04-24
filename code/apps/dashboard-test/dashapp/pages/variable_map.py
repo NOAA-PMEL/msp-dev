@@ -100,7 +100,7 @@ def get_variablemap_def():
         # response = httpx.get(url, params=query, timeout=timeout)
         response = httpx.get(url)
         results = response.json()
-        # print(f"results: {results}")
+        L.debug(f"variablemap_results: {results}")
         if "results" in results and results["results"]:
             return results["results"]
     except Exception as e:
