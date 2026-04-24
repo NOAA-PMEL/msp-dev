@@ -1145,44 +1145,45 @@ class Datastore:
     async def variablemap_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, vm_def in ce.data.items():
-                variablemap = vm_def.get("metadata", {}).get("name")
-                data = vm_def.get("data", {})
-                attributes = data.get("attributes", {})
                 
-                variablemap_type = attributes.get("variablemap_type", "Platform")
-                if variablemap_type == "Platform":
-                    variablemap_type_id = attributes.get("platform")
+                # FIX: Check if it's already a flattened database record (from a registrar sync)
+                if "variablemap_definition_id" in vm_def:
+                    request = VariableMapDefinitionUpdate(**vm_def)
                 else:
-                    self.logger.error("variablemap_definition_registry_update", extra={"reason": f"unknown variablemap_type-{variablemap_type}"})
-                    continue
-                
-                valid_config_time = attributes.get("valid_config_time", "2020-01-01T00:00:00Z")
+                    # It's an original payload from sampling-system
+                    variablemap = vm_def.get("metadata", {}).get("name")
+                    data = vm_def.get("data", {})
+                    attributes = data.get("attributes", {})
+                    
+                    variablemap_type = attributes.get("variablemap_type", "Platform")
+                    if variablemap_type == "Platform":
+                        variablemap_type_id = attributes.get("platform")
+                    else:
+                        self.logger.error("variablemap_definition_registry_update", extra={"reason": f"unknown variablemap_type-{variablemap_type}"})
+                        continue
+                    
+                    valid_config_time = attributes.get("valid_config_time", "2020-01-01T00:00:00Z")
 
-                database = "registry"
-                collection = "variablemap-definition"
-                
-                variablesets = data.get("variablesets", {})
-                variables = data.get("variables", {})
+                    variablesets = data.get("variablesets", {})
+                    variables = data.get("variables", {})
 
-                variablemap_definition_id = "::".join([variablemap_type_id, variablemap, valid_config_time])
-                request = VariableMapDefinitionUpdate(
-                    variablemap_definition_id=variablemap_definition_id,
-                    variablemap_type=variablemap_type,
-                    variablemap_type_id=variablemap_type_id,
-                    variablemap=variablemap,
-                    valid_config_time=valid_config_time,
-                    attributes=attributes,
-                    variablesets=variablesets,
-                    variables=variables,
-                )
+                    variablemap_definition_id = "::".join([variablemap_type_id, variablemap, valid_config_time])
+                    request = VariableMapDefinitionUpdate(
+                        variablemap_definition_id=variablemap_definition_id,
+                        variablemap_type=variablemap_type,
+                        variablemap_type_id=variablemap_type_id,
+                        variablemap=variablemap,
+                        valid_config_time=valid_config_time,
+                        attributes=attributes,
+                        variablesets=variablesets,
+                        variables=variables,
+                    )
 
-                self.logger.debug(
-                    "variablemap_definition_registry_update", extra={"request": request}
-                )
+                self.logger.debug("variablemap_definition_registry_update", extra={"request": request})
                 if self.db_client:
                     await self.db_client.variablemap_definition_registry_update(
-                        database=database,
-                        collection=collection,
+                        database="registry",
+                        collection="variablemap-definition",
                         request=request,
                         ttl=self.config.db_reg_variablemap_definition_ttl,
                     )
@@ -1266,31 +1267,35 @@ class Datastore:
     async def variableset_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, vs_payload in ce.data.items():
-                vs_name = vs_payload.get("metadata", {}).get("name")
-                data = vs_payload.get("data", {})
-                attributes = data.get("attributes", {})
                 
-                # Extract parent map identifiers
-                variablemap_name = attributes.get("variablemap_id", "")
-                variablemap_type_id = attributes.get("platform", "")
-                valid_config_time = attributes.get("valid_config_time", "2020-01-01T00:00:00Z")
-                
-                variablemap_definition_id = "::".join([variablemap_type_id, variablemap_name, valid_config_time])
-                
-                request = VariableSetDefinitionUpdate(
-                    variableset_definition_id=f"{variablemap_definition_id}::{vs_name}",
-                    variablemap_definition_id=variablemap_definition_id,
-                    variableset=vs_name,
-                    index_type=data.get("index_type"),
-                    index_value=data.get("index_value"),
-                    attributes=attributes,
-                    dimensions=data.get("dimensions", {}),
-                    variables=data.get("variables", {})
-                )
+                # FIX: Check if it's already a flattened database record (from a registrar sync)
+                if "variableset_definition_id" in vs_payload:
+                    request = VariableSetDefinitionUpdate(**vs_payload)
+                else:
+                    # It's an original payload from sampling-system
+                    vs_name = vs_payload.get("metadata", {}).get("name")
+                    data = vs_payload.get("data", {})
+                    attributes = data.get("attributes", {})
+                    
+                    # Extract parent map identifiers
+                    variablemap_name = attributes.get("variablemap_id", "")
+                    variablemap_type_id = attributes.get("platform", "")
+                    valid_config_time = attributes.get("valid_config_time", "2020-01-01T00:00:00Z")
+                    
+                    variablemap_definition_id = "::".join([variablemap_type_id, variablemap_name, valid_config_time])
+                    
+                    request = VariableSetDefinitionUpdate(
+                        variableset_definition_id=f"{variablemap_definition_id}::{vs_name}",
+                        variablemap_definition_id=variablemap_definition_id,
+                        variableset=vs_name,
+                        index_type=data.get("index_type"),
+                        index_value=data.get("index_value"),
+                        attributes=attributes,
+                        dimensions=data.get("dimensions", {}),
+                        variables=data.get("variables", {})
+                    )
 
-                self.logger.debug(
-                    "variableset_definition_registry_update", extra={"request": request}
-                )
+                self.logger.debug("variableset_definition_registry_update", extra={"request": request})
                 
                 if self.db_client:
                     await self.db_client.variableset_definition_registry_update(

@@ -1006,12 +1006,17 @@ class Registrar:
     async def send_sampling_update(self, resource_type: str, definition_id: str):
         try:
             path = f"{resource_type}-definition/registry/get"
-            # Some queries use 'name', some use 'variablemap_definition_id'. Support both via query schema
-            query = {"name": definition_id} 
+            
+            # FIX: Map the definition_id to the exact query parameter the Datastore API expects
+            if resource_type == "variablemap":
+                query = {"variablemap_definition_id": definition_id}
+            elif resource_type == "variableset":
+                query = {"variableset_definition_id": definition_id}
+            else:
+                query = {"name": definition_id} 
             
             results = await self.submit_request(path=path, query=query)
             if "results" in results and results["results"]:
-                # Reuse existing DAQEvent.create_registry_sync_update
                 update = DAQEvent.create_registry_sync_update(
                     source=f"envds.{self.config.daq_id}.registrar",
                     data={f"{resource_type}-definition-update": results["results"][0]}
