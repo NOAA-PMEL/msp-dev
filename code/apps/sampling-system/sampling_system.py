@@ -848,6 +848,15 @@ class SamplingSystem:
             print("error", e)
         await asyncio.sleep(0.01)
 
+    async def send_to_mqtt(self, topic: str, ce: CloudEvent):
+        """Publishes a CloudEvent directly to the local MQTT broker."""
+        try:
+            payload = to_json(ce) # Convert CloudEvent to JSON string
+            async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
+                await client.publish(topic, payload=payload)
+        except Exception as e:
+            self.logger.error("send_to_mqtt error", extra={"reason": e})
+
     # async def sync_sampling_definitions_loop(self):
     #     """
     #     Background loop to continuously fetch and update variablemaps 
@@ -2087,7 +2096,9 @@ class SamplingSystem:
                             extra={"data": event, "destpath": destpath},
                         )
                         
-                        await self.send_event(event)
+                        # send data updates over mqtt
+                        # await self.send_event(event)
+                        await self.send_to_mqtt(destpath, event)
 
             # Once processed, remove indexed data
             self.logger.debug("update_variablesets_by_time_index", extra={"indexed_data": variablemap["indexed"][index_type][index_value]["data"]})

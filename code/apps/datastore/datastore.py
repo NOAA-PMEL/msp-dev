@@ -268,7 +268,9 @@ class Datastore:
                     await self.device_data_update(ce) 
                 elif ce["type"] == "envds.controller.data.update":
                     await self.controller_data_update(ce)
-            
+                elif ce["type"] == "envds.variableset.data.update":
+                    await self.variableset_data_update(ce)           
+
             except Exception as e:
                 L.error("handle_mqtt_buffer", extra={"reason": e})
             
@@ -1351,6 +1353,58 @@ class Datastore:
         
         return {"results": []}
 
+    async def variableset_data_update(self, ce: CloudEvent):
+        try:
+            database = "data"
+            collection = "variableset"
+            
+            data = ce.data
+            attributes = data.get("attributes", {})
+            dimensions = data.get("dimensions", {})
+            variables = data.get("variables", {})
+
+            # The time is attached as a variable object in the variablesets loop
+            timestamp_str = variables.get("time", {}).get("data")
+            timestamp = string_to_timestamp(timestamp_str) if timestamp_str else 0.0
+
+            # Reconstruct ID from the cloud event source (e.g., envds.mspbase01.variableset.MSPPayload03::main)
+            source_parts = ce.get("source", "").split(".")
+            variableset_id = source_parts[-1] if len(source_parts) > 0 else "unknown"
+            
+            request = VariableSetDataUpdate(
+                variableset_id=variableset_id,
+                variablemap_id=attributes.get("variablemap_id", ""),
+                variableset=variableset_id.split("::")[-1] if "::" in variableset_id else "unknown",
+                timestamp=timestamp,
+                attributes=attributes,
+                dimensions=dimensions,
+                variables=variables,
+            )
+
+            if self.db_client:
+                await self.db_client.variableset_data_update(
+                    database=database,
+                    collection=collection,
+                    request=request,
+                    ttl=self.config.db_data_ttl,
+                )
+        except Exception as e:
+            self.logger.error("variableset_data_update", extra={"reason": e})
+
+    async def variableset_data_get(self, query: VariableSetDataRequest):
+        if query.start_time:
+            query.start_timestamp = string_to_timestamp(query.start_time)
+        if query.end_time:
+            query.end_timestamp = string_to_timestamp(query.end_time)
+        if query.last_n_seconds:
+            start_dt = get_datetime_with_delta(-(query.last_n_seconds))
+            query.start_timestamp = start_dt.timestamp()
+            query.end_timestamp = None
+
+        if self.db_client:
+            return await self.db_client.variableset_data_get(query)
+
+        return {"results": []}
 
 async def shutdown():
     print("shutting down")
