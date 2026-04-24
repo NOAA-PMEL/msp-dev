@@ -956,7 +956,14 @@ class RedisClient(DBClient):
             
             self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"update-doc": request, "ttl": ttl})
             document = request.dict()
-            
+
+            # FIX: Safely strip colons ONLY from the timestamp segment (parts[2])
+            if "variablemap_definition_id" in document:
+                parts = document["variablemap_definition_id"].split("::")
+                if len(parts) > 2:
+                    parts[2] = parts[2].replace(":", "")
+                    document["variablemap_definition_id"] = "::".join(parts)            
+
             variable_map_type_id = request.variablemap_type_id
             # platform_id = request.platform_id
             variablemap = request.variablemap
@@ -1078,6 +1085,19 @@ class RedisClient(DBClient):
             # redis_id = "::".join(parts)
 
             # variableset = request.variableset
+
+            # FIX: Safely strip colons ONLY from the timestamp segment
+            if "variableset_definition_id" in document:
+                parts = document["variableset_definition_id"].split("::")
+                if len(parts) > 2:
+                    parts[2] = parts[2].replace(":", "")
+                    document["variableset_definition_id"] = "::".join(parts)
+                    
+            if "variablemap_definition_id" in document:
+                parts = document["variablemap_definition_id"].split("::")
+                if len(parts) > 2:
+                    parts[2] = parts[2].replace(":", "")
+                    document["variablemap_definition_id"] = "::".join(parts)
 
             # FIX: Use dictionary access on the serialized document
             variablemap_definition_id = document["variablemap_definition_id"]
