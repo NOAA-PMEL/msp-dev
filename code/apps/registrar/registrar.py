@@ -514,6 +514,8 @@ class Registrar:
                         #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
                         #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
                         #     await self.send_event(update)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
 
             # FIX: Dynamic catch-all for any sampling definition requests 
             # (e.g., 'variablemap', 'variableset', 'platform', 'project')
