@@ -1308,6 +1308,13 @@ class Datastore:
         except Exception as e:
             self.logger.error("variableset_definition_registry_update", extra={"reason": e})
 
+    async def variableset_definition_registry_get(self, query: VariableSetDefinitionRequest) -> dict:
+        
+        # TODO add in logic to get/sync from erddap if available
+        if self.db_client:
+            return await self.db_client.variableset_definition_registry_get(query)
+        
+        return {"results": []}
 
     # async def variablemap_definition_registry_get(self, query: VariableMapDefinitionRequest) -> dict:
         
