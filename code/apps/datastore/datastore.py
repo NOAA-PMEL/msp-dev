@@ -1145,7 +1145,6 @@ class Datastore:
     async def variablemap_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, vm_def in ce.data.items():
-                # Use .get() defensively at every layer
                 variablemap = vm_def.get("metadata", {}).get("name")
                 data = vm_def.get("data", {})
                 attributes = data.get("attributes", {})
@@ -1162,7 +1161,6 @@ class Datastore:
                 database = "registry"
                 collection = "variablemap-definition"
                 
-                # FIX: Safely get the dictionaries so missing keys default to {}
                 variablesets = data.get("variablesets", {})
                 variables = data.get("variables", {})
 
@@ -1190,9 +1188,8 @@ class Datastore:
                     )
 
         except Exception as e:
-            # FIX: Corrected the log identifier, and wrapped `e` in `repr()` so KeyErrors 
-            # output "KeyError('variablesets')" instead of just "'variablesets'"
             self.logger.error("variablemap_definition_registry_update", extra={"reason": repr(e)})
+
 
     async def variablemap_definition_registry_get(self, query: VariableMapDefinitionRequest) -> dict:
         
@@ -1296,24 +1293,24 @@ class Datastore:
                 )
                 
                 if self.db_client:
-                    # FIX: Correctly call variableset_definition_registry_update on the DB client
                     await self.db_client.variableset_definition_registry_update(
                         database="registry",
-                        collection="variableset-definition", # FIX: Use correct collection
+                        collection="variableset-definition", 
                         request=request,
-                        ttl=self.config.db_reg_variableset_definition_ttl, # FIX: Use variableset TTL
+                        ttl=self.config.db_reg_variableset_definition_ttl,
                     )
 
         except Exception as e:
             self.logger.error("variableset_definition_registry_update", extra={"reason": e})
 
-    async def variablemap_definition_registry_get(self, query: VariableMapDefinitionRequest) -> dict:
+
+    # async def variablemap_definition_registry_get(self, query: VariableMapDefinitionRequest) -> dict:
         
-        # TODO add in logic to get/sync from erddap if available
-        if self.db_client:
-            return await self.db_client.variablemap_definition_registry_get(query)
+    #     # TODO add in logic to get/sync from erddap if available
+    #     if self.db_client:
+    #         return await self.db_client.variablemap_definition_registry_get(query)
         
-        return {"results": []}
+    #     return {"results": []}
 
     async def sampling_definition_registry_update(self, resource: str, ce: CloudEvent):
         try:
