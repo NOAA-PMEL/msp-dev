@@ -410,7 +410,7 @@ def get_sensor_data():
     for s in sensors:
         # Randomly decide if this sensor is Healthy, Warning, or Critical
         test_case = random.choices(['nominal', 'warning', 'critical', 'status_code_error'],
-                                  weights=[0.50, 0.3, 0.1, 0.1])
+                                  weights=[0.50, 0.3, 0.1, 0.1])[0]
         # test_case = random.choice(['nominal', 'warning'])
         
         val = 0.0
