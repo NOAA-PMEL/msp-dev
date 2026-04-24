@@ -93,7 +93,7 @@ def get_variablemap_def():
     # url = f"http://{datastore_url}/device/data/get/"
     url = f"http://{datastore_url}/variablemap-definition/registry/ids/get/"
     # print(f"variablemap-definition-get: {url}, query: {query}")
-    print(f"variablemap-definition-get: {url}")
+    L.debug(f"variablemap-definition-get: {url}")
 
     try:
         timeout = httpx.Timeout(10.0, read=None)
