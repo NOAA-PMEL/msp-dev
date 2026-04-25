@@ -1014,7 +1014,7 @@ class SamplingSystem:
                 if vmap_ids_resp and "results" in vmap_ids_resp:
                     # self.logger.debug("sync_sampling_definitions_loop", extra={"vm_ids", vmap_ids_resp})
                     for vmap_id in vmap_ids_resp["results"]:
-                        self.logger.debug("sync_sampling_definitions_loop", extra={"vm_id", vmap_id})
+                        self.logger.debug("sync_sampling_definitions_loop", extra={"vm_id": vmap_id})
                         # Extract platform_name from ID: platform_name::variablemap_name::valid_config_time
                         parts = vmap_id.split("::")
                         if len(parts) >= 3:
@@ -1047,7 +1047,7 @@ class SamplingSystem:
                                 },
                                 "data": vm_db
                             }
-                            self.logger.debug("sync_sampling_definitions_loop", extra={"mock_vm", mock_vm})
+                            self.logger.debug("sync_sampling_definitions_loop", extra={"mock_vm": mock_vm})
                             # Safely parse and generate the sources + start the indexing tasks!
                             self.load_variablemap(mock_vm)
 
