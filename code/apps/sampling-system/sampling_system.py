@@ -783,6 +783,9 @@ class SamplingSystem:
                 if index_value not in self.index_monitor_tasks[index_type] or not self.index_monitor_tasks[index_type][index_value]:
                     self.index_monitor_tasks[index_type][index_value] = asyncio.create_task(self.index_time_monitor(timebase=index_value))
 
+    # def open_http_client(self):
+    #     self.http_client = httpx.AsyncClient()
+
     def open_http_client(self):
         self.http_client = httpx.AsyncClient()
 
@@ -792,7 +795,9 @@ class SamplingSystem:
             if not getattr(self, 'http_client', None):
                 self.open_http_client()
             
-            datastore_url = f"datastore.{self.config.daq_id}-system"
+            # FIX: Append .svc.cluster.local for asyncio DNS routing through Knative
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
+            
             results = await self.http_client.get(f"http://{datastore_url}/{path}/", timeout=timeout)
             return results.json()
         except Exception as e:
@@ -805,7 +810,9 @@ class SamplingSystem:
             if not getattr(self, 'http_client', None):
                 self.open_http_client()
                 
-            datastore_url = f"datastore.{self.config.daq_id}-system"
+            # FIX: Append .svc.cluster.local for asyncio DNS routing through Knative
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
+            
             results = await self.http_client.get(f"http://{datastore_url}/{path}/", params=query, timeout=timeout)
             return results.json()
         except Exception as e:
@@ -814,7 +821,7 @@ class SamplingSystem:
 
     async def send_event(self, ce):
         try:
-            self.logger.debug(ce)  # , extra=template)
+            self.logger.debug(ce)
             try:
                 timeout = httpx.Timeout(5.0, read=10.0)
                 if not getattr(self, 'http_client', None):
@@ -829,8 +836,6 @@ class SamplingSystem:
                     },
                 )
                 # send to knative broker
-                # async with httpx.AsyncClient() as client:
-                # r = await client.post(
                 r = await self.http_client.post(
                     self.config.knative_broker,
                     headers=headers,
@@ -847,6 +852,77 @@ class SamplingSystem:
         except Exception as e:
             print("error", e)
         await asyncio.sleep(0.01)
+
+    async def send_to_mqtt(self, topic: str, ce: CloudEvent):
+        """Publishes a CloudEvent directly to the local MQTT broker."""
+        try:
+            payload = to_json(ce) # Convert CloudEvent to JSON string
+            async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
+                await client.publish(topic, payload=payload)
+        except Exception as e:
+            self.logger.error("send_to_mqtt error", extra={"reason": e})
+
+    # async def submit_get(self, path: str):
+    #     try:
+    #         timeout = httpx.Timeout(10.0, read=10.0)
+    #         if not getattr(self, 'http_client', None):
+    #             self.open_http_client()
+            
+    #         datastore_url = f"datastore.{self.config.daq_id}-system"
+    #         results = await self.http_client.get(f"http://{datastore_url}/{path}/", timeout=timeout)
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_get", extra={"reason": e})
+    #         return {}
+
+    # async def submit_request(self, path: str, query: dict):
+    #     try:
+    #         timeout = httpx.Timeout(10.0, read=10.0)
+    #         if not getattr(self, 'http_client', None):
+    #             self.open_http_client()
+                
+    #         datastore_url = f"datastore.{self.config.daq_id}-system"
+    #         results = await self.http_client.get(f"http://{datastore_url}/{path}/", params=query, timeout=timeout)
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_request", extra={"reason": e})
+    #         return {}
+
+    # async def send_event(self, ce):
+    #     try:
+    #         self.logger.debug(ce)  # , extra=template)
+    #         try:
+    #             timeout = httpx.Timeout(5.0, read=10.0)
+    #             if not getattr(self, 'http_client', None):
+    #                 self.open_http_client()
+    #             headers, body = to_structured(ce)
+    #             self.logger.debug(
+    #                 "send_event",
+    #                 extra={
+    #                     "broker": self.config.knative_broker,
+    #                     "h": headers,
+    #                     "b": body,
+    #                 },
+    #             )
+    #             # send to knative broker
+    #             # async with httpx.AsyncClient() as client:
+    #             # r = await client.post(
+    #             r = await self.http_client.post(
+    #                 self.config.knative_broker,
+    #                 headers=headers,
+    #                 data=body,
+    #                 timeout=timeout,
+    #             )
+    #             r.raise_for_status()
+    #         except InvalidStructuredJSON:
+    #             self.logger.error(f"INVALID MSG: {ce}")
+    #         except httpx.TimeoutException:
+    #             pass
+    #         except httpx.HTTPError as e:
+    #             self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+    #     except Exception as e:
+    #         print("error", e)
+    #     await asyncio.sleep(0.01)
 
     async def send_to_mqtt(self, topic: str, ce: CloudEvent):
         """Publishes a CloudEvent directly to the local MQTT broker."""
@@ -2710,9 +2786,14 @@ async def shutdown():
     # for task in task_list:
     #     print(f"cancel: {task}")
     #     task.cancel()
-
+    if getattr(sampling_system, 'http_client', None):
+        await sampling_system.http_client.aclose()
 
 async def main(config):
+    # Pass our global sampling_system instance into the app state if needed, 
+    # but we can also just close it directly in the shutdown phase.
+    global sampling_system    
+    
     config = uvicorn.Config(
         "main:app",
         host=config.host,
@@ -2729,7 +2810,9 @@ async def main(config):
     await server.serve()
 
     print("starting shutdown...")
-    await shutdown()
+    # await shutdown()
+    from main import sampling_system as main_sys
+    await shutdown(main_sys)    
     print("done.")
 
 
