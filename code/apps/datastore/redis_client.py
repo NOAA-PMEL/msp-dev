@@ -1472,7 +1472,9 @@ class RedisClient(DBClient):
             
             key = f"registry:variableset-definition:{redis_id}"
             try:
+                self.logger.debug("redis_client: variableset O(1)", extra={"key": key})
                 doc = await self.client.json().get(key)
+                print(f"redis_client_doc: {doc}" )
                 if doc and "registration" in doc:
                     self.logger.debug("redis_client: variableset O(1) direct hit", extra={"key": key})
                     return {"results": [doc["registration"]]}
