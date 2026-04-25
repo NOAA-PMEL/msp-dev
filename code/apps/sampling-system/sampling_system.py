@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import logging
 import math
@@ -1372,7 +1373,7 @@ class SamplingSystem:
             self.logger.error("get_valid_variablemaps", extra={"reason": e})
             valid_variablesets = []
         
-        self.logger.debug("get_valid_variablemaps", extra={"valid_variable_sets": valid_variablesets})
+        # self.logger.debug("get_valid_variablemaps", extra={"valid_variable_sets": valid_variablesets})
         return valid_variablesets
     
     async def update_by_source(self, source_id:str, source_data: CloudEvent):
@@ -1406,7 +1407,7 @@ class SamplingSystem:
     async def update_variableset_by_source(self, variablemap:dict, source_id:str, source_data:CloudEvent):
 
         try:
-            print(f"update_variableset_by_source: variablemap = {variablemap}")
+            # print(f"update_variableset_by_source: variablemap = {variablemap}")
             self.logger.debug("update_variableset_by_source", extra={"source_id": source_id})
             source_time = source_data.data["variables"]["time"]["data"]
             self.logger.debug("update_variableset_by_source", extra={"source_time": source_time})
@@ -2121,7 +2122,8 @@ class SamplingSystem:
                 self.logger.debug("update_variablesets_by_time_index", extra={"map_type": map_type})
 
                 for vs_name, vs_data in target_variablesets[map_type].items():
-                    variableset = variablemap["variablesets"][vs_name].copy()
+                    # variableset = variablemap["variablesets"][vs_name].copy()
+                    variableset = copy.deepcopy(variablemap["variablesets"][vs_name])
                     for v_name, v_data in vs_data.items():
                         # self.logger.debug("update_variablesets_by_time_index", extra={"vs_name": vs_name, "vset": variableset})
                         # self.logger.debug("update_variablesets_by_time_index", extra={"variable_updates": variable_updates})
@@ -2202,8 +2204,17 @@ class SamplingSystem:
                         await self.send_to_mqtt(destpath, event)
 
             # Once processed, remove indexed data
-            self.logger.debug("update_variablesets_by_time_index", extra={"indexed_data": variablemap["indexed"][index_type][index_value]["data"]})
-            variablemap["indexed"][index_type][index_value]["data"].pop(target_time,None)
+            # self.logger.debug("update_variablesets_by_time_index", extra={"indexed_data": variablemap["indexed"][index_type][index_value]["data"]})
+            # variablemap["indexed"][index_type][index_value]["data"].pop(target_time,None)
+
+            # FIX: Clear all data older than or equal to the target_time to prevent 
+            # memory leaks from late-arriving MQTT messages
+            indexed_data = variablemap["indexed"][index_type][index_value]["data"]
+            stale_keys = [t for t in indexed_data.keys() if t <= target_time]
+            for t in stale_keys:
+                indexed_data.pop(t, None)
+
+
             # self.logger.debug("update_variablesets_by_time_index", extra={"indexed_data": variablemap["indexed"][index_type][index_value]["data"]})
 
 
