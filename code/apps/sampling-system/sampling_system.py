@@ -1411,7 +1411,7 @@ class SamplingSystem:
             source_time = source_data.data["variables"]["time"]["data"]
             self.logger.debug("update_variableset_by_source", extra={"source_time": source_time})
             for k,v in variablemap.items():
-                print(f"***variablemap[{k}] = {v}")
+                # print(f"***variablemap[{k}] = {v}")
                 if k == "source_id" and v == source_id:
                     print("***YES***")
             
@@ -1422,9 +1422,9 @@ class SamplingSystem:
             # print(f"update_variableset_by_source: {variablemap['sources']}")
             for src_xref in variablemap["sources"][source_id]:
                 self.logger.debug("update_variableset_by_source", extra={"source_xref": src_xref})
-                print(f"update_variableset_by_source: variablemap = {variablemap}")
-                for k in variablemap.keys():
-                    print(f"update_variableset_by_source: variablemap[{k}] = {variablemap[k]}")
+                # print(f"update_variableset_by_source: variablemap = {variablemap}")
+                # for k in variablemap.keys():
+                #     print(f"update_variableset_by_source: variablemap[{k}] = {variablemap[k]}")
                 variableset = variablemap["variablesets"][src_xref["variableset"]]
                 index_type = variableset["attributes"]["index_type"]["data"]
                 index_value = variableset["attributes"]["index_value"]["data"]
@@ -2025,10 +2025,10 @@ class SamplingSystem:
             update_type = time_index["update_type"]
             target_time = time_index["index_ready"]
 
-            for k,v in variablemap.items():
-                print(f"update_direct_variable_by_time_index: {k}: {v}")
+            # for k,v in variablemap.items():
+            #     print(f"update_direct_variable_by_time_index: {k}: {v}")
 
-            self.logger.debug("update_direct_variable_by_time_index", extra={"var_map": type(variablemap)})
+            # self.logger.debug("update_direct_variable_by_time_index", extra={"var_map": type(variablemap)})
 
             # variableset = variablemap["variablesets"][variableset_name]
             # indexed_data = variablemap["indexed"]["data"][time_index["index_ready"]][variableset_name]
@@ -2044,15 +2044,36 @@ class SamplingSystem:
 
 
             #TODO handle multi-d data
+            # if len(indexed_data) == 0:
+            #     if variableset_record["type"] in ["string", "str", "char"]:
+            #         val = ""
+            #     else:
+            #         val = None
+            # elif len(indexed_data) == 1:
+            #     val = indexed_data[0]
+            # else:
+            #     if variableset_record["type"] in ["string", "str", "char"]:
+            #         val = indexed_data[0]
+            #     else:
+            #         val = round(
+            #             sum(indexed_data)
+            #             / len(indexed_data),
+            #             3,
+            #         )
+
+            # variableset_record["variables"][variable_name]["data"] = val
+
             if len(indexed_data) == 0:
-                if variableset_record["type"] in ["string", "str", "char"]:
+                # FIX: Check specific variable type
+                if variableset_record["variables"][variable_name]["type"] in ["string", "str", "char"]:
                     val = ""
                 else:
                     val = None
             elif len(indexed_data) == 1:
                 val = indexed_data[0]
             else:
-                if variableset_record["type"] in ["string", "str", "char"]:
+                # FIX: Check specific variable type
+                if variableset_record["variables"][variable_name]["type"] in ["string", "str", "char"]:
                     val = indexed_data[0]
                 else:
                     val = round(
@@ -2062,6 +2083,8 @@ class SamplingSystem:
                     )
 
             variableset_record["variables"][variable_name]["data"] = val
+
+
         except Exception as e:
             self.logger.error("update_direct_variable_by_time_index", extra={"reason": e})
 
@@ -2100,8 +2123,8 @@ class SamplingSystem:
                 for vs_name, vs_data in target_variablesets[map_type].items():
                     variableset = variablemap["variablesets"][vs_name].copy()
                     for v_name, v_data in vs_data.items():
-                        self.logger.debug("update_variablesets_by_time_index", extra={"vs_name": vs_name, "vset": variableset})
-                        self.logger.debug("update_variablesets_by_time_index", extra={"variable_updates": variable_updates})
+                        # self.logger.debug("update_variablesets_by_time_index", extra={"vs_name": vs_name, "vset": variableset})
+                        # self.logger.debug("update_variablesets_by_time_index", extra={"variable_updates": variable_updates})
                         await variable_updates[map_type](
                             variablemap=variablemap,
                             variableset_name=vs_name,
@@ -2109,7 +2132,7 @@ class SamplingSystem:
                             variable_name=v_name,
                             time_index=time_index
                             )
-                        self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
+                        # self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
                     
                     if "time" not in variableset["variables"]:
                         variableset["variables"]["time"] = {
@@ -2377,6 +2400,9 @@ class SamplingSystem:
 
             except Exception as e:
                 self.logger.error("index_monitor", extra={"reason": e})
+            finally:
+                self.index_ready_buffer.task_done()
+
 
     # async def device_data_get(self, query: DataStoreQuery):
     # async def device_data_get(self, query: DataRequest):
