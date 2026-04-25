@@ -1010,6 +1010,7 @@ class SamplingSystem:
             try:
                 # 1. Fetch and Update VariableMaps
                 vmap_ids_resp = await self.submit_get(path="variablemap-definition/registry/ids/get")
+                print(f"sync_sampling_definitions_loop: vmap_ids: {vmap_ids_resp}")
                 if vmap_ids_resp and "results" in vmap_ids_resp:
                     # self.logger.debug("sync_sampling_definitions_loop", extra={"vm_ids", vmap_ids_resp})
                     for vmap_id in vmap_ids_resp["results"]:
@@ -1052,6 +1053,7 @@ class SamplingSystem:
 
                 # 2. Fetch and Update VariableSets (same as before)
                 vset_ids_resp = await self.submit_get(path="variableset-definition/registry/ids/get")
+                print(f"sync_sampling_definitions_loop: vset_ids: {vset_ids_resp}")
                 if vset_ids_resp and "results" in vset_ids_resp:
                     for vset_id in vset_ids_resp["results"]:
                         query = {"variableset_definition_id": vset_id}
