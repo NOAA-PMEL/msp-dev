@@ -1057,8 +1057,8 @@ class SamplingSystem:
                 self.logger.error("publish_local_definitions", extra={"reason": e})
             
             # Sleep for 5 minutes (300 seconds) before announcing the definitions again
-            await asyncio.sleep(300)    
-            # await asyncio.sleep(60) # just to start
+            # await asyncio.sleep(300)    
+            await asyncio.sleep(60) # just to start
     
     async def get_from_mqtt_loop(self):
         reconnect = 10
