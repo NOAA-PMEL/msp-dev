@@ -1387,7 +1387,7 @@ class SamplingSystem:
             vm_list = await self.get_valid_variablemaps(target_time=source_time)
             # print(f"here:5 {vm_list}")
             for vm in vm_list:
-                print(f"here:6 {vm}")
+                # print(f"here:6 {vm}")
                 # self.logger.debug("update_by_source", extra={"vm": vm})
                 # print("here:7")
                 variablemap = vm["variablemap"]
@@ -1453,7 +1453,7 @@ class SamplingSystem:
                     #     variablemap["indexed"]["data"][index_type][index_value][indexed_time] = dict()
                     if indexed_time not in variablemap["indexed"][index_type][index_value]["data"]:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time] = dict()
-                    print(f"update_variableset_by_source: variablemap = {variablemap}")
+                    # print(f"update_variableset_by_source: variablemap = {variablemap}")
                     
                     # if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"]["data"][indexed_time]:
                     #     variablemap["indexed"]["data"][indexed_time][vs_name] = dict()
@@ -1466,7 +1466,7 @@ class SamplingSystem:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type] = dict()
                     if vs_name not in variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type]:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name] = dict()
-                    print(f"update_variableset_by_source: variablemap = {variablemap}")
+                    # print(f"update_variableset_by_source: variablemap = {variablemap}")
 
                     # if src_xref["map_type"] == "direct":
                     #     # if "direct" not in variablemap["indexed"]["data"][indexed_time][vs_name]:
@@ -1480,17 +1480,17 @@ class SamplingSystem:
                     if map_type == "direct":
                         print(f"update_variableset_by_source: vs_name = {vs_name}")
                         direct_map = variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name]
-                        self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
+                        # self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
                         if (v_name:=src_xref["variable"]) not in direct_map:
                             direct_map[v_name] = []
-                        self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
-                        self.logger.debug("update_variableset_by_source", extra={"variablemap": variablemap["variablesets"]})
+                        # self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
+                        # self.logger.debug("update_variableset_by_source", extra={"variablemap": variablemap["variablesets"]})
                         source_v = variablemap["variablesets"][vs_name]["variables"][v_name]["attributes"]["source_variable"]["data"]
-                        self.logger.debug("update_variableset_by_source", extra={"source_data": source_data.data})
+                        # self.logger.debug("update_variableset_by_source", extra={"source_data": source_data.data})
                         direct_map[v_name].append(
                             source_data.data["variables"][source_v]["data"]
                         )
-                        self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
+                        # self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
 
                     # self.logger.debug("update_variableset_by_source", extra={"vm": variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]})
                     # print(f'!!!source_data: {variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]}')
@@ -1648,12 +1648,12 @@ class SamplingSystem:
             )
 
     def get_timebase_period(self, dt_string: str, timebase: int) -> str:
-        self.logger.debug("get_timebase_period", extra={"dt_string": dt_string, "timebase": timebase})
+        # self.logger.debug("get_timebase_period", extra={"dt_string": dt_string, "timebase": timebase})
         dt = string_to_datetime(dt_string)
-        self.logger.debug("get_timebase_period", extra={"dt": dt})
+        # self.logger.debug("get_timebase_period", extra={"dt": dt})
         dt_period = round_to_nearest_N_seconds(dt=dt, Nsec=timebase)
-        self.logger.debug("get_timebase_period", extra={"dt_period": dt_period})
-        self.logger.debug("get_timebase_period", extra={"period": datetime_to_string(dt_period)})
+        # self.logger.debug("get_timebase_period", extra={"dt_period": dt_period})
+        # self.logger.debug("get_timebase_period", extra={"period": datetime_to_string(dt_period)})
         if dt_period:
             return datetime_to_string(dt_period)
         else:
@@ -2165,7 +2165,7 @@ class SamplingSystem:
             #                 #     continue
 
 
-                    self.logger.debug("update_variablesets_by_time_index", extra={"vs_record": variableset})
+                    # self.logger.debug("update_variablesets_by_time_index", extra={"vs_record": variableset})
                     
                     varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
 
@@ -2204,7 +2204,7 @@ class SamplingSystem:
             # Once processed, remove indexed data
             self.logger.debug("update_variablesets_by_time_index", extra={"indexed_data": variablemap["indexed"][index_type][index_value]["data"]})
             variablemap["indexed"][index_type][index_value]["data"].pop(target_time,None)
-            self.logger.debug("update_variablesets_by_time_index", extra={"indexed_data": variablemap["indexed"][index_type][index_value]["data"]})
+            # self.logger.debug("update_variablesets_by_time_index", extra={"indexed_data": variablemap["indexed"][index_type][index_value]["data"]})
 
 
             #     if update_type == "direct" and update_type in indexed_data:
@@ -2341,12 +2341,12 @@ class SamplingSystem:
                 target_time = update["index_ready"]
 
                 vm_list = await self.get_valid_variablemaps(target_time=target_time)
-                self.logger.debug("index_monitor", extra={"len": len(vm_list), "vm_list": vm_list})
+                # self.logger.debug("index_monitor", extra={"len": len(vm_list), "vm_list": vm_list})
                 for vm in vm_list:
                     # await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
-                    print(f"index_monitor:vm = {vm}")
+                    # print(f"index_monitor:vm = {vm}")
                     variablemap = vm["variablemap"]
-                    print(f"index_monitor: variablemap = {variablemap}")
+                    # print(f"index_monitor: variablemap = {variablemap}")
 
                     index_type = update["index_type"]
                     if index_type == "time":
