@@ -84,7 +84,7 @@ class Registrar:
         self.logger.setLevel(logging.DEBUG)
         self.config = Settings()
 
-        self.datastore_url = f"datastore.{self.config.daq_id}-system"
+        self.datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
 
         self.task_list = []
         self.task_list.append(self.get_device_definitions_loop())
