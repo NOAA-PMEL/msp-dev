@@ -114,9 +114,24 @@ L.debug("main: here:2")
 # datastore = Datastore()
 print("starting sampling_conditions")
 # operations_conditions = OperationsConditions()
-manager = SamplingConditionsManager()
-print(f"sampling_conditions started: {manager}")
+# manager = SamplingConditionsManager()
+# print(f"sampling_conditions started: {manager}")
 
+manager = None
+
+@app.on_event("startup")
+async def start_system():
+    global manager
+    manager = SamplingConditionsManager()
+    await manager.setup()
+    L.info("SamplingConditionsManager initialized and background tasks started.")
+
+@app.on_event("shutdown")
+async def shutdown_system():
+    global manager
+    if manager:
+        await manager.close_http_client()
+        L.info("SamplingConditionsManager HTTP client closed safely.")
 
 @app.get("/")
 async def root():
