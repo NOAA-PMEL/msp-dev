@@ -124,6 +124,14 @@ async def start_system():
     await sampling_system.setup()
     L.info("SamplingSystem initialized and background tasks started.")
 
+# FIX: Add graceful shutdown handler to close HTTP/MQTT clients
+@app.on_event("shutdown")
+async def shutdown_system():
+    global sampling_system
+    if sampling_system:
+        await sampling_system.close_http_client()
+        L.info("SamplingSystem HTTP client closed safely.")
+        
 @app.get("/")
 async def root():
     return {"message": "Hello World from SamplingSystem"}
