@@ -80,7 +80,7 @@ class SamplingOperationsManagerConfig(BaseSettings):
 
     system_init_control: str = "auto"
     system_init_mode: str | None = None
-
+    is_primary_controller: bool = True
     class Config:
         env_prefix = "SAMPLING_OPERATIONS_"
         case_sensitive = False
@@ -99,7 +99,7 @@ class SamplingAction:
         self.config = config
 
         # buffers
-        self.data_buffer = asyncio.Queue(maxsize=60)
+        self.data_buffer = asyncio.Queue(maxsize=500)
         # self.source_buffer = source_buffer
         self.target_buffer = target_buffer
 
@@ -198,8 +198,13 @@ class SamplingAction:
 
     async def update(self, data: CloudEvent):
         self.logger.debug("update", extra={"update_data": data})
-        await self.data_buffer.put(data)
-
+        try:
+            self.data_buffer.put_nowait(data)
+        except asyncio.QueueFull:
+            self.logger.warning(f"Action {self.config['metadata']['name']} buffer full. Dropping oldest.")
+            self.data_buffer.get_nowait()
+            self.data_buffer.task_done()
+            self.data_buffer.put_nowait(data)
     async def update_monitor(self):
 
         while True:
@@ -238,7 +243,7 @@ class SamplingMode:
         self.config = config
 
         # buffers
-        self.update_buffer = asyncio.Queue(maxsize=60)
+        self.update_buffer = asyncio.Queue(maxsize=500)
         self.status_buffer = status_buffer
         self.actions_buffer = actions_buffer
         self.transitions_buffer = transitions_buffer
@@ -317,7 +322,13 @@ class SamplingMode:
 
     async def update(self, status):
         self.logger.debug("update", extra={"update_data": status})
-        await self.update_buffer.put(status)
+        try:
+            self.update_buffer.put_nowait(status)
+        except asyncio.QueueFull:
+            self.logger.warning(f"Mode {self.config['metadata']['name']} buffer full. Dropping oldest.")
+            self.update_buffer.get_nowait()
+            self.update_buffer.task_done()
+            self.update_buffer.put_nowait(status)
 
     async def update_monitor(self):
 
@@ -520,11 +531,11 @@ class SamplingOperationsManager:
         # self.sampling_states = dict()
         self.sampling_conditions = {"conditions": dict(), "sources": {}}
 
-        self.status_buffer = asyncio.Queue(maxsize=60)
-        self.actions_buffer = asyncio.Queue(maxsize=60)
-        self.transitions_buffer = asyncio.Queue(maxsize=60)
+        self.status_buffer = asyncio.Queue(maxsize=2000)
+        self.actions_buffer = asyncio.Queue(maxsize=2000)
+        self.transitions_buffer = asyncio.Queue(maxsize=2000)
 
-        self.actions_target_buffer = asyncio.Queue(maxsize=60)
+        self.actions_target_buffer = asyncio.Queue(maxsize=2000)
 
         # self.sampling_actions = dict()
 
@@ -547,24 +558,61 @@ class SamplingOperationsManager:
         # self.index_monitor_tasks = dict()
 
         self.config = SamplingOperationsManagerConfig()
+        self.http_client = None
         self.configure()
         # print("here:7")
 
-        self.http_client = None
 
-        self.mqtt_buffer = asyncio.Queue()
+        # self.mqtt_buffer = asyncio.Queue()
+        # asyncio.create_task(self.get_from_mqtt_loop())
+        # asyncio.create_task(self.handle_mqtt_buffer())
+        # asyncio.create_task(self.mode_status_monitor())
+        # asyncio.create_task(self.mode_action_monitor())
+        # asyncio.create_task(self.mode_transition_monitor())
+        # asyncio.create_task(self.system_mode_loop())
+        # # asyncio.create_tasks(self.sampling_mode_monitor())
+        # # asyncio.create_tasks(self.sampling_state_monitor())
+        # # asyncio.create_task(self.sampling_condition_monitor())
+        # # asyncio.create_tasks(self.sampling_action_monitor())
+
+        # # print("SamplingOperationsManager: init: here:8")
+
+    async def setup(self):
+        """Asynchronously initialize buffers, clients, and loops."""
+        self.logger.info("Running SamplingOperationsManager async setup...")
+        
+        self.status_buffer = asyncio.Queue(maxsize=2000)
+        self.actions_buffer = asyncio.Queue(maxsize=2000)
+        self.transitions_buffer = asyncio.Queue(maxsize=2000)
+        self.actions_target_buffer = asyncio.Queue(maxsize=2000)
+        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
+
+        self.init_modes()
+
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
         asyncio.create_task(self.mode_status_monitor())
         asyncio.create_task(self.mode_action_monitor())
         asyncio.create_task(self.mode_transition_monitor())
         asyncio.create_task(self.system_mode_loop())
-        # asyncio.create_tasks(self.sampling_mode_monitor())
-        # asyncio.create_tasks(self.sampling_state_monitor())
-        # asyncio.create_task(self.sampling_condition_monitor())
-        # asyncio.create_tasks(self.sampling_action_monitor())
+        
+        # FIX: Start Sync and Publish loops
+        asyncio.create_task(self.publish_local_definitions())
+        asyncio.create_task(self.sync_sampling_definitions_loop())
 
-        # print("SamplingOperationsManager: init: here:8")
+    def open_http_client(self):
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
+
+    async def close_http_client(self):
+        if getattr(self, 'http_client', None):
+            await self.http_client.aclose()
+            self.http_client = None
 
     def configure(self):
         # set clients
@@ -765,9 +813,9 @@ class SamplingOperationsManager:
     #     if mode_entry["instance"] is None:
     #         mode = self.create_mode(mode_entry["config"])
 
-    def open_http_client(self):
-        # create a new client for each request
-        self.http_client = httpx.AsyncClient()
+    # def open_http_client(self):
+    #     # create a new client for each request
+    #     self.http_client = httpx.AsyncClient()
 
     async def send_event(self, ce):
         try:
@@ -825,61 +873,87 @@ class SamplingOperationsManager:
             self.logger.error("submit_request", extra={"reason": e})
             return {}
 
+    # async def get_from_mqtt_loop(self):
+    #     reconnect = 10
+    #     while True:
+    #         try:
+    #             self.logger.debug("listen", extra={"config": self.config})
+    #             client_id = str(ULID())
+    #             async with Client(
+    #                 self.config.mqtt_broker,
+    #                 port=self.config.mqtt_port,
+    #                 identifier=client_id,
+    #             ) as self.client:
+    #                 # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+    #                 for topic in self.config.mqtt_topic_subscriptions.split(","):
+    #                     # print(f"run - topic: {topic.strip()}")
+    #                     # self.logger.debug("run", extra={"topic": topic})
+    #                     if topic.strip():
+    #                         self.logger.debug(
+    #                             "subscribe", extra={"topic": topic.strip()}
+    #                         )
+    #                         await self.client.subscribe(
+    #                             f"$share/samplingconditions/{topic.strip()}"
+    #                         )
+
+    #                     # await client.subscribe(config.mqtt_topic_subscription, qos=2)
+    #                 # async with client.messages() as messages:
+    #                 async for message in self.client.messages:  # () as messages:
+
+    #                     try:
+    #                         ce = from_json(message.payload)
+    #                         topic = message.topic.value
+    #                         ce["sourcepath"] = topic
+    #                         await self.mqtt_buffer.put(ce)
+    #                         self.logger.debug(
+    #                             "get_from_mqtt_loop",
+    #                             extra={"cetype": ce["type"], "topic": topic},
+    #                         )
+    #                     except Exception as e:
+    #                         self.logger.error("get_from_mqtt_loop", extra={"reason": e})
+    #                     # try:
+    #                     #     self.logger.debug("listen", extra={"payload_type": type(ce), "ce": ce})
+    #                     #     await self.send_to_knbroker(ce)
+    #                     # except Exception as e:
+    #                     #     self.logger.error("Error sending to knbroker", extra={"reason": e})
+    #         except MqttError as error:
+    #             self.logger.error(
+    #                 f"{error}. Trying again in {reconnect} seconds",
+    #                 extra={
+    #                     k: v
+    #                     for k, v in self.config.dict().items()
+    #                     if k.lower().startswith("mqtt_")
+    #                 },
+    #             )
+    #             await asyncio.sleep(reconnect)
+    #         finally:
+    #             await asyncio.sleep(0.0001)
+
     async def get_from_mqtt_loop(self):
         reconnect = 10
         while True:
             try:
-                self.logger.debug("listen", extra={"config": self.config})
                 client_id = str(ULID())
-                async with Client(
-                    self.config.mqtt_broker,
-                    port=self.config.mqtt_port,
-                    identifier=client_id,
-                ) as self.client:
-                    # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as self.client:
                     for topic in self.config.mqtt_topic_subscriptions.split(","):
-                        # print(f"run - topic: {topic.strip()}")
-                        # self.logger.debug("run", extra={"topic": topic})
                         if topic.strip():
-                            self.logger.debug(
-                                "subscribe", extra={"topic": topic.strip()}
-                            )
-                            await self.client.subscribe(
-                                f"$share/samplingconditions/{topic.strip()}"
-                            )
+                            await self.client.subscribe(f"$share/samplingoperations/{topic.strip()}")
 
-                        # await client.subscribe(config.mqtt_topic_subscription, qos=2)
-                    # async with client.messages() as messages:
-                    async for message in self.client.messages:  # () as messages:
-
+                    async for message in self.client.messages:
+                        topic = message.topic.value
+                        
+                        # FIX: Discard reflection loop waste
+                        if "sampling-operations" in topic:
+                            continue
+                            
                         try:
                             ce = from_json(message.payload)
-                            topic = message.topic.value
                             ce["sourcepath"] = topic
                             await self.mqtt_buffer.put(ce)
-                            self.logger.debug(
-                                "get_from_mqtt_loop",
-                                extra={"cetype": ce["type"], "topic": topic},
-                            )
                         except Exception as e:
-                            self.logger.error("get_from_mqtt_loop", extra={"reason": e})
-                        # try:
-                        #     self.logger.debug("listen", extra={"payload_type": type(ce), "ce": ce})
-                        #     await self.send_to_knbroker(ce)
-                        # except Exception as e:
-                        #     self.logger.error("Error sending to knbroker", extra={"reason": e})
+                            self.logger.error("get_from_mqtt_loop JSON error", extra={"reason": e})
             except MqttError as error:
-                self.logger.error(
-                    f"{error}. Trying again in {reconnect} seconds",
-                    extra={
-                        k: v
-                        for k, v in self.config.dict().items()
-                        if k.lower().startswith("mqtt_")
-                    },
-                )
                 await asyncio.sleep(reconnect)
-            finally:
-                await asyncio.sleep(0.0001)
 
     async def handle_mqtt_buffer(self):
         while True:
@@ -900,6 +974,95 @@ class SamplingOperationsManager:
             await asyncio.sleep(0.0001)
             self.mqtt_buffer.task_done()
 
+    async def handle_manual_action(self, kind: str, name: str):
+        """Pushes a manual action request into the action buffer."""
+        action = {
+            "action": {"kind": kind, "name": name},
+            "is_manual_override": True
+        }
+        await self.actions_buffer.put(action)
+
+    async def publish_local_definitions(self):
+        await asyncio.sleep(5)
+        while True:
+            try:
+                # Group all local definitions
+                definitions = [
+                    (self.sampling_actions, "action"),
+                    (self.sampling_modes, "samplingmode")
+                ]
+                
+                for registry_dict, resource_name in definitions:
+                    for kind, item_dict in registry_dict.items():
+                        # Exclude SystemMode from samplingmode route if they share the dict
+                        if resource_name == "samplingmode" and kind == "SystemMode":
+                            res_type = "systemmode"
+                        else:
+                            res_type = resource_name
+                            
+                        for name, data_obj in item_dict.items():
+                            config = data_obj["config"]
+                            event = SamplingEvent.create_definition_registry_update(
+                                resource=res_type,
+                                source=f"envds.{self.config.daq_id}.sampling-operations",
+                                data={res_type: config}
+                            )
+                            event["destpath"] = f"envds/{self.config.daq_id}/{res_type}-definition/registry/update"
+                            await self.send_event(event)
+                            
+            except Exception as e:
+                self.logger.error("publish_local_definitions", extra={"reason": e})
+            await asyncio.sleep(60)
+
+    async def sync_sampling_definitions_loop(self):
+        """Syncs Actions, SystemModes, and SamplingModes dynamically."""
+        resources_to_sync = ["action", "systemmode", "samplingmode"]
+        while True:
+            try:
+                for res in resources_to_sync:
+                    ids_resp = await self.submit_get(path=f"{res}-definition/registry/ids/get")
+                    if ids_resp and "results" in ids_resp:
+                        
+                        async def fetch_def(def_id):
+                            return await self.submit_request(
+                                path=f"{res}-definition/registry/get", 
+                                query={"name": def_id}
+                            )
+
+                        responses = await asyncio.gather(*(fetch_def(did) for did in ids_resp["results"]))
+
+                        for resp in responses:
+                            if resp and "results" in resp and resp["results"]:
+                                config = resp["results"][0]
+                                # Note: You would route 'config' to an abstraction of your local parsing 
+                                # logic here (e.g. self.load_mode(config) or self.load_action(config)) 
+                                # matching the setup currently residing in your configure() method.
+                                
+            except Exception as e:
+                self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+            await asyncio.sleep(60)
+
+    # async def mode_action_monitor(self):
+    #     while True:
+    #         try:
+    #             action = await self.actions_buffer.get()
+
+    #             kind = action["action"]["kind"]
+    #             name = action["action"]["name"]
+
+    #             action_result = await self.sampling_actions[kind][name]["action"].run()
+
+    #             self.logger.debug(
+    #                 "mode_action_monitor - build settings request",
+    #                 extra={"action_result": action_result},
+    #             )
+
+    #         except Exception as e:
+    #             self.logger.error("mode_action_monitor", extra={"reason": e})
+
+    #         await asyncio.sleep(0.001)
+    #         self.action_buffer.task_done()
+
     async def mode_action_monitor(self):
         while True:
             try:
@@ -907,19 +1070,28 @@ class SamplingOperationsManager:
 
                 kind = action["action"]["kind"]
                 name = action["action"]["name"]
+                is_manual = action.get("is_manual_override", False)
 
+                # FIX: Action Suppression Logic (Master/Monitor Control)
+                if not is_manual:
+                    if self.system_control == "manual":
+                        self.logger.debug(f"Skipping automatic action {name}: System is in MANUAL mode.")
+                        self.actions_buffer.task_done()
+                        continue
+                    if not self.config.is_primary_controller:
+                        self.logger.debug(f"Skipping automatic action {name}: This node is a MONITOR only.")
+                        self.actions_buffer.task_done()
+                        continue
+
+                self.logger.info(f"Executing Action: {name} (Manual: {is_manual})")
                 action_result = await self.sampling_actions[kind][name]["action"].run()
 
-                self.logger.debug(
-                    "mode_action_monitor - build settings request",
-                    extra={"action_result": action_result},
-                )
+                self.logger.debug("mode_action_monitor - build settings request", extra={"action_result": action_result})
 
             except Exception as e:
                 self.logger.error("mode_action_monitor", extra={"reason": e})
-
-            await asyncio.sleep(0.001)
-            self.action_buffer.task_done()
+            finally:
+                self.actions_buffer.task_done()
 
     async def mode_transition_monitor(self):
         while True:
