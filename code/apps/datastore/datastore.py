@@ -39,6 +39,7 @@ from envds.util.util import (
 
 from envds.daq.event import DAQEvent
 from envds.daq.types import DAQEventType as det
+from envds.sampling.types import SamplingEventType as sampet
 
 # import pymongo
 
@@ -263,12 +264,14 @@ class Datastore:
         while True:
             try:
                 ce = await self.mqtt_buffer.get()
-
+                self.logger.debug("handle_mqtt_buffer", extra={"ce-type": ce["type"]})
                 if ce["type"] == "envds.data.update":
                     await self.device_data_update(ce) 
                 elif ce["type"] == "envds.controller.data.update":
                     await self.controller_data_update(ce)
-                elif ce["type"] == "envds.variableset.data.update":
+                # elif ce["type"] == "envds.variableset.data.update":
+                elif ce["type"] == sampet.variableset_data_update():
+                    self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
                     await self.variableset_data_update(ce)           
 
             except Exception as e:
@@ -1367,19 +1370,22 @@ class Datastore:
             database = "data"
             collection = "variableset"
             
+            self.logger.debug("variableset_data_update")
             data = ce.data
+            self.logger.debug("variableset_data_update", extra={"ce-data": data})
             attributes = data.get("attributes", {})
             dimensions = data.get("dimensions", {})
             variables = data.get("variables", {})
-
+            self.logger.debug("variableset_data_update", extra={"atts": attributes})
             # The time is attached as a variable object in the variablesets loop
             timestamp_str = variables.get("time", {}).get("data")
             timestamp = string_to_timestamp(timestamp_str) if timestamp_str else 0.0
 
             # Reconstruct ID from the cloud event source (e.g., envds.mspbase01.variableset.MSPPayload03::main)
             source_parts = ce.get("source", "").split(".")
+            self.logger.debug("variableset_data_update", extra={"source_parts": source_parts})
             variableset_id = source_parts[-1] if len(source_parts) > 0 else "unknown"
-            
+            self.logger.debug("variableset_data_update", extra={"vset_id": data})
             request = VariableSetDataUpdate(
                 variableset_id=variableset_id,
                 variablemap_id=attributes.get("variablemap_id", ""),
@@ -1389,7 +1395,7 @@ class Datastore:
                 dimensions=dimensions,
                 variables=variables,
             )
-
+            self.logger.debug("variableset_data_update", extra={"req": request})
             if self.db_client:
                 await self.db_client.variableset_data_update(
                     database=database,
