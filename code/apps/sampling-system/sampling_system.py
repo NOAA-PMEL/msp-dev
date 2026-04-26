@@ -159,6 +159,7 @@ class SamplingSystem:
         # FIX: Apply backpressure bounds to queues
         self.mqtt_buffer = asyncio.Queue(maxsize=2000)
         self.index_ready_buffer = asyncio.Queue(maxsize=1000)
+        self.outbound_mqtt_buffer = asyncio.Queue(maxsize=2000)
 
         # Safely launch tasks on Uvicorn's active event loop
         asyncio.create_task(self.get_from_mqtt_loop())
@@ -166,6 +167,7 @@ class SamplingSystem:
         asyncio.create_task(self.index_monitor())
         asyncio.create_task(self.publish_local_definitions())
         asyncio.create_task(self.sync_sampling_definitions_loop())
+        asyncio.create_task(self.outbound_mqtt_worker())
         self.logger.info("SamplingSystem background tasks started successfully.")
 
     # --- Add/Update these methods to match the Registrar pattern ---
@@ -869,12 +871,35 @@ class SamplingSystem:
             print("error", e)
         await asyncio.sleep(0.01)
 
+    async def outbound_mqtt_worker(self):
+        """Dedicated worker to publish messages over a single, persistent MQTT connection."""
+        reconnect = 5
+        while True:
+            try:
+                client_id = f"outbound-{str(ULID())}"
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as client:
+                    self.logger.info("Outbound MQTT worker connected.")
+                    
+                    while True:
+                        # Grab the topic and payload from the buffer
+                        topic, payload = await self.outbound_mqtt_buffer.get()
+                        
+                        # Publish instantly over the already-open socket
+                        await client.publish(topic, payload=payload)
+                        
+                        self.outbound_mqtt_buffer.task_done()
+                        
+            except MqttError as e:
+                self.logger.error(f"Outbound MQTT connection dropped: {e}. Reconnecting...")
+                await asyncio.sleep(reconnect)
+
     async def send_to_mqtt(self, topic: str, ce: CloudEvent):
         """Publishes a CloudEvent directly to the local MQTT broker."""
         try:
             payload = to_json(ce) # Convert CloudEvent to JSON string
-            async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
-                await client.publish(topic, payload=payload)
+            # async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
+            #     await client.publish(topic, payload=payload)
+            await self.outbound_mqtt_buffer.put((topic, payload))
         except Exception as e:
             self.logger.error("send_to_mqtt error", extra={"reason": e})
 
