@@ -1308,7 +1308,7 @@ class SamplingSystem:
                         # FIX: Stop the app from processing its own outbound messages
                         if "variableset" in topic:
                             continue
-                        
+
                         try:
                             ce = from_json(message.payload)
                             topic = message.topic.value
@@ -1532,13 +1532,15 @@ class SamplingSystem:
                         current = ""
                         for vm_valid_config_time, vm_obj in vm.items():
                             if target_time > vm_valid_config_time and vm_valid_config_time > current:
-                                # FIX: Fast-fail if this map doesn't care about the incoming source
+                                # Fast-fail if this map doesn't care about the incoming source
                                 if source_id and source_id not in vm_obj["sources"]:
                                     continue
                                 current = vm_valid_config_time
                         if current:
                             valid_variablesets.append({
-                                "variablemap": vm[current]["variablemap"]
+                                # FIX: Pass the entire container object (vm[current]), 
+                                # which includes ["indexed"], ["sources"], and ["variablemap"]
+                                "variablemap": vm[current] 
                             })
         except Exception as e:
             self.logger.error("get_valid_variablemaps", extra={"reason": e})
@@ -2531,12 +2533,13 @@ class SamplingSystem:
         target_time = time_index["index_ready"]
 
         try:
-            # FIX: If the target time isn't in the data, we STILL must drop to the 'finally' 
-            # block to clean up any stale keys from older intervals.
-            if target_time not in variablemap["indexed"][index_type][index_value]["data"]:
+            # Safely check if the data exists before processing
+            indexed_data = variablemap.get("indexed", {}).get(index_type, {}).get(index_value, {}).get("data", {})
+            
+            if target_time not in indexed_data:
                 return
 
-            target_variablesets = variablemap["indexed"][index_type][index_value]["data"][target_time]
+            target_variablesets = indexed_data[target_time]
 
             for map_type in ["direct", "priority", "aggregate", "calculated"]:
                 if map_type not in target_variablesets:
@@ -2546,7 +2549,6 @@ class SamplingSystem:
                     variableset = json.loads(json.dumps(variablemap["variablesets"][vs_name]))
                     
                     for v_name, v_data in vs_data.items():
-                        # FIX: Isolate variable updates so one bad mapping doesn't kill the loop
                         try:
                             await variable_updates[map_type](
                                 variablemap=variablemap,
@@ -2583,13 +2585,17 @@ class SamplingSystem:
             self.logger.error("update_variablesets_by_time_index", extra={"reason": e})
             
         finally:
-            # FIX: Placed in a finally block to absolutely GUARANTEE memory cleanup runs
-            # even if exceptions occur or the target_time was missing.
+            # FIX: Use safe .get() traversal to ensure KeyError is completely impossible here
             try:
-                indexed_data = variablemap["indexed"][index_type][index_value]["data"]
-                stale_keys = [t for t in list(indexed_data.keys()) if t <= target_time]
-                for t in stale_keys:
-                    indexed_data.pop(t, None)
+                indexed_dict = variablemap.get("indexed", {})
+                type_dict = indexed_dict.get(index_type, {})
+                val_dict = type_dict.get(index_value, {})
+                indexed_data = val_dict.get("data")
+                
+                if indexed_data:
+                    stale_keys = [t for t in list(indexed_data.keys()) if t <= target_time]
+                    for t in stale_keys:
+                        indexed_data.pop(t, None)
             except Exception as clean_e:
                 self.logger.error("cleanup error", extra={"reason": clean_e})
 
