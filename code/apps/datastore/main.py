@@ -124,6 +124,13 @@ async def start_system():
     await datastore.setup()
     L.info("Datastore initialized and background tasks started.")
 
+@app.on_event("shutdown")
+async def shutdown_system():
+    global datastore
+    if datastore:
+        await datastore.close_http_client()
+        L.info("Datastore HTTP client closed safely.")
+        
 def get_response_event(msg, status):
     # response_data = {"processed_data": event.data}
     try:

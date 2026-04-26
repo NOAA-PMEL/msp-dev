@@ -149,6 +149,9 @@ class Datastore:
         self.db_client = None
         self.erddap_client = None
         self.config = DatastoreConfig()
+
+        self.http_client = None
+
         self.configure()
 
         # self.mqtt_buffer = asyncio.Queue()
@@ -159,7 +162,8 @@ class Datastore:
         self.logger.info("Running Datastore async setup...")
         
         # Start background tasks safely inside the event loop
-        self.mqtt_buffer = asyncio.Queue()
+        # FIX: Add maxsize to prevent infinite memory growth (backpressure)
+        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
 
@@ -190,22 +194,37 @@ class Datastore:
             # setup erddap client
             pass
 
+    def open_http_client(self):
+        self.logger.debug("open_http_client")
+        # You can add limits here if desired: httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=50))
+        self.http_client = httpx.AsyncClient()
+
+    async def close_http_client(self):
+        if self.http_client:
+            await self.http_client.aclose()
+            self.http_client = None
+
     async def send_event(self, ce):
         try:
             self.logger.debug(ce)#, extra=template)
+
+            # Lazy initialization mirroring registrar.py
+            if not self.http_client:
+                self.open_http_client()
             try:
                 timeout = httpx.Timeout(5.0, read=0.1)
                 headers, body = to_structured(ce)
                 self.logger.debug("send_event", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
                 # send to knative broker
-                async with httpx.AsyncClient() as client:
-                    r = await client.post(
-                        self.config.knative_broker,
-                        headers=headers,
-                        data=body,
-                        timeout=timeout
-                    )
-                    r.raise_for_status()
+                # async with httpx.AsyncClient() as client:
+                    # r = await client.post(
+                r = await self.http_client.post(
+                    self.config.knative_broker,
+                    headers=headers,
+                    data=body,
+                    timeout=timeout
+                )
+                r.raise_for_status()
             except InvalidStructuredJSON:
                 self.logger.error(f"INVALID MSG: {ce}")
             except httpx.TimeoutException:
@@ -264,7 +283,8 @@ class Datastore:
         while True:
             try:
                 ce = await self.mqtt_buffer.get()
-                self.logger.debug("handle_mqtt_buffer", extra={"ce-type": ce["type"]})
+                if "variable" in ce["type"]:
+                    self.logger.debug("handle_mqtt_buffer", extra={"ce-type": ce["type"]})
                 if ce["type"] == "envds.data.update":
                     await self.device_data_update(ce) 
                 elif ce["type"] == "envds.controller.data.update":
@@ -277,7 +297,7 @@ class Datastore:
             except Exception as e:
                 L.error("handle_mqtt_buffer", extra={"reason": e})
             
-            await asyncio.sleep(0.0001)
+            # await asyncio.sleep(0.0001)
 
     def find_one(self):  # , database: str, collection: str, query: dict):
         # self.connect()
