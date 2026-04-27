@@ -89,7 +89,7 @@ initial_variable_map = {
 # def get_variablemap_def(device_id: str, device_type: str="sensor"):
 def get_variablemap_def(variableset_id: str):
     
-    # query = {"device_type": device_type, "device_id": device_id}
+    query = {"variableset_id": variableset_id}
     # url = f"http://{datastore_url}/device/data/get/"
     # url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
     url = f"http://{datastore_url}/variableset/data/get/"
@@ -97,9 +97,9 @@ def get_variablemap_def(variableset_id: str):
     L.debug(f"variablemap-definition-get: {url}")
 
     try:
-        timeout = httpx.Timeout(10.0, read=None)
-        # response = httpx.get(url, params=query, timeout=timeout)
-        response = httpx.get(url)
+        timeout = httpx.Timeout(10.0, read=10.0)
+        response = httpx.get(url, params=query, timeout=timeout)
+        # response = httpx.get(url)
         results = response.json()
         L.debug(f"variablemap_results: {results}")
         if "results" in results and results["results"]:
