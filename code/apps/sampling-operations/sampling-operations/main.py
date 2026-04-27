@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 # import json
 import logging
 
-from fastapi import FastAPI, Request, Query, status  # , APIRouter
+from fastapi import FastAPI, Request, Query, status, Response  # , APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -174,6 +174,16 @@ async def requirement_status_update(request: Request):
         L.error("requirement_status_update", extra={"reason": e})
         return "", 204
 
+@app.post("/system/transition/remote_request/")
+async def remote_transition_request(
+    target_daq_id: str = Query(..., description="e.g., payload01"), 
+    kind: str = Query(..., description="SystemMode or SamplingMode"), 
+    name: str = Query(..., description="e.g., startup, normal")
+):
+    if manager:
+        await manager.send_remote_transition_request(target_daq_id, kind, name)
+        L.info(f"Remote transition requested for {target_daq_id}: {kind} -> {name}")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # @app.get("/device/data/get/")
 # # async def device_data_get(query: Annotated[DataStoreQuery, Query()]):

@@ -603,6 +603,7 @@ class SamplingOperationsManager:
         # FIX: Start Sync and Publish loops
         asyncio.create_task(self.publish_local_definitions())
         asyncio.create_task(self.sync_sampling_definitions_loop())
+        asyncio.create_task(self.action_target_monitor())
 
     def open_http_client(self):
         self.http_client = httpx.AsyncClient(
@@ -955,24 +956,44 @@ class SamplingOperationsManager:
             except MqttError as error:
                 await asyncio.sleep(reconnect)
 
+    # async def handle_mqtt_buffer(self):
+    #     while True:
+    #         try:
+    #             ce = await self.mqtt_buffer.get()
+    #             self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
+    #             if ce["type"] == sampet.variableset_data_update():
+    #                 self.logger.debug(
+    #                     "handle_mqtt_buffer", extra={"ce-type": ce["type"]}
+    #                 )
+    #                 await self.requirement_status_update(ce)
+    #             # elif ce["type"] == "envds.controller.data.update":
+    #             #     await self.controller_data_update(ce)
+
+    #         except Exception as e:
+    #             self.logger.error("handle_mqtt_buffer", extra={"reason": e})
+
+    #         await asyncio.sleep(0.0001)
+    #         self.mqtt_buffer.task_done()
+    
     async def handle_mqtt_buffer(self):
+        """Subordinate Node: Intercept the remote transition command off the MQTT queue."""
         while True:
             try:
                 ce = await self.mqtt_buffer.get()
-                self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
-                if ce["type"] == sampet.variableset_data_update():
-                    self.logger.debug(
-                        "handle_mqtt_buffer", extra={"ce-type": ce["type"]}
-                    )
+                ce_type = ce.get("type", "")
+                
+                if "status.update" in ce_type or "status" in getattr(ce, "data", {}):
                     await self.requirement_status_update(ce)
-                # elif ce["type"] == "envds.controller.data.update":
-                #     await self.controller_data_update(ce)
+                
+                # FIX: Listen for incoming remote commands from the Primary
+                elif ce_type == "envds.sampling-operations.transition.request":
+                    self.logger.info(f"Received remote transition command: {ce.data}")
+                    await self.transitions_buffer.put(ce.data)
 
             except Exception as e:
                 self.logger.error("handle_mqtt_buffer", extra={"reason": e})
-
-            await asyncio.sleep(0.0001)
-            self.mqtt_buffer.task_done()
+            finally:
+                self.mqtt_buffer.task_done()
 
     async def handle_manual_action(self, kind: str, name: str):
         """Pushes a manual action request into the action buffer."""
@@ -1093,26 +1114,48 @@ class SamplingOperationsManager:
             finally:
                 self.actions_buffer.task_done()
 
+    # async def mode_transition_monitor(self):
+    #     while True:
+    #         try:
+    #             transition = await self.transitions_buffer.get()
+    #             if self.system_control == "auto":
+    #                 kind = transition["transition"]["kind"]
+    #                 name = transition["transition"]["name"]
+
+    #                 if kind == "SystemMode":
+    #                     self.activate_system_mode(name)
+    #                     self.logger.debug(
+    #                         "mode_transition_monitor - transition mode",
+    #                         extra={"transition_request": transition},
+    #                     )
+
+    #         except Exception as e:
+    #             self.logger.error("mode_action_monitor", extra={"reason": e})
+
+    #         await asyncio.sleep(0.001)
+    #         self.transitions_buffer.task_done()
+
     async def mode_transition_monitor(self):
+        """Subordinate Node: Execute the mode switch."""
         while True:
             try:
-                transition = await self.transitions_buffer.get()
-                if self.system_control == "auto":
-                    kind = transition["transition"]["kind"]
-                    name = transition["transition"]["name"]
+                transition_data = await self.transitions_buffer.get()
+                is_remote = transition_data.get("is_remote_command", False)
+                
+                # FIX: Obey the transition if in 'auto', OR if it's a direct forced override from the primary
+                if self.system_control == "auto" or is_remote:
+                    kind = transition_data["transition"]["kind"]
+                    name = transition_data["transition"]["name"]
 
                     if kind == "SystemMode":
                         self.activate_system_mode(name)
-                        self.logger.debug(
-                            "mode_transition_monitor - transition mode",
-                            extra={"transition_request": transition},
+                        self.logger.info(
+                            f"Transitioned SystemMode to '{name}' (Remote Override: {is_remote})"
                         )
-
             except Exception as e:
-                self.logger.error("mode_action_monitor", extra={"reason": e})
-
-            await asyncio.sleep(0.001)
-            self.transitions_buffer.task_done()
+                self.logger.error("mode_transition_monitor", extra={"reason": e})
+            finally:
+                self.transitions_buffer.task_done()
 
     async def mode_status_monitor(self):
 
@@ -1395,6 +1438,76 @@ class SamplingOperationsManager:
             except Exception as e:
                 self.logger.error("index_monitor", extra={"reason": e})
 
+    # In sampling-operations/manager.py -> class SamplingOperationsManager
+
+    async def action_target_monitor(self):
+        """Consumes evaluated action targets and broadcasts them as setting updates."""
+        while True:
+            try:
+                targets = await self.actions_target_buffer.get()
+                
+                for trg_name, trg_data in targets.items():
+                    val = trg_data["data"]
+                    meta = trg_data["metadata"]
+                    
+                    # Extract target routing info (Default to controller if unspecified)
+                    target_type = meta.get("target_type", "controller").lower() # e.g., 'controller', 'sensor', 'device'
+                    
+                    # If target_id isn't explicitly defined, fall back to the variablemap_name
+                    target_id = meta.get("target_id", meta.get("variablemap_name", "unknown"))
+                    v_name = meta.get("variable", trg_name)
+
+                    source_id = f"envds.{self.config.daq_id}.sampling-operations"
+                    
+                    # Dynamically build the correct topic: 
+                    # e.g., envds/raz1/sensor/AerosolDynamics::SpiderMagic::002/settings/update
+                    topic = f"envds/{self.config.daq_id}/{target_type}/{target_id}/settings/update"
+                    
+                    # Dynamically build the CloudEvent type:
+                    # e.g., envds.sensor.settings.update
+                    ce_type = f"envds.{target_type}.settings.update"
+                    
+                    event = CloudEvent(
+                        attributes={
+                            "type": ce_type,
+                            "source": source_id,
+                            "datacontenttype": "application/json"
+                        },
+                        data={
+                            "variables": {
+                                v_name: {"data": val}
+                            }
+                        }
+                    )
+                    event["destpath"] = topic
+                    
+                    self.logger.info(f"Broadcasting Action Command -> [{target_type.upper()}] {target_id}: {v_name} = {val}")
+                    await self.send_event(event)
+
+            except Exception as e:
+                self.logger.error("action_target_monitor", extra={"reason": e})
+            finally:
+                self.actions_target_buffer.task_done()
+
+    async def send_remote_transition_request(self, target_daq_id: str, kind: str, name: str):
+        """Primary Node: Broadcasts a command to a subordinate node to change modes."""
+        source_id = f"envds.{self.config.daq_id}.sampling-operations"
+        topic = f"envds/{target_daq_id}/sampling-operations/transition/request"
+        
+        event = CloudEvent(
+            attributes={
+                "type": "envds.sampling-operations.transition.request",
+                "source": source_id,
+                "datacontenttype": "application/json"
+            },
+            data={
+                "transition": {"kind": kind, "name": name},
+                "is_remote_command": True
+            }
+        )
+        event["destpath"] = topic
+        self.logger.info(f"Broadcasting Remote Transition -> [{target_daq_id}] {kind}: {name}")
+        await self.send_event(event)
 
 async def shutdown():
     print("shutting down")
