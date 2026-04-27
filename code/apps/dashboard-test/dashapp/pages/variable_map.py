@@ -109,6 +109,7 @@ def get_variablemap_def():
         # return []
         # L.warning(f"Connection failed to {device_id}. Returning mock data for testing.")
         # Return mock data for testing
+        L.debug(f"variablemap_error: {e}")
         return [{"timestamp": "2024-01-01T00:00:00", "value": 1.23, "status": 0}]
 
 
