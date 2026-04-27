@@ -2197,6 +2197,81 @@ class SamplingSystem:
     #     except Exception as e:
     #         self.logger.error("update_timebase_variableset_by_index", extra={"reason": e})
 
+    # async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict):
+    #     map_type = "direct"
+    #     try:
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"time_index": time_index})
+
+    #         index_type = time_index["index_type"]
+    #         index_value = time_index["index_value"]
+    #         update_type = time_index["update_type"]
+    #         target_time = time_index["index_ready"]
+
+    #         # for k,v in variablemap.items():
+    #         #     print(f"update_direct_variable_by_time_index: {k}: {v}")
+
+    #         # self.logger.debug("update_direct_variable_by_time_index", extra={"var_map": type(variablemap)})
+
+    #         # variableset = variablemap["variablesets"][variableset_name]
+    #         # indexed_data = variablemap["indexed"]["data"][time_index["index_ready"]][variableset_name]
+    #         indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][map_type][variableset_name][variable_name]
+            
+    #         # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type]})
+    #         # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type][index_value]})
+    #         # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type][index_value]["data"]})
+
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"indexed_data": indexed_data})
+            
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"variableset_record": variableset_record})
+
+
+    #         #TODO handle multi-d data
+    #         # if len(indexed_data) == 0:
+    #         #     if variableset_record["type"] in ["string", "str", "char"]:
+    #         #         val = ""
+    #         #     else:
+    #         #         val = None
+    #         # elif len(indexed_data) == 1:
+    #         #     val = indexed_data[0]
+    #         # else:
+    #         #     if variableset_record["type"] in ["string", "str", "char"]:
+    #         #         val = indexed_data[0]
+    #         #     else:
+    #         #         val = round(
+    #         #             sum(indexed_data)
+    #         #             / len(indexed_data),
+    #         #             3,
+    #         #         )
+
+    #         # variableset_record["variables"][variable_name]["data"] = val
+
+    #         if len(indexed_data) == 0:
+    #             # FIX: Check specific variable type
+    #             if variableset_record["variables"][variable_name]["type"] in ["string", "str", "char"]:
+    #                 val = ""
+    #             else:
+    #                 val = None
+    #         elif len(indexed_data) == 1:
+    #             val = indexed_data[0]
+    #         else:
+    #             # FIX: Check specific variable type
+    #             if variableset_record["variables"][variable_name]["type"] in ["string", "str", "char"]:
+    #                 val = indexed_data[0]
+    #             else:
+    #                 val = round(
+    #                     sum(indexed_data)
+    #                     / len(indexed_data),
+    #                     3,
+    #                 )
+
+    #         variableset_record["variables"][variable_name]["data"] = val
+
+
+    #     except Exception as e:
+    #         self.logger.error("update_direct_variable_by_time_index", extra={"reason": e})
+
+    #     return
+
     async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict):
         map_type = "direct"
         try:
@@ -2204,74 +2279,51 @@ class SamplingSystem:
 
             index_type = time_index["index_type"]
             index_value = time_index["index_value"]
-            update_type = time_index["update_type"]
             target_time = time_index["index_ready"]
 
-            # for k,v in variablemap.items():
-            #     print(f"update_direct_variable_by_time_index: {k}: {v}")
-
-            # self.logger.debug("update_direct_variable_by_time_index", extra={"var_map": type(variablemap)})
-
-            # variableset = variablemap["variablesets"][variableset_name]
-            # indexed_data = variablemap["indexed"]["data"][time_index["index_ready"]][variableset_name]
             indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][map_type][variableset_name][variable_name]
             
-            # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type]})
-            # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type][index_value]})
-            # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type][index_value]["data"]})
+            # Fetch the target variable's details to determine its shape
+            var_record = variableset_record["variables"][variable_name]
+            v_type = var_record.get("type", "float")
+            shape = var_record.get("shape", ["time"])
 
             self.logger.debug("update_direct_variable_by_time_index", extra={"indexed_data": indexed_data})
-            
             self.logger.debug("update_direct_variable_by_time_index", extra={"variableset_record": variableset_record})
 
-
-            #TODO handle multi-d data
-            # if len(indexed_data) == 0:
-            #     if variableset_record["type"] in ["string", "str", "char"]:
-            #         val = ""
-            #     else:
-            #         val = None
-            # elif len(indexed_data) == 1:
-            #     val = indexed_data[0]
-            # else:
-            #     if variableset_record["type"] in ["string", "str", "char"]:
-            #         val = indexed_data[0]
-            #     else:
-            #         val = round(
-            #             sum(indexed_data)
-            #             / len(indexed_data),
-            #             3,
-            #         )
-
-            # variableset_record["variables"][variable_name]["data"] = val
-
             if len(indexed_data) == 0:
-                # FIX: Check specific variable type
-                if variableset_record["variables"][variable_name]["type"] in ["string", "str", "char"]:
+                if v_type in ["string", "str", "char"]:
                     val = ""
                 else:
                     val = None
             elif len(indexed_data) == 1:
                 val = indexed_data[0]
             else:
-                # FIX: Check specific variable type
-                if variableset_record["variables"][variable_name]["type"] in ["string", "str", "char"]:
+                if v_type in ["string", "str", "char"]:
                     val = indexed_data[0]
                 else:
-                    val = round(
-                        sum(indexed_data)
-                        / len(indexed_data),
-                        3,
-                    )
+                    # Check if data is 2-dimensional (e.g., ["time", "diameter"])
+                    if len(shape) > 1:
+                        try:
+                            # Use zip(*...) to transpose the list of lists and perform element-wise averaging
+                            val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
+                        except Exception as e:
+                            self.logger.error("2D averaging error", extra={"reason": e})
+                            val = indexed_data[0] # Fallback to first array if averaging fails
+                    else:
+                        # Standard 1D average
+                        val = round(
+                            sum(indexed_data) / len(indexed_data),
+                            3,
+                        )
 
             variableset_record["variables"][variable_name]["data"] = val
-
 
         except Exception as e:
             self.logger.error("update_direct_variable_by_time_index", extra={"reason": e})
 
         return
-
+    
     # async def update_variablesets_by_time_index(self, variablemap:dict, time_index: dict):
 
     #     variable_updates = {
