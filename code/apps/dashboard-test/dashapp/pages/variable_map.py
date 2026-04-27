@@ -87,7 +87,7 @@ initial_variable_map = {
 
 
 # def get_variablemap_def(device_id: str, device_type: str="sensor"):
-def get_variablemap_def():
+def get_variablemap_def(variableset_id: str):
     
     # query = {"device_type": device_type, "device_id": device_id}
     # url = f"http://{datastore_url}/device/data/get/"
@@ -115,7 +115,7 @@ def get_variablemap_def():
 
 # print("here:1")
 def get_layout():
-    get_variablemap_def()
+    get_variablemap_def(variableset_id='raz1::main')
     layout = html.Div([
         html.H1('Variable Map'),
         html.Div(id='status-message', style={'margin-bottom': '10px', 'font-weight': 'bold'}),
