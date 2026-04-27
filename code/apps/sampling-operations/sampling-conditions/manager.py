@@ -435,7 +435,9 @@ class SamplingConditionsManager:
         self.logger.info("Running SamplingConditionsManager async setup...")
         
         self.mqtt_buffer = asyncio.Queue(maxsize=2000)
-        self.status_buffer = asyncio.Queue(maxsize=2000)
+        # FIX: Only create if it wasn't already created during configure()
+        if not getattr(self, "status_buffer", None):
+            self.status_buffer = asyncio.Queue(maxsize=2000)
         
         # Initialize connection pool
         self.http_client = httpx.AsyncClient(
@@ -877,6 +879,12 @@ class SamplingConditionsManager:
             # get target from dict and send source data to all databuffers
             src_id = ce["source"].split(".")[-1]
 
+            # --- ADD THIS CHECK ---
+            if src_id not in self.sampling_conditions["sources"]:
+                self.logger.debug("variableset_data_update", extra={"message": f"Source {src_id} not mapped in conditions. Ignoring."})
+                return
+            # ----------------------
+            
             data_map = dict()
 
             # self.logger.debug("variableset_data_update", extra={"src_id": src_id, "sampling_conditions": self.sampling_conditions})
