@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 # import json
 import logging
 
-from fastapi import FastAPI, Request, Query, status  # , APIRouter
+from fastapi import FastAPI, Request, Query, status, Response  # , APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -114,9 +114,21 @@ L.debug("main: here:2")
 # datastore = Datastore()
 print("starting sampling_conditions")
 # operations_conditions = OperationsConditions()
-manager = SamplingStatesManager()
-print(f"sampling_conditions started: {manager}")
+manager = None
 
+@app.on_event("startup")
+async def start_system():
+    global manager
+    manager = SamplingStatesManager()
+    await manager.setup()
+    L.info("SamplingStatesManager initialized and background tasks started.")
+
+@app.on_event("shutdown")
+async def shutdown_system():
+    global manager
+    if manager:
+        await manager.close_http_client()
+        L.info("SamplingStatesManager HTTP client closed safely.")
 
 @app.get("/")
 async def root():
@@ -127,9 +139,6 @@ async def root():
 async def requirement_status_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
-        L.debug(request.headers)
-        L.debug("requirement_status_update", extra={"ce": ce, "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
         await manager.requirement_status_update(ce)
     except Exception as e:
         L.error("requirement_status_update", extra={"reason": e})

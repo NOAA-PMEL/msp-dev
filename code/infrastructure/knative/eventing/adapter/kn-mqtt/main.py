@@ -117,8 +117,19 @@ adapter = None
 async def start_system():
     global adapter
     adapter = KNMQTTClient(config)
+
+    # Trigger the safe setup
+    await adapter.setup()
+
     L.info("KN-MQTT Adapter initialized and background tasks started.")
 
+@app.on_event("shutdown")
+async def shutdown_system():
+    global adapter
+    if adapter:
+        await adapter.close_http_client()
+        L.info("KN-MQTT Adapter HTTP client closed safely.")
+        
 @app.get("/")
 async def root():
     L.debug("message: Hello World from kn-mqtt-adapter")

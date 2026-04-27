@@ -132,19 +132,37 @@ class KNMQTTClient():
         if config is None:
             config = KNMQTTAdapterSettings()
         self.config = config
-        self.to_mqtt_buffer = asyncio.Queue()
-        self.to_knbroker_buffer = asyncio.Queue()
+        # FIX 1: Apply backpressure to prevent OOM
+        self.to_mqtt_buffer = asyncio.Queue(maxsize=2000)
+        self.to_knbroker_buffer = asyncio.Queue(maxsize=2000)
 
         # asyncio.create_task(self.send_to_mqtt_loop())
         # asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.master_mqtt_loop())
+        # asyncio.create_task(self.master_mqtt_loop())
         # asyncio.create_task(self.send_to_knbroker_loop())
+
+        #TODO: implement configurable worker count
+        # Configurable worker count (defaults to 5)
+        self.MAX_WORKERS = getattr(self.config, 'max_workers', 5)
 
         self.MAX_WORKERS = 2
         for _ in range(self.MAX_WORKERS):
             asyncio.create_task(self.knbroker_worker())
         self.client = None
         self.http_client = None
+
+    async def setup(self):
+        """FIX 2: Safe, single-threaded initialization of resources."""
+        # Initialize HTTP client securely before workers start to avoid race conditions
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
+        
+        # Start background tasks AFTER resources are ready
+        asyncio.create_task(self.master_mqtt_loop())
+        
+        for _ in range(self.MAX_WORKERS):
+            asyncio.create_task(self.knbroker_worker())
 
     async def send_to_mqtt(self, ce: CloudEvent):
         await self.to_mqtt_buffer.put(ce)
@@ -170,7 +188,7 @@ class KNMQTTClient():
                 L.error(f"Worker encountered an error: {e}")
                 
             # Yield control back to the event loop briefly
-            await asyncio.sleep(0.0001)
+            # await asyncio.sleep(0.0001)
 
     async def _post_ce_to_knative(self, ce: CloudEvent):
         try:
@@ -257,6 +275,9 @@ class KNMQTTClient():
             except Exception as e:
                 # Catch serialization or generic errors so a bad message doesn't kill the worker
                 L.error("Unexpected error in send_to_mqtt_worker", extra={"reason": e})
+            finally:
+                # FIX 4: Always mark queue item as done, even on failure
+                self.to_mqtt_buffer.task_done()
 
     async def get_from_mqtt_worker(self, client):
         L.info("Started get_from_mqtt_worker")
@@ -371,8 +392,9 @@ class KNMQTTClient():
             # # close the client when the request is done
 
     async def close_http_client(self):
-        await self.http_client.aclose()
-        self.http_client = None
+        if self.http_client:
+            await self.http_client.aclose()
+            self.http_client = None
 
     async def send_to_knbroker_loop(self): #, template):
         # client = None

@@ -84,7 +84,7 @@ class Registrar:
         self.logger.setLevel(logging.DEBUG)
         self.config = Settings()
 
-        self.datastore_url = f"datastore.{self.config.daq_id}-system"
+        self.datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
 
         self.task_list = []
         self.task_list.append(self.get_device_definitions_loop())
@@ -1016,6 +1016,7 @@ class Registrar:
                 query = {"name": definition_id} 
             
             results = await self.submit_request(path=path, query=query)
+            print(f"send_sampling_update: {results}")
             if "results" in results and results["results"]:
                 update = DAQEvent.create_registry_sync_update(
                     source=f"envds.{self.config.daq_id}.registrar",

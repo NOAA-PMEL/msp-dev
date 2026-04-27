@@ -98,7 +98,7 @@ class SamplingState:
 
 
         # self.data_buffer = data_buffer
-        self.update_buffer = asyncio.Queue(maxsize=60)
+        self.update_buffer = asyncio.Queue(maxsize=500)
         self.status_buffer = status_buffer
         # self.source_map = {"source_id": dict(), "source_name": dict()}
         self.source_map = dict()
@@ -137,8 +137,13 @@ class SamplingState:
 
     async def update(self, status):
         self.logger.debug("update", extra={"update_status": status})
-        await self.update_buffer.put(status)
-        self.logger.debug("update", extra={"update_buffer": self.update_buffer.qsize()})
+        try:
+            self.update_buffer.put_nowait(status)
+        except asyncio.QueueFull:
+            self.logger.warning(f"State {self.config['metadata']['name']} buffer full. Dropping oldest.")
+            self.update_buffer.get_nowait()
+            self.update_buffer.task_done()
+            self.update_buffer.put_nowait(status)
 
     async def update_monitor(self):
 
@@ -390,109 +395,273 @@ class SamplingStatesManager:
 
 
         self.config = SamplingStatesManagerConfig()
+        self.http_client = None
         self.configure()
         # print("here:7")
 
-        self.http_client = None
 
-        self.mqtt_buffer = asyncio.Queue()
-        asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.handle_mqtt_buffer())
-        asyncio.create_task(self.state_status_monitor())
+        # self.mqtt_buffer = asyncio.Queue()
+        # asyncio.create_task(self.get_from_mqtt_loop())
+        # asyncio.create_task(self.handle_mqtt_buffer())
+        # asyncio.create_task(self.state_status_monitor())
 
         # print("SamplingStatesManager: init: here:8")
 
-    def configure(self):
-        # set clients
+    async def setup(self):
+        """Asynchronously initialize buffers, clients, and loops."""
+        self.logger.info("Running SamplingStatesManager async setup...")
+        
+        self.status_buffer = asyncio.Queue(maxsize=2000)
+        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
 
-        self.logger.debug("configure", extra={"self.config": self.config})
+        asyncio.create_task(self.get_from_mqtt_loop())
+        asyncio.create_task(self.handle_mqtt_buffer())
+        asyncio.create_task(self.state_status_monitor())
+        asyncio.create_task(self.publish_local_definitions())
+        asyncio.create_task(self.sync_sampling_definitions_loop())
 
-        try:
+    def open_http_client(self):
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
 
-            # load sampling conditions
-            with open("/app/config/sampling_states.json", "r") as f:
-                states = json.load(f)
+    async def close_http_client(self):
+        if getattr(self, 'http_client', None):
+            await self.http_client.aclose()
+            self.http_client = None
 
-                for state in states:
+    # def configure(self):
+    #     # set clients
 
-                    if state["kind"] != "SamplingState":
-                        continue
+    #     self.logger.debug("configure", extra={"self.config": self.config})
+
+    #     try:
+
+    #         # load sampling conditions
+    #         with open("/app/config/sampling_states.json", "r") as f:
+    #             states = json.load(f)
+
+    #             for state in states:
+
+    #                 if state["kind"] != "SamplingState":
+    #                     continue
                    
-                    state_name = f'{state["metadata"]["name"]}'
-                    # data_buffer = asyncio.Queue(maxsize=60)
-                    if state_name not in self.sampling_states["states"]:
-                        self.sampling_states["states"][state_name] = {
-                            "config": None,
-                            "state": None,
-                        }
-                    self.sampling_states["states"][state_name]["config"] = state
-                    self.sampling_states["states"][state_name]["state"] = SamplingState(state, self.status_buffer)
-                    # build list to send status updates for each req to all affected states
-                    for req in state["requirements"]:
-                        if req["kind"] not in self.sampling_states["requirement_map"]:
-                           self.sampling_states["requirement_map"][req["kind"]] = dict()
-                        if req["name"] not in self.sampling_states["requirement_map"][req["kind"]]:
-                            self.sampling_states["requirement_map"][req["kind"]][req["name"]] = []
-                        self.sampling_states["requirement_map"][req["kind"]][req["name"]].append(state_name)
+    #                 state_name = f'{state["metadata"]["name"]}'
+    #                 # data_buffer = asyncio.Queue(maxsize=60)
+    #                 if state_name not in self.sampling_states["states"]:
+    #                     self.sampling_states["states"][state_name] = {
+    #                         "config": None,
+    #                         "state": None,
+    #                     }
+    #                 self.sampling_states["states"][state_name]["config"] = state
+    #                 self.sampling_states["states"][state_name]["state"] = SamplingState(state, self.status_buffer)
+    #                 # build list to send status updates for each req to all affected states
+    #                 for req in state["requirements"]:
+    #                     if req["kind"] not in self.sampling_states["requirement_map"]:
+    #                        self.sampling_states["requirement_map"][req["kind"]] = dict()
+    #                     if req["name"] not in self.sampling_states["requirement_map"][req["kind"]]:
+    #                         self.sampling_states["requirement_map"][req["kind"]][req["name"]] = []
+    #                     self.sampling_states["requirement_map"][req["kind"]][req["name"]].append(state_name)
 
-            self.logger.debug(
-                "configure", extra={"sampling_states": self.sampling_states}
-            )
+    #         self.logger.debug(
+    #             "configure", extra={"sampling_states": self.sampling_states}
+    #         )
 
+    #     except Exception as e:
+    #         self.logger.error("configure error", extra={"reason": e})
+
+    def configure(self):
+        try:
+            states_path = "/app/config/sampling_states.json"
+            if os.path.exists(states_path):
+                with open(states_path, "r") as f:
+                    states = json.load(f)
+                    for state in states:
+                        self.load_state(state)
+            else:
+                self.logger.info(f"{states_path} not found. Skipping local load.")
         except Exception as e:
             self.logger.error("configure error", extra={"reason": e})
 
-    def open_http_client(self):
-        # create a new client for each request
-        self.http_client = httpx.AsyncClient()
+    def load_state(self, state: dict):
+        """Helper to process definitions from either local files or Datastore API."""
+        if state.get("kind") != "SamplingState":
+            return
+            
+        state_name = state["metadata"]["name"]
+        
+        # Ensure status_buffer exists if loaded during sync loop
+        if not getattr(self, "status_buffer", None):
+            self.status_buffer = asyncio.Queue(maxsize=2000)
+            
+        if state_name not in self.sampling_states["states"]:
+            self.sampling_states["states"][state_name] = {"config": None, "state": None}
+            
+        self.sampling_states["states"][state_name]["config"] = state
+        self.sampling_states["states"][state_name]["state"] = SamplingState(state, self.status_buffer)
+        
+        for req in state.get("requirements", []):
+            req_kind = req["kind"]
+            req_name = req["name"]
+            
+            if req_kind not in self.sampling_states["requirement_map"]:
+                self.sampling_states["requirement_map"][req_kind] = dict()
+            if req_name not in self.sampling_states["requirement_map"][req_kind]:
+                self.sampling_states["requirement_map"][req_kind][req_name] = []
+                
+            if state_name not in self.sampling_states["requirement_map"][req_kind][req_name]:
+                self.sampling_states["requirement_map"][req_kind][req_name].append(state_name)
 
-    async def send_event(self, ce):
+    # def open_http_client(self):
+    #     # create a new client for each request
+    #     self.http_client = httpx.AsyncClient()
+
+    # async def send_event(self, ce):
+    #     try:
+    #         self.logger.debug(ce)  # , extra=template)
+    #         if not self.http_client:
+    #             self.open_http_client()
+    #         try:
+    #             timeout = httpx.Timeout(5.0, read=0.1)
+    #             headers, body = to_structured(ce)
+    #             self.logger.debug(
+    #                 "send_event",
+    #                 extra={
+    #                     "broker": self.config.knative_broker,
+    #                     "h": headers,
+    #                     "b": body,
+    #                 },
+    #             )
+
+    #             r = await self.http_client.post(
+    #                 self.config.knative_broker,
+    #                 headers=headers,
+    #                 data=body,
+    #                 timeout=timeout,
+    #             )
+
+    #             r.raise_for_status()
+    #         except InvalidStructuredJSON:
+    #             self.logger.error(f"INVALID MSG: {ce}")
+    #         except httpx.TimeoutException:
+    #             pass
+    #         except httpx.HTTPError as e:
+    #             self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+    #     except Exception as e:
+    #         print("error", e)
+    #     await asyncio.sleep(0.01)
+
+    # async def submit_request(self, path: str, query: dict):
+    #     try:
+    #         self.logger.debug("submit_request", extra={"path": path, "query": query})
+    #         # results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
+    #         results = await self.http_client.get(
+    #             f"http://{self.datastore_url}/{path}/", params=query
+    #         )
+    #         self.logger.debug("submit_request", extra={"results": results.json()})
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_request", extra={"reason": e})
+    #         return {}
+
+    async def submit_get(self, path: str):
         try:
-            self.logger.debug(ce)  # , extra=template)
-            if not self.http_client:
-                self.open_http_client()
-            try:
-                timeout = httpx.Timeout(5.0, read=0.1)
-                headers, body = to_structured(ce)
-                self.logger.debug(
-                    "send_event",
-                    extra={
-                        "broker": self.config.knative_broker,
-                        "h": headers,
-                        "b": body,
-                    },
-                )
-
-                r = await self.http_client.post(
-                    self.config.knative_broker,
-                    headers=headers,
-                    data=body,
-                    timeout=timeout,
-                )
-
-                r.raise_for_status()
-            except InvalidStructuredJSON:
-                self.logger.error(f"INVALID MSG: {ce}")
-            except httpx.TimeoutException:
-                pass
-            except httpx.HTTPError as e:
-                self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): self.open_http_client()
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", timeout=timeout)
+            return results.json()
         except Exception as e:
-            print("error", e)
-        await asyncio.sleep(0.01)
+            self.logger.error("submit_get", extra={"reason": e})
+            return {}
 
     async def submit_request(self, path: str, query: dict):
         try:
-            self.logger.debug("submit_request", extra={"path": path, "query": query})
-            # results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
-            results = await self.http_client.get(
-                f"http://{self.datastore_url}/{path}/", params=query
-            )
-            self.logger.debug("submit_request", extra={"results": results.json()})
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): self.open_http_client()
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", params=query, timeout=timeout)
             return results.json()
         except Exception as e:
             self.logger.error("submit_request", extra={"reason": e})
             return {}
+
+    async def send_event(self, ce):
+        try:
+            if not getattr(self, 'http_client', None): self.open_http_client()
+            timeout = httpx.Timeout(5.0, read=10.0)
+            headers, body = to_structured(ce)
+            r = await self.http_client.post(self.config.knative_broker, headers=headers, data=body, timeout=timeout)
+            r.raise_for_status()
+        except Exception as e:
+            self.logger.error("send_event error", extra={"reason": e})
+
+    async def publish_local_definitions(self):
+        await asyncio.sleep(5)
+        while True:
+            try:
+                for state_name, state_data in self.sampling_states["states"].items():
+                    config = state_data["config"]
+                    if not config: continue
+                    
+                    event = SamplingEvent.create_definition_registry_update(
+                        resource="samplingstate",
+                        source=f"envds.{self.config.daq_id}.sampling-states",
+                        data={"samplingstate": config}
+                    )
+                    event["destpath"] = f"envds/{self.config.daq_id}/samplingstate-definition/registry/update"
+                    await self.send_event(event)
+            except Exception as e:
+                self.logger.error("publish_local_definitions", extra={"reason": e})
+            await asyncio.sleep(60)
+
+    async def sync_sampling_definitions_loop(self):
+        while True:
+            try:
+                ids_resp = await self.submit_get(path="samplingstate-definition/registry/ids/get")
+                if ids_resp and "results" in ids_resp:
+                    
+                    async def fetch_state(state_id):
+                        return await self.submit_request(path="samplingstate-definition/registry/get", query={"name": state_id})
+
+                    responses = await asyncio.gather(*(fetch_state(sid) for sid in ids_resp["results"]))
+
+                    for resp in responses:
+                        if resp and "results" in resp and resp["results"]:
+                            self.load_state(resp["results"][0])
+            except Exception as e:
+                self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+            await asyncio.sleep(60)
+
+    async def get_from_mqtt_loop(self):
+        reconnect = 10
+        while True:
+            try:
+                client_id = str(ULID())
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as self.client:
+                    for topic in self.config.mqtt_topic_subscriptions.split(","):
+                        if topic.strip():
+                            await self.client.subscribe(f"$share/sampling-states/{topic.strip()}")
+
+                    async for message in self.client.messages:
+                        topic = message.topic.value
+                        
+                        # FIX: Discard reflection loop waste
+                        if "sampling-states" in topic:
+                            continue
+                            
+                        try:
+                            ce = from_json(message.payload)
+                            ce["sourcepath"] = topic
+                            await self.mqtt_buffer.put(ce)
+                        except Exception as e:
+                            self.logger.error("get_from_mqtt_loop JSON error", extra={"reason": e})
+            except MqttError as error:
+                await asyncio.sleep(reconnect)
 
     async def state_status_monitor(self):
         while True:
@@ -588,26 +757,39 @@ class SamplingStatesManager:
             finally:
                 await asyncio.sleep(0.0001)
 
+    # async def handle_mqtt_buffer(self):
+    #     while True:
+    #         try:
+    #             ce = await self.mqtt_buffer.get()
+    #             self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
+    #             if ce["type"] == sampet.variableset_data_update():
+    #                 self.logger.debug(
+    #                     "handle_mqtt_buffer", extra={"ce-type": ce["type"]}
+    #                 )
+    #                 # await self.condition_status_update(ce)
+    #                 await self.requirement_status_update(ce)
+    #             # elif ce["type"] == "envds.controller.data.update":
+    #             #     await self.controller_data_update(ce)
+
+    #         except Exception as e:
+    #             self.logger.error("handle_mqtt_buffer", extra={"reason": e})
+
+    #         await asyncio.sleep(0.0001)
+    #         self.mqtt_buffer.task_done()
+
     async def handle_mqtt_buffer(self):
         while True:
             try:
                 ce = await self.mqtt_buffer.get()
-                self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
-                if ce["type"] == sampet.variableset_data_update():
-                    self.logger.debug(
-                        "handle_mqtt_buffer", extra={"ce-type": ce["type"]}
-                    )
-                    # await self.condition_status_update(ce)
+                
+                # FIX: Check for the proper status update type, NOT variableset_data_update
+                if "status.update" in ce["type"] or "status" in getattr(ce, "data", {}):
+                    self.logger.debug("handle_mqtt_buffer routing to requirement_status_update", extra={"ce-type": ce["type"]})
                     await self.requirement_status_update(ce)
-                # elif ce["type"] == "envds.controller.data.update":
-                #     await self.controller_data_update(ce)
 
+                self.mqtt_buffer.task_done()
             except Exception as e:
                 self.logger.error("handle_mqtt_buffer", extra={"reason": e})
-
-            await asyncio.sleep(0.0001)
-            self.mqtt_buffer.task_done()
-
     async def requirement_status_update(self, ce: CloudEvent):
 
         try:

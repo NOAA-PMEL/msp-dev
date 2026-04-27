@@ -190,7 +190,16 @@ class SamplingCondition:
 
     async def update(self, data):
         self.logger.debug("update", extra={"update_data": data})
-        await self.data_buffer.put(data)
+        # await self.data_buffer.put(data)
+        # FIX: Prevent Head-Of-Line blocking. If buffer is full, drop the oldest 
+        # evaluation frame instead of freezing the main MQTT ingestion loop.
+        try:
+            self.data_buffer.put_nowait(data)
+        except asyncio.QueueFull:
+            self.logger.warning("Condition data_buffer full. Dropping oldest frame.")
+            self.data_buffer.get_nowait()
+            self.data_buffer.task_done()
+            self.data_buffer.put_nowait(data)
 
     async def condition_monitor(self):
 
@@ -318,13 +327,29 @@ class SamplingCondition:
             # await self.update_status(status)
 
 
-            for src_name, _ in self.source_map.items():
-                # self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
-                # src_data.pop(timestamp)
-                self.source_map[src_name].pop(timestamp)
+            # for src_name, _ in self.source_map.items():
+            #     # self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
+            #     # src_data.pop(timestamp)
+            #     self.source_map[src_name].pop(timestamp)
 
         except Exception as e:
             self.logger.error("evaluate_criteria", extra={"reason": e})
+
+        finally:
+            # This guarantees cleanup runs even if the function hits a 'return'
+            try:
+                # Calculate a cutoff time (e.g., 60 seconds ago)
+                current_dt = string_to_datetime(timestamp).replace(tzinfo=timezone.utc)
+                cutoff_dt = current_dt - timedelta(seconds=60)
+                
+                for src_name, src_dict in self.source_map.items():
+                    # Find all timestamps older than 60 seconds
+                    stale_keys = [ts for ts in src_dict.keys() if string_to_datetime(ts).replace(tzinfo=timezone.utc) < cutoff_dt]
+                    # Delete them
+                    for ts in stale_keys:
+                        src_dict.pop(ts, None)
+            except Exception as clean_e:
+                self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
 
     async def update_status_loop(self):
         while True:
@@ -365,7 +390,7 @@ class SamplingConditionsManager:
         # self.sampling_states = dict()
         self.sampling_conditions = {"conditions": dict(), "sources": {}}
 
-        self.status_buffer = asyncio.Queue(maxsize=60)
+        # self.status_buffer = asyncio.Queue(maxsize=60)
         # self.sampling_actions = dict()
 
         # # current mode
@@ -387,15 +412,17 @@ class SamplingConditionsManager:
         # self.index_monitor_tasks = dict()
 
         self.config = SamplingConditionsManagerConfig()
-        self.configure()
-        # print("here:7")
 
         self.http_client = None
 
-        self.mqtt_buffer = asyncio.Queue()
-        asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.handle_mqtt_buffer())
-        asyncio.create_task(self.condition_status_monitor())
+        self.configure()
+        # print("here:7")
+
+
+        # self.mqtt_buffer = asyncio.Queue()
+        # asyncio.create_task(self.get_from_mqtt_loop())
+        # asyncio.create_task(self.handle_mqtt_buffer())
+        # asyncio.create_task(self.condition_status_monitor())
         # asyncio.create_tasks(self.sampling_mode_monitor())
         # asyncio.create_tasks(self.sampling_state_monitor())
         # asyncio.create_task(self.sampling_condition_monitor())
@@ -403,111 +430,231 @@ class SamplingConditionsManager:
 
         # print("SamplingConditionsManager: init: here:8")
 
+    async def setup(self):
+        """Asynchronously initialize buffers, clients, and loops."""
+        self.logger.info("Running SamplingConditionsManager async setup...")
+        
+        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        # FIX: Only create if it wasn't already created during configure()
+        if not getattr(self, "status_buffer", None):
+            self.status_buffer = asyncio.Queue(maxsize=2000)
+        
+        # Initialize connection pool
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
+
+        asyncio.create_task(self.get_from_mqtt_loop())
+        asyncio.create_task(self.handle_mqtt_buffer())
+        asyncio.create_task(self.condition_status_monitor())
+        asyncio.create_task(self.publish_local_definitions())
+        asyncio.create_task(self.sync_sampling_definitions_loop())
+        self.logger.info("SamplingConditionsManager background tasks started successfully.")
+
+    def open_http_client(self):
+        self.logger.debug("open_http_client")
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
+
+    async def close_http_client(self):
+        if getattr(self, 'http_client', None):
+            await self.http_client.aclose()
+            self.http_client = None
+
+    # def configure(self):
+    #     # set clients
+
+    #     self.logger.debug("configure", extra={"self.config": self.config})
+
+    #     try:
+
+    #         # load sampling conditions
+    #         with open("/app/config/sampling_conditions.json", "r") as f:
+    #             conditions = json.load(f)
+
+    #             # build dictionary:
+    #             for condition in conditions:
+
+    #                 if condition["kind"] != "SamplingCondition":
+    #                     continue
+
+    #                 # full condition name with namespace
+    #                 # cond_name = f'{condition["metadata"]["name"]}.{condition["metadata"]["sampling_namespace"]}'
+    #                 cond_name = f'{condition["metadata"]["name"]}'
+    #                 # data_buffer = asyncio.Queue(maxsize=60)
+    #                 if cond_name not in self.sampling_conditions["conditions"]:
+    #                     self.sampling_conditions["conditions"][cond_name] = {
+    #                         "config": None,
+    #                         "event_buffer": self.status_buffer,
+    #                         "condition": None,
+    #                     }
+    #                 self.sampling_conditions["conditions"][cond_name]["config"] = condition
+    #                 # self.sampling_conditions["conditions"][cond_name]["data_buffer"] = data_buffer
+
+    #                 for source_name, source in condition["sources"].items():
+    #                     # TODO get src_id
+    #                     # src_id = "111::222::aaa"
+    #                     vm_name = source["variablemap_name"]
+    #                     vs_name = source["variableset_name"]
+    #                     src_id = "::".join([vm_name, vs_name])
+
+    #                     if src_id not in self.sampling_conditions["sources"]:
+    #                         self.sampling_conditions["sources"][src_id] = {
+    #                             "targets": []
+    #                         }
+    #                     source_variable = source["variable"]
+    #                     self.sampling_conditions["sources"][src_id]["targets"].append(
+    #                         {
+    #                             "condition": cond_name,
+    #                             "source_name": source_name,
+    #                             "source_variable": source_variable,
+    #                         }
+    #                     )
+
+    #                 condition_instance = SamplingCondition(
+    #                     config=self.sampling_conditions["conditions"][cond_name][
+    #                         "config"
+    #                     ],
+    #                     # data_buffer=self.sampling_conditions["conditions"][cond_name]["data_buffer"],
+    #                     status_buffer=self.status_buffer,
+    #                 )
+    #                 # self.logger.debug("configure", extra={"condition": condition_instance})
+    #                 self.sampling_conditions["conditions"][cond_name][
+    #                     "condition"
+    #                 ] = condition_instance
+
+    #         self.logger.debug(
+    #             "configure", extra={"sampling_conditions": self.sampling_conditions}
+    #         )
+
+    #     except Exception as e:
+    #         self.logger.error("configure error", extra={"reason": e})
+
     def configure(self):
-        # set clients
-
         self.logger.debug("configure", extra={"self.config": self.config})
-
         try:
-
-            # load sampling conditions
-            with open("/app/config/sampling_conditions.json", "r") as f:
-                conditions = json.load(f)
-
-                # build dictionary:
-                for condition in conditions:
-
-                    if condition["kind"] != "SamplingCondition":
-                        continue
-
-                    # full condition name with namespace
-                    # cond_name = f'{condition["metadata"]["name"]}.{condition["metadata"]["sampling_namespace"]}'
-                    cond_name = f'{condition["metadata"]["name"]}'
-                    # data_buffer = asyncio.Queue(maxsize=60)
-                    if cond_name not in self.sampling_conditions["conditions"]:
-                        self.sampling_conditions["conditions"][cond_name] = {
-                            "config": None,
-                            "event_buffer": self.status_buffer,
-                            "condition": None,
-                        }
-                    self.sampling_conditions["conditions"][cond_name]["config"] = condition
-                    # self.sampling_conditions["conditions"][cond_name]["data_buffer"] = data_buffer
-
-                    for source_name, source in condition["sources"].items():
-                        # TODO get src_id
-                        # src_id = "111::222::aaa"
-                        vm_name = source["variablemap_name"]
-                        vs_name = source["variableset_name"]
-                        src_id = "::".join([vm_name, vs_name])
-
-                        if src_id not in self.sampling_conditions["sources"]:
-                            self.sampling_conditions["sources"][src_id] = {
-                                "targets": []
-                            }
-                        source_variable = source["variable"]
-                        self.sampling_conditions["sources"][src_id]["targets"].append(
-                            {
-                                "condition": cond_name,
-                                "source_name": source_name,
-                                "source_variable": source_variable,
-                            }
-                        )
-
-                    condition_instance = SamplingCondition(
-                        config=self.sampling_conditions["conditions"][cond_name][
-                            "config"
-                        ],
-                        # data_buffer=self.sampling_conditions["conditions"][cond_name]["data_buffer"],
-                        status_buffer=self.status_buffer,
-                    )
-                    # self.logger.debug("configure", extra={"condition": condition_instance})
-                    self.sampling_conditions["conditions"][cond_name][
-                        "condition"
-                    ] = condition_instance
-
-            self.logger.debug(
-                "configure", extra={"sampling_conditions": self.sampling_conditions}
-            )
-
+            # load sampling conditions from file
+            conditions_path = "/app/config/sampling_conditions.json"
+            if os.path.exists(conditions_path):
+                with open(conditions_path, "r") as f:
+                    conditions = json.load(f)
+                    for condition in conditions:
+                        self.load_condition(condition)
+                self.logger.debug("configure", extra={"sampling_conditions": self.sampling_conditions})
+            else:
+                self.logger.info(f"{conditions_path} not found. Skipping local load.")
         except Exception as e:
             self.logger.error("configure error", extra={"reason": e})
 
-    def open_http_client(self):
-        # create a new client for each request
-        self.http_client = httpx.AsyncClient()
+    def load_condition(self, condition: dict):
+        """Helper to process definitions from either local files or Datastore API."""
+        if condition.get("kind") != "SamplingCondition":
+            return
+
+        cond_name = condition["metadata"]["name"]
+        
+        if cond_name not in self.sampling_conditions["conditions"]:
+            self.sampling_conditions["conditions"][cond_name] = {
+                "config": None,
+                "event_buffer": getattr(self, "status_buffer", None),
+                "condition": None,
+            }
+            
+        self.sampling_conditions["conditions"][cond_name]["config"] = condition
+
+        # Map sources to targets
+        for source_name, source in condition.get("sources", {}).items():
+            vm_name = source["variablemap_name"]
+            vs_name = source["variableset_name"]
+            src_id = "::".join([vm_name, vs_name])
+
+            if src_id not in self.sampling_conditions["sources"]:
+                self.sampling_conditions["sources"][src_id] = {"targets": []}
+                
+            source_variable = source["variable"]
+            target_entry = {
+                "condition": cond_name,
+                "source_name": source_name,
+                "source_variable": source_variable,
+            }
+            
+            if target_entry not in self.sampling_conditions["sources"][src_id]["targets"]:
+                self.sampling_conditions["sources"][src_id]["targets"].append(target_entry)
+
+        # Ensure status buffer exists if load_condition runs during sync loop
+        if not getattr(self, "status_buffer", None):
+            self.status_buffer = asyncio.Queue(maxsize=2000)
+            self.sampling_conditions["conditions"][cond_name]["event_buffer"] = self.status_buffer
+
+        condition_instance = SamplingCondition(
+            config=condition,
+            status_buffer=self.status_buffer,
+        )
+        self.sampling_conditions["conditions"][cond_name]["condition"] = condition_instance
+
+    # def open_http_client(self):
+    #     # create a new client for each request
+    #     self.http_client = httpx.AsyncClient()
+
+    # async def send_event(self, ce):
+    #     try:
+    #         self.logger.debug(ce)  # , extra=template)
+    #         if not self.http_client:
+    #             self.open_http_client()
+    #         try:
+    #             timeout = httpx.Timeout(5.0, read=0.1)
+    #             headers, body = to_structured(ce)
+    #             self.logger.debug(
+    #                 "send_event",
+    #                 extra={
+    #                     "broker": self.config.knative_broker,
+    #                     "h": headers,
+    #                     "b": body,
+    #                 },
+    #             )
+    #             # send to knative broker
+    #             # async with httpx.AsyncClient() as client:
+    #             #     r = await client.post(
+    #             #         self.config.knative_broker,
+    #             #         headers=headers,
+    #             #         data=body,
+    #             #         timeout=timeout,
+    #             #     )
+
+    #             r = await self.http_client.post(
+    #                 self.config.knative_broker,
+    #                 headers=headers,
+    #                 data=body,
+    #                 timeout=timeout,
+    #             )
+
+    #             r.raise_for_status()
+    #         except InvalidStructuredJSON:
+    #             self.logger.error(f"INVALID MSG: {ce}")
+    #         except httpx.TimeoutException:
+    #             pass
+    #         except httpx.HTTPError as e:
+    #             self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+    #     except Exception as e:
+    #         print("error", e)
+    #     await asyncio.sleep(0.01)
 
     async def send_event(self, ce):
         try:
-            self.logger.debug(ce)  # , extra=template)
-            if not self.http_client:
+            self.logger.debug(ce)
+            if not getattr(self, 'http_client', None):
                 self.open_http_client()
             try:
-                timeout = httpx.Timeout(5.0, read=0.1)
+                timeout = httpx.Timeout(5.0, read=10.0)
                 headers, body = to_structured(ce)
-                self.logger.debug(
-                    "send_event",
-                    extra={
-                        "broker": self.config.knative_broker,
-                        "h": headers,
-                        "b": body,
-                    },
-                )
-                # send to knative broker
-                # async with httpx.AsyncClient() as client:
-                #     r = await client.post(
-                #         self.config.knative_broker,
-                #         headers=headers,
-                #         data=body,
-                #         timeout=timeout,
-                #     )
-
+                
                 r = await self.http_client.post(
                     self.config.knative_broker,
                     headers=headers,
                     data=body,
                     timeout=timeout,
                 )
-
                 r.raise_for_status()
             except InvalidStructuredJSON:
                 self.logger.error(f"INVALID MSG: {ce}")
@@ -517,20 +664,96 @@ class SamplingConditionsManager:
                 self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
         except Exception as e:
             print("error", e)
-        await asyncio.sleep(0.01)
+
+    async def submit_get(self, path: str):
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None):
+                self.open_http_client()
+            
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", timeout=timeout)
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_get", extra={"reason": e})
+            return {}
 
     async def submit_request(self, path: str, query: dict):
         try:
-            self.logger.debug("submit_request", extra={"path": path, "query": query})
-            # results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
-            results = await self.http_client.get(
-                f"http://{self.datastore_url}/{path}/", params=query
-            )
-            self.logger.debug("submit_request", extra={"results": results.json()})
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None):
+                self.open_http_client()
+                
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", params=query, timeout=timeout)
             return results.json()
         except Exception as e:
             self.logger.error("submit_request", extra={"reason": e})
             return {}
+        
+    # async def submit_request(self, path: str, query: dict):
+    #     try:
+    #         self.logger.debug("submit_request", extra={"path": path, "query": query})
+    #         # results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
+    #         results = await self.http_client.get(
+    #             f"http://{self.datastore_url}/{path}/", params=query
+    #         )
+    #         self.logger.debug("submit_request", extra={"results": results.json()})
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_request", extra={"reason": e})
+    #         return {}
+
+    async def publish_local_definitions(self):
+        """Broadcasts local definitions so Datastore globally registers them."""
+        await asyncio.sleep(5)
+        while True:
+            try:
+                for cond_name, cond_data in self.sampling_conditions["conditions"].items():
+                    config = cond_data["config"]
+                    if not config:
+                        continue
+                    
+                    event = SamplingEvent.create_definition_registry_update(
+                        resource="samplingcondition",
+                        source=f"envds.{self.config.daq_id}.sampling-conditions",
+                        data={"samplingcondition": config}
+                    )
+                    event["destpath"] = f"envds/{self.config.daq_id}/samplingcondition-definition/registry/update"
+                    await self.send_event(event)
+
+            except Exception as e:
+                self.logger.error("publish_local_definitions", extra={"reason": e})
+            
+            await asyncio.sleep(60)
+
+    async def sync_sampling_definitions_loop(self):
+        """Concurrently fetches remote definitions to keep local memory updated."""
+        while True:
+            try:
+                # 1. Fetch Condition IDs
+                ids_resp = await self.submit_get(path="samplingcondition-definition/registry/ids/get")
+                if ids_resp and "results" in ids_resp:
+                    
+                    # 2. Concurrently fetch all bodies
+                    async def fetch_cond(cond_id):
+                        return await self.submit_request(
+                            path="samplingcondition-definition/registry/get", 
+                            query={"name": cond_id}
+                        )
+
+                    responses = await asyncio.gather(*(fetch_cond(cid) for cid in ids_resp["results"]))
+
+                    # 3. Load them into memory
+                    for resp in responses:
+                        if resp and "results" in resp and resp["results"]:
+                            cond_db = resp["results"][0]
+                            self.load_condition(cond_db)
+
+            except Exception as e:
+                self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+            
+            await asyncio.sleep(60)
 
     async def condition_status_monitor(self):
         while True:
@@ -656,6 +879,12 @@ class SamplingConditionsManager:
             # get target from dict and send source data to all databuffers
             src_id = ce["source"].split(".")[-1]
 
+            # --- ADD THIS CHECK ---
+            if src_id not in self.sampling_conditions["sources"]:
+                self.logger.debug("variableset_data_update", extra={"message": f"Source {src_id} not mapped in conditions. Ignoring."})
+                return
+            # ----------------------
+            
             data_map = dict()
 
             # self.logger.debug("variableset_data_update", extra={"src_id": src_id, "sampling_conditions": self.sampling_conditions})

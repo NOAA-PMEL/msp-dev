@@ -84,7 +84,7 @@ class LimitMinMax(SamplingCriterion):
                     self.logger.debug("evaluate", extra={"src_val": source_val, "min_val": self.min_val, "max_val": self.max_val})
                     result.append(source_val >= self.min_val and source_val <= self.max_val)
                 elif self.true_if == "outside":
-                    result.append(source_val < self.min_val and source_val > self.max_val)
+                    result.append(source_val < self.min_val or source_val > self.max_val)
                 self.logger.debug("evaluate", extra={"eval_result": result, "return_result": all(result)})
         return all(result)
 

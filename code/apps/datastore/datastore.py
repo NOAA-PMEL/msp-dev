@@ -39,6 +39,7 @@ from envds.util.util import (
 
 from envds.daq.event import DAQEvent
 from envds.daq.types import DAQEventType as det
+from envds.sampling.types import SamplingEventType as sampet
 
 # import pymongo
 
@@ -148,6 +149,9 @@ class Datastore:
         self.db_client = None
         self.erddap_client = None
         self.config = DatastoreConfig()
+
+        self.http_client = None
+
         self.configure()
 
         # self.mqtt_buffer = asyncio.Queue()
@@ -158,7 +162,8 @@ class Datastore:
         self.logger.info("Running Datastore async setup...")
         
         # Start background tasks safely inside the event loop
-        self.mqtt_buffer = asyncio.Queue()
+        # FIX: Add maxsize to prevent infinite memory growth (backpressure)
+        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
         asyncio.create_task(self.get_from_mqtt_loop())
         asyncio.create_task(self.handle_mqtt_buffer())
 
@@ -189,22 +194,37 @@ class Datastore:
             # setup erddap client
             pass
 
+    def open_http_client(self):
+        self.logger.debug("open_http_client")
+        # You can add limits here if desired: httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=50))
+        self.http_client = httpx.AsyncClient()
+
+    async def close_http_client(self):
+        if self.http_client:
+            await self.http_client.aclose()
+            self.http_client = None
+
     async def send_event(self, ce):
         try:
             self.logger.debug(ce)#, extra=template)
+
+            # Lazy initialization mirroring registrar.py
+            if not self.http_client:
+                self.open_http_client()
             try:
                 timeout = httpx.Timeout(5.0, read=0.1)
                 headers, body = to_structured(ce)
                 self.logger.debug("send_event", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
                 # send to knative broker
-                async with httpx.AsyncClient() as client:
-                    r = await client.post(
-                        self.config.knative_broker,
-                        headers=headers,
-                        data=body,
-                        timeout=timeout
-                    )
-                    r.raise_for_status()
+                # async with httpx.AsyncClient() as client:
+                    # r = await client.post(
+                r = await self.http_client.post(
+                    self.config.knative_broker,
+                    headers=headers,
+                    data=body,
+                    timeout=timeout
+                )
+                r.raise_for_status()
             except InvalidStructuredJSON:
                 self.logger.error(f"INVALID MSG: {ce}")
             except httpx.TimeoutException:
@@ -263,18 +283,21 @@ class Datastore:
         while True:
             try:
                 ce = await self.mqtt_buffer.get()
-
+                if "variable" in ce["type"]:
+                    self.logger.debug("handle_mqtt_buffer", extra={"ce-type": ce["type"]})
                 if ce["type"] == "envds.data.update":
                     await self.device_data_update(ce) 
                 elif ce["type"] == "envds.controller.data.update":
                     await self.controller_data_update(ce)
-                elif ce["type"] == "envds.variableset.data.update":
+                # elif ce["type"] == "envds.variableset.data.update":
+                elif ce["type"] == sampet.variableset_data_update():
+                    self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
                     await self.variableset_data_update(ce)           
 
             except Exception as e:
                 L.error("handle_mqtt_buffer", extra={"reason": e})
             
-            await asyncio.sleep(0.0001)
+            # await asyncio.sleep(0.0001)
 
     def find_one(self):  # , database: str, collection: str, query: dict):
         # self.connect()
@@ -1367,19 +1390,22 @@ class Datastore:
             database = "data"
             collection = "variableset"
             
+            self.logger.debug("variableset_data_update")
             data = ce.data
+            self.logger.debug("variableset_data_update", extra={"ce-data": data})
             attributes = data.get("attributes", {})
             dimensions = data.get("dimensions", {})
             variables = data.get("variables", {})
-
+            self.logger.debug("variableset_data_update", extra={"atts": attributes})
             # The time is attached as a variable object in the variablesets loop
             timestamp_str = variables.get("time", {}).get("data")
             timestamp = string_to_timestamp(timestamp_str) if timestamp_str else 0.0
 
             # Reconstruct ID from the cloud event source (e.g., envds.mspbase01.variableset.MSPPayload03::main)
             source_parts = ce.get("source", "").split(".")
+            self.logger.debug("variableset_data_update", extra={"source_parts": source_parts})
             variableset_id = source_parts[-1] if len(source_parts) > 0 else "unknown"
-            
+            self.logger.debug("variableset_data_update", extra={"vset_id": data})
             request = VariableSetDataUpdate(
                 variableset_id=variableset_id,
                 variablemap_id=attributes.get("variablemap_id", ""),
@@ -1389,7 +1415,7 @@ class Datastore:
                 dimensions=dimensions,
                 variables=variables,
             )
-
+            self.logger.debug("variableset_data_update", extra={"req": request})
             if self.db_client:
                 await self.db_client.variableset_data_update(
                     database=database,
