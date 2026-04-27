@@ -91,7 +91,8 @@ def get_variablemap_def():
     
     # query = {"device_type": device_type, "device_id": device_id}
     # url = f"http://{datastore_url}/device/data/get/"
-    url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
+    # url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
+    url = f"http://{datastore_url}/variableset/data/get/"
     # print(f"variablemap-definition-get: {url}, query: {query}")
     L.debug(f"variablemap-definition-get: {url}")
 
