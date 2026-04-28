@@ -153,7 +153,7 @@ async def device_data_get(
     L.debug("main:device_data_get", extra={"query": query})
     return await datastore.device_data_get(query)
 
-
+@app.post("/device/registry/update/")
 @app.post("/device-instance/registry/update/")
 async def device_instance_registry_update(request: Request):
     try:
@@ -281,6 +281,7 @@ async def controller_data_get(
     return await datastore.controller_data_get(query)
 
 
+@app.post("/controller/registry/update/")
 @app.post("/controller-instance/registry/update/")
 async def controller_instance_registry_update(request: Request):
     try:

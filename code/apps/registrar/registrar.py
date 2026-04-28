@@ -230,7 +230,8 @@ class Registrar:
                 # results = httpx.get(f"http://{self.datastore_url}/device-definition/registry/get/", parmams=query)
                 self.logger.debug("get_device_definitions_loop", extra={"results": results})
 
-                if "results" in results and results["results"]:
+                # if "results" in results and results["results"]:
+                if "results" in results:
                     def_list = []
                     # for device_def in results["results"]:
                     for id in results["results"]:
@@ -284,7 +285,8 @@ class Registrar:
                 # results = httpx.get(f"http://{self.datastore_url}/controller-definition/registry/get/", parmams=query)
                 self.logger.debug("get_controller_definitions_loop", extra={"results": results})
 
-                if "results" in results and results["results"]:
+                # if "results" in results and results["results"]:
+                if "results" in results:
                     def_list = []
                     # for controller_def in results["results"]:
                     for id in results["results"]:
@@ -350,7 +352,8 @@ class Registrar:
         while True:
             try:
                 results = await self.submit_get(path="variablemap-definition/registry/ids/get")
-                if "results" in results and results["results"]:
+                # if "results" in results and results["results"]:
+                if "results" in results:
                     self.current_variablemap_definition_list = results["results"]
                     # bcast = {
                     #     "type": "sampling.variablemap.registry.sync",
@@ -783,7 +786,8 @@ class Registrar:
         while True:
             try:
                 results = await self.submit_get(path="variableset-definition/registry/ids/get")
-                if "results" in results and results["results"]:
+                # if "results" in results and results["results"]:
+                if "results" in results:
                     self.current_variableset_definition_list = results["results"]
                     # bcast = {
                     #     "type": "sampling.variableset.registry.sync",
@@ -1052,7 +1056,8 @@ class Registrar:
                 results = await self.submit_get(path=path)
                 
                 # FIX: Check that 'results' exists AND is not empty
-                if "results" in results and results["results"]:
+                # if "results" in results and results["results"]:
+                if "results" in results:
                     
                     # FIX: Save the current state so registry_compare_bcast can track it
                     setattr(self, f"current_{resource}_definition_list", results["results"])
