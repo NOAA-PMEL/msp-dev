@@ -76,20 +76,22 @@ ws_send_buffer = html.Div(id="ws-send-instance-buffer", style={"display": "none"
 
 
 
-def get_device_data(device_id: str, device_type: str="sensor"):
+
+def get_variableset_data(variableset_id: str):
     
-    query = {"device_type": device_type, "device_id": device_id}
-    url = f"http://{datastore_url}/device/data/get/"
-    print(f"device-data-get: {url}, query: {query}")
+    query = {"variableset_id": variableset_id}
+    # url = f"http://{datastore_url}/device/data/get/"
+    url = f"http://{datastore_url}/variableset/data/get/"
+    L.debug(f"variableset-data-get: {url}")
     try:
-        timeout = httpx.Timeout(10.0, read=None)
+        timeout = httpx.Timeout(10.0, read=10.0)
         response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
-        # print(f"results: {results}")
+        L.debug(f"variableset_results: {results}")
         if "results" in results and results["results"]:
             return results["results"]
     except Exception as e:
-        L.error("get_device_data", extra={"reason": e})
+        L.error("variableset_data_error", extra={"reason": e})
     return []
 
 
@@ -156,7 +158,13 @@ def get_layout():
                 is_open=True, # Set to False if you want it closed by default
             )
         ]),
-    ], className="mb-4")
+    ], className="mb-4"),
+    dcc.Store(id='variableset-store', data=[]),
+    dcc.Interval(
+        id='variableset-interval',
+        interval=5*1000,
+        n_intervals=0
+    )
     ])
 
     return layout
@@ -555,3 +563,58 @@ def update_dashboard(_):
         ])
 
     return header_content, detail_content, card_color
+
+
+
+
+@callback(
+    Output("variableset-store", "data"),
+    Input("variableset-interval", "n_intervals"),
+    State("variableset-store", "data")
+)
+def update_variableset_lists(count, current_sets):
+    new_data = []
+    
+    try:
+        url = f"http://{datastore_url}/variableset-definition/registry/get/"
+        L.debug(f"variableset-definition-get: {url}")
+        response = httpx.get(url)
+        results = response.json()
+        print(f"results: {results}")
+        if "results" in results and results["results"]:
+            for id in results["results"]:
+                if id is not None:
+                    parts = id.split("::")
+                    # sensor_def = {
+                    #     "variab": id,
+                    #     "make": parts[0],
+                    #     "model": parts[1],
+                    #     "version": parts[2],
+                    # }
+                    variableset = parts
+                    print(f"device-definition-get: {variableset}")
+                    if variableset not in current_sets:
+                        current_sets.append(variableset)
+                        update = True
+                    new_data.append(variableset)
+
+
+        remove_data = []
+        for index, data in enumerate(current_sets):
+            if data not in new_data:
+                update = True
+                remove_data.insert(0, index)
+        for index in remove_data:
+            current_sets.pop(index)
+
+        if update:
+            return current_sets
+        else:
+            return dash.no_update
+
+
+
+    except Exception as e:
+        print(f"update_sensor_definitions error: {e}")
+        return dash.no_update
+
