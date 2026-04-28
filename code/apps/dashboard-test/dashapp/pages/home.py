@@ -217,7 +217,8 @@ def update_variableset_list(count, current_sets):
     new_data = []
     
     try:
-        url = f"http://{datastore_url}/variableset-definition/registry/get/"
+        # url = f"http://{datastore_url}/variableset-definition/registry/get/"
+        url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
         L.debug(f"variableset-definition-get: {url}")
         response = httpx.get(url)
         results = response.json()
