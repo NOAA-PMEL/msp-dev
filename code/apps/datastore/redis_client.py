@@ -1,6 +1,6 @@
 import asyncio
 import json
-import orjson
+# import orjson
 import redis.asyncio as redis
 from redis.commands.json.path import Path
 from redis.commands.search.index_definition import IndexDefinition, IndexType
@@ -223,6 +223,7 @@ class RedisClient(DBClient):
 
     async def device_data_get(self, request: DataRequest):
         await super(RedisClient, self).device_data_get(request)
+
         max_results = 10000
 
         query_args = []
@@ -234,6 +235,8 @@ class RedisClient(DBClient):
         if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
 
         qstring = " ".join(query_args) if query_args else "*"
+        
+        self.logger.debug("device_data_get", extra={"query_string": qstring})
         q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
         docs = (await self.client.ft(self.data_device_index_name).search(q)).docs
 
@@ -241,7 +244,8 @@ class RedisClient(DBClient):
             res = []
             for doc in documents:
                 if doc.json:
-                    res.append(orjson.loads(doc.json)["record"])
+                    # FIX: Reverted to standard json to support NaN/Infinity in sensor metrics
+                    res.append(json.loads(doc.json)["record"])
             return res
 
         try:
@@ -407,7 +411,8 @@ class RedisClient(DBClient):
             res = []
             for doc in documents:
                 if doc.json:
-                    res.append(orjson.loads(doc.json)["record"])
+                    # FIX: Reverted to standard json to support NaN/Infinity in sensor metrics
+                    res.append(json.loads(doc.json)["record"])
             return res
 
         try:
@@ -734,7 +739,8 @@ class RedisClient(DBClient):
             res = []
             for doc in documents:
                 if doc.json:
-                    res.append(orjson.loads(doc.json)["record"])
+                    # FIX: Reverted to standard json to support NaN/Infinity in sensor metrics
+                    res.append(json.loads(doc.json)["record"])
             return res
 
         try:
