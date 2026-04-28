@@ -74,7 +74,7 @@ class RedisClient(DBClient):
                     TagField("$.registration.make", as_name="make"),
                     TagField("$.registration.model", as_name="model"),
                     TagField("$.registration.version", as_name="version"),
-                    TextField("$.registration.device_type", as_name="device_type"),
+                    TagField("$.registration.device_type", as_name="device_type"),
                 )
                 definition = IndexDefinition(prefix=["registry:device-definition:"], index_type=IndexType.JSON)
                 await self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
@@ -89,7 +89,7 @@ class RedisClient(DBClient):
                     TagField("$.registration.model", as_name="model"),
                     TagField("$.registration.serial_number", as_name="serial_number"),
                     TagField("$.registration.version", as_name="version"),
-                    TextField("$.registration.device_type", as_name="device_type"),
+                    TagField("$.registration.device_type", as_name="device_type"),
                 )
                 definition = IndexDefinition(prefix=["registry:device-instance:"], index_type=IndexType.JSON)
                 await self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
@@ -212,12 +212,14 @@ class RedisClient(DBClient):
         return escaped 
 
     def _parse_docs_sync(self, documents):
-        """Helper to parse JSON in worker thread to support NaN values safely."""
+        """Helper to parse JSON from RediSearch result documents."""
         res = []
         for doc in documents:
             try:
-                if doc.json:
-                    record = json.loads(doc.json)
+                # When using return_fields("$"), data is in doc["$"] or doc.json
+                data = getattr(doc, "$", None) or getattr(doc, "json", None)
+                if data:
+                    record = json.loads(data)
                     payload = record.get("record") or record.get("registration")
                     if payload: res.append(payload)
             except Exception:
@@ -246,7 +248,7 @@ class RedisClient(DBClient):
         if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
 
         qstring = " ".join(query_args) if query_args else "*"
-        q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp")
+        q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp").return_fields("$")
         docs = (await self.client.ft(self.data_device_index_name).search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
@@ -270,7 +272,8 @@ class RedisClient(DBClient):
         if request.device_type: query_args.append(f"@device_type:{{{self.escape_query(request.device_type)}}}")
 
         qstring = " ".join(query_args) if query_args else "*"
-        docs = (await self.client.ft(self.registry_device_definition_index_name).search(Query(qstring))).docs
+        q = Query(qstring).return_fields("$")
+        docs = (await self.client.ft(self.registry_device_definition_index_name).search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
     async def device_instance_registry_update(self, database: str, collection: str, request: DeviceInstanceUpdate, ttl: int = 300):
@@ -294,7 +297,8 @@ class RedisClient(DBClient):
         if request.device_type: query_args.append(f"@device_type:{{{self.escape_query(request.device_type)}}}")
 
         qstring = " ".join(query_args) if query_args else "*"
-        docs = (await self.client.ft(self.registry_device_instance_index_name).search(Query(qstring).paging(0, 50))).docs
+        q = Query(qstring).paging(0, 100).return_fields("$")
+        docs = (await self.client.ft(self.registry_device_instance_index_name).search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
     # -------------------------------------------------------------------------------------
@@ -318,7 +322,7 @@ class RedisClient(DBClient):
         if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
 
         qstring = " ".join(query_args) if query_args else "*"
-        q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp")
+        q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp").return_fields("$")
         docs = (await self.client.ft(self.data_controller_index_name).search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
@@ -341,7 +345,8 @@ class RedisClient(DBClient):
         if request.version: query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
 
         qstring = " ".join(query_args) if query_args else "*"
-        docs = (await self.client.ft(self.registry_controller_definition_index_name).search(Query(qstring))).docs
+        q = Query(qstring).return_fields("$")
+        docs = (await self.client.ft(self.registry_controller_definition_index_name).search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
     async def controller_instance_registry_update(self, database: str, collection: str, request: ControllerInstanceUpdate, ttl: int = 300):
@@ -364,7 +369,8 @@ class RedisClient(DBClient):
         if request.serial_number: query_args.append(f"@serial_number:{{{self.escape_query(request.serial_number)}}}")
 
         qstring = " ".join(query_args) if query_args else "*"
-        docs = (await self.client.ft(self.registry_controller_instance_index_name).search(Query(qstring))).docs
+        q = Query(qstring).return_fields("$")
+        docs = (await self.client.ft(self.registry_controller_instance_index_name).search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
     # -------------------------------------------------------------------------------------
@@ -379,13 +385,11 @@ class RedisClient(DBClient):
         if request.variablemap_definition_id:
             redis_id = request.variablemap_definition_id.replace(":", "") if "::" not in request.variablemap_definition_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(request.variablemap_definition_id.split("::"))])
             query_args.append(f"@variablemap_definition_id:{{{self.escape_query(redis_id)}}}")
-        if request.variablemap_type: query_args.append(f"@variablemap_type:{{{self.escape_query(request.variablemap_type)}}}")
-        if request.variablemap_type_id: query_args.append(f"@variablemap_type_id:{{{self.escape_query(request.variablemap_type_id)}}}")
         if request.variablemap: query_args.append(f"@variablemap:{{{self.escape_query(request.variablemap)}}}")
-        if request.valid_config_time: query_args.append(f"@valid_config_time:{{{self.escape_query(request.valid_config_time.replace(':', ''))}}}")
 
         qstring = " ".join(query_args) if query_args else "*"
-        docs = (await self.client.ft(self.registry_variablemap_definition_index_name).search(Query(qstring))).docs
+        q = Query(qstring).return_fields("$")
+        docs = (await self.client.ft(self.registry_variablemap_definition_index_name).search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
     async def variablemap_definition_registry_update(self, database: str, collection: str, request: VariableMapDefinitionUpdate, ttl: int = 0):
@@ -411,7 +415,8 @@ class RedisClient(DBClient):
         if request.index_value: query_args.append(f"@index_value:{{{self.escape_query(str(request.index_value))}}}")
 
         qstring = " ".join(query_args) if query_args else "*"
-        docs = (await self.client.ft(self.registry_variableset_definition_index_name).search(Query(qstring))).docs
+        q = Query(qstring).return_fields("$")
+        docs = (await self.client.ft(self.registry_variableset_definition_index_name).search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
     async def variableset_definition_registry_update(self, database: str, collection: str, request: VariableSetDefinitionUpdate, ttl: int = 0) -> bool:
@@ -429,7 +434,7 @@ class RedisClient(DBClient):
         if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
 
         qstring = " ".join(query_args) if query_args else "*"
-        q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp")
+        q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp").return_fields("$")
         docs = (await self.client.ft("idx:data-variableset").search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
@@ -455,7 +460,7 @@ class RedisClient(DBClient):
         if request.variableset: query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
             
         qstring = " ".join(query_args) if query_args else "*"
-        q = Query(qstring).paging(0, 10000)
+        q = Query(qstring).paging(0, 10000).return_fields("$")
         docs = (await self.client.ft(self.registry_variableset_instance_index_name).search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
@@ -483,5 +488,6 @@ class RedisClient(DBClient):
     async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
         query_args = []
         if "name" in query and query["name"]: query_args.append(f"@name:{{{self.escape_query(query['name'])}}}")
-        docs = (await self.client.ft(f"idx:registry-{resource}-definition").search(Query(" ".join(query_args) if query_args else "*"))).docs
+        q = Query(" ".join(query_args) if query_args else "*").return_fields("$")
+        docs = (await self.client.ft(f"idx:registry-{resource}-definition").search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
