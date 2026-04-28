@@ -260,15 +260,8 @@ class RedisClient(DBClient):
             id = "::".join([request.make, request.model, request.version])
             key = f"{database}:{collection}:{id}"
             
-            check_request = DeviceDefinitionRequest(device_definition_id=id)
-            check_results = await self.device_definition_registry_get(check_request)
-
-            if check_results["results"]:
-                result = True
-            else:
-                result = await self.client.json().set(key, "$", {"registration": document})
-                if result:
-                    await self.client.sadd("registry_ids:device-definition", id)
+            # Unconditionally set the document to ensure definition updates are always stored
+            result = await self.client.json().set(key, "$", {"registration": document})
 
             if result and ttl > 0:
                 await self.client.expire(key, ttl)
@@ -279,14 +272,17 @@ class RedisClient(DBClient):
             return False
 
     async def device_definition_registry_get_ids(self) -> dict:
+        ids = []
         try:
-            members = await self.client.smembers("registry_ids:device-definition")
-            ids = [m.decode('utf-8') for m in members]
+            # Use scan_iter to ensure we grab all keys regardless of when they were added
+            async for key in self.client.scan_iter("registry:device-definition:*"):
+                id = key.decode('utf-8').replace("registry:device-definition:", "")
+                ids.append(id)
             return {"results": ids}
         except Exception as e:
             self.logger.error("device_definition_registry_get_ids", extra={"reason": e})
             return {"results": []}
-
+        
     async def device_definition_registry_get(self, request: DeviceDefinitionRequest) -> dict:
         await super(RedisClient, self).device_definition_registry_get(request)
 
@@ -430,13 +426,7 @@ class RedisClient(DBClient):
             id = "::".join([request.make, request.model, request.version])
             key = f"{database}:{collection}:{id}"
             
-            check_request = ControllerDefinitionRequest(controller_definition_id=id)
-            check_results = await self.controller_definition_registry_get(check_request)
-            
-            if check_results["results"]:
-                result = True
-            else:
-                result = await self.client.json().set(key, "$", {"registration": document})
+            result = await self.client.json().set(key, "$", {"registration": document})
             
             if result and ttl > 0:
                 await self.client.expire(key, ttl)
@@ -565,13 +555,7 @@ class RedisClient(DBClient):
             id = "::".join([variable_map_type_id,variablemap,redis_time])
             key = f"{database}:{collection}:{id}"
             
-            check_request = VariableMapDefinitionRequest(variablemap_definition_id=id)
-            check_results = await self.variablemap_definition_registry_get(check_request)
-            
-            if check_results["results"]:
-                result = True
-            else:
-                result = await self.client.json().set(key, "$", {"registration": document})
+            result = await self.client.json().set(key, "$", {"registration": document})
             
             if result and ttl > 0:
                 await self.client.expire(key, ttl)
@@ -660,13 +644,7 @@ class RedisClient(DBClient):
             id = "::".join([redis_id,variableset])
             key = f"{database}:{collection}:{id}"
             
-            check_request = VariableSetDefinitionRequest(variableset_definition_id=id)
-            check_results = await self.variableset_definition_registry_get(check_request)
-            
-            if check_results["results"]:
-                result = True
-            else:
-                result = await self.client.json().set(key, "$", {"registration": document})
+            result = await self.client.json().set(key, "$", {"registration": document})
             
             if result and ttl > 0:
                 await self.client.expire(key, ttl)
@@ -808,14 +786,7 @@ class RedisClient(DBClient):
             id = f"{name}::{redis_time}"
             key = f"{database}:{collection}:{id}"
             
-            # FAST O(1) Check
-            check_query = {"name": id} 
-            check_results = await self.sampling_definition_registry_get(resource, check_query)
-
-            if check_results["results"]: 
-                result = True
-            else:
-                result = await self.client.json().set(key, "$", {"registration": document})
+            result = await self.client.json().set(key, "$", {"registration": document})
             
             if result and ttl > 0:
                 await self.client.expire(key, ttl)

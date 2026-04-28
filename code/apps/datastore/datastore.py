@@ -266,7 +266,7 @@ class Datastore:
                             ce = from_json(message.payload)
                             topic = message.topic.value
                             ce["sourcepath"] = topic
-                            
+
                             # await self.mqtt_buffer.put(ce)
 
                             # FIX: Use wait_for to drop messages if the buffer is full, 
@@ -1394,6 +1394,11 @@ class Datastore:
         except Exception as e:
             self.logger.error(f"{resource}_definition_registry_update", extra={"reason": e})
 
+    # FIX: Delegate to db_client instead of trying to run Redis commands directly
+    async def sampling_definition_registry_get_ids(self, resource: str) -> dict:
+        if self.db_client:
+            return await self.db_client.sampling_definition_registry_get_ids(resource)
+        return {"results": []}
 
     async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
         if self.db_client:
