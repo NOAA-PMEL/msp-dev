@@ -216,12 +216,23 @@ class RedisClient(DBClient):
         res = []
         for doc in documents:
             try:
-                # When using return_fields("$"), data is in doc["$"] or doc.json
-                data = getattr(doc, "$", None) or getattr(doc, "json", None)
+                # Check for JSON data in standard RediSearch JSON locations
+                # 1. Check for the '$' field (used when .return_fields("$") is used)
+                # 2. Fallback to doc.json property or doc['json']
+                data = None
+                if hasattr(doc, "$"):
+                    data = doc.$
+                elif hasattr(doc, "json"):
+                    data = doc.json
+                elif isinstance(doc, dict) and "$" in doc:
+                    data = doc["$"]
+                
                 if data:
                     record = json.loads(data)
+                    # Support both telemetry 'record' and registry 'registration' formats
                     payload = record.get("record") or record.get("registration")
-                    if payload: res.append(payload)
+                    if payload:
+                        res.append(payload)
             except Exception:
                 continue
         return res
@@ -486,8 +497,23 @@ class RedisClient(DBClient):
         return await self.client.json().set(f"{database}:{collection}:{id}", "$", {"registration": request})
     
     async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
+        # FAST PATH: If the registrar passes a full ID (name::timestamp), use direct O(1) fetch
+        if "name" in query and "::" in query["name"]:
+            key = f"registry:{resource}-definition:{query['name']}"
+            try:
+                doc = await self.client.json().get(key)
+                if doc and "registration" in doc:
+                    return {"results": [doc["registration"]]}
+            except Exception:
+                pass
+
+        # SLOW PATH: Search by Name
         query_args = []
-        if "name" in query and query["name"]: query_args.append(f"@name:{{{self.escape_query(query['name'])}}}")
-        q = Query(" ".join(query_args) if query_args else "*").return_fields("$")
+        if "name" in query and query["name"]: 
+            query_args.append(f"@name:{{{self.escape_query(query['name'])}}}")
+        
+        qstring = " ".join(query_args) if query_args else "*"
+        q = Query(qstring).return_fields("$")
+        
         docs = (await self.client.ft(f"idx:registry-{resource}-definition").search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
