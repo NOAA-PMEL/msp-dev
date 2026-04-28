@@ -216,27 +216,33 @@ class RedisClient(DBClient):
         res = []
         for doc in documents:
             try:
-                # Check for JSON data in standard RediSearch JSON locations
-                # 1. Check for the '$' field (used when .return_fields("$") is used)
-                # 2. Fallback to doc.json property or doc['json']
+                # FIXED: Access the '$' attribute using getattr because 
+                # '$' is not a valid Python identifier for direct doc.$ access.
                 data = None
                 if hasattr(doc, "$"):
-                    data = doc.$
+                    data = getattr(doc, "$")
                 elif hasattr(doc, "json"):
                     data = doc.json
                 elif isinstance(doc, dict) and "$" in doc:
                     data = doc["$"]
                 
                 if data:
-                    record = json.loads(data)
-                    # Support both telemetry 'record' and registry 'registration' formats
-                    payload = record.get("record") or record.get("registration")
+                    # Handle both single JSON objects and list results from JSON paths
+                    if isinstance(data, list):
+                        # RediSearch RETURN $ often returns a list of results
+                        record = json.loads(data[0]) if isinstance(data[0], str) else data[0]
+                    else:
+                        record = json.loads(data)
+                        
+                    # Extract payload from either telemetry 'record' or registry 'registration'
+                    payload = record.get("record") or record.get("registration") or record
                     if payload:
                         res.append(payload)
-            except Exception:
+            except Exception as e:
+                self.logger.error("parse_docs_sync_error", extra={"reason": str(e)})
                 continue
         return res
-
+    
     # -------------------------------------------------------------------------------------
     # DEVICES
     # -------------------------------------------------------------------------------------
