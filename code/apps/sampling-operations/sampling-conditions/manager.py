@@ -338,13 +338,24 @@ class SamplingCondition:
         finally:
             # This guarantees cleanup runs even if the function hits a 'return'
             try:
+                # Safely parse current timestamp
+                current_dt_raw = string_to_datetime(timestamp)
+                if not current_dt_raw:
+                    # If we can't parse the current time, skip cleanup this round
+                    return 
+                    
                 # Calculate a cutoff time (e.g., 60 seconds ago)
-                current_dt = string_to_datetime(timestamp).replace(tzinfo=timezone.utc)
+                current_dt = current_dt_raw.replace(tzinfo=timezone.utc)
                 cutoff_dt = current_dt - timedelta(seconds=60)
                 
                 for src_name, src_dict in self.source_map.items():
-                    # Find all timestamps older than 60 seconds
-                    stale_keys = [ts for ts in src_dict.keys() if string_to_datetime(ts).replace(tzinfo=timezone.utc) < cutoff_dt]
+                    # Safely find all valid timestamps older than 60 seconds
+                    stale_keys = []
+                    for ts in src_dict.keys():
+                        dt_obj = string_to_datetime(ts)
+                        if dt_obj and dt_obj.replace(tzinfo=timezone.utc) < cutoff_dt:
+                            stale_keys.append(ts)
+                            
                     # Delete them
                     for ts in stale_keys:
                         src_dict.pop(ts, None)
@@ -881,10 +892,10 @@ class SamplingConditionsManager:
 
             # --- ADD THIS CHECK ---
             if src_id not in self.sampling_conditions["sources"]:
-                self.logger.debug("variableset_data_update", extra={"message": f"Source {src_id} not mapped in conditions. Ignoring."})
+                self.logger.debug("variableset_data_update", extra={"msg": f"Source {src_id} not mapped in conditions. Ignoring."})
                 return
             # ----------------------
-            
+
             data_map = dict()
 
             # self.logger.debug("variableset_data_update", extra={"src_id": src_id, "sampling_conditions": self.sampling_conditions})
