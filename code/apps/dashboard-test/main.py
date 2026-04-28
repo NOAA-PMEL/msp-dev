@@ -479,7 +479,7 @@ async def handle_mqtt_buffer():
 
             elif ce["type"] == "envds.variableset.data.update":
                 L.info(f"variableset ce: {ce}")
-                L.info(f"variableset ce attributes: {ce.data["attributes"]}")
+                L.info(f"variableset ce attributes: {ce.data}")
                 # attributes = ce.data["attributes"]
                 # make = attributes["make"]["data"]
                 # model = attributes["model"]["data"]
