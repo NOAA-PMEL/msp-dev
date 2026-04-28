@@ -288,7 +288,7 @@ class ConnectionManager:
                 await connection.send_text(message)
                 # await asyncio.sleep(.1)
         except (KeyError, Exception) as e:
-            # L.info(f"broadcast error: {e}")
+            L.info(f"broadcast error: {e}")
             pass
 
     async def broadcast_exclude_self(
@@ -478,6 +478,8 @@ async def handle_mqtt_buffer():
                 await manager.broadcast(json.dumps(msg), "controller", controller_id)
 
             elif ce["type"] == "envds.variableset.data.update":
+                L.info(f"variableset ce: {ce}")
+                L.info(f"variableset ce attributes: {ce.data["attributes"]}")
                 # attributes = ce.data["attributes"]
                 # make = attributes["make"]["data"]
                 # model = attributes["model"]["data"]
