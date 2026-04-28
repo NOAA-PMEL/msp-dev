@@ -16,6 +16,7 @@ from logfmter import Logfmter
 import plotly.express as px
 import random
 import json
+import traceback
 
 
 handler = logging.StreamHandler()
@@ -256,6 +257,7 @@ def update_variableset_list(count, current_sets):
 
     except Exception as e:
         L.error(f"update_sensor_definitions error: {e}")
+        L.error(traceback.format_exc())
         return dash.no_update
     
 
@@ -264,12 +266,13 @@ def update_variableset_list(count, current_sets):
 @callback(
         Output("variableset-data-buffer", "data"),
         # Output("sensor-settings-buffer", "data"),
-        Input("ws-sensor-instance", "message")
+        Input("ws-variableset-instance", "message")
           )
 def update_variableset_buffers(event):
+    L.debug(f"update_variableset_buffers: {event}")
     if event is not None and "data" in event:
         event_data = json.loads(event["data"])
-        L.debug(f"update_variableset_buffers: {event_data}")
+        L.debug(f"update_variableset_buffers: {event}")
         if "data-update" in event_data:
             try:
                 # msg = json.loads(event["data-update"])
