@@ -1,5 +1,5 @@
 import dash
-from dash import html, callback, dcc, Input, Output, State, dash_table
+from dash import html, callback, dcc, Input, Output, State, dash_table, PreventUpdate
 import dash_bootstrap_components as dbc
 #import dash_daq as daq
 from dash_extensions import WebSocket
@@ -14,6 +14,7 @@ import logging
 from logfmter import Logfmter
 import plotly.express as px
 import random
+import json
 
 
 handler = logging.StreamHandler()
@@ -63,7 +64,7 @@ datastore_url = f"datastore.{config.daq_id}-system"
 http_url_base = f"http://{config.external_hostname}:{config.http_port}"
 if config.http_use_tls:
     http_url_base = f"https://{config.external_hostname}:{config.https_port}"
-ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}:"
+ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 if config.ws_use_tls:
     ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
 
@@ -75,24 +76,6 @@ link_url_base = f"{http_url_base}/msp/dashboardtest"
 ws_send_buffer = html.Div(id="ws-send-instance-buffer", style={"display": "none"})
 
 
-
-
-def get_variableset_data(variableset_id: str):
-    
-    query = {"variableset_id": variableset_id}
-    # url = f"http://{datastore_url}/device/data/get/"
-    url = f"http://{datastore_url}/variableset/data/get/"
-    L.debug(f"variableset-data-get: {url}")
-    try:
-        timeout = httpx.Timeout(10.0, read=10.0)
-        response = httpx.get(url, params=query, timeout=timeout)
-        results = response.json()
-        L.debug(f"variableset_results: {results}")
-        if "results" in results and results["results"]:
-            return results["results"]
-    except Exception as e:
-        L.error("variableset_data_error", extra={"reason": e})
-    return []
 
 
 
@@ -159,7 +142,13 @@ def get_layout():
             )
         ]),
     ], className="mb-4"),
+    WebSocket(
+        id="ws-variableset-instance",
+        # url=f"{ws_url_base}/msp/dashboardtest/ws/variableset/{variableset_id}"
+        url=f"{ws_url_base}/msp/dashboardtest/ws/variableset/raz1::main"
+    ),
     dcc.Store(id='variableset-store', data=[]),
+    dcc.Store(id='variableset-data-buffer', data={}),
     dcc.Interval(
         id='variableset-interval',
         interval=5*1000,
@@ -216,6 +205,103 @@ layout = get_layout()
 #     else:
 #         return string_prefix
 
+
+@callback(
+    Output("variableset-store", "data"),
+    Input("variableset-interval", "n_intervals"),
+    State("variableset-store", "data")
+)
+def update_variableset_list(count, current_sets):
+    update = False
+    new_data = []
+    
+    try:
+        url = f"http://{datastore_url}/variableset-definition/registry/get/"
+        L.debug(f"variableset-definition-get: {url}")
+        response = httpx.get(url)
+        results = response.json()
+        print(f"results: {results}")
+        if "results" in results and results["results"]:
+            for id in results["results"]:
+                if id is not None:
+                    parts = id.split("::")
+                    # sensor_def = {
+                    #     "variab": id,
+                    #     "make": parts[0],
+                    #     "model": parts[1],
+                    #     "version": parts[2],
+                    # }
+                    variableset = parts
+                    print(f"device-definition-get: {variableset}")
+                    if variableset not in current_sets:
+                        current_sets.append(variableset)
+                        update = True
+                    new_data.append(variableset)
+
+
+        remove_data = []
+        for index, data in enumerate(current_sets):
+            if data not in new_data:
+                update = True
+                remove_data.insert(0, index)
+        for index in remove_data:
+            current_sets.pop(index)
+
+        if update:
+            return current_sets
+        else:
+            return dash.no_update
+
+    except Exception as e:
+        print(f"update_sensor_definitions error: {e}")
+        return dash.no_update
+    
+
+
+
+@callback(
+        Output("variableset-data-buffer", "data"),
+        # Output("sensor-settings-buffer", "data"),
+        Input("ws-sensor-instance", "message")
+          )
+def update_variableset_buffers(event):
+    if event is not None and "data" in event:
+        event_data = json.loads(event["data"])
+        L.debug(f"update_variableset_buffers: {event_data}")
+        if "data-update" in event_data:
+            try:
+                # msg = json.loads(event["data-update"])
+                # print(f"update_controller_data: {event_data}")
+                if event_data["data-update"]:
+                    return [event_data["data-update"]]
+            except Exception as event:
+                L.debug(f"data buffer update error: {event}")
+            
+    return [dash.no_update]
+
+
+
+
+# def get_variableset_data(variableset_id: str):
+    
+#     query = {"variableset_id": variableset_id}
+#     # url = f"http://{datastore_url}/device/data/get/"
+#     url = f"http://{datastore_url}/variableset/data/get/"
+#     L.debug(f"variableset-data-get: {url}")
+#     try:
+#         timeout = httpx.Timeout(10.0, read=10.0)
+#         response = httpx.get(url, params=query, timeout=timeout)
+#         results = response.json()
+#         L.debug(f"variableset_results: {results}")
+#         if "results" in results and results["results"]:
+#             return results["results"]
+#     except Exception as e:
+#         L.error("variableset_data_error", extra={"reason": e})
+#     return []
+
+
+
+
 def get_fake_trajectory_data(num_points=100, start_lat=50.0, start_lon=-1.0):
     """
     Generates a DataFrame with a simulated ship trajectory.
@@ -246,42 +332,89 @@ def get_dataset():
     return get_fake_trajectory_data()
 
 
+
 @callback(
     Output("trajectory", "figure"),
-    Input("global-status-container", "id") # Triggers when the health status container loads
+    # Input("global-status-container", "id") # Triggers when the health status container loads
+    Input("variableset-data-buffer", "data")
 )
-def plot_trajectory(_):
+def update_trajectory(vs_data):
     # Directly get the fake data
-    df = get_dataset()
-    
-    lats = df['latitude']
-    lons = df['longitude']
-    
-    center_lat = lats.mean()
-    center_lon = lons.mean()
-    
-    # Dynamic Zoom Logic
-    max_diff = max(np.abs(lats - center_lat).max(), np.abs(lons - center_lon).max(), 0.01)
-    zoom_level = 8 - np.log2(max_diff)
+    # df = get_dataset()
+    if vs_data:
+        L.debug(f"variableset-data-trajectory{vs_data}")
+        lats = vs_data['latitude']
+        lons = vs_data['longitude']
+        
+        center_lat = lats.mean()
+        center_lon = lons.mean()
+        
+        # Dynamic Zoom Logic
+        max_diff = max(np.abs(lats - center_lat).max(), np.abs(lons - center_lon).max(), 0.01)
+        zoom_level = 8 - np.log2(max_diff)
 
-    # Create the Map
-    fig = px.scatter_map(
-        df, 
-        lat='latitude', 
-        lon='longitude', 
-        zoom=zoom_level, 
-        center={"lat": center_lat, "lon": center_lon},
-        title="Current Vessel Trajectory"
-    )
+        # Create the Map
+        fig = px.scatter_map(
+            vs_data, 
+            lat='latitude', 
+            lon='longitude', 
+            zoom=zoom_level, 
+            center={"lat": center_lat, "lon": center_lon},
+            title="Current Vessel Trajectory"
+        )
 
-    # Maritime Styling
-    fig.update_traces(marker={'size': 8, 'color': '#007bff'}) # Nautical Blue
-    fig.update_layout(
-        margin={"r":0,"t":30,"l":0,"b":0},
-        mapbox_style="open-street-map" # Reliable, no-token-needed map style
-    )
+        # Maritime Styling
+        fig.update_traces(marker={'size': 8, 'color': '#007bff'}) # Nautical Blue
+        fig.update_layout(
+            margin={"r":0,"t":30,"l":0,"b":0},
+            mapbox_style="open-street-map" # Reliable, no-token-needed map style
+        )
+        
+        return fig
+
+    else:
+        raise PreventUpdate
+
+
+
+# @callback(
+#     Output("trajectory", "figure"),
+#     Input("global-status-container", "id") # Triggers when the health status container loads
+# )
+# def plot_trajectory(_):
+#     # Directly get the fake data
+#     df = get_dataset()
     
-    return fig
+#     lats = df['latitude']
+#     lons = df['longitude']
+    
+#     center_lat = lats.mean()
+#     center_lon = lons.mean()
+    
+#     # Dynamic Zoom Logic
+#     max_diff = max(np.abs(lats - center_lat).max(), np.abs(lons - center_lon).max(), 0.01)
+#     zoom_level = 8 - np.log2(max_diff)
+
+#     # Create the Map
+#     fig = px.scatter_map(
+#         df, 
+#         lat='latitude', 
+#         lon='longitude', 
+#         zoom=zoom_level, 
+#         center={"lat": center_lat, "lon": center_lon},
+#         title="Current Vessel Trajectory"
+#     )
+
+#     # Maritime Styling
+#     fig.update_traces(marker={'size': 8, 'color': '#007bff'}) # Nautical Blue
+#     fig.update_layout(
+#         margin={"r":0,"t":30,"l":0,"b":0},
+#         mapbox_style="open-street-map" # Reliable, no-token-needed map style
+#     )
+    
+#     return fig
+
+
 
 @callback(
     Output("trajectory-collapse", "is_open"),
@@ -563,57 +696,4 @@ def update_dashboard(_):
         ])
 
     return header_content, detail_content, card_color
-
-
-
-
-@callback(
-    Output("variableset-store", "data"),
-    Input("variableset-interval", "n_intervals"),
-    State("variableset-store", "data")
-)
-def update_variableset_list(count, current_sets):
-    update = False
-    new_data = []
-    
-    try:
-        url = f"http://{datastore_url}/variableset-definition/registry/get/"
-        L.debug(f"variableset-definition-get: {url}")
-        response = httpx.get(url)
-        results = response.json()
-        print(f"results: {results}")
-        if "results" in results and results["results"]:
-            for id in results["results"]:
-                if id is not None:
-                    parts = id.split("::")
-                    # sensor_def = {
-                    #     "variab": id,
-                    #     "make": parts[0],
-                    #     "model": parts[1],
-                    #     "version": parts[2],
-                    # }
-                    variableset = parts
-                    print(f"device-definition-get: {variableset}")
-                    if variableset not in current_sets:
-                        current_sets.append(variableset)
-                        update = True
-                    new_data.append(variableset)
-
-
-        remove_data = []
-        for index, data in enumerate(current_sets):
-            if data not in new_data:
-                update = True
-                remove_data.insert(0, index)
-        for index in remove_data:
-            current_sets.pop(index)
-
-        if update:
-            return current_sets
-        else:
-            return dash.no_update
-
-    except Exception as e:
-        print(f"update_sensor_definitions error: {e}")
-        return dash.no_update
 
