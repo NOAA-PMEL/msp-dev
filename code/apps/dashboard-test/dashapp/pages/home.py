@@ -222,7 +222,7 @@ def update_variableset_list(count, current_sets):
         L.debug(f"variableset-definition-get: {url}")
         response = httpx.get(url)
         results = response.json()
-        L.debug(f"results: {results}")
+        L.debug(f"variableset-results: {results}")
         if "results" in results and results["results"]:
             for id in results["results"]:
                 if id is not None:
