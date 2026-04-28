@@ -572,7 +572,8 @@ def update_dashboard(_):
     Input("variableset-interval", "n_intervals"),
     State("variableset-store", "data")
 )
-def update_variableset_lists(count, current_sets):
+def update_variableset_list(count, current_sets):
+    update = False
     new_data = []
     
     try:
@@ -611,8 +612,6 @@ def update_variableset_lists(count, current_sets):
             return current_sets
         else:
             return dash.no_update
-
-
 
     except Exception as e:
         print(f"update_sensor_definitions error: {e}")
