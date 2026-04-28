@@ -222,7 +222,7 @@ def update_variableset_list(count, current_sets):
         L.debug(f"variableset-definition-get: {url}")
         response = httpx.get(url)
         results = response.json()
-        print(f"results: {results}")
+        L.debug(f"results: {results}")
         if "results" in results and results["results"]:
             for id in results["results"]:
                 if id is not None:
@@ -234,7 +234,7 @@ def update_variableset_list(count, current_sets):
                     #     "version": parts[2],
                     # }
                     variableset = parts
-                    print(f"device-definition-get: {variableset}")
+                    L.debug(f"variableset-definition-get_1: {variableset}")
                     if variableset not in current_sets:
                         current_sets.append(variableset)
                         update = True
@@ -255,7 +255,7 @@ def update_variableset_list(count, current_sets):
             return dash.no_update
 
     except Exception as e:
-        print(f"update_sensor_definitions error: {e}")
+        L.error(f"update_sensor_definitions error: {e}")
         return dash.no_update
     
 
