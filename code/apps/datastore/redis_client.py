@@ -36,10 +36,21 @@ class RedisClient(DBClient):
             try:
                 if self.config["port"] is None:
                     self.config["port"] = 6379
+                
+                # ADD: decode_responses=True to all redis.Redis calls
                 if self.config["password"]:
-                    self.client = redis.Redis(host=self.config["hostname"], port=self.config["port"], password=self.config["password"])
+                    self.client = redis.Redis(
+                        host=self.config["hostname"], 
+                        port=self.config["port"], 
+                        password=self.config["password"],
+                        decode_responses=True  # Ensure strings are returned
+                    )
                 else:
-                    self.client = redis.Redis(host=self.config["hostname"], port=self.config["port"])
+                    self.client = redis.Redis(
+                        host=self.config["hostname"], 
+                        port=self.config["port"],
+                        decode_responses=True  # Ensure strings are returned
+                    )
             except Exception as e:
                 self.logger.error("redis connect", extra={"reason": e})
                 self.client = None
@@ -216,27 +227,27 @@ class RedisClient(DBClient):
         res = []
         for doc in documents:
             try:
-                # FIXED: Access the '$' attribute using getattr because 
-                # '$' is not a valid Python identifier for direct doc.$ access.
                 data = None
+                # RediSearch results can store JSON strings in the '$' attribute
                 if hasattr(doc, "$"):
                     data = getattr(doc, "$")
                 elif hasattr(doc, "json"):
                     data = doc.json
-                elif isinstance(doc, dict) and "$" in doc:
-                    data = doc["$"]
                 
                 if data:
-                    # Handle both single JSON objects and list results from JSON paths
-                    if isinstance(data, list):
-                        # RediSearch RETURN $ often returns a list of results
-                        record = json.loads(data[0]) if isinstance(data[0], str) else data[0]
-                    else:
-                        record = json.loads(data)
+                    # Handle RediSearch returning a list for JSON paths
+                    raw_json = data[0] if isinstance(data, list) else data
+                    
+                    # DEFENSIVE: Decode bytes if decode_responses was missed
+                    if isinstance(raw_json, bytes):
+                        raw_json = raw_json.decode("utf-8")
+                    
+                    # Parse string into dictionary
+                    record = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
                         
-                    # Extract payload from either telemetry 'record' or registry 'registration'
-                    payload = record.get("record") or record.get("registration") or record
-                    if payload:
+                    # Extract payload from wrapper or use record directly
+                    if isinstance(record, dict):
+                        payload = record.get("record") or record.get("registration") or record
                         res.append(payload)
             except Exception as e:
                 self.logger.error("parse_docs_sync_error", extra={"reason": str(e)})
