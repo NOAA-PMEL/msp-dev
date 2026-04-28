@@ -221,7 +221,7 @@ class SamplingSystem:
                     variablemaps = json.load(f)
                 self.logger.debug("configure", extra={"variablemaps": variablemaps})
             else:
-                self.logger.info("configure", extra={"msg": f"{variablemaps_path} not found. Skipping local variablemaps load."})
+                self.logger.info("configure", extra={"mesg": f"{variablemaps_path} not found. Skipping local variablemaps load."})
 
 
             # TODO allow for multiple configs of a given map that are retrieved from datastore or loaded
