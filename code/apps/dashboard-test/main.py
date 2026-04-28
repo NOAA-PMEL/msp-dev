@@ -904,54 +904,54 @@ async def controller_ws_endpoint(
         # await manager.broadcast(f"Client left the chat")
 
 
-@app.websocket("/ws/variableset/{client_id}")
-# @app.websocket("/ws/{client_id}")
-async def variableset_ws_endpoint(
-    websocket: WebSocket,
-    client_id: str
-):
-    await manager.connect(websocket, client_type="variableset", client_id=client_id)
-    print(f"websocket_endpoint: {websocket}")
+# @app.websocket("/ws/variableset/{client_id}")
+# # @app.websocket("/ws/{client_id}")
+# async def variableset_ws_endpoint(
+#     websocket: WebSocket,
+#     client_id: str
+# ):
+#     await manager.connect(websocket, client_type="variableset", client_id=client_id)
+#     print(f"websocket_endpoint: {websocket}")
 
-    try:
-        while True:
-            data = await websocket.receive_text()
-            print(f"variableset data: {data}")
-            message = json.loads(data)
+#     try:
+#         while True:
+#             data = await websocket.receive_text()
+#             print(f"variableset data: {data}")
+#             message = json.loads(data)
 
-            if "client-request" in message:
-                # await manager.broadcast(json.dumps(message), "sensor", client_id)
-                if message['client-request'] == "start-updates":
+#             if "client-request" in message:
+#                 # await manager.broadcast(json.dumps(message), "sensor", client_id)
+#                 if message['client-request'] == "start-updates":
 
-                    msg_type = "sensor.registry.request"
+#                     msg_type = "sensor.registry.request"
 
-                    attributes = {
-                            "type": msg_type,
-                            "source": "uasdaq.dashboard",
-                            "id": str(ULID()),
-                            "datacontenttype": "application/json; charset=utf-8",
-                        }
-                    reg_request = {"register-variableset-request": "update-variableset-definition-all"}
-                    ce = CloudEvent(attributes=attributes, data=reg_request)
+#                     attributes = {
+#                             "type": msg_type,
+#                             "source": "uasdaq.dashboard",
+#                             "id": str(ULID()),
+#                             "datacontenttype": "application/json; charset=utf-8",
+#                         }
+#                     reg_request = {"register-variableset-request": "update-variableset-definition-all"}
+#                     ce = CloudEvent(attributes=attributes, data=reg_request)
 
-                    try:
-                        headers, body = to_structured(ce)
-                        # send to knative kafkabroker
-                        with httpx.Client() as client:
-                            r = client.post(
-                                config.knative_broker, headers=headers, data=body
-                                # config.knative_broker, headers=headers, data=body.decode()
-                            )
-                            L.info("register-request send", extra={"register-request": r.request.content})
-                            # r.raise_for_status()
-                    except InvalidStructuredJSON:
-                        L.error(f"INVALID MSG: {ce}")
-                    except httpx.HTTPError as e:
-                        L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
-    except WebSocketDisconnect:
-        L.info(f"websocket disconnect: {websocket}")
-        await manager.disconnect(websocket)
-        await asyncio.sleep(.1)
+#                     try:
+#                         headers, body = to_structured(ce)
+#                         # send to knative kafkabroker
+#                         with httpx.Client() as client:
+#                             r = client.post(
+#                                 config.knative_broker, headers=headers, data=body
+#                                 # config.knative_broker, headers=headers, data=body.decode()
+#                             )
+#                             L.info("register-request send", extra={"register-request": r.request.content})
+#                             # r.raise_for_status()
+#                     except InvalidStructuredJSON:
+#                         L.error(f"INVALID MSG: {ce}")
+#                     except httpx.HTTPError as e:
+#                         L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+#     except WebSocketDisconnect:
+#         L.info(f"websocket disconnect: {websocket}")
+#         await manager.disconnect(websocket)
+#         await asyncio.sleep(.1)
 
 
 
@@ -1293,53 +1293,53 @@ async def controller_settings_update(request: Request):
 
 
 
-@app.post("/variableset/data/update/")
-async def variableset_data_update(request: Request):
+# @app.post("/variableset/data/update/")
+# async def variableset_data_update(request: Request):
 
-    L.info("variableset/data/update")
-    data = await request.body()
-    L.info(f"headers: {request.headers}, data: {data}")
-    headers = request.headers
-    # headers = dict(request.headers)
+#     L.info("variableset/data/update")
+#     data = await request.body()
+#     L.info(f"headers: {request.headers}, data: {data}")
+#     headers = request.headers
+#     # headers = dict(request.headers)
 
-    try:
-        ce = from_http(headers=headers, data=data)
-        # to support local testing...
-        if isinstance(ce.data, str):
-            ce.data = json.loads(ce.data)
-    except InvalidStructuredJSON:
-        L.error("not a valid cloudevent")
-        # return "not a valid cloudevent", 400
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
-    # parts = Path(ce["source"]).parts
-    L.info(
-        "dashboard variableset update",
-        extra={"ce-source": ce["source"], "ce-type": ce["type"], "ce-data": ce.data},
-    )
+#     try:
+#         ce = from_http(headers=headers, data=data)
+#         # to support local testing...
+#         if isinstance(ce.data, str):
+#             ce.data = json.loads(ce.data)
+#     except InvalidStructuredJSON:
+#         L.error("not a valid cloudevent")
+#         # return "not a valid cloudevent", 400
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
+#         # msg = {"result": "NOTOK"}
+#         # return get_response_event(msg, 500)
+#     # parts = Path(ce["source"]).parts
+#     L.info(
+#         "dashboard variableset update",
+#         extra={"ce-source": ce["source"], "ce-type": ce["type"], "ce-data": ce.data},
+#     )
 
-    try:
-        # attributes = ce.data["attributes"]
-        # dimensions = ce.data["dimensions"]
-        # variables = ce.data["variables"]
+#     try:
+#         # attributes = ce.data["attributes"]
+#         # dimensions = ce.data["dimensions"]
+#         # variables = ce.data["variables"]
 
-        # make = attributes["make"]["data"]
-        # model = attributes["model"]["data"]
-        # # TODO fix serial number in magic data record, tmp workaround for now
-        # serial_number = attributes["serial_number"]
-        # serial_number = attributes["serial_number"]["data"]
-        # sensor_id = "::".join([make, model, serial_number])
-        variableset_id = ce.data["variableset_id"]
+#         # make = attributes["make"]["data"]
+#         # model = attributes["model"]["data"]
+#         # # TODO fix serial number in magic data record, tmp workaround for now
+#         # serial_number = attributes["serial_number"]
+#         # serial_number = attributes["serial_number"]["data"]
+#         # sensor_id = "::".join([make, model, serial_number])
+#         variableset_id = ce.data["variableset_id"]
 
-    except KeyError:
-        L.error("dashboard variableset update error", extra={"variableset": ce.data})
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+#     except KeyError:
+#         L.error("dashboard variableset update error", extra={"variableset": ce.data})
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-    msg = {"data-update": ce.data}
-    await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
+#     msg = {"data-update": ce.data}
+#     await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
 
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+#     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
