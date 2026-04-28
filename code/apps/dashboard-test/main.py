@@ -476,6 +476,18 @@ async def handle_mqtt_buffer():
                 msg = {"data-update": ce.data}
                 # L.debug("handle_mqtt_buffer", extra={"msg": msg, "controller_id": controller_id})
                 await manager.broadcast(json.dumps(msg), "controller", controller_id)
+
+            elif ce["type"] == "envds.variableset.data.update":
+                # attributes = ce.data["attributes"]
+                # make = attributes["make"]["data"]
+                # model = attributes["model"]["data"]
+                # serial_number = attributes["serial_number"]["data"]
+                # controller_id = "::".join([make, model, serial_number])
+                variableset_id = "raz1::main"
+
+                msg = {"data-update": ce.data}
+                # L.debug("handle_mqtt_buffer", extra={"msg": msg, "controller_id": controller_id})
+                await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
         
         except Exception as e:
             L.error("handle_mqtt_buffer", extra={"reason": e})
