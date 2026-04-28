@@ -38,6 +38,8 @@ from datastore_requests import (
     VariableSetDefinitionUpdate,
     VariableSetDataRequest,
     VariableSetDataUpdate,
+    VariableSetInstanceRequest,
+    VariableSetInstanceUpdate,
 )
 
 class DBClientConfig(BaseModel):

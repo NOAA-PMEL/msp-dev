@@ -14,7 +14,7 @@ from datastore_requests import (
     ControllerDataRequest, ControllerDataUpdate, ControllerDefinitionRequest,
     ControllerDefinitionUpdate, VariableSetDataUpdate, VariableSetDataRequest,
     VariableSetDefinitionUpdate, VariableSetDefinitionRequest,
-    VariableMapDefinitionRequest, VariableMapDefinitionUpdate
+    VariableMapDefinitionRequest, VariableMapDefinitionUpdate, VariableSetInstanceRequest, VariableSetInstanceUpdate
 )
 
 class RedisClient(DBClient):
