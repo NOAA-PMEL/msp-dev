@@ -289,7 +289,12 @@ class RedisClient(DBClient):
 
     async def device_definition_registry_get_ids(self) -> dict:
         prefix = "registry:device-definition:"
-        return {"results": [k.decode('utf-8').replace(prefix, "") async for k in self.client.scan_iter(f"{prefix}*")]}
+        ids = []
+        async for key in self.client.scan_iter(f"{prefix}*"):
+            if isinstance(key, bytes):
+                key = key.decode('utf-8')
+            ids.append(key.replace(prefix, ""))
+        return {"results": ids}
 
     async def device_definition_registry_get(self, request: DeviceDefinitionRequest):
         query_args = []
@@ -304,13 +309,14 @@ class RedisClient(DBClient):
         docs = (await self.client.ft(self.registry_device_definition_index_name).search(q)).docs
         return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
-    async def device_instance_registry_update(self, database: str, collection: str, request: DeviceInstanceUpdate, ttl: int = 300):
-        self.connect()
-        document = request.dict()
-        key = f"{database}:{collection}:{document['device_id']}"
-        result = await self.client.json().set(key, "$", {"registration": document})
-        if result: await self.client.expire(key, ttl)
-        return result
+    async def device_instance_registry_get_ids(self) -> dict:
+        prefix = "registry:device-instance:"
+        ids = []
+        async for key in self.client.scan_iter(f"{prefix}*"):
+            if isinstance(key, bytes):
+                key = key.decode('utf-8')
+            ids.append(key.replace(prefix, ""))
+        return {"results": ids}
 
     async def device_instance_registry_get_ids(self) -> dict:
         prefix = "registry:device-instance:"
@@ -363,7 +369,12 @@ class RedisClient(DBClient):
 
     async def controller_definition_registry_get_ids(self) -> dict:
         prefix = "registry:controller-definition:"
-        return {"results": [k.decode('utf-8').replace(prefix, "") async for k in self.client.scan_iter(f"{prefix}*")]}
+        ids = []
+        async for key in self.client.scan_iter(f"{prefix}*"):
+            if isinstance(key, bytes):
+                key = key.decode('utf-8')
+            ids.append(key.replace(prefix, ""))
+        return {"results": ids}
 
     async def controller_definition_registry_get(self, request: ControllerDefinitionRequest):
         query_args = []
@@ -387,7 +398,12 @@ class RedisClient(DBClient):
 
     async def controller_instance_registry_get_ids(self) -> dict:
         prefix = "registry:controller-instance:"
-        return {"results": [k.decode('utf-8').replace(prefix, "") async for k in self.client.scan_iter(f"{prefix}*")]}
+        ids = []
+        async for key in self.client.scan_iter(f"{prefix}*"):
+            if isinstance(key, bytes):
+                key = key.decode('utf-8')
+            ids.append(key.replace(prefix, ""))
+        return {"results": ids}
 
     async def controller_instance_registry_get(self, request: ControllerInstanceRequest):
         query_args = []
@@ -406,7 +422,12 @@ class RedisClient(DBClient):
     # -------------------------------------------------------------------------------------
     async def variablemap_definition_registry_get_ids(self) -> dict:
         prefix = "registry:variablemap-definition:"
-        return {"results": [k.decode('utf-8').replace(prefix, "") async for k in self.client.scan_iter(f"{prefix}*")]}
+        ids = []
+        async for key in self.client.scan_iter(f"{prefix}*"):
+            if isinstance(key, bytes):
+                key = key.decode('utf-8')
+            ids.append(key.replace(prefix, ""))
+        return {"results": ids}
 
     async def variablemap_definition_registry_get(self, request: VariableMapDefinitionRequest) -> dict:
         query_args = []
@@ -428,7 +449,12 @@ class RedisClient(DBClient):
 
     async def variableset_definition_registry_get_ids(self) -> dict:
         prefix = "registry:variableset-definition:"
-        return {"results": [k.decode('utf-8').replace(prefix, "") async for k in self.client.scan_iter(f"{prefix}*")]}
+        ids = []
+        async for key in self.client.scan_iter(f"{prefix}*"):
+            if isinstance(key, bytes):
+                key = key.decode('utf-8')
+            ids.append(key.replace(prefix, ""))
+        return {"results": ids}
 
     async def variableset_definition_registry_get(self, request: VariableSetDefinitionRequest) -> dict:
         query_args = []
@@ -479,7 +505,12 @@ class RedisClient(DBClient):
     # -------------------------------------------------------------------------------------
     async def variableset_instance_registry_get_ids(self) -> dict:
         prefix = "registry:variableset-instance:"
-        return {"results": [k.decode('utf-8').replace(prefix, "") async for k in self.client.scan_iter(f"{prefix}*")]}
+        ids = []
+        async for key in self.client.scan_iter(f"{prefix}*"):
+            if isinstance(key, bytes):
+                key = key.decode('utf-8')
+            ids.append(key.replace(prefix, ""))
+        return {"results": ids}
 
     async def variableset_instance_registry_get(self, request: VariableSetInstanceRequest) -> dict:
         query_args = []
@@ -506,7 +537,12 @@ class RedisClient(DBClient):
     # -------------------------------------------------------------------------------------
     async def sampling_definition_registry_get_ids(self, resource: str) -> dict:
         prefix = f"registry:{resource}-definition:"
-        return {"results": [k.decode('utf-8').replace(prefix, "") async for k in self.client.scan_iter(f"{prefix}*")]}
+        ids = []
+        async for key in self.client.scan_iter(f"{prefix}*"):
+            if isinstance(key, bytes):
+                key = key.decode('utf-8')
+            ids.append(key.replace(prefix, ""))
+        return {"results": ids}
 
     async def sampling_definition_registry_update(self, resource: str, database: str, collection: str, request: dict, ttl: int = 0) -> bool:
         self.connect()
