@@ -453,7 +453,9 @@ def update_sensor_definitions(count, table_data):
         # print(f"device-definition-get: {url}, {query}")
         print(f"device-definition-get: {url}")
         # response = httpx.get(url, params=query)
-        response = httpx.get(url)
+
+
+        response = httpx.get(url, timeout=20.0)
         results = response.json()
         print(f"results: {results}")
         if "results" in results and results["results"]:
