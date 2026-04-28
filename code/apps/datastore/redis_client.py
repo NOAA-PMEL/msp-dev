@@ -1,5 +1,6 @@
 import asyncio
 import json
+import orjson  # FIX: Fast JSON parsing
 import redis.asyncio as redis
 from redis.commands.json.path import Path
 # import redis.commands.search.aggregation as aggregations
@@ -360,83 +361,111 @@ class RedisClient(DBClient):
             self.logger.error("device_data_update", extra={"reason": e})
             return None
            
-    async def device_definition_registry_update(
-        self,
-        # document: dict,
-        database: str,
-        collection: str,
-        request: DeviceDefinitionUpdate,
-        ttl: int = 300
-    ) -> bool:
+    # async def device_definition_registry_update(
+    #     self,
+    #     # document: dict,
+    #     database: str,
+    #     collection: str,
+    #     request: DeviceDefinitionUpdate,
+    #     ttl: int = 300
+    # ) -> bool:
+    #     await super(RedisClient, self).device_definition_registry_update(database, collection, request, ttl)
+    #     try:
+    #         self.connect()
+
+            
+    #         # document = {
+    #         #     # "_id": id,
+    #         #     "make": make,
+    #         #     "model": model,
+    #         #     "serial_number": serial_number,
+    #         #     "version": erddap_version,
+    #         #     "timestamp": timestamp,
+    #         #     "attributes": attributes,
+    #         #     "dimensions": dimensions,
+    #         #     "variables": variables,
+    #         #     # "last_update": datetime.now(tz=timezone.utc),
+    #         # }
+    #         self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
+    #         document = request.dict()
+    #         # make = document["make"]
+    #         # model = document["model"]
+    #         # version = document["version"]
+            
+    #         make = request.make
+    #         model = request.model
+    #         version = request.version
+    #         # document = request.dict().pop("database").pop("collection")
+    #         # make = request.request.make
+    #         # model = request.request.model
+    #         # serial_number = request.request.serial_number
+    #         # timestamp = request.request.timestamp
+
+    #         id = "::".join([make,model,version])
+
+    #         key = f"{database}:{collection}:{id}"
+    #         self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
+    #         # check_request = DeviceDefinitionRequest(
+    #         #     make=make,
+    #         #     model=model,
+    #         #     version=version
+    #         # )
+    #         # check_results = await self.device_definition_registry_get(check_request)
+    #         # Trigger O(1) Bypass
+    #         check_request = DeviceDefinitionRequest(
+    #             device_definition_id=id
+    #         )
+    #         check_results = await self.device_definition_registry_get(check_request)
+
+    #         self.logger.debug("device_definition_registry_update", extra={"check": check_results})
+    #         # check = False # tmp
+    #         if check_results["results"]: # check if there are any results
+    #             self.logger.debug("check_results", extra={"results": check_results["results"]})
+    #             result = True
+    #         else:
+    #             result = await self.client.json().set(
+    #                 key,
+    #                 "$",
+    #                 {"registration": document}
+    #             )
+    #         if result and ttl > 0:
+    #             await self.client.expire(key, ttl)
+
+    #         self.logger.debug("device_definition_registry_update", extra={"check_request": check_request, "result": result})
+    #         return result
+        
+    #     except Exception as e:
+    #         self.logger.error("device_definition_registry_update", extra={"reason": e})
+    #         return False
+
+    async def device_definition_registry_update(self, database: str, collection: str, request: DeviceDefinitionUpdate, ttl: int = 300) -> bool:
         await super(RedisClient, self).device_definition_registry_update(database, collection, request, ttl)
         try:
             self.connect()
-
-            
-            # document = {
-            #     # "_id": id,
-            #     "make": make,
-            #     "model": model,
-            #     "serial_number": serial_number,
-            #     "version": erddap_version,
-            #     "timestamp": timestamp,
-            #     "attributes": attributes,
-            #     "dimensions": dimensions,
-            #     "variables": variables,
-            #     # "last_update": datetime.now(tz=timezone.utc),
-            # }
-            self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
             document = request.dict()
-            # make = document["make"]
-            # model = document["model"]
-            # version = document["version"]
-            
-            make = request.make
-            model = request.model
-            version = request.version
-            # document = request.dict().pop("database").pop("collection")
-            # make = request.request.make
-            # model = request.request.model
-            # serial_number = request.request.serial_number
-            # timestamp = request.request.timestamp
-
-            id = "::".join([make,model,version])
-
+            id = "::".join([request.make, request.model, request.version])
             key = f"{database}:{collection}:{id}"
-            self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
-            # check_request = DeviceDefinitionRequest(
-            #     make=make,
-            #     model=model,
-            #     version=version
-            # )
-            # check_results = await self.device_definition_registry_get(check_request)
-            # Trigger O(1) Bypass
-            check_request = DeviceDefinitionRequest(
-                device_definition_id=id
-            )
+            
+            # Fast O(1) Check
+            check_request = DeviceDefinitionRequest(device_definition_id=id)
             check_results = await self.device_definition_registry_get(check_request)
 
-            self.logger.debug("device_definition_registry_update", extra={"check": check_results})
-            # check = False # tmp
-            if check_results["results"]: # check if there are any results
-                self.logger.debug("check_results", extra={"results": check_results["results"]})
+            if check_results["results"]:
                 result = True
             else:
-                result = await self.client.json().set(
-                    key,
-                    "$",
-                    {"registration": document}
-                )
+                result = await self.client.json().set(key, "$", {"registration": document})
+                # FIX: Add ID to a Redis SET for instant O(1) retrieval later
+                if result:
+                    await self.client.sadd("registry_ids:device-definition", id)
+
             if result and ttl > 0:
                 await self.client.expire(key, ttl)
 
-            self.logger.debug("device_definition_registry_update", extra={"check_request": check_request, "result": result})
             return result
-        
         except Exception as e:
             self.logger.error("device_definition_registry_update", extra={"reason": e})
             return False
-
+        
     # async def device_data_get(self, query: DataStoreQuery):
     async def device_data_get(self, request: DataRequest):
         await super(RedisClient, self).device_data_get(request)
@@ -484,27 +513,73 @@ class RedisClient(DBClient):
 
         return {"results": results}
 
-    async def device_definition_registry_get_ids(
-            self,
-    ) -> dict:
-        ids = []
+    async def device_data_get(self, request: DataRequest):
+        await super(RedisClient, self).device_data_get(request)
+
+        max_results = 10000
+
+        query_args = []
+        if request.device_id: query_args.append(f"@device_id:{{{self.escape_query(request.device_id)}}}")
+        if request.make: query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
+        if request.model: query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
+        if request.version: query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
+        if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
+        if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
+
+        qstring = " ".join(query_args) if query_args else "*"
+        
+        self.logger.debug("device_data_get", extra={"query_string": qstring})
+        q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
+        docs = (await self.client.ft(self.data_device_index_name).search(q)).docs
+
+        # FIX: Worker thread function to parse JSON without locking up the event loop
+        def parse_docs(documents):
+            res = []
+            for doc in documents:
+                if doc.json:
+                    # orjson releases the GIL and parses much faster than standard json
+                    res.append(orjson.loads(doc.json)["record"])
+            return res
+
         try:
-            self.logger.debug("device_definition_registry_get_ids")
-            async for key in self.client.scan_iter("registry:device-definition:*"):
-                self.logger.debug("device_definition_registry_get_ids", extra={"def_id": key})
-                id = key.decode('utf-8').replace("registry:device-definition:", "")
-                # id = key.split(".")[-1]
-                # ids.append(id.decode('utf-8'))
-                ids.append(id)
-                self.logger.debug("device_definition_registry_get_ids", extra={"ids": ids})
-            # results = {"results": ids}
-            # return {"results": ids}
+            # Offload heavy CPU work to a separate thread
+            results = await asyncio.to_thread(parse_docs, docs)
+        except Exception as e:
+            self.logger.error("device_data_get parsing error", extra={"reason": e})
+            results = []
+
+        return {"results": results}
+    
+    # async def device_definition_registry_get_ids(
+    #         self,
+    # ) -> dict:
+    #     ids = []
+    #     try:
+    #         self.logger.debug("device_definition_registry_get_ids")
+    #         async for key in self.client.scan_iter("registry:device-definition:*"):
+    #             self.logger.debug("device_definition_registry_get_ids", extra={"def_id": key})
+    #             id = key.decode('utf-8').replace("registry:device-definition:", "")
+    #             # id = key.split(".")[-1]
+    #             # ids.append(id.decode('utf-8'))
+    #             ids.append(id)
+    #             self.logger.debug("device_definition_registry_get_ids", extra={"ids": ids})
+    #         # results = {"results": ids}
+    #         # return {"results": ids}
+    #     except Exception as e:
+    #         self.logger.error("device_definition_registry_get_ids", extra={"reason": e})
+    #         # return {"results": []}
+    #     self.logger.debug("device_definition_registry_get_ids", extra={"results": ids})
+    #     return {"results": ids}
+
+    async def device_definition_registry_get_ids(self) -> dict:
+        try:
+            members = await self.client.smembers("registry_ids:device-definition")
+            ids = [m.decode('utf-8') for m in members]
+            return {"results": ids}
         except Exception as e:
             self.logger.error("device_definition_registry_get_ids", extra={"reason": e})
-            # return {"results": []}
-        self.logger.debug("device_definition_registry_get_ids", extra={"results": ids})
-        return {"results": ids}
-    
+            return {"results": []}
+            
     # async def device_definition_registry_get(
     #         self,
     #         request: DeviceDefinitionRequest
@@ -910,44 +985,78 @@ class RedisClient(DBClient):
         return {"results": results}
 
     # async def controller_data_get(self, query: DataStoreQuery):
+    # async def controller_data_get(self, request: ControllerDataRequest):
+    #     await super(RedisClient, self).controller_data_get(request)
+
+    #     max_results = 10000
+
+    #     query_args = []
+    #     if request.controller_id:
+    #         query_args.append(f"@controller_id:{{{self.escape_query(request.controller_id)}}}")
+    #     if request.make:
+    #         query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
+    #     if request.model:
+    #         query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
+    #     if request.version:
+    #         query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
+
+
+    #     if request.start_timestamp:
+    #         query_args.append(f"@timestamp >= {request.start_timestamp}")
+        
+    #     if request.end_timestamp:
+    #         query_args.append(f"@timestamp < {request.end_timestamp}")
+
+    #     qstring = " ".join(query_args)
+    #     self.logger.debug("controller_data_get", extra={"query_string": qstring})
+    #     q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
+    #     docs = (await self.client.ft(self.data_controller_index_name).search(q)).docs
+    #     results = []
+    #     for doc in docs:
+    #         try:
+    #             if doc.json:
+    #                 record = json.loads(doc.json)
+    #                 results.append(record["record"])
+    #         except Exception as e:
+    #             self.logger.error("controller_data_get", extra={"reason": e})
+    #             continue
+
+    #     return {"results": results}
+
     async def controller_data_get(self, request: ControllerDataRequest):
         await super(RedisClient, self).controller_data_get(request)
 
         max_results = 10000
 
         query_args = []
-        if request.controller_id:
-            query_args.append(f"@controller_id:{{{self.escape_query(request.controller_id)}}}")
-        if request.make:
-            query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
-        if request.model:
-            query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
-        if request.version:
-            query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
+        if request.controller_id: query_args.append(f"@controller_id:{{{self.escape_query(request.controller_id)}}}")
+        if request.make: query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
+        if request.model: query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
+        if request.version: query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
+        if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
+        if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
 
-
-        if request.start_timestamp:
-            query_args.append(f"@timestamp >= {request.start_timestamp}")
+        qstring = " ".join(query_args) if query_args else "*"
         
-        if request.end_timestamp:
-            query_args.append(f"@timestamp < {request.end_timestamp}")
-
-        qstring = " ".join(query_args)
         self.logger.debug("controller_data_get", extra={"query_string": qstring})
         q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
         docs = (await self.client.ft(self.data_controller_index_name).search(q)).docs
-        results = []
-        for doc in docs:
-            try:
+
+        def parse_docs(documents):
+            res = []
+            for doc in documents:
                 if doc.json:
-                    record = json.loads(doc.json)
-                    results.append(record["record"])
-            except Exception as e:
-                self.logger.error("controller_data_get", extra={"reason": e})
-                continue
+                    res.append(orjson.loads(doc.json)["record"])
+            return res
+
+        try:
+            results = await asyncio.to_thread(parse_docs, docs)
+        except Exception as e:
+            self.logger.error("controller_data_get parsing error", extra={"reason": e})
+            results = []
 
         return {"results": results}
-
+    
     async def controller_definition_registry_get_ids(
             self,
     ) -> dict:
@@ -1730,36 +1839,71 @@ class RedisClient(DBClient):
         except Exception as e:
             self.logger.error("redis_client: variableset_data_update", extra={"reason": e})
 
+    # async def variableset_data_get(self, request: VariableSetDataRequest):
+
+    #     await super(RedisClient, self).variableset_data_get(request)
+    #     max_results = 10000
+
+    #     query_args = []
+    #     if request.variableset_id:
+    #         query_args.append(f"@variableset_id:{{{self.escape_query(request.variableset_id)}}}")
+    #     if request.variablemap_id:
+    #         query_args.append(f"@variablemap_id:{{{self.escape_query(request.variablemap_id)}}}")
+    #     if request.variableset:
+    #         query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
+    #     if request.start_timestamp:
+    #         query_args.append(f"@timestamp >= {request.start_timestamp}")
+    #     if request.end_timestamp:
+    #         query_args.append(f"@timestamp < {request.end_timestamp}")
+
+    #     qstring = " ".join(query_args) if query_args else "*"
+    #     self.logger.debug("variableset_data_get", extra={"query_string": qstring})
+        
+    #     q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
+    #     docs = (await self.client.ft("idx:data-variableset").search(q)).docs
+        
+    #     results = []
+    #     for doc in docs:
+    #         try:
+    #             if doc.json:
+    #                 record = json.loads(doc.json)
+    #                 results.append(record["record"])
+    #         except Exception as e:
+    #             self.logger.error("variableset_data_get parsing error", extra={"reason": e})
+    #             continue
+
+    #     return {"results": results}
+    
     async def variableset_data_get(self, request: VariableSetDataRequest):
         await super(RedisClient, self).variableset_data_get(request)
+        
         max_results = 10000
 
         query_args = []
-        if request.variableset_id:
-            query_args.append(f"@variableset_id:{{{self.escape_query(request.variableset_id)}}}")
-        if request.variablemap_id:
-            query_args.append(f"@variablemap_id:{{{self.escape_query(request.variablemap_id)}}}")
-        if request.variableset:
-            query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
-        if request.start_timestamp:
-            query_args.append(f"@timestamp >= {request.start_timestamp}")
-        if request.end_timestamp:
-            query_args.append(f"@timestamp < {request.end_timestamp}")
+        if request.variableset_id: query_args.append(f"@variableset_id:{{{self.escape_query(request.variableset_id)}}}")
+        if request.variablemap_id: query_args.append(f"@variablemap_id:{{{self.escape_query(request.variablemap_id)}}}")
+        if request.variableset: query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
+        if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
+        if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
 
         qstring = " ".join(query_args) if query_args else "*"
-        self.logger.debug("variableset_data_get", extra={"query_string": qstring})
         
+        self.logger.debug("variableset_data_get", extra={"query_string": qstring})
         q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
         docs = (await self.client.ft("idx:data-variableset").search(q)).docs
         
-        results = []
-        for doc in docs:
-            try:
+        def parse_docs(documents):
+            res = []
+            for doc in documents:
                 if doc.json:
-                    record = json.loads(doc.json)
-                    results.append(record["record"])
-            except Exception as e:
-                self.logger.error("variableset_data_get parsing error", extra={"reason": e})
-                continue
+                    res.append(orjson.loads(doc.json)["record"])
+            return res
+
+        try:
+            results = await asyncio.to_thread(parse_docs, docs)
+        except Exception as e:
+            self.logger.error("variableset_data_get parsing error", extra={"reason": e})
+            results = []
 
         return {"results": results}
+    

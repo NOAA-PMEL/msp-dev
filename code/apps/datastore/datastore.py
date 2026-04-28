@@ -152,6 +152,8 @@ class Datastore:
 
         self.http_client = None
 
+        self._background_tasks = set()
+
         self.configure()
 
         # self.mqtt_buffer = asyncio.Queue()
@@ -164,8 +166,12 @@ class Datastore:
         # Start background tasks safely inside the event loop
         # FIX: Add maxsize to prevent infinite memory growth (backpressure)
         self.mqtt_buffer = asyncio.Queue(maxsize=2000)
-        asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.handle_mqtt_buffer())
+        # asyncio.create_task(self.get_from_mqtt_loop())
+        # asyncio.create_task(self.handle_mqtt_buffer())
+        # FIX: Store tasks in the set
+        task1 = asyncio.create_task(self.get_from_mqtt_loop())
+        task2 = asyncio.create_task(self.handle_mqtt_buffer())
+        self._background_tasks.update({task1, task2})
 
         # Build Redis indexes if the client supports it
         if hasattr(self.db_client, "build_indexes"):
@@ -260,7 +266,17 @@ class Datastore:
                             ce = from_json(message.payload)
                             topic = message.topic.value
                             ce["sourcepath"] = topic
-                            await self.mqtt_buffer.put(ce)
+                            
+                            # await self.mqtt_buffer.put(ce)
+
+                            # FIX: Use wait_for to drop messages if the buffer is full, 
+                            # preventing the async for loop (and ping responses) from blocking indefinitely.
+                            try:
+                                await asyncio.wait_for(self.mqtt_buffer.put(ce), timeout=1.0)
+                                L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+                            except asyncio.TimeoutError:
+                                L.warning("MQTT buffer full! Dropping message to prevent backpressure.", extra={"topic": topic})
+
                             L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
                         except Exception as e:
                             L.error("get_from_mqtt_loop", extra={"reason": e})
