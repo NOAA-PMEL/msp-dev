@@ -215,3 +215,8 @@ class DBClient:
     async def variableset_instance_registry_get(self, request: VariableSetInstanceRequest) -> dict:
         return {"results": []}
     
+    async def project_definition_registry_get_ids(self) -> dict:
+        return {"results": []}
+
+    async def platform_definition_registry_get_ids(self) -> dict:
+        return {"results": []}

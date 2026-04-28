@@ -892,7 +892,7 @@ class SamplingConditionsManager:
 
             # --- ADD THIS CHECK ---
             if src_id not in self.sampling_conditions["sources"]:
-                self.logger.debug("variableset_data_update", extra={"msg": f"Source {src_id} not mapped in conditions. Ignoring."})
+                self.logger.debug("variableset_data_update", extra={"mesg": f"Source {src_id} not mapped in conditions. Ignoring."})
                 return
             # ----------------------
 
