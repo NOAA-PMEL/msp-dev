@@ -56,7 +56,8 @@ from datastore_requests import (
     VariableSetDefinitionRequest,
     VariableMapDefinitionRequest,
     VariableMapDefinitionUpdate,
-    VariableSetInstanceUpdate
+    VariableSetInstanceUpdate,
+    VariableSetInstanceRequest
 )
 from db_client import DBClientManager, DBClientConfig
 
@@ -927,6 +928,16 @@ class Datastore:
         if self.db_client:
             return await self.db_client.variableset_data_get(query)
 
+        return {"results": []}
+    
+    async def variableset_instance_registry_get_ids(self) -> dict:
+        if self.db_client:
+            return await self.db_client.variableset_instance_registry_get_ids()
+        return {"results": []}
+
+    async def variableset_instance_registry_get(self, query: VariableSetInstanceRequest) -> dict:
+        if self.db_client:
+            return await self.db_client.variableset_instance_registry_get(query)
         return {"results": []}
 
 async def shutdown():
