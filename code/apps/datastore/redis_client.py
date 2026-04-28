@@ -119,6 +119,17 @@ class RedisClient(DBClient):
                 definition = IndexDefinition(prefix=["data:variableset:"], index_type=IndexType.JSON)
                 await self.client.ft("idx:data-variableset").create_index(schema, definition=definition)
 
+            try:
+                await self.client.ft(self.registry_variableset_instance_index_name).info()
+            except Exception:
+                schema = (
+                    TagField("$.registration.variableset_id", as_name="variableset_id"),
+                    TagField("$.registration.variablemap_id", as_name="variablemap_id"),
+                    TagField("$.registration.variableset", as_name="variableset"),
+                )
+                definition = IndexDefinition(prefix=["registry:variableset-instance:"], index_type=IndexType.JSON)
+                await self.client.ft(self.registry_variableset_instance_index_name).create_index(schema, definition=definition)
+
             # Sampling Generic Resource Indexes
             for resource in ["platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
                 index_name = f"idx:registry-{resource}-definition"
@@ -194,6 +205,36 @@ class RedisClient(DBClient):
         if result: await self.client.expire(key, ttl)
         return result
 
+    # -------------------------------------------------------------------------------------
+    # VARIABLE SET INSTANCE (Active Variablesets)
+    # -------------------------------------------------------------------------------------
+    async def variableset_instance_registry_get_ids(self) -> dict:
+        prefix = "registry:variableset-instance:"
+        return {"results": [k.decode('utf-8').replace(prefix, "") async for k in self.client.scan_iter(f"{prefix}*")]}
+
+    async def variableset_instance_registry_get(self, request: VariableSetInstanceRequest) -> dict:
+        query_args = []
+        if request.variableset_id: 
+            query_args.append(f"@variableset_id:{{{self.escape_query(request.variableset_id)}}}")
+        if request.variablemap_id:
+            query_args.append(f"@variablemap_id:{{{self.escape_query(request.variablemap_id)}}}")
+        if request.variableset:
+            query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
+            
+        qstring = " ".join(query_args) if query_args else "*"
+        q = Query(qstring).paging(0, 10000)
+        docs = (await self.client.ft(self.registry_variableset_instance_index_name).search(q)).docs
+        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
+
+    async def variableset_instance_registry_update(self, database: str, collection: str, request: VariableSetInstanceUpdate, ttl: int = 300) -> bool:
+        self.connect()
+        document = request.dict()
+        key = f"{database}:{collection}:{request.variableset_id}"
+        result = await self.client.json().set(key, "$", {"registration": document})
+        if result and ttl > 0:
+            await self.client.expire(key, ttl)
+        return result
+    
     async def variablemap_definition_registry_get_ids(self) -> dict:
         prefix = "registry:variablemap-definition:"
         return {"results": [k.decode('utf-8').replace(prefix, "") async for k in self.client.scan_iter(f"{prefix}*")]}

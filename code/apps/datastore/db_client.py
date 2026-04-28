@@ -204,4 +204,12 @@ class DBClient:
     async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
         return {"results": []}
     
+    async def variableset_instance_registry_update(self, database: str, collection: str, request: VariableSetInstanceUpdate, ttl: int = 0) -> bool:
+        return False
+
+    async def variableset_instance_registry_get_ids(self) -> dict:
+        return {"results": []}
+
+    async def variableset_instance_registry_get(self, request: VariableSetInstanceRequest) -> dict:
+        return {"results": []}
     

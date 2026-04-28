@@ -55,7 +55,8 @@ from datastore_requests import (
     VariableSetDefinitionUpdate,
     VariableSetDefinitionRequest,
     VariableMapDefinitionRequest,
-    VariableMapDefinitionUpdate
+    VariableMapDefinitionUpdate,
+    VariableSetInstanceUpdate
 )
 from db_client import DBClientManager, DBClientConfig
 
@@ -90,6 +91,8 @@ class DatastoreConfig(BaseSettings):
 
     db_reg_variablemap_definition_ttl: int = 0  # permanent
     db_reg_variableset_definition_ttl: int = 0  # permanent
+    db_reg_variableset_definition_ttl: int = 0  # permanent
+    db_reg_variableset_instance_ttl: int = 600  # Added: 10 minute active timeout
     db_reg_platform_definition_ttl: int = 0  # permanent
 
     erddap_enable: bool = False
@@ -306,6 +309,26 @@ class Datastore:
                 request=request,
                 ttl=self.config.db_data_ttl,
             )
+
+            # If the device is sending data, it is currently active.
+            device_type = attributes.get("device_type", {}).get("data", "sensor")
+            instance_request = DeviceInstanceUpdate(
+                device_id=device_id,
+                make=make,
+                model=model,
+                serial_number=serial_number,
+                version=erddap_version,
+                device_type=device_type,
+                attributes=attributes,
+            )
+            
+            await self.db_client.device_instance_registry_update(
+                database="registry",
+                collection="device-instance",
+                request=instance_request,
+                ttl=self.config.db_reg_device_instance_ttl,
+            )
+
         except Exception as e:
             L.error("device_data_update", extra={"reason": e})
         pass
@@ -506,6 +529,24 @@ class Datastore:
                 request=request,
                 ttl=self.config.db_data_ttl,
             )
+
+            # If the controller is sending data, it is currently active.
+            instance_request = ControllerInstanceUpdate(
+                controller_id=controller_id,
+                make=make,
+                model=model,
+                serial_number=serial_number,
+                version=erddap_version,
+                attributes=attributes,
+            )
+            
+            await self.db_client.controller_instance_registry_update(
+                database="registry",
+                collection="controller-instance",
+                request=instance_request,
+                ttl=self.config.db_reg_controller_instance_ttl,
+            )
+
         except Exception as e:
             L.error("device_data_update", extra={"reason": e})
         pass
@@ -854,6 +895,22 @@ class Datastore:
                     request=request,
                     ttl=self.config.db_data_ttl,
                 )
+            
+                # If the variableset is sending data, it is currently active.
+                instance_request = VariableSetInstanceUpdate(
+                    variableset_id=request.variableset_id,
+                    variablemap_id=request.variablemap_id,
+                    variableset=request.variableset,
+                    attributes=attributes,
+                )
+                
+                await self.db_client.variableset_instance_registry_update(
+                    database="registry",
+                    collection="variableset-instance",
+                    request=instance_request,
+                    ttl=self.config.db_reg_variableset_instance_ttl,
+                )
+                
         except Exception as e:
             self.logger.error("variableset_data_update", extra={"reason": e})
 

@@ -28,6 +28,7 @@ from datastore_requests import (
     VariableSetDataRequest,
     VariableSetDefinitionRequest,
     VariableMapDefinitionRequest,
+    VariableSetInstanceRequest,
 )
 
 handler = logging.StreamHandler()
@@ -484,6 +485,29 @@ async def variableset_definition_get_ids():
 async def variablemap_definition_get_ids():
     return await datastore.variablemap_definition_registry_get_ids()
 
+@app.get("/variableset-instance/registry/ids/get/")
+async def variableset_instance_get_ids():
+    L.debug("variableset_instance_get_ids")
+    result = await datastore.variableset_instance_registry_get_ids()
+    L.debug("variableset_instance_get_ids", extra={"result": result})
+    return result
+
+
+@app.get("/variableset-instance/registry/get/")
+async def variableset_instance_registry_get(
+    variableset_id: str | None = None,
+    variablemap_id: str | None = None,
+    variableset: str | None = None,
+):
+    query = VariableSetInstanceRequest(
+        variableset_id=variableset_id,
+        variablemap_id=variablemap_id,
+        variableset=variableset
+    )
+    L.debug("variableset_instance_registry_get", extra={"query": query})
+    results = await datastore.variableset_instance_registry_get(query)
+    L.debug("variableset_instance_registry_get", extra={"results": results})
+    return results
 
 SAMPLING_RESOURCE_TYPES = [
     "platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"
@@ -512,4 +536,3 @@ def create_sampling_routes(resource: str):
 for res in SAMPLING_RESOURCE_TYPES:
     create_sampling_routes(res)
 
-    

@@ -340,3 +340,14 @@ class SystemModeDefinition(BaseModel):
 
     class Config:
         allow_population_by_field_name = True
+
+class VariableSetInstanceUpdate(BaseModel):
+    variableset_id: str | None = None
+    variablemap_id: str | None = None
+    variableset: str | None = None
+    attributes: dict
+
+class VariableSetInstanceRequest(BaseModel):
+    variableset_id: str | None = None
+    variablemap_id: str | None = None
+    variableset: str | None = None
