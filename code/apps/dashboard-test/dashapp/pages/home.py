@@ -1,5 +1,6 @@
 import dash
-from dash import html, callback, dcc, Input, Output, State, dash_table, PreventUpdate
+from dash import html, callback, dcc, Input, Output, State, dash_table
+from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 #import dash_daq as daq
 from dash_extensions import WebSocket
