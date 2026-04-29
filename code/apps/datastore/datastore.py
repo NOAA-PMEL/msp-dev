@@ -397,16 +397,16 @@ class Datastore:
                         variables=variables,
                     )
 
-            self.logger.debug(
-                "device_definition_registry_update", extra={"request": request}
-            )
-            if self.db_client:
-                result = await self.db_client.device_definition_registry_update(
-                    database=database,
-                    collection=collection,
-                    request=request,
-                    ttl=self.config.db_reg_device_definition_ttl,
-                )
+                    self.logger.debug(
+                        "device_definition_registry_update", extra={"request": request}
+                    )
+                    if self.db_client:
+                        result = await self.db_client.device_definition_registry_update(
+                            database=database,
+                            collection=collection,
+                            request=request,
+                            ttl=self.config.db_reg_device_definition_ttl,
+                        )
         except Exception as e:
             self.logger.error("device_definition_registry_update", extra={"reason": e})
         pass
@@ -521,7 +521,7 @@ class Datastore:
                 record_time_str = ce.data.get("timestamp")
                 
             timestamp = string_to_timestamp(record_time_str)
-            
+
             self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
 
             request = ControllerDataUpdate(
@@ -612,16 +612,16 @@ class Datastore:
                         variables=variables,
                     )
 
-            self.logger.debug(
-                "controller_definition_registry_update", extra={"request": request}
-            )
-            if self.db_client:
-                result = await self.db_client.controller_definition_registry_update(
-                    database=database,
-                    collection=collection,
-                    request=request,
-                    ttl=self.config.db_reg_controller_definition_ttl,
-                )
+                    self.logger.debug(
+                        "controller_definition_registry_update", extra={"request": request}
+                    )
+                    if self.db_client:
+                        result = await self.db_client.controller_definition_registry_update(
+                            database=database,
+                            collection=collection,
+                            request=request,
+                            ttl=self.config.db_reg_controller_definition_ttl,
+                        )
 
         except Exception as e:
             self.logger.error("controller_definition_registry_update", extra={"reason": e})
