@@ -288,8 +288,13 @@ class Datastore:
             erddap_version = f"v{parts[0]}"
             device_id = "::".join([make, model, serial_number])
             self.logger.debug("device_data_update", extra={"device_id": device_id})
-            timestamp = string_to_timestamp(ce.data["timestamp"]) 
 
+            # timestamp = string_to_timestamp(ce.data["timestamp"]) 
+            record_time_str = variables.get("time", {}).get("data")
+            if not record_time_str:
+                record_time_str = ce.data.get("timestamp")
+                
+            timestamp = string_to_timestamp(record_time_str)
             self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
 
             request = DataUpdate(
@@ -508,8 +513,15 @@ class Datastore:
             erddap_version = f"v{parts[0]}"
             controller_id = "::".join([make, model, serial_number])
             self.logger.debug("controller_data_update", extra={"device_id": controller_id})
-            timestamp = string_to_timestamp(ce.data["timestamp"])
 
+            # timestamp = string_to_timestamp(ce.data["timestamp"])
+
+            record_time_str = variables.get("time", {}).get("data")
+            if not record_time_str:
+                record_time_str = ce.data.get("timestamp")
+                
+            timestamp = string_to_timestamp(record_time_str)
+            
             self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
 
             request = ControllerDataUpdate(

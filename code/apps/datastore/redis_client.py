@@ -250,6 +250,7 @@ class RedisClient(DBClient):
                 continue
         return res
 
+
     async def _get_ids_safely(self, prefix: str) -> dict:
         """Safely scans for IDs regardless of decode_responses settings to prevent crashes."""
         ids = []
