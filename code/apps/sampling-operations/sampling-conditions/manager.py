@@ -455,11 +455,15 @@ class SamplingConditionsManager:
             limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
         )
 
-        asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.handle_mqtt_buffer())
-        asyncio.create_task(self.condition_status_monitor())
-        asyncio.create_task(self.publish_local_definitions())
-        asyncio.create_task(self.sync_sampling_definitions_loop())
+        task1 = asyncio.create_task(self.get_from_mqtt_loop())
+        task2 = asyncio.create_task(self.handle_mqtt_buffer())
+        task3 = asyncio.create_task(self.condition_status_monitor())
+        task4 = asyncio.create_task(self.publish_local_definitions())
+        task5 = asyncio.create_task(self.sync_sampling_definitions_loop())
+        
+        # Save references to prevent garbage collection
+        self._background_tasks.update({task1, task2, task3, task4, task5})
+
         self.logger.info("SamplingConditionsManager background tasks started successfully.")
 
     def open_http_client(self):
@@ -653,7 +657,7 @@ class SamplingConditionsManager:
 
     async def send_event(self, ce):
         try:
-            self.logger.debug(ce)
+            self.logger.debug("send_event", extra={"cepayload": ce})
             if not getattr(self, 'http_client', None):
                 self.open_http_client()
             try:
@@ -720,8 +724,11 @@ class SamplingConditionsManager:
         await asyncio.sleep(5)
         while True:
             try:
+                self.logger.debug("publish_local_definitions", extra={"here": 1})
                 for cond_name, cond_data in self.sampling_conditions["conditions"].items():
+                    self.logger.debug("publish_local_definitions", extra={"cond_name": cond_name})
                     config = cond_data["config"]
+                    self.logger.debug("publish_local_definitions", extra={"cond_config": config})
                     if not config:
                         continue
                     
@@ -731,6 +738,7 @@ class SamplingConditionsManager:
                         data={"samplingcondition": config}
                     )
                     event["destpath"] = f"envds/{self.config.daq_id}/samplingcondition-definition/registry/update"
+                    self.logger.debug("publish_local_definitions", extra={"event": event})
                     await self.send_event(event)
 
             except Exception as e:
