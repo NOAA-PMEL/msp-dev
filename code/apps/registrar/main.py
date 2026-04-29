@@ -158,6 +158,8 @@ async def registry_sync(request: Request):
         ce = from_http(request.headers, await request.body())
         try:
             L.debug("registry_sync", extra={"ce-type": ce["type"]})
+        except Exception as e:
+            pass
         
         # FIX: Use put_nowait to guarantee the HTTP route never blocks
         import asyncio
