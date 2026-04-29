@@ -315,92 +315,145 @@ def get_dataset():
 
 
 
+# @callback(
+#     Output("trajectory", "figure"),
+#     # Input("global-status-container", "id") # Triggers when the health status container loads
+#     Input("variableset-data-buffer", "data"),
+#     State("trajectory", "figure"),
+#     prevent_initial_call=False
+# )
+# def update_trajectory(vs_data, current_figure):
+#     # Directly get the fake data
+#     # df = get_dataset()
+#     if not vs_data:
+#         return dash.no_update
+    
+#     if vs_data:
+#         try:
+#             L.debug(f"variableset-data-trajectory{vs_data}")
+#             L.debug(f"variableset-data-trajectory-attributes: {vs_data[0]['attributes']}")
+#             L.debug(f"variableset-data-trajectory-variables: {vs_data[0]['variables']}")
+#             lats = vs_data[0]['variables']['latitude']['data']
+#             lons = vs_data[0]['variables']['longitude']['data']
+
+#             if current_figure is None or not current_figure.get('data'):
+#                 fig = px.scatter_map(
+#                     [{'latitude': lats, 'longitude': lons}],
+#                     lat='latitude', 
+#                     lon='longitude', 
+#                     title="Current Vessel Trajectory"
+#                 )
+#                 fig.update_traces(marker={'size': 8, 'color': '#007bff'})
+#                 fig.update_layout(
+#                     margin={"r":0,"t":30,"l":0,"b":0},
+#                     mapbox_style="open-street-map",
+#                     uirevision='constant' # Keeps zoom level fixed on updates
+#                 )
+#                 return fig
+
+#         # # CONDITION: If it already exists, only send the patch (No Flicker!)
+#         # patched_fig = Patch()
+#         # patched_fig["data"][0]["lat"] = lats
+#         # patched_fig["data"][0]["lon"] = lons
+#         # return patched_fig
+
+#         #     patched_fig = Patch()
+            
+#         #     flattened_data = [
+#         #         {
+#         #             'latitude': lats,
+#         #             'longitude': lons
+#         #         }
+#         #     ]
+
+#         #     L.debug(f"variableset-data-trajectory-flattened: {flattened_data}")
+
+#         #     # center_lat = lats.mean()
+#         #     # center_lon = lons.mean()
+            
+#         #     # # Dynamic Zoom Logic
+#         #     # max_diff = max(np.abs(lats - center_lat).max(), np.abs(lons - center_lon).max(), 0.01)
+#         #     # zoom_level = 8 - np.log2(max_diff)
+
+#         #     # Create the Map
+#         #     fig = px.scatter_map(
+#         #         # vs_data, 
+#         #         flattened_data,
+#         #         lat='latitude', 
+#         #         lon='longitude', 
+#         #         # zoom=zoom_level, 
+#         #         # center={"lat": center_lat, "lon": center_lon},
+#         #         title="Current Vessel Trajectory"
+#         #     )
+
+#         #     # Maritime Styling
+#         #     fig.update_traces(marker={'size': 8, 'color': '#007bff'}) # Nautical Blue
+#         #     fig.update_layout(
+#         #         margin={"r":0,"t":30,"l":0,"b":0},
+#         #         mapbox_style="open-street-map" # Reliable, no-token-needed map style
+#         #     )
+            
+#         #     return fig
+        
+#         except Exception as e:
+#             L.error(f"variableset-data-trajectory-error: {e}")
+#             return dash.no_update
+
+#     else:
+#         raise PreventUpdate
+
+
+
+
+
 @callback(
     Output("trajectory", "figure"),
-    # Input("global-status-container", "id") # Triggers when the health status container loads
     Input("variableset-data-buffer", "data"),
     State("trajectory", "figure"),
-    prevent_initial_call=False
+    prevent_initial_call=True
 )
-def update_trajectory(vs_data, current_figure):
-    # Directly get the fake data
-    # df = get_dataset()
-    if not vs_data:
+def update_trajectory(vs_data, current_fig):
+    # 1. Guard against empty data
+    if not vs_data or not vs_data[0].get('variables'):
         return dash.no_update
-    
-    if vs_data:
-        try:
-            L.debug(f"variableset-data-trajectory{vs_data}")
-            L.debug(f"variableset-data-trajectory-attributes: {vs_data[0]['attributes']}")
-            L.debug(f"variableset-data-trajectory-variables: {vs_data[0]['variables']}")
-            lats = vs_data[0]['variables']['latitude']['data']
-            lons = vs_data[0]['variables']['longitude']['data']
-
-            if current_figure is None or not current_figure.get('data'):
-                fig = px.scatter_map(
-                    [{'latitude': lats, 'longitude': lons}],
-                    lat='latitude', 
-                    lon='longitude', 
-                    title="Current Vessel Trajectory"
-                )
-                fig.update_traces(marker={'size': 8, 'color': '#007bff'})
-                fig.update_layout(
-                    margin={"r":0,"t":30,"l":0,"b":0},
-                    mapbox_style="open-street-map",
-                    uirevision='constant' # Keeps zoom level fixed on updates
-                )
-                return fig
-
-        # # CONDITION: If it already exists, only send the patch (No Flicker!)
-        # patched_fig = Patch()
-        # patched_fig["data"][0]["lat"] = lats
-        # patched_fig["data"][0]["lon"] = lons
-        # return patched_fig
-
-        #     patched_fig = Patch()
-            
-        #     flattened_data = [
-        #         {
-        #             'latitude': lats,
-        #             'longitude': lons
-        #         }
-        #     ]
-
-        #     L.debug(f"variableset-data-trajectory-flattened: {flattened_data}")
-
-        #     # center_lat = lats.mean()
-        #     # center_lon = lons.mean()
-            
-        #     # # Dynamic Zoom Logic
-        #     # max_diff = max(np.abs(lats - center_lat).max(), np.abs(lons - center_lon).max(), 0.01)
-        #     # zoom_level = 8 - np.log2(max_diff)
-
-        #     # Create the Map
-        #     fig = px.scatter_map(
-        #         # vs_data, 
-        #         flattened_data,
-        #         lat='latitude', 
-        #         lon='longitude', 
-        #         # zoom=zoom_level, 
-        #         # center={"lat": center_lat, "lon": center_lon},
-        #         title="Current Vessel Trajectory"
-        #     )
-
-        #     # Maritime Styling
-        #     fig.update_traces(marker={'size': 8, 'color': '#007bff'}) # Nautical Blue
-        #     fig.update_layout(
-        #         margin={"r":0,"t":30,"l":0,"b":0},
-        #         mapbox_style="open-street-map" # Reliable, no-token-needed map style
-        #     )
-            
-        #     return fig
         
-        except Exception as e:
-            L.error(f"variableset-data-trajectory-error: {e}")
-            return dash.no_update
+    try:
+        lats = vs_data[0]['variables']['latitude']['data']
+        lons = vs_data[0]['variables']['longitude']['data']
 
-    else:
-        raise PreventUpdate
+        # 2. INITIAL CREATION: If figure is empty or has no data traces
+        if current_fig is None or not current_fig.get('data'):
+            fig = px.scatter_map(
+                lat=lats, 
+                lon=lons, 
+                title="Current Vessel Trajectory"
+            )
+            fig.update_traces(marker={'size': 8, 'color': '#007bff'})
+            fig.update_layout(
+                margin={"r":0,"t":30,"l":0,"b":0},
+                mapbox_style="open-street-map",
+                # THIS IS THE MOST IMPORTANT LINE:
+                uirevision='vessel-movement-const' 
+            )
+            return fig
+
+        # 3. PARTIAL UPDATE: Modify existing figure
+        patched_fig = Patch()
+        
+        # We target 'lat' and 'lon' keys inside the first data trace
+        patched_fig["data"][0]["lat"] = lats
+        patched_fig["data"][0]["lon"] = lons
+        
+        # Ensure uirevision stays the same to prevent zoom reset
+        patched_fig["layout"]["uirevision"] = 'vessel-movement-const'
+        
+        return patched_fig
+
+    except Exception as e:
+        # Logging instead of crashing to prevent the UI from locking up
+        print(f"Error: {e}")
+        return dash.no_update
+
 
 
 
