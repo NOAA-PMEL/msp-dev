@@ -140,8 +140,11 @@ ws_send_buffer = html.Div(id="ws-send-instance-buffer", style={"display": "none"
 
 
 def build_tables(table_columns_dict):
+    L.debug(f"ENTERING build_tables ---")
+    L.debug(f"table_columns_dict looks like: {table_columns_dict}")
     table_list = []
     for varset_id, columns in table_columns_dict.items():
+        L.debug(f"Varset {varset_id} and column len {len(columns)}")
         table_list.append(
             dbc.AccordionItem(
                 [
@@ -1369,7 +1372,7 @@ def update_graph_1d(buffer_data, selected_values):
         # Assuming your websocket payload includes a field identifying the varset_id:
         # e.g., incoming_varset_id = buffer_data.get("device_id") 
         # or    incoming_varset_id = buffer_data.get("id")
-        incoming_varset_id = buffer_data.get("variableset_id") # Adjust this key to match your actual payload!
+        incoming_varset_id = buffer_data.get("variablesetfullid") # Adjust this key to match your actual payload!
         
         figs_to_update = []
 
@@ -1625,7 +1628,7 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
     L.debug(f"update table buffer data {buffer_data}")
 
     # Get the ID of the incoming data (adjust "id" to match your websocket payload key)
-    incoming_varset_id = buffer_data.get("variableset_id")
+    incoming_varset_id = buffer_data.get("variablesetfullid")
 
     new_row_data_list = []
     
