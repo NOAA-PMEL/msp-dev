@@ -773,7 +773,7 @@ def get_device_definition(device_definition_id: str, device_type: str="sensor"):
 
     query = {"device_type": device_type, "device_definition_id": device_definition_id}
     url = f"http://{datastore_url}/device-definition/registry/get/"
-    print(f"device-definition-get: {url}")
+    print(f"device-definition-get: {url}, query: {query}")
     try:
         timeout = httpx.Timeout(30.0, read=None)
         response = httpx.get(url, params=query, timeout=timeout)
