@@ -325,10 +325,10 @@ def update_trajectory(vs_data):
     # df = get_dataset()
     if vs_data:
         L.debug(f"variableset-data-trajectory{vs_data}")
-        L.debug(f"variableset-data-trajectory-attributes: {vs_data['attributes']}")
-        L.debug(f"variableset-data-trajectory-variables: {vs_data['variables']}")
-        lats = vs_data['variables']['latitude']['data']
-        lons = vs_data['variables']['longitude']['data']
+        L.debug(f"variableset-data-trajectory-attributes: {vs_data[0]['attributes']}")
+        L.debug(f"variableset-data-trajectory-variables: {vs_data[0]['variables']}")
+        lats = vs_data[0]['variables']['latitude']['data']
+        lons = vs_data[0]['variables']['longitude']['data']
         
         center_lat = lats.mean()
         center_lon = lons.mean()
