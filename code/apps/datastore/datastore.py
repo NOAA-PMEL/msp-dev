@@ -361,64 +361,52 @@ class Datastore:
     async def device_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, device_def in ce.data.items():
-                # Allow both direct "device-definition" and sync "device-definition-update"
                 if definition_type not in ["device-definition", "device-definition-update"]:
                     continue
+
+                # ROBUST EXTRACTION: Works for both flat sync payloads AND nested sensor payloads
+                make = device_def.get("make") or device_def.get("attributes", {}).get("make", {}).get("data", "unknown")
+                model = device_def.get("model") or device_def.get("attributes", {}).get("model", {}).get("data", "unknown")
                 
-                # FIX: If the payload is already a flattened database record (from a sync update)
-                if "device_definition_id" in device_def:
-                    request = DeviceDefinitionUpdate(**device_def)
-                else:
+                # Handle version extraction cleanly
+                version = device_def.get("version")
+                if not version:
+                    format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+                    version = f"v{format_version.split('.')[0]}"
 
-                    make = device_def["attributes"]["make"]["data"]
-                    model = device_def["attributes"]["model"]["data"]
-                    format_version = device_def["attributes"]["format_version"]["data"]
-                    parts = format_version.split(".")
-                    version = f"v{parts[0]}"
-                    valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
+                valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
+                device_definition_id = device_def.get("device_definition_id", f"{make}::{model}::{version}")
 
-                    if definition_type == "device-definition":
-                        database = "registry"
-                        collection = "device-definition"
-                        attributes = device_def["attributes"]
-                        dimensions = device_def["dimensions"]
-                        variables = device_def["variables"]
+                # Ensure these top-level keys exist so RediSearch can index them
+                device_def["device_definition_id"] = device_definition_id
+                device_def["make"] = make
+                device_def["model"] = model
+                device_def["version"] = version
 
-                        if "device_type" in device_def["attributes"]:
-                            device_type = device_def["attributes"]["device_type"]["data"]
-                        else:
-                            device_def["attributes"]["device_type"] = {
-                                "type": "string",
-                                "data": "sensor"
-                            }
-                            device_type = "sensor"
+                # Build a simple Pydantic model ONLY for structured insertion, passing the whole dict as **kwargs
+                request = DeviceDefinitionUpdate(
+                    device_definition_id=device_definition_id,
+                    make=make,
+                    model=model,
+                    version=version,
+                    device_type=device_def.get("device_type") or device_def.get("attributes", {}).get("device_type", {}).get("data", "sensor"),
+                    valid_time=valid_time,
+                    attributes=device_def.get("attributes", {}),
+                    dimensions=device_def.get("dimensions", {}),
+                    variables=device_def.get("variables", {})
+                )
 
-                        device_definition_id = "::".join([make,model,format_version])
-                        request = DeviceDefinitionUpdate(
-                            device_definition_id=device_definition_id,
-                            make=make,
-                            model=model,
-                            version=format_version,
-                            device_type=device_type,
-                            valid_time=valid_time,
-                            attributes=attributes,
-                            dimensions=dimensions,
-                            variables=variables,
-                        )
-
-                    self.logger.debug(
-                        "device_definition_registry_update", extra={"request": request}
+                self.logger.debug("device_definition_registry_update", extra={"request": request.device_definition_id})
+                if self.db_client:
+                    await self.db_client.device_definition_registry_update(
+                        database="registry",
+                        collection="device-definition",
+                        request=request,
+                        ttl=self.config.db_reg_device_definition_ttl,
                     )
-                    if self.db_client:
-                        result = await self.db_client.device_definition_registry_update(
-                            database=database,
-                            collection=collection,
-                            request=request,
-                            ttl=self.config.db_reg_device_definition_ttl,
-                        )
         except Exception as e:
-            self.logger.error("device_definition_registry_update", extra={"reason": e})
-        pass
+            self.logger.error("device_definition_registry_update", extra={"reason": str(e)})
+
 
     async def device_definition_registry_get_ids(self) -> dict:
         if self.db_client:
@@ -595,54 +583,52 @@ class Datastore:
     async def controller_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, controller_def in ce.data.items():
-
-                # Allow both direct "controller-definition" and sync "controller-definition-update"
                 if definition_type not in ["controller-definition", "controller-definition-update"]:
-                    continue                
-                # FIX: If the payload is already a flattened database record (from a sync update)
-                if "controller_definition_id" in controller_def:
-                    request = ControllerDefinitionUpdate(**controller_def)
-                else:
-                    make = controller_def["attributes"]["make"]["data"]
-                    model = controller_def["attributes"]["model"]["data"]
-                    format_version = controller_def["attributes"]["format_version"]["data"]
-                    parts = format_version.split(".")
-                    version = f"v{parts[0]}"
-                    valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
+                    continue
 
-                    if definition_type == "controller-definition":
-                        database = "registry"
-                        collection = "controller-definition"
-                        attributes = controller_def["attributes"]
-                        dimensions = controller_def["dimensions"]
-                        variables = controller_def["variables"]
+                # ROBUST EXTRACTION: Works for both flat sync payloads AND nested local payloads
+                make = controller_def.get("make") or controller_def.get("attributes", {}).get("make", {}).get("data", "unknown")
+                model = controller_def.get("model") or controller_def.get("attributes", {}).get("model", {}).get("data", "unknown")
+                
+                # Handle version extraction cleanly
+                version = controller_def.get("version")
+                if not version:
+                    format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+                    version = f"v{format_version.split('.')[0]}"
 
-                        controller_definition_id = "::".join([make,model,format_version])
-                        request = ControllerDefinitionUpdate(
-                            controller_definition_id=controller_definition_id,
-                            make=make,
-                            model=model,
-                            version=format_version,
-                            valid_time=valid_time,
-                            attributes=attributes,
-                            dimensions=dimensions,
-                            variables=variables,
-                        )
+                valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
+                controller_definition_id = controller_def.get("controller_definition_id", f"{make}::{model}::{version}")
 
-                    self.logger.debug(
-                        "controller_definition_registry_update", extra={"request": request}
+                # Ensure these top-level keys exist so RediSearch can index them
+                controller_def["controller_definition_id"] = controller_definition_id
+                controller_def["make"] = make
+                controller_def["model"] = model
+                controller_def["version"] = version
+                controller_def["valid_time"] = valid_time
+
+                # Build a simple Pydantic model ONLY for structured insertion
+                request = ControllerDefinitionUpdate(
+                    controller_definition_id=controller_definition_id,
+                    make=make,
+                    model=model,
+                    version=version,
+                    valid_time=valid_time,
+                    attributes=controller_def.get("attributes", {}),
+                    dimensions=controller_def.get("dimensions", {}),
+                    variables=controller_def.get("variables", {})
+                )
+
+                self.logger.debug("controller_definition_registry_update", extra={"request": request.controller_definition_id})
+                
+                if self.db_client:
+                    await self.db_client.controller_definition_registry_update(
+                        database="registry",
+                        collection="controller-definition",
+                        request=request,
+                        ttl=self.config.db_reg_controller_definition_ttl,
                     )
-                    if self.db_client:
-                        result = await self.db_client.controller_definition_registry_update(
-                            database=database,
-                            collection=collection,
-                            request=request,
-                            ttl=self.config.db_reg_controller_definition_ttl,
-                        )
-
         except Exception as e:
-            self.logger.error("controller_definition_registry_update", extra={"reason": e})
-        pass
+            self.logger.error("controller_definition_registry_update", extra={"reason": str(e)})
 
     async def controller_definition_registry_get_ids(self) -> dict:
         if self.db_client:
@@ -729,42 +715,37 @@ class Datastore:
 
     async def variablemap_definition_registry_update(self, ce: CloudEvent):
         try:
-            for definition_type, vm_def in ce.data.items():
+            for definition_type, vmap_def in ce.data.items():
+                if definition_type not in ["variablemap-definition", "variablemap-definition-update"]:
+                    continue
+
+                # Robust extraction for both flat syncs and nested payloads
+                variablemap_type = vmap_def.get("variablemap_type") or vmap_def.get("attributes", {}).get("variablemap_type", {}).get("data", "unknown")
+                variablemap_type_id = vmap_def.get("variablemap_type_id") or vmap_def.get("attributes", {}).get("variablemap_type_id", {}).get("data", "unknown")
+                variablemap = vmap_def.get("variablemap") or vmap_def.get("attributes", {}).get("variablemap", {}).get("data", "unknown")
+                valid_time = vmap_def.get("valid_config_time") or vmap_def.get("valid_time", "2020-01-01T00:00:00Z")
+
+                variablemap_definition_id = vmap_def.get("variablemap_definition_id") or f"{variablemap_type}::{variablemap_type_id}::{variablemap}"
                 
-                # FIX: Check if it's already a flattened database record (from a registrar sync)
-                if "variablemap_definition_id" in vm_def:
-                    request = VariableMapDefinitionUpdate(**vm_def)
-                else:
-                    # It's an original payload from sampling-system
-                    variablemap = vm_def.get("metadata", {}).get("name")
-                    data = vm_def.get("data", {})
-                    attributes = data.get("attributes", {})
-                    
-                    variablemap_type = attributes.get("variablemap_type", "Platform")
-                    if variablemap_type == "Platform":
-                        variablemap_type_id = attributes.get("platform")
-                    else:
-                        self.logger.error("variablemap_definition_registry_update", extra={"reason": f"unknown variablemap_type-{variablemap_type}"})
-                        continue
-                    
-                    valid_config_time = attributes.get("valid_config_time", "2020-01-01T00:00:00Z")
+                # Ensure top-level keys exist for indexing
+                vmap_def["variablemap_definition_id"] = variablemap_definition_id
+                vmap_def["variablemap_type"] = variablemap_type
+                vmap_def["variablemap_type_id"] = variablemap_type_id
+                vmap_def["variablemap"] = variablemap
+                vmap_def["valid_config_time"] = valid_time
 
-                    variablesets = data.get("variablesets", {})
-                    variables = data.get("variables", {})
+                request = VariableMapDefinitionUpdate(
+                    variablemap_definition_id=variablemap_definition_id,
+                    variablemap_type=variablemap_type,
+                    variablemap_type_id=variablemap_type_id,
+                    variablemap=variablemap,
+                    valid_config_time=valid_time,
+                    metadata=vmap_def.get("metadata", {}),
+                    attributes=vmap_def.get("attributes", {}),
+                    dimensions=vmap_def.get("dimensions", {}),
+                    variables=vmap_def.get("variables", {})
+                )
 
-                    variablemap_definition_id = "::".join([variablemap_type_id, variablemap, valid_config_time])
-                    request = VariableMapDefinitionUpdate(
-                        variablemap_definition_id=variablemap_definition_id,
-                        variablemap_type=variablemap_type,
-                        variablemap_type_id=variablemap_type_id,
-                        variablemap=variablemap,
-                        valid_config_time=valid_config_time,
-                        attributes=attributes,
-                        variablesets=variablesets,
-                        variables=variables,
-                    )
-
-                self.logger.debug("variablemap_definition_registry_update", extra={"request": request})
                 if self.db_client:
                     await self.db_client.variablemap_definition_registry_update(
                         database="registry",
@@ -772,9 +753,8 @@ class Datastore:
                         request=request,
                         ttl=self.config.db_reg_variablemap_definition_ttl,
                     )
-
         except Exception as e:
-            self.logger.error("variablemap_definition_registry_update", extra={"reason": repr(e)})
+            self.logger.error("variablemap_definition_registry_update", extra={"reason": str(e)})
 
 
     async def variablemap_definition_registry_get(self, query: VariableMapDefinitionRequest) -> dict:
@@ -790,42 +770,46 @@ class Datastore:
 
     async def variableset_definition_registry_update(self, ce: CloudEvent):
         try:
-            for definition_type, vs_payload in ce.data.items():
-                
-                # FIX 1: Ensure we only process the correct definition type
-                if definition_type != "variableset-definition":
+            for definition_type, vset_def in ce.data.items():
+                if definition_type not in ["variableset-definition", "variableset-definition-update"]:
                     continue
 
-                if "variableset_definition_id" in vs_payload:
-                    request = VariableSetDefinitionUpdate(**vs_payload)
-                else:
-                    vs_name = vs_payload.get("metadata", {}).get("name")
-                    data = vs_payload.get("data", {})
-                    attributes = data.get("attributes", {})
-                    
-                    variablemap_name = attributes.get("variablemap_id", "")
-                    variablemap_type_id = attributes.get("platform", "")
-                    valid_config_time = attributes.get("valid_config_time", "2020-01-01T00:00:00Z")
-                    
-                    variablemap_definition_id = "::".join([variablemap_type_id, variablemap_name, valid_config_time])
-                    
-                    request = VariableSetDefinitionUpdate(
-                        variableset_definition_id=f"{variablemap_definition_id}::{vs_name}",
-                        variablemap_definition_id=variablemap_definition_id,
-                        variableset=vs_name,
-                        index_type=data.get("index_type"),
-                        index_value=data.get("index_value"),
-                        attributes=attributes,
-                        dimensions=data.get("dimensions", {}),
-                        variables=data.get("variables", {})
-                    )
-
-                self.logger.debug("variableset_definition_registry_update", extra={"request": request})
+                variablemap_definition_id = vset_def.get("variablemap_definition_id") or vset_def.get("attributes", {}).get("variablemap_definition_id", {}).get("data", "unknown")
+                variableset = vset_def.get("variableset") or vset_def.get("attributes", {}).get("variableset", {}).get("data", "unknown")
+                index_type = vset_def.get("index_type") or vset_def.get("attributes", {}).get("index_type", {}).get("data", "unknown")
                 
+                index_value = vset_def.get("index_value")
+                if index_value is None:
+                    index_value = vset_def.get("attributes", {}).get("index_value", {}).get("data")
+                    
+                valid_time = vset_def.get("valid_config_time") or vset_def.get("valid_time", "2020-01-01T00:00:00Z")
+
+                variableset_definition_id = vset_def.get("variableset_definition_id") or f"{variableset}::{variablemap_definition_id}::{index_type}::{index_value}"
+                
+                vset_def["variableset_definition_id"] = variableset_definition_id
+                vset_def["variablemap_definition_id"] = variablemap_definition_id
+                vset_def["variableset"] = variableset
+                vset_def["index_type"] = index_type
+                vset_def["index_value"] = index_value
+                vset_def["valid_config_time"] = valid_time
+
+                request = VariableSetDefinitionUpdate(
+                    variableset_definition_id=variableset_definition_id,
+                    variablemap_definition_id=variablemap_definition_id,
+                    variableset=variableset,
+                    index_type=index_type,
+                    index_value=index_value,
+                    valid_config_time=valid_time,
+                    metadata=vset_def.get("metadata", {}),
+                    attributes=vset_def.get("attributes", {}),
+                    dimensions=vset_def.get("dimensions", {}),
+                    variables=vset_def.get("variables", {})
+                )
+
                 if self.db_client:
                     await self.db_client.variableset_definition_registry_update(
                         database="registry",
-                        collection="variableset-definition", 
+                        collection="variableset-definition",
                         request=request,
                         ttl=self.config.db_reg_variableset_definition_ttl,
                     )
@@ -841,36 +825,32 @@ class Datastore:
     # -------------------------------------------------------------------------------------
     # SAMPLING DEFINITIONS (DYNAMIC)
     # -------------------------------------------------------------------------------------
-    async def sampling_definition_registry_update(self, resource: str, ce: CloudEvent):
+    async def sampling_definition_registry_update(self, ce: CloudEvent, resource: str):
         try:
-            for definition_type, def_data in ce.data.items():
-                name = def_data["metadata"]["name"]
+            for definition_type, resource_def in ce.data.items():
+                if definition_type not in [f"{resource}-definition", f"{resource}-definition-update"]:
+                    continue
                 
-                # Use a default time if valid_config_time is missing
-                valid_config_time = def_data["metadata"].get("valid_config_time", "2020-01-01T00:00:00Z")
+                # Ensure metadata exists and extract keys safely
+                if "metadata" not in resource_def:
+                    resource_def["metadata"] = {}
+                    
+                name = resource_def.get("name") or resource_def["metadata"].get("name", "unknown")
+                valid_time = resource_def.get("valid_config_time") or resource_def["metadata"].get("valid_config_time", "2020-01-01T00:00:00Z")
 
-                database = "registry"
-                collection = f"{resource}-definition"
-
-                # Since these share a generic structure, we can pass the dict directly 
-                # instead of creating a strict Pydantic model for each of the 5 types.
-                request = def_data 
-
-                self.logger.debug(
-                    f"{resource}_definition_registry_update", extra={"request": request}
-                )
+                resource_def["metadata"]["name"] = name
+                resource_def["metadata"]["valid_config_time"] = valid_time
 
                 if self.db_client:
-                    result = await self.db_client.sampling_definition_registry_update(
+                    await self.db_client.sampling_definition_registry_update(
                         resource=resource,
-                        database=database,
-                        collection=collection,
-                        request=request,
-                        ttl=0, # Permanent
+                        database="registry",
+                        collection=f"{resource}-definition",
+                        request=resource_def,
+                        ttl=0
                     )
-
         except Exception as e:
-            self.logger.error(f"{resource}_definition_registry_update", extra={"reason": e})
+            self.logger.error(f"sampling_definition_registry_update:{resource}", extra={"reason": str(e)})
 
     async def sampling_definition_registry_get_ids(self, resource: str) -> dict:
         if self.db_client:

@@ -261,7 +261,7 @@ class Registrar:
             except Exception as e:
                 self.logger.error("get_device_definitions_loop", extra={"reason": e})
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(60)
 
     async def get_device_instance(self, devices: list[str]) -> list:
         pass
@@ -316,7 +316,7 @@ class Registrar:
             except Exception as e:
                 self.logger.error("get_controller_definitions_loop", extra={"reason": e})
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(60)
 
     async def get_controller_instance(self, controllers: list[str]) -> list:
         pass

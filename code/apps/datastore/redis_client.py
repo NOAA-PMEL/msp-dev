@@ -317,33 +317,57 @@ class RedisClient(DBClient):
         return await self._get_ids_safely("registry:device-definition:")
 
     async def device_definition_registry_get(self, request: DeviceDefinitionRequest) -> dict:
-        # ---------------------------------------------------------
-        # FAST PATH: Exact ID Lookup for Registrar Syncs
-        # ---------------------------------------------------------
+        await super(RedisClient, self).device_definition_registry_get(request)
+
+        # -------------------------------------------------------------------------
+        # FAST PATH: O(1) Direct Lookup for Registrar Sync Requests
+        # -------------------------------------------------------------------------
         if request.device_definition_id:
             key = f"registry:device-definition:{request.device_definition_id}"
             try:
+                # Instant lookup bypassing RediSearch entirely
                 doc = await self.client.json().get(key)
-                if doc and "registration" in doc:
-                    return {"results": [doc["registration"]]}
-            except Exception:
-                pass
-        
-        # ---------------------------------------------------------
-        # SLOW PATH: RediSearch (For Dashboard partial filters)
-        # ---------------------------------------------------------
+                if doc:
+                    # Fallback to the flat doc if "registration" wrapper is missing (Legacy)
+                    return {"results": [doc.get("registration", doc)]}
+            except Exception as e:
+                self.logger.error("redis_client fast-path error", extra={"reason": str(e)})
+            
+            # If exact ID not found, return empty (don't fall back to heavy search)
+            return {"results": []}
+
+        # -------------------------------------------------------------------------
+        # SLOW PATH: RediSearch Fallback for Dashboard Queries
+        # -------------------------------------------------------------------------
         query_args = []
-        if request.device_definition_id: query_args.append(f"@device_definition_id:{{{self.escape_query(request.device_definition_id)}}}")
-        if request.make: query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
-        if request.model: query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
-        if request.version: query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
-        if request.device_type: query_args.append(f"@device_type:{{{self.escape_query(request.device_type)}}}")
-
+        if request.make:
+            query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
+        if request.model:
+            query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
+        if request.version:
+            query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
+        if request.device_type:
+            query_args.append(f"@device_type:{request.device_type}")
+        
         qstring = " ".join(query_args) if query_args else "*"
-        q = Query(qstring).return_fields("$")
+        self.logger.debug("device_definition_registry_get search", extra={"query": qstring})
+        
+        q = Query(qstring)
         docs = (await self.client.ft(self.registry_device_definition_index_name).search(q)).docs
-        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
-
+        
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    # Support legacy docs that lack the registration wrapper
+                    results.append(reg.get("registration", reg))
+            except Exception as e:
+                self.logger.error("device_definition_registry_get parsing", extra={"reason": str(e)})
+                continue
+                
+        return {"results": results}
+    
     async def device_instance_registry_update(self, database: str, collection: str, request: DeviceInstanceUpdate, ttl: int = 300) -> bool:
         try:
             self.connect()
@@ -421,32 +445,53 @@ class RedisClient(DBClient):
         return await self._get_ids_safely("registry:controller-definition:")
 
     async def controller_definition_registry_get(self, request: ControllerDefinitionRequest) -> dict:
-        # ---------------------------------------------------------
-        # FAST PATH: Exact ID Lookup for Registrar Syncs
-        # ---------------------------------------------------------
+        # -------------------------------------------------------------------------
+        # FAST PATH: O(1) Direct Lookup for Registrar Sync Requests
+        # -------------------------------------------------------------------------
         if request.controller_definition_id:
             key = f"registry:controller-definition:{request.controller_definition_id}"
             try:
+                # Instant lookup bypassing RediSearch entirely
                 doc = await self.client.json().get(key)
-                if doc and "registration" in doc:
-                    return {"results": [doc["registration"]]}
-            except Exception:
-                pass
+                if doc:
+                    # Fallback to the flat doc if "registration" wrapper is missing (Legacy)
+                    return {"results": [doc.get("registration", doc)]}
+            except Exception as e:
+                self.logger.error("redis_client fast-path error", extra={"reason": str(e)})
+            
+            # If exact ID not found, return empty (don't fall back to heavy search)
+            return {"results": []}
 
-        # ---------------------------------------------------------
-        # SLOW PATH: RediSearch (For Dashboard partial filters)
-        # ---------------------------------------------------------
+        # -------------------------------------------------------------------------
+        # SLOW PATH: RediSearch Fallback for Dashboard Queries
+        # -------------------------------------------------------------------------
         query_args = []
-        if request.controller_definition_id: query_args.append(f"@controller_definition_id:{{{self.escape_query(request.controller_definition_id)}}}")
-        if request.make: query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
-        if request.model: query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
-        if request.version: query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
-
+        if request.make:
+            query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
+        if request.model:
+            query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
+        if request.version:
+            query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
+        
         qstring = " ".join(query_args) if query_args else "*"
-        q = Query(qstring).return_fields("$")
+        self.logger.debug("controller_definition_registry_get search", extra={"query": qstring})
+        
+        q = Query(qstring)
         docs = (await self.client.ft(self.registry_controller_definition_index_name).search(q)).docs
-        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
-
+        
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    # Support legacy docs that lack the registration wrapper
+                    results.append(reg.get("registration", reg))
+            except Exception as e:
+                self.logger.error("controller_definition_registry_get parsing", extra={"reason": str(e)})
+                continue
+                
+        return {"results": results}
+    
     async def controller_instance_registry_update(self, database: str, collection: str, request: ControllerInstanceUpdate, ttl: int = 300) -> bool:
         try:
             self.connect()
@@ -482,7 +527,6 @@ class RedisClient(DBClient):
         return await self._get_ids_safely("registry:variablemap-definition:")
 
     async def variablemap_definition_registry_get(self, request: VariableMapDefinitionRequest) -> dict:
-        # Format ID to remove colons from timestamp segment if present
         redis_id = request.variablemap_definition_id
         if redis_id:
             redis_id = redis_id.replace(":", "") if "::" not in redis_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
@@ -494,18 +538,16 @@ class RedisClient(DBClient):
             key = f"registry:variablemap-definition:{redis_id}"
             try:
                 doc = await self.client.json().get(key)
-                if doc and "registration" in doc:
-                    return {"results": [doc["registration"]]}
+                if doc:
+                    return {"results": [doc.get("registration", doc)]}
             except Exception:
                 pass
+            return {"results": []} # Prevent RediSearch fallback on direct ID lookups
 
         # ---------------------------------------------------------
-        # SLOW PATH: RediSearch 
+        # SLOW PATH: RediSearch Dashboard Lookups
         # ---------------------------------------------------------
         query_args = []
-        if request.variablemap_definition_id:
-            redis_id = request.variablemap_definition_id.replace(":", "") if "::" not in request.variablemap_definition_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(request.variablemap_definition_id.split("::"))])
-            query_args.append(f"@variablemap_definition_id:{{{self.escape_query(redis_id)}}}")
         if request.variablemap_type: query_args.append(f"@variablemap_type:{{{self.escape_query(request.variablemap_type)}}}")
         if request.variablemap_type_id: query_args.append(f"@variablemap_type_id:{{{self.escape_query(request.variablemap_type_id)}}}")
         if request.variablemap: query_args.append(f"@variablemap:{{{self.escape_query(request.variablemap)}}}")
@@ -514,7 +556,16 @@ class RedisClient(DBClient):
         qstring = " ".join(query_args) if query_args else "*"
         q = Query(qstring).return_fields("$")
         docs = (await self.client.ft(self.registry_variablemap_definition_index_name).search(q)).docs
-        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
+        
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    results.append(reg.get("registration", reg))
+            except Exception:
+                continue
+        return {"results": results}
 
     async def variablemap_definition_registry_update(self, database: str, collection: str, request: VariableMapDefinitionUpdate, ttl: int = 0) -> bool:
         try:
@@ -533,7 +584,6 @@ class RedisClient(DBClient):
         return await self._get_ids_safely("registry:variableset-definition:")
 
     async def variableset_definition_registry_get(self, request: VariableSetDefinitionRequest) -> dict:
-        # Format ID to remove colons from timestamp segment if present
         redis_id = request.variableset_definition_id
         if redis_id: 
             redis_id = redis_id.replace(":", "") if "::" not in redis_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
@@ -545,21 +595,19 @@ class RedisClient(DBClient):
             key = f"registry:variableset-definition:{redis_id}"
             try:
                 doc = await self.client.json().get(key)
-                if doc and "registration" in doc:
-                    return {"results": [doc["registration"]]}
+                if doc:
+                    return {"results": [doc.get("registration", doc)]}
             except Exception:
                 pass
+            return {"results": []}
 
         # ---------------------------------------------------------
-        # SLOW PATH: RediSearch
+        # SLOW PATH: RediSearch Dashboard Lookups
         # ---------------------------------------------------------
         query_args = []
-        if request.variableset_definition_id: 
-            redis_id = request.variableset_definition_id.replace(":", "") if "::" not in request.variableset_definition_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(request.variableset_definition_id.split("::"))])
-            query_args.append(f"@variableset_definition_id:{{{self.escape_query(redis_id)}}}")
         if request.variablemap_definition_id:
-            redis_id = request.variablemap_definition_id.replace(":", "") if "::" not in request.variablemap_definition_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(request.variablemap_definition_id.split("::"))])
-            query_args.append(f"@variablemap_definition_id:{{{self.escape_query(redis_id)}}}")
+            vmap_id = request.variablemap_definition_id.replace(":", "") if "::" not in request.variablemap_definition_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(request.variablemap_definition_id.split("::"))])
+            query_args.append(f"@variablemap_definition_id:{{{self.escape_query(vmap_id)}}}")
         if request.variableset: query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
         if request.index_type: query_args.append(f"@index_type:{{{self.escape_query(request.index_type)}}}")
         if request.index_value: query_args.append(f"@index_value:{{{self.escape_query(str(request.index_value))}}}")
@@ -567,7 +615,16 @@ class RedisClient(DBClient):
         qstring = " ".join(query_args) if query_args else "*"
         q = Query(qstring).return_fields("$")
         docs = (await self.client.ft(self.registry_variableset_definition_index_name).search(q)).docs
-        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
+        
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    results.append(reg.get("registration", reg))
+            except Exception:
+                continue
+        return {"results": results}
 
     async def variableset_definition_registry_update(self, database: str, collection: str, request: VariableSetDefinitionUpdate, ttl: int = 0) -> bool:
         try:
@@ -677,13 +734,14 @@ class RedisClient(DBClient):
             key = f"registry:{resource}-definition:{query['name']}"
             try:
                 doc = await self.client.json().get(key)
-                if doc and "registration" in doc:
-                    return {"results": [doc["registration"]]}
+                if doc:
+                    return {"results": [doc.get("registration", doc)]}
             except Exception:
                 pass
+            return {"results": []}
 
         # ---------------------------------------------------------
-        # SLOW PATH: RediSearch
+        # SLOW PATH: RediSearch Dashboard Lookups
         # ---------------------------------------------------------
         query_args = []
         if "name" in query and query["name"]: 
@@ -693,4 +751,13 @@ class RedisClient(DBClient):
         q = Query(qstring).return_fields("$")
         
         docs = (await self.client.ft(f"idx:registry-{resource}-definition").search(q)).docs
-        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
+        
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    results.append(reg.get("registration", reg))
+            except Exception:
+                continue
+        return {"results": results}
