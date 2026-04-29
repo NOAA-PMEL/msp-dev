@@ -449,6 +449,8 @@ def update_trajectory(vs_data, current_fig):
         # We target 'lat' and 'lon' keys inside the first data trace
         patched_fig["data"][0]["lat"] = lats
         patched_fig["data"][0]["lon"] = lons
+        patched_fig['data'][0]['marker']['color'] = '#007bff'
+        patched_fig['data'][0]['marker']['size'] = 8
         
         # Ensure uirevision stays the same to prevent zoom reset
         patched_fig["layout"]["uirevision"] = 'vessel-movement-const'
