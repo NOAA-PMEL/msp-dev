@@ -324,37 +324,54 @@ def update_trajectory(vs_data):
     # Directly get the fake data
     # df = get_dataset()
     if vs_data:
-        L.debug(f"variableset-data-trajectory{vs_data}")
-        L.debug(f"variableset-data-trajectory-attributes: {vs_data[0]['attributes']}")
-        L.debug(f"variableset-data-trajectory-variables: {vs_data[0]['variables']}")
-        lats = vs_data[0]['variables']['latitude']['data']
-        lons = vs_data[0]['variables']['longitude']['data']
-        
-        center_lat = lats.mean()
-        center_lon = lons.mean()
-        
-        # Dynamic Zoom Logic
-        max_diff = max(np.abs(lats - center_lat).max(), np.abs(lons - center_lon).max(), 0.01)
-        zoom_level = 8 - np.log2(max_diff)
+        try:
+            L.debug(f"variableset-data-trajectory{vs_data}")
+            L.debug(f"variableset-data-trajectory-attributes: {vs_data[0]['attributes']}")
+            L.debug(f"variableset-data-trajectory-variables: {vs_data[0]['variables']}")
+            lats = vs_data[0]['variables']['latitude']['data']
+            lons = vs_data[0]['variables']['longitude']['data']
 
-        # Create the Map
-        fig = px.scatter_map(
-            vs_data, 
-            lat='latitude', 
-            lon='longitude', 
-            zoom=zoom_level, 
-            center={"lat": center_lat, "lon": center_lon},
-            title="Current Vessel Trajectory"
-        )
+            L.debug(f"variableset-data-trajectory-lats: {lats}")
+            L.debug(f"variableset-data-trajectory-lons: {vs_data[0]['lon']}")
+            
+            flattened_data = [
+                {
+                    'latitude': lats,
+                    'longitude': lons
+                }
+            ]
 
-        # Maritime Styling
-        fig.update_traces(marker={'size': 8, 'color': '#007bff'}) # Nautical Blue
-        fig.update_layout(
-            margin={"r":0,"t":30,"l":0,"b":0},
-            mapbox_style="open-street-map" # Reliable, no-token-needed map style
-        )
+            L.debug(f"variableset-data-trajectory-flattened: {flattened_data}")
+
+            # center_lat = lats.mean()
+            # center_lon = lons.mean()
+            
+            # # Dynamic Zoom Logic
+            # max_diff = max(np.abs(lats - center_lat).max(), np.abs(lons - center_lon).max(), 0.01)
+            # zoom_level = 8 - np.log2(max_diff)
+
+            # Create the Map
+            fig = px.scatter_map(
+                # vs_data, 
+                flattened_data,
+                lat='latitude', 
+                lon='longitude', 
+                # zoom=zoom_level, 
+                # center={"lat": center_lat, "lon": center_lon},
+                title="Current Vessel Trajectory"
+            )
+
+            # Maritime Styling
+            fig.update_traces(marker={'size': 8, 'color': '#007bff'}) # Nautical Blue
+            fig.update_layout(
+                margin={"r":0,"t":30,"l":0,"b":0},
+                mapbox_style="open-street-map" # Reliable, no-token-needed map style
+            )
+            
+            return fig
         
-        return fig
+        except Exception as e:
+            L.error(f"variableset-data-trajectory-error: {e}")
 
     else:
         raise PreventUpdate
