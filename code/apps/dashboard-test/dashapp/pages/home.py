@@ -134,9 +134,7 @@ def get_layout():
             dbc.Collapse(
                 dbc.Card([
                     dbc.CardBody([
-                        dcc.Loading(
                             dcc.Graph(id='trajectory', style={"height": "500px"}, figure={"data": [], "layout": {}})
-                        )
                     ])
                 ]),
                 id="trajectory-collapse",
@@ -421,11 +419,19 @@ def update_trajectory(vs_data, current_fig):
         lats = vs_data[0]['variables']['latitude']['data']
         lons = vs_data[0]['variables']['longitude']['data']
 
+        flattened_data = [
+                {
+                    'latitude': lats,
+                    'longitude': lons
+                }
+            ]
+
         # 2. INITIAL CREATION: If figure is empty or has no data traces
         if current_fig is None or not current_fig.get('data'):
             fig = px.scatter_map(
-                lat=lats, 
-                lon=lons, 
+                flattened_data,
+                lat='latitude', 
+                lon='longitude', 
                 title="Current Vessel Trajectory"
             )
             fig.update_traces(marker={'size': 8, 'color': '#007bff'})
