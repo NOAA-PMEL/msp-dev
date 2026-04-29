@@ -251,8 +251,8 @@ config = Settings()
 # db_data_client = DBClient(connection=config.mongodb_data_connection)
 # db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 
-datastore_url = f"datastore.{config.daq_id}-system"
-# datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
+# datastore_url = f"datastore.{config.daq_id}-system"
+datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 http_url_base = f"http://{config.external_hostname}:{config.http_port}"
 if config.http_use_tls:
