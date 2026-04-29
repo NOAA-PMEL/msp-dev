@@ -1404,6 +1404,25 @@ class SamplingSystem:
             self.logger.error("get_variablemap_id", extra={"reason": e})
             return ""
 
+    def get_variableset_full_id(self, variablemap:dict, variableset_name:str, variableset:dict):
+        try:
+            # variablemap_id = self.get_variablemap_id(vm=variablemap)
+
+            #variableset_id should not be bound to a valid_config
+            vm_platform = variablemap["variablemap"]["data"]["attributes"]["platform"]
+            vm_name = variablemap["variablemap"]["metadata"]["name"]
+            vm_valid_config_time = variablemap["variablemap"]["data"]["attributes"]["valid_config_time"]
+            # variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
+            
+            # variableset_name = variableset["metadata"]["name"]
+            # self.logger.debug("get_variableset_id", extra={"vm_name": vm_name, "variableset_name": variableset_name})
+
+            return "::".join([vm_platform,vm_name, vm_valid_config_time, variableset_name])
+        
+        except Exception as e:
+            self.logger.error("get_variableset_id", extra={"reason": e})
+            return ""
+
     def get_variableset_id(self, variablemap:dict, variableset_name:str, variableset:dict):
         try:
             # variablemap_id = self.get_variablemap_id(vm=variablemap)
@@ -2720,6 +2739,7 @@ class SamplingSystem:
                 # Setup MQTT event variables
                 varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
                 varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
+                varset_full_id = self.get_variableset_full_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
                 source_id = f"envds.{self.config.daq_id}.variableset.{varset_id}"
                 source_topic = source_id.replace(".", "/")
 
@@ -2730,8 +2750,9 @@ class SamplingSystem:
                 destpath = f"{source_topic}/data/update"
                 event["destpath"] = destpath
                 event["samplingnamespace"] = varmap_ns
-                
-                # Broadcast the calculated & compiled Variableset mapping
+                event["variablesetid"] = varset_id
+                event["variablesetfullid"] = varset_full_id
+
                 await self.send_to_mqtt(destpath, event)
 
         except Exception as e:
