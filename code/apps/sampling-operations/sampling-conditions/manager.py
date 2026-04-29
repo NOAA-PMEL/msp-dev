@@ -653,7 +653,7 @@ class SamplingConditionsManager:
 
     async def send_event(self, ce):
         try:
-            self.logger.debug(ce)
+            self.logger.debug("send_event", extra={"cepayload": ce})
             if not getattr(self, 'http_client', None):
                 self.open_http_client()
             try:
