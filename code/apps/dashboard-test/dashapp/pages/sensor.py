@@ -1899,13 +1899,20 @@ def update_graph_1d(sensor_data, y_axis_list, graph_axes, current_figs):
                     "time" not in sensor_data["variables"]
                     or y_axis not in sensor_data["variables"]
                 ):
-                    return dash.no_update
+                    # return dash.no_update
+                    figs.append(dash.no_update)
+                    continue
 
                 x = [sensor_data["variables"]["time"]["data"]]
                 y = [sensor_data["variables"][y_axis]["data"]]
                 print(f"update: {[x]}, {[y]}")
                 figs.append({"x": [x], "y": [y]})
             # return {"x": [x], "y": [y]}
+
+            # If everything was skipped, abort cleanly
+            if not any(f != dash.no_update for f in figs):
+                raise PreventUpdate
+
             return figs
 
     except Exception as e:
