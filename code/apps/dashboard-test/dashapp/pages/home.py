@@ -135,7 +135,7 @@ def get_layout():
                 dbc.Card([
                     dbc.CardBody([
                         dcc.Loading(
-                            dcc.Graph(id='trajectory', style={"height": "500px"})
+                            dcc.Graph(id='trajectory', style={"height": "500px"}, figure={"data": [], "layout": {}})
                         )
                     ])
                 ]),
