@@ -361,7 +361,8 @@ class Datastore:
     async def device_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, device_def in ce.data.items():
-                if definition_type != "device-definition":
+                # Allow both direct "device-definition" and sync "device-definition-update"
+                if definition_type not in ["device-definition", "device-definition-update"]:
                     continue
                 
                 # FIX: If the payload is already a flattened database record (from a sync update)
@@ -594,9 +595,10 @@ class Datastore:
     async def controller_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, controller_def in ce.data.items():
-                if definition_type != "device-definition":
-                    continue
-                
+
+                # Allow both direct "controller-definition" and sync "controller-definition-update"
+                if definition_type not in ["controller-definition", "controller-definition-update"]:
+                    continue                
                 # FIX: If the payload is already a flattened database record (from a sync update)
                 if "controller_definition_id" in controller_def:
                     request = ControllerDefinitionUpdate(**controller_def)
