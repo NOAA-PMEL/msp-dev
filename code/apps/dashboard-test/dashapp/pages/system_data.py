@@ -1372,6 +1372,7 @@ def update_graph_1d(buffer_data, selected_values):
         # Assuming your websocket payload includes a field identifying the varset_id:
         # e.g., incoming_varset_id = buffer_data.get("device_id") 
         # or    incoming_varset_id = buffer_data.get("id")
+        buffer_data = buffer_data[0]
         incoming_varset_id = buffer_data["attributes"].get("variablesetfullid") # Adjust this key to match your actual payload!
         
         figs_to_update = []
@@ -1628,6 +1629,7 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
     L.debug(f"update table buffer data {buffer_data}")
 
     # Get the ID of the incoming data (adjust "id" to match your websocket payload key)
+    buffer_data = buffer_data[0]
     incoming_varset_id = buffer_data["attributes"].get("variablesetfullid")
 
     new_row_data_list = []
