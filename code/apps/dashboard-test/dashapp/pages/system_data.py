@@ -487,7 +487,8 @@ def update_variableset_list(count, current_sets):
                     #     "model": parts[1],
                     #     "version": parts[2],
                     # }
-                    variableset = parts
+                    # variableset = parts[0]
+                    variableset = id
                     L.debug(f"variableset-definition-get_1: {variableset}")
                     if variableset not in current_sets:
                         current_sets.append(variableset)
@@ -939,6 +940,7 @@ def layout(platform=None):
         if "results" in results and results["results"]:
             for varset_id in results["results"]:
                 if varset_id is not None:
+                    L.debug(f"layout function varset_id: {varset_id}")
                     # Keep track of the IDs for the dcc.Store baseline
                     current_sets.append(varset_id)
                     
@@ -959,17 +961,17 @@ def layout(platform=None):
     shared_graph_dropdown = []
 
     # 3. Parse the fetched definitions
-    for varset_id, sensor_definition in all_variablesets.items():
-        if not sensor_definition:
+    for varset_id, varset_definition in all_variablesets.items():
+        if not varset_definition:
             continue
             
         # Initialize the column list for this specific table
         table_columns_1d[varset_id] = []
 
         try:
-            dimensions = sensor_definition.get("dimensions", {})
+            dimensions = varset_definition.get("dimensions", {})
             
-            for name, var in sensor_definition.get("variables", {}).items():
+            for name, var in varset_definition.get("variables", {}).items():
                 
                 # Check variable type attributes
                 var_type = var.get("attributes", {}).get("variable_type", {}).get("data")
@@ -1362,11 +1364,12 @@ def update_graph_1d(buffer_data, selected_values):
         raise PreventUpdate
 
     try:
+        L.debug(f"update graph buffer data {buffer_data}")
         # NOTE: You need a way to identify WHICH dataset just arrived in the buffer.
         # Assuming your websocket payload includes a field identifying the varset_id:
         # e.g., incoming_varset_id = buffer_data.get("device_id") 
         # or    incoming_varset_id = buffer_data.get("id")
-        incoming_varset_id = buffer_data.get("id") # Adjust this key to match your actual payload!
+        incoming_varset_id = buffer_data.get("variableset_id") # Adjust this key to match your actual payload!
         
         figs_to_update = []
 
@@ -1618,9 +1621,11 @@ def update_graph_1d(buffer_data, selected_values):
 def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
     if not buffer_data:
         raise PreventUpdate
+    
+    L.debug(f"update table buffer data {buffer_data}")
 
     # Get the ID of the incoming data (adjust "id" to match your websocket payload key)
-    incoming_varset_id = buffer_data.get("id")
+    incoming_varset_id = buffer_data.get("variableset_id")
 
     new_row_data_list = []
     
