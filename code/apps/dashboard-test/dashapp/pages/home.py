@@ -17,6 +17,7 @@ import plotly.express as px
 import random
 import json
 import traceback
+import time
 
 
 handler = logging.StreamHandler()
@@ -451,6 +452,8 @@ def update_trajectory(vs_data, current_fig):
         patched_fig["data"][0]["lon"] = lons
         patched_fig['data'][0]['marker']['color'] = '#007bff'
         patched_fig['data'][0]['marker']['size'] = 8
+        patched_fig["data"][0]["marker"]["opacity"] = 1.0
+        patched_fig["layout"]["datarevision"] = time.time()
         
         # Ensure uirevision stays the same to prevent zoom reset
         patched_fig["layout"]["uirevision"] = 'vessel-movement-const'
