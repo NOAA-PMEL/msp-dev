@@ -517,18 +517,20 @@ SAMPLING_RESOURCE_TYPES = [
 def create_sampling_routes(resource: str):
     @app.get(f"/{resource}-definition/registry/ids/get/")
     async def get_ids():
-        return await datastore.sampling_definition_registry_get_ids(resource)
+        return await datastore.sampling_definition_registry_get_ids(resource=resource)
 
     @app.get(f"/{resource}-definition/registry/get/")
     async def get_def(name: str | None = None):
         query = {"name": name}
-        return await datastore.sampling_definition_registry_get(resource, query)
+        return await datastore.sampling_definition_registry_get(resource=resource, query=query)
 
     @app.post(f"/{resource}-definition/registry/update/")
     async def update_def(request: Request):
         try:
+            L.debug("-definition_update")
             ce = from_http(request.headers, await request.body())
-            await datastore.sampling_definition_registry_update(resource, ce)
+            L.debug("-definition_update", extra={"cevent": ce})
+            await datastore.sampling_definition_registry_update(resource=resource, ce=ce)
             return Response(status_code=status.HTTP_204_NO_CONTENT)
         except Exception:
             return Response(status_code=status.HTTP_204_NO_CONTENT)
