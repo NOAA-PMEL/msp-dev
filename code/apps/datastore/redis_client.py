@@ -299,10 +299,13 @@ class RedisClient(DBClient):
     async def device_definition_registry_update(self, database: str, collection: str, request: DeviceDefinitionUpdate, ttl: int = 0) -> bool:
         try:
             self.connect()
+            self.logger.debug("redis_client:device_definition_registry_update", extra={"here": str(1)})
             document = request.dict()
             id_str = "::".join([request.make, request.model, request.version])
             key = f"{database}:{collection}:{id_str}"
+            self.logger.debug("redis_client:device_definition_registry_update", extra={"k": key})
             result = await self.client.json().set(key, "$", {"registration": document})
+            self.logger.debug("redis_client:device_definition_registry_update", extra={"res": result})
             if result and ttl > 0:
                 await self.client.expire(key, ttl)
             return True if result else False
