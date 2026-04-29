@@ -87,55 +87,74 @@ link_url_base = f"{http_url_base}/msp/dashboardtest"
 ws_send_buffer = html.Div(id="ws-send-instance-buffer", style={"display": "none"})
 
 
-def build_tables(layout_options):
+# def build_tables(layout_options):
 
+#     table_list = []
+#     print(f"build_tables: {layout_options}")
+#     for ltype, dims in layout_options.items():
+#         for dim, options in dims.items():
+#             title = "Data"
+
+#             if ltype == "layout-1d":
+#                 title = f"Data 1-D ({dim})"
+
+#                 # TODO: make the ids work for multiple dims
+#                 table_list.append(
+#                     dbc.AccordionItem(
+#                         [
+#                             dag.AgGrid(
+#                                 id={"type": "data-table-1d", "index": dim},
+#                                 rowData=[],
+#                                 columnDefs=layout_options["layout-1d"][dim][
+#                                     "table-column-defs"
+#                                 ],
+#                                 columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
+#                             )
+#                         ],
+#                         title=title,
+#                     )
+#                 )
+#                 print(f"build_tables: {table_list}")
+
+#             elif ltype == "layout-2d":
+#                 title = f"Data 2-D (time, {dim})"
+#                 table_list.append(
+#                     dbc.AccordionItem(
+#                         [
+#                             dag.AgGrid(
+#                                 id={"type": "data-table-2d", "index": f"time::{dim}"},
+#                                 rowData=[],
+#                                 columnDefs=layout_options["layout-2d"][dim][
+#                                     "table-column-defs"
+#                                 ],
+#                                 columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
+#                             )
+#                         ],
+#                         title=title,
+#                     )
+#                 )
+
+#     print(f"build_tables: {table_list}")
+
+#     return table_list
+
+
+def build_tables(table_columns_dict):
     table_list = []
-    print(f"build_tables: {layout_options}")
-    for ltype, dims in layout_options.items():
-        for dim, options in dims.items():
-            title = "Data"
-
-            if ltype == "layout-1d":
-                title = f"Data 1-D ({dim})"
-
-                # TODO: make the ids work for multiple dims
-                table_list.append(
-                    dbc.AccordionItem(
-                        [
-                            dag.AgGrid(
-                                id={"type": "data-table-1d", "index": dim},
-                                rowData=[],
-                                columnDefs=layout_options["layout-1d"][dim][
-                                    "table-column-defs"
-                                ],
-                                columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
-                            )
-                        ],
-                        title=title,
+    for varset_id, columns in table_columns_dict.items():
+        table_list.append(
+            dbc.AccordionItem(
+                [
+                    dag.AgGrid(
+                        id={"type": "data-table-1d", "index": varset_id}, 
+                        rowData=[],
+                        columnDefs=columns,
+                        columnSizeOptions="autoSize", 
                     )
-                )
-                print(f"build_tables: {table_list}")
-
-            elif ltype == "layout-2d":
-                title = f"Data 2-D (time, {dim})"
-                table_list.append(
-                    dbc.AccordionItem(
-                        [
-                            dag.AgGrid(
-                                id={"type": "data-table-2d", "index": f"time::{dim}"},
-                                rowData=[],
-                                columnDefs=layout_options["layout-2d"][dim][
-                                    "table-column-defs"
-                                ],
-                                columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
-                            )
-                        ],
-                        title=title,
-                    )
-                )
-
-    print(f"build_tables: {table_list}")
-
+                ],
+                title=f"Data 1-D ({varset_id})",
+            )
+        )
     return table_list
 
 
@@ -339,86 +358,103 @@ def build_graph_settings_3d():
     )
 
 
-def build_graphs(layout_options):
+# def build_graphs(layout_options):
 
-    graph_list = []
-    print(f"build_graphs: {layout_options}")
-    for ltype, dims in layout_options.items():
-        print('dims', dims)
-        for dim, options in dims.items():
-            title = "Plots"
-            if ltype == "layout-1d":
-                title = f"Plots 1-D ({dim})"
+#     graph_list = []
+#     print(f"build_graphs: {layout_options}")
+#     for ltype, dims in layout_options.items():
+#         print('dims', dims)
+#         for dim, options in dims.items():
+#             title = "Plots"
+#             if ltype == "layout-1d":
+#                 title = f"Plots 1-D ({dim})"
 
-                # TODO: make the ids work for multiple dims
-                graph_list.append(
-                    dbc.AccordionItem(
-                        [
-                            dbc.Row(
-                                children=[
-                                    build_graph_1d(
-                                        layout_options["layout-1d"][dim][
-                                            "variable-list"
-                                        ],
-                                        xaxis=dim,
-                                    )
-                                ]
-                            )
-                        ],
-                        title=title,
-                    )
-                )
-                print(f"build_graphs: {graph_list}")
+#                 # TODO: make the ids work for multiple dims
+#                 graph_list.append(
+#                     dbc.AccordionItem(
+#                         [
+#                             dbc.Row(
+#                                 children=[
+#                                     build_graph_1d(
+#                                         layout_options["layout-1d"][dim][
+#                                             "variable-list"
+#                                         ],
+#                                         xaxis=dim,
+#                                     )
+#                                 ]
+#                             )
+#                         ],
+#                         title=title,
+#                     )
+#                 )
+#                 print(f"build_graphs: {graph_list}")
 
-            elif ltype == "layout-2d":
-                title = f"Plots 2-D (time, {dim})"
-                graph_list.append(
-                    dbc.AccordionItem(
-                        [
-                            dbc.Row(
-                                children=[
-                                    build_graph_2d(
-                                        layout_options["layout-2d"][dim][
-                                            "variable-list"
-                                        ],
-                                        xaxis="time",
-                                        yaxis=dim,
-                                    )
-                                ]
-                            )
-                        ],
-                        title=title,
-                    )
-                )
+#             elif ltype == "layout-2d":
+#                 title = f"Plots 2-D (time, {dim})"
+#                 graph_list.append(
+#                     dbc.AccordionItem(
+#                         [
+#                             dbc.Row(
+#                                 children=[
+#                                     build_graph_2d(
+#                                         layout_options["layout-2d"][dim][
+#                                             "variable-list"
+#                                         ],
+#                                         xaxis="time",
+#                                         yaxis=dim,
+#                                     )
+#                                 ]
+#                             )
+#                         ],
+#                         title=title,
+#                     )
+#                 )
             
-        if ltype == "layout-3d":
-            title = f"Plots 3-D ({list(dims.keys())[0]}, {list(dims.keys())[1]})"
-            # title = f"Plots 3-D (time, {dim})"
-            graph_list.append(
-                dbc.AccordionItem(
-                    [
-                        dbc.Row(
-                            children=[
-                                build_graph_3d(
-                                    layout_options["layout-3d"][dim][
-                                        "variable-list"
-                                    ],
-                                    # xaxis="time",
-                                    xaxis =list(dims.keys())[0],
-                                    yaxis=list(dims.keys())[1],
-                                    # yaxis=dim
-                                    # zaxis=list(dims.keys())[1]
-                                )
-                            ]
+#         if ltype == "layout-3d":
+#             title = f"Plots 3-D ({list(dims.keys())[0]}, {list(dims.keys())[1]})"
+#             # title = f"Plots 3-D (time, {dim})"
+#             graph_list.append(
+#                 dbc.AccordionItem(
+#                     [
+#                         dbc.Row(
+#                             children=[
+#                                 build_graph_3d(
+#                                     layout_options["layout-3d"][dim][
+#                                         "variable-list"
+#                                     ],
+#                                     # xaxis="time",
+#                                     xaxis =list(dims.keys())[0],
+#                                     yaxis=list(dims.keys())[1],
+#                                     # yaxis=dim
+#                                     # zaxis=list(dims.keys())[1]
+#                                 )
+#                             ]
+#                         )
+#                     ],
+#                     title=title,
+#                 )
+#             )
+
+#     print(f"build_tables: {graph_list}")
+
+#     return graph_list
+
+def build_graphs(shared_dropdown_list):
+    return [
+        dbc.AccordionItem(
+            [
+                dbc.Row(
+                    children=[
+                        build_graph_1d(
+                            dropdown_list=shared_dropdown_list,
+                            xaxis="shared" 
                         )
-                    ],
-                    title=title,
+                    ]
                 )
-            )
-
-    print(f"build_tables: {graph_list}")
-
-    return graph_list
+            ],
+            title="Plots 1-D (Combined)",
+        )
+    ]
 
 
 
@@ -1006,7 +1042,7 @@ def layout(platform=None):
             # Pre-populate the store with the IDs we just fetched so the interval 
             # callback has a baseline and doesn't immediately fire an update
             dcc.Store(id='variableset-store', data=current_sets),
-            dcc.Store(id='variableset-defs-store', data=[]),            
+            dcc.Store(id='variableset-defs-store', data={}),            
             dcc.Store(id='variableset-data-buffer', data={}),
             dcc.Interval(
                 id='variableset-interval',
@@ -1286,30 +1322,30 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
 #         raise PreventUpdate
 
 
-@callback(
-        Output("sensor-data-buffer", "data"),
-        Output("sensor-settings-buffer", "data"),
-        Input("ws-sensor-instance", "message")
-          )
-def update_sensor_buffers(event):
-    if event is not None and "data" in event:
-        event_data = json.loads(event["data"])
-        print(f"update_sensor_buffers: {event_data}")
-        if "data-update" in event_data:
-            try:
-                if event_data["data-update"]:
-                    return [event_data["data-update"], dash.no_update]
-            except Exception as event:
-                print(f"data buffer update error: {event}")
+# @callback(
+#         Output("sensor-data-buffer", "data"),
+#         Output("sensor-settings-buffer", "data"),
+#         Input("ws-sensor-instance", "message")
+#           )
+# def update_sensor_buffers(event):
+#     if event is not None and "data" in event:
+#         event_data = json.loads(event["data"])
+#         print(f"update_sensor_buffers: {event_data}")
+#         if "data-update" in event_data:
+#             try:
+#                 if event_data["data-update"]:
+#                     return [event_data["data-update"], dash.no_update]
+#             except Exception as event:
+#                 print(f"data buffer update error: {event}")
             
-        if "settings-update" in event_data:
-            try:
-                if event_data["settings-update"]:
-                    return [dash.no_update, event_data["settings-update"]]
-            except Exception as e:
-                print(f"settings buffer update error: {e}")
+#         if "settings-update" in event_data:
+#             try:
+#                 if event_data["settings-update"]:
+#                     return [dash.no_update, event_data["settings-update"]]
+#             except Exception as e:
+#                 print(f"settings buffer update error: {e}")
         
-    return [dash.no_update, dash.no_update]
+#     return [dash.no_update, dash.no_update]
 
 
 @callback(
@@ -1572,48 +1608,42 @@ def update_graph_1d(buffer_data, selected_values):
     Output(
         {"type": "data-table-1d", "index": ALL}, "rowData"
     ),
-    Input("sensor-data-buffer", "data"),
+    Input("variableset-data-buffer", "data"),
     [
         State({"type": "data-table-1d", "index": ALL}, "rowData"),
         State({"type": "data-table-1d", "index": ALL}, "columnDefs"),
+        State({"type": "data-table-1d", "index": ALL}, "id")
     ],  # , dcc.Store("sensor-definition", "data")],
 )
-def update_table_1d(sensor_data, row_data_list, col_defs_list):  # , sensor_definition):
-    if sensor_data:
-        print('sensor data', sensor_data)
-        new_row_data_list = []
-        try:
-            for row_data, col_defs in zip(row_data_list, col_defs_list):
-                data = {}
-                for col in col_defs:
-                    name = col["field"]
-                    print(f"name: {name}")
-                    if name in sensor_data["variables"]:
-                        data[name] = sensor_data["variables"][name]["data"]
-                        print(f"data: {data}")
-                    else:
-                        data[name] = ""
+def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
+    if not buffer_data:
+        raise PreventUpdate
 
-                # limit size of table to 30 rows
-                if len(row_data) > 30:
-                    # return row_data[:30]
-                    new_row_data_list.append(row_data[:30])
+    # Get the ID of the incoming data (adjust "id" to match your websocket payload key)
+    incoming_varset_id = buffer_data.get("id")
+
+    new_row_data_list = []
+    
+    for row_data, col_defs, table_id in zip(row_data_list, col_defs_list, table_ids):
+        # ONLY process data if this table belongs to this dataset
+        if table_id["index"] == incoming_varset_id:
+            data = {}
+            for col in col_defs:
+                name = col["field"]
+                if name in buffer_data["variables"]:
+                    data[name] = buffer_data["variables"][name]["data"]
                 else:
-                    # return row_data
-                    new_row_data_list.append(row_data)
-                # return dash.no_update
-            if len(new_row_data_list) == 0:
-                raise PreventUpdate
-            print('new data', new_row_data_list)
-            return new_row_data_list
+                    data[name] = ""
 
-        except Exception as e:
-            print(f"data update error: {e}")
-            # return dash.no_update
-        raise PreventUpdate
+            if len(row_data) > 30:
+                new_row_data_list.append(row_data[:30])
+            else:
+                new_row_data_list.append(row_data)
+        else:
+            # Table doesn't match; keep existing data untouched
+            new_row_data_list.append(row_data)
 
-    else:
-        raise PreventUpdate
+    return new_row_data_list
 
 
 
@@ -1679,9 +1709,9 @@ def set_2d_z_axis_range(n, axis_min, axis_max, heatmap):
     return fig
 
 
-@callback(
-    Output("ws-sensor-instance", "send"), Input("ws-send-instance-buffer", "children")
-)
-def send_to_instance(value):
-    print(f"sending: {value}")
-    return value
+# @callback(
+#     Output("ws-sensor-instance", "send"), Input("ws-send-instance-buffer", "children")
+# )
+# def send_to_instance(value):
+#     print(f"sending: {value}")
+#     return value
