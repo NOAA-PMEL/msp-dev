@@ -1,0 +1,23 @@
+# asyncio_mqtt==0.12.1
+cloudevents>=1.6.0,<1.7.0
+flask
+# fastapi>=0.68.0,<0.69.0
+fastapi>=0.93.0, < 0.99.0
+pydantic>=1.8.0,<2.0.0
+uvicorn>=0.15.0,<0.16.0
+httpx
+logfmter
+aiomqtt
+python-ulid
+# pymongo
+dash
+dash_daq
+dash_extensions
+dash-bootstrap-components
+dash_ag_grid
+dash_ace
+pandas
+websockets
+datetime
+paho-mqtt
+# motor
