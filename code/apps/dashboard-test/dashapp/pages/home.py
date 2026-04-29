@@ -262,7 +262,6 @@ def update_variableset_list(count, current_sets):
     
 
 
-
 @callback(
         Output("variableset-data-buffer", "data"),
         # Output("sensor-settings-buffer", "data"),
@@ -348,8 +347,8 @@ def update_trajectory(vs_data):
     # df = get_dataset()
     if vs_data:
         L.debug(f"variableset-data-trajectory{vs_data}")
-        lats = vs_data['latitude']
-        lons = vs_data['longitude']
+        lats = vs_data['variables']['latitude']
+        lons = vs_data['variables']['longitude']
         
         center_lat = lats.mean()
         center_lon = lons.mean()
