@@ -838,7 +838,8 @@ class Datastore:
     # SAMPLING DEFINITIONS (DYNAMIC)
     # -------------------------------------------------------------------------------------
     async def sampling_definition_registry_update(self, ce: CloudEvent, resource: str):
-        try:
+        try:   
+            self.logger.debug("sampling_definition_registry_update", extra={"cd-data": ce.data})
             for definition_type, resource_def in ce.data.items():
                 if definition_type not in [f"{resource}", f"{resource}-definition", f"{resource}-definition-update"]:
                     continue
