@@ -427,7 +427,7 @@ class SamplingConditionsManager:
         self.http_client = None
 
         self._background_tasks = set()
-        
+
         self.configure()
         # print("here:7")
 
@@ -735,7 +735,7 @@ class SamplingConditionsManager:
                         continue
                     
                     event = SamplingEvent.create_definition_registry_update(
-                        resource="samplingcondition",
+                        resource="samplingcondition-definition",
                         source=f"envds.{self.config.daq_id}.sampling-conditions",
                         data={"samplingcondition": config}
                     )
