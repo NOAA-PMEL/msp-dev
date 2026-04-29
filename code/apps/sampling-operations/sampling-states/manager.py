@@ -396,6 +396,9 @@ class SamplingStatesManager:
 
         self.config = SamplingStatesManagerConfig()
         self.http_client = None
+
+        self._background_tasks = set()
+
         self.configure()
         # print("here:7")
 
@@ -418,11 +421,12 @@ class SamplingStatesManager:
             limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
         )
 
-        asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.handle_mqtt_buffer())
-        asyncio.create_task(self.state_status_monitor())
-        asyncio.create_task(self.publish_local_definitions())
-        asyncio.create_task(self.sync_sampling_definitions_loop())
+        task1 = asyncio.create_task(self.get_from_mqtt_loop())
+        task2 = asyncio.create_task(self.handle_mqtt_buffer())
+        task3 = asyncio.create_task(self.state_status_monitor())
+        task4 = asyncio.create_task(self.publish_local_definitions())
+        task5 = asyncio.create_task(self.sync_sampling_definitions_loop())
+        self._background_tasks.update({task1, task2, task3, task4, task5})
 
     def open_http_client(self):
         self.http_client = httpx.AsyncClient(
@@ -609,7 +613,7 @@ class SamplingStatesManager:
                     if not config: continue
                     
                     event = SamplingEvent.create_definition_registry_update(
-                        resource="samplingstate",
+                        resource="samplingstate-definition",
                         source=f"envds.{self.config.daq_id}.sampling-states",
                         data={"samplingstate": config}
                     )

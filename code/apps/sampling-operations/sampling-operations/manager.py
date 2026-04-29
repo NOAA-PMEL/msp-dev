@@ -559,6 +559,9 @@ class SamplingOperationsManager:
 
         self.config = SamplingOperationsManagerConfig()
         self.http_client = None
+
+        self._background_tasks.update = set()
+
         self.configure()
         # print("here:7")
 
@@ -593,17 +596,19 @@ class SamplingOperationsManager:
 
         self.init_modes()
 
-        asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.handle_mqtt_buffer())
-        asyncio.create_task(self.mode_status_monitor())
-        asyncio.create_task(self.mode_action_monitor())
-        asyncio.create_task(self.mode_transition_monitor())
-        asyncio.create_task(self.system_mode_loop())
+        task1 = asyncio.create_task(self.get_from_mqtt_loop())
+        task2 = asyncio.create_task(self.handle_mqtt_buffer())
+        task3 = asyncio.create_task(self.mode_status_monitor())
+        task4 = asyncio.create_task(self.mode_action_monitor())
+        task5 = asyncio.create_task(self.mode_transition_monitor())
+        task6 = asyncio.create_task(self.system_mode_loop())
         
         # FIX: Start Sync and Publish loops
-        asyncio.create_task(self.publish_local_definitions())
-        asyncio.create_task(self.sync_sampling_definitions_loop())
-        asyncio.create_task(self.action_target_monitor())
+        task7 = asyncio.create_task(self.publish_local_definitions())
+        task8 = asyncio.create_task(self.sync_sampling_definitions_loop())
+        task9 = asyncio.create_task(self.action_target_monitor())
+
+        self._background_tasks.update({task1, task2, task3, task4, task5, task6, task7, task8, task9})
 
     def open_http_client(self):
         self.http_client = httpx.AsyncClient(
@@ -1024,7 +1029,7 @@ class SamplingOperationsManager:
                         for name, data_obj in item_dict.items():
                             config = data_obj["config"]
                             event = SamplingEvent.create_definition_registry_update(
-                                resource=res_type,
+                                resource=f"{res_type}-definition",
                                 source=f"envds.{self.config.daq_id}.sampling-operations",
                                 data={res_type: config}
                             )
