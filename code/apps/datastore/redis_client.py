@@ -313,6 +313,21 @@ class RedisClient(DBClient):
         return await self._get_ids_safely("registry:device-definition:")
 
     async def device_definition_registry_get(self, request: DeviceDefinitionRequest) -> dict:
+        # ---------------------------------------------------------
+        # FAST PATH: Exact ID Lookup for Registrar Syncs
+        # ---------------------------------------------------------
+        if request.device_definition_id:
+            key = f"registry:device-definition:{request.device_definition_id}"
+            try:
+                doc = await self.client.json().get(key)
+                if doc and "registration" in doc:
+                    return {"results": [doc["registration"]]}
+            except Exception:
+                pass
+        
+        # ---------------------------------------------------------
+        # SLOW PATH: RediSearch (For Dashboard partial filters)
+        # ---------------------------------------------------------
         query_args = []
         if request.device_definition_id: query_args.append(f"@device_definition_id:{{{self.escape_query(request.device_definition_id)}}}")
         if request.make: query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
@@ -402,6 +417,21 @@ class RedisClient(DBClient):
         return await self._get_ids_safely("registry:controller-definition:")
 
     async def controller_definition_registry_get(self, request: ControllerDefinitionRequest) -> dict:
+        # ---------------------------------------------------------
+        # FAST PATH: Exact ID Lookup for Registrar Syncs
+        # ---------------------------------------------------------
+        if request.controller_definition_id:
+            key = f"registry:controller-definition:{request.controller_definition_id}"
+            try:
+                doc = await self.client.json().get(key)
+                if doc and "registration" in doc:
+                    return {"results": [doc["registration"]]}
+            except Exception:
+                pass
+
+        # ---------------------------------------------------------
+        # SLOW PATH: RediSearch (For Dashboard partial filters)
+        # ---------------------------------------------------------
         query_args = []
         if request.controller_definition_id: query_args.append(f"@controller_definition_id:{{{self.escape_query(request.controller_definition_id)}}}")
         if request.make: query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
@@ -448,6 +478,26 @@ class RedisClient(DBClient):
         return await self._get_ids_safely("registry:variablemap-definition:")
 
     async def variablemap_definition_registry_get(self, request: VariableMapDefinitionRequest) -> dict:
+        # Format ID to remove colons from timestamp segment if present
+        redis_id = request.variablemap_definition_id
+        if redis_id:
+            redis_id = redis_id.replace(":", "") if "::" not in redis_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
+        
+        # ---------------------------------------------------------
+        # FAST PATH: Exact ID Lookup for Registrar Syncs
+        # ---------------------------------------------------------
+        if redis_id:
+            key = f"registry:variablemap-definition:{redis_id}"
+            try:
+                doc = await self.client.json().get(key)
+                if doc and "registration" in doc:
+                    return {"results": [doc["registration"]]}
+            except Exception:
+                pass
+
+        # ---------------------------------------------------------
+        # SLOW PATH: RediSearch 
+        # ---------------------------------------------------------
         query_args = []
         if request.variablemap_definition_id:
             redis_id = request.variablemap_definition_id.replace(":", "") if "::" not in request.variablemap_definition_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(request.variablemap_definition_id.split("::"))])
@@ -479,6 +529,26 @@ class RedisClient(DBClient):
         return await self._get_ids_safely("registry:variableset-definition:")
 
     async def variableset_definition_registry_get(self, request: VariableSetDefinitionRequest) -> dict:
+        # Format ID to remove colons from timestamp segment if present
+        redis_id = request.variableset_definition_id
+        if redis_id: 
+            redis_id = redis_id.replace(":", "") if "::" not in redis_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
+            
+        # ---------------------------------------------------------
+        # FAST PATH: Exact ID Lookup for Registrar Syncs
+        # ---------------------------------------------------------
+        if redis_id:
+            key = f"registry:variableset-definition:{redis_id}"
+            try:
+                doc = await self.client.json().get(key)
+                if doc and "registration" in doc:
+                    return {"results": [doc["registration"]]}
+            except Exception:
+                pass
+
+        # ---------------------------------------------------------
+        # SLOW PATH: RediSearch
+        # ---------------------------------------------------------
         query_args = []
         if request.variableset_definition_id: 
             redis_id = request.variableset_definition_id.replace(":", "") if "::" not in request.variableset_definition_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(request.variableset_definition_id.split("::"))])
@@ -596,6 +666,9 @@ class RedisClient(DBClient):
             return False
     
     async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
+        # ---------------------------------------------------------
+        # FAST PATH: Exact ID Lookup for Registrar Syncs
+        # ---------------------------------------------------------
         if "name" in query and "::" in query["name"]:
             key = f"registry:{resource}-definition:{query['name']}"
             try:
@@ -605,6 +678,9 @@ class RedisClient(DBClient):
             except Exception:
                 pass
 
+        # ---------------------------------------------------------
+        # SLOW PATH: RediSearch
+        # ---------------------------------------------------------
         query_args = []
         if "name" in query and query["name"]: 
             query_args.append(f"@name:{{{self.escape_query(query['name'])}}}")
