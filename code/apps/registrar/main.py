@@ -165,6 +165,7 @@ async def registry_sync(request: Request):
         import asyncio
         try:
             registrar.sync_bcast_buffer.put_nowait(ce)
+            L.debug("registry_sync", extra={"bcast_buffer_size": registrar.sync_bcast_buffer.qsize()})
         except asyncio.QueueFull:
             L.error("registry-sync: buffer full, dropping event")
 

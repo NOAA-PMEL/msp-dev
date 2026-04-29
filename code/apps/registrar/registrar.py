@@ -104,7 +104,7 @@ class Registrar:
         self.current_device_definition_list = []
         self.current_controller_definition_list = []
 
-        self.sync_bcast_buffer = asyncio.Queue(maxsize=100)
+        self.sync_bcast_buffer = asyncio.Queue(maxsize=1000)
 
         self.http_client = None
 
