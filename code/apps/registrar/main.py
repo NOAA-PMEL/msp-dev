@@ -156,6 +156,8 @@ async def root():
 async def registry_sync(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
+        try:
+            L.debug("registry_sync", extra={"ce-type": ce["type"]})
         
         # FIX: Use put_nowait to guarantee the HTTP route never blocks
         import asyncio

@@ -379,6 +379,7 @@ class Registrar:
             try:
                 message = await self.sync_bcast_buffer.get()
                 await self.handle_registry_sync(message)
+                self.logger.debug("handle_registry_sync_loop", extra={"mesg": message})
                 await asyncio.sleep(0.001)
             except Exception as e:
                 self.logger.error("handle_registry_sync_loop", extra={"reason": e})
@@ -387,7 +388,7 @@ class Registrar:
 
         # Extract the source of the CloudEvent
         source = message.get("source", "")
-
+        self.logger.debug("handle_registry_sync", extra={"ce-type": message["type"], "ce-source": source})
         if message["type"] == det.registry_sync_bcast():
 
             # Drop broadcasts from unallowed sources (e.g., servers pushing down to raz1)
