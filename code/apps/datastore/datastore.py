@@ -713,29 +713,37 @@ class Datastore:
             return await self.db_client.variablemap_definition_registry_get_ids()
         return {"results": []}
 
+    # -------------------------------------------------------------------------------------
+    # UTILITY HELPER (Add this above your update methods)
+    # -------------------------------------------------------------------------------------
+    def _extract_val(self, obj: dict, key: str, default: any):
+        """Safely extracts a value whether it is a flat string or a nested {"data": ...} dict."""
+        if not isinstance(obj, dict):
+            return default
+        val = obj.get(key)
+        if val is None:
+            return default
+        if isinstance(val, dict) and "data" in val:
+            return val.get("data", default)
+        return val
+    
     async def variablemap_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, vm_def in ce.data.items():
                 if "variablemap_definition_id" in vm_def:
                     request = VariableMapDefinitionUpdate(**vm_def)
                 else:
-                    variablemap = vm_def.get("metadata", {}).get("name")
+                    # FIX: Read primary IDs from the 'metadata' block as defined in sampling_system.py
+                    metadata = vm_def.get("metadata", {})
+                    variablemap = metadata.get("name", "unknown")
+                    variablemap_type_id = metadata.get("platform", "unknown")
+                    valid_config_time = metadata.get("valid_config_time", "2020-01-01T00:00:00Z")
+
                     data = vm_def.get("data", {})
                     attributes = data.get("attributes", {})
                     
-                    # FIX: Safely unwrap the nested ["data"] payload structure
-                    variablemap_type = attributes.get("variablemap_type", {}).get("data", "Platform")
-                    
-                    if variablemap_type == "Platform":
-                        variablemap_type_id = attributes.get("platform", {}).get("data", "unknown")
-                    else:
-                        self.logger.error("variablemap_definition_registry_update", extra={"reason": f"unknown variablemap_type-{variablemap_type}"})
-                        continue
-                    
-                    valid_config_time = attributes.get("valid_config_time", {}).get("data", "2020-01-01T00:00:00Z")
-
-                    variablesets = data.get("variablesets", {})
-                    variables = data.get("variables", {})
+                    # Safely extract flat or nested attributes
+                    variablemap_type = self._extract_val(attributes, "variablemap_type", "Platform")
 
                     variablemap_definition_id = "::".join([variablemap_type_id, variablemap, valid_config_time])
                     
@@ -746,8 +754,8 @@ class Datastore:
                         variablemap=variablemap,
                         valid_config_time=valid_config_time,
                         attributes=attributes,
-                        variablesets=variablesets,
-                        variables=variables,
+                        variablesets=data.get("variablesets", {}),
+                        variables=data.get("variables", {}),
                     )
 
                 self.logger.debug("variablemap_definition_registry_update", extra={"request": request})
@@ -782,36 +790,34 @@ class Datastore:
                 if "variableset_definition_id" in vs_payload:
                     request = VariableSetDefinitionUpdate(**vs_payload)
                 else:
-                    # FIX: Extract name safely. Fallback to "unknown" instead of None to prevent '::None' strings
+                    # Look exactly where publish_local_definitions() puts the data
                     vs_name = vs_payload.get("metadata", {}).get("name", "unknown")
                     data = vs_payload.get("data", {})
                     attributes = data.get("attributes", {})
                     
-                    # FIX: Safely unwrap the nested ["data"] structure
-                    variablemap_name = attributes.get("variablemap", {}).get("data", "unknown")
+                    # Safely extract flat or nested attributes
+                    variablemap_name = self._extract_val(attributes, "variablemap_id", "unknown")
+                    platform = self._extract_val(attributes, "platform", "unknown")
+                    valid_config_time = self._extract_val(attributes, "valid_config_time", "2020-01-01T00:00:00Z")
                     
-                    # Sometimes the payload might use variablemap_id instead
-                    if variablemap_name == "unknown":
-                        variablemap_name = attributes.get("variablemap_id", {}).get("data", "unknown")
-                        
-                    variablemap_type_id = attributes.get("platform", {}).get("data", "unknown")
-                    valid_config_time = attributes.get("valid_config_time", {}).get("data", "2020-01-01T00:00:00Z")
-                    
-                    variablemap_definition_id = "::".join([variablemap_type_id, variablemap_name, valid_config_time])
+                    # Safely extract index info (sampling_system puts this in 'data', not 'attributes')
+                    index_type = self._extract_val(data, "index_type", self._extract_val(attributes, "index_type", "unknown"))
+                    index_value = self._extract_val(data, "index_value", self._extract_val(attributes, "index_value", 0))
+
+                    variablemap_definition_id = "::".join([platform, variablemap_name, valid_config_time])
                     
                     request = VariableSetDefinitionUpdate(
                         variableset_definition_id=f"{variablemap_definition_id}::{vs_name}",
                         variablemap_definition_id=variablemap_definition_id,
                         variableset=vs_name,
-                        index_type=data.get("index_type"),
-                        index_value=data.get("index_value"),
+                        index_type=index_type,
+                        index_value=index_value,
                         attributes=attributes,
                         dimensions=data.get("dimensions", {}),
                         variables=data.get("variables", {})
                     )
 
                 self.logger.debug("variableset_definition_registry_update", extra={"request": request})
-                
                 if self.db_client:
                     await self.db_client.variableset_definition_registry_update(
                         database="registry",
@@ -837,13 +843,31 @@ class Datastore:
                 if definition_type not in [f"{resource}-definition", f"{resource}-definition-update"]:
                     continue
                 
-                # Ensure metadata exists and extract keys safely
+                # Setup safe references to all possible data locations
+                metadata = resource_def.get("metadata", {})
+                data_block = resource_def.get("data", {})
+                attributes = data_block.get("attributes", {})
+
+                # Ensure a metadata block exists in the object we save to Redis
                 if "metadata" not in resource_def:
                     resource_def["metadata"] = {}
-                    
-                name = resource_def.get("name") or resource_def["metadata"].get("name", "unknown")
-                valid_time = resource_def.get("valid_config_time") or resource_def["metadata"].get("valid_config_time", "2020-01-01T00:00:00Z")
 
+                # FIX: Safely extract 'name' using the helper, cascading through all possible locations
+                name = (
+                    self._extract_val(resource_def, "name", None) or 
+                    self._extract_val(metadata, "name", None) or 
+                    self._extract_val(attributes, "name", "unknown")
+                )
+
+                # FIX: Safely extract 'valid_config_time' using the helper, cascading through all possible locations
+                valid_time = (
+                    self._extract_val(resource_def, "valid_config_time", None) or 
+                    self._extract_val(metadata, "valid_config_time", None) or 
+                    self._extract_val(attributes, "valid_config_time", "2020-01-01T00:00:00Z")
+                )
+
+                # Re-inject the perfectly extracted flat strings back into the metadata block
+                # so redis_client.py can reliably build the ID: f"{name}::{valid_time}"
                 resource_def["metadata"]["name"] = name
                 resource_def["metadata"]["valid_config_time"] = valid_time
 
