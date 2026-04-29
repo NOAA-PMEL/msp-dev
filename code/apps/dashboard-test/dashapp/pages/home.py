@@ -264,7 +264,6 @@ def update_variableset_list(count, current_sets):
 
 @callback(
         Output("variableset-data-buffer", "data"),
-        # Output("sensor-settings-buffer", "data"),
         Input("ws-variableset-instance", "message")
           )
 def update_variableset_buffers(event):
@@ -282,27 +281,6 @@ def update_variableset_buffers(event):
                 L.debug(f"data buffer update error: {event}")
             
     return [dash.no_update]
-
-
-
-
-# def get_variableset_data(variableset_id: str):
-    
-#     query = {"variableset_id": variableset_id}
-#     # url = f"http://{datastore_url}/device/data/get/"
-#     url = f"http://{datastore_url}/variableset/data/get/"
-#     L.debug(f"variableset-data-get: {url}")
-#     try:
-#         timeout = httpx.Timeout(10.0, read=10.0)
-#         response = httpx.get(url, params=query, timeout=timeout)
-#         results = response.json()
-#         L.debug(f"variableset_results: {results}")
-#         if "results" in results and results["results"]:
-#             return results["results"]
-#     except Exception as e:
-#         L.error("variableset_data_error", extra={"reason": e})
-#     return []
-
 
 
 
@@ -347,8 +325,10 @@ def update_trajectory(vs_data):
     # df = get_dataset()
     if vs_data:
         L.debug(f"variableset-data-trajectory{vs_data}")
-        lats = vs_data['variables']['latitude']
-        lons = vs_data['variables']['longitude']
+        L.debug(f"variableset-data-trajectory-attributes: {vs_data['attributes']}")
+        L.debug(f"variableset-data-trajectory-variables: {vs_data['variables']}")
+        lats = vs_data['variables']['latitude']['data']
+        lons = vs_data['variables']['longitude']['data']
         
         center_lat = lats.mean()
         center_lon = lons.mean()
