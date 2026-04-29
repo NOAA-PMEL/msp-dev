@@ -949,11 +949,13 @@ def layout(platform=None):
                     
                     # Fetch the full definition for this specific ID
                     # ** Adjust this URL to match your API's definition endpoint **
-                    def_url = f"http://{datastore_url}/variableset-definition/get/{varset_id}"
+                    def_url = f"http://{datastore_url}/variableset-definition/registry/get/{varset_id}"
                     def_response = httpx.get(def_url)
                     
                     if def_response.status_code == 200:
                         all_variablesets[varset_id] = def_response.json()
+                        def_response_debug = def_response.json()
+                        L.debug(f"def response: {def_response_debug}")
                         
     except Exception as e:
         L.error(f"Initial variableset fetch error: {e}")
