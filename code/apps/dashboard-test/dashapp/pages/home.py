@@ -332,7 +332,7 @@ def update_trajectory(vs_data):
             lons = vs_data[0]['variables']['longitude']['data']
 
             L.debug(f"variableset-data-trajectory-lats: {lats}")
-            L.debug(f"variableset-data-trajectory-lons: {vs_data[0]['lon']}")
+            L.debug(f"variableset-data-trajectory-lons: {lons}")
             
             flattened_data = [
                 {
