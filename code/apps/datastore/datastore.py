@@ -361,41 +361,49 @@ class Datastore:
     async def device_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, device_def in ce.data.items():
-                make = device_def["attributes"]["make"]["data"]
-                model = device_def["attributes"]["model"]["data"]
-                format_version = device_def["attributes"]["format_version"]["data"]
-                parts = format_version.split(".")
-                version = f"v{parts[0]}"
-                valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
+                if definition_type != "device-definition":
+                    continue
+                
+                # FIX: If the payload is already a flattened database record (from a sync update)
+                if "device_definition_id" in device_def:
+                    request = DeviceDefinitionUpdate(**device_def)
+                else:
 
-                if definition_type == "device-definition":
-                    database = "registry"
-                    collection = "device-definition"
-                    attributes = device_def["attributes"]
-                    dimensions = device_def["dimensions"]
-                    variables = device_def["variables"]
+                    make = device_def["attributes"]["make"]["data"]
+                    model = device_def["attributes"]["model"]["data"]
+                    format_version = device_def["attributes"]["format_version"]["data"]
+                    parts = format_version.split(".")
+                    version = f"v{parts[0]}"
+                    valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
 
-                    if "device_type" in device_def["attributes"]:
-                        device_type = device_def["attributes"]["device_type"]["data"]
-                    else:
-                        device_def["attributes"]["device_type"] = {
-                            "type": "string",
-                            "data": "sensor"
-                        }
-                        device_type = "sensor"
+                    if definition_type == "device-definition":
+                        database = "registry"
+                        collection = "device-definition"
+                        attributes = device_def["attributes"]
+                        dimensions = device_def["dimensions"]
+                        variables = device_def["variables"]
 
-                    device_definition_id = "::".join([make,model,format_version])
-                    request = DeviceDefinitionUpdate(
-                        device_definition_id=device_definition_id,
-                        make=make,
-                        model=model,
-                        version=format_version,
-                        device_type=device_type,
-                        valid_time=valid_time,
-                        attributes=attributes,
-                        dimensions=dimensions,
-                        variables=variables,
-                    )
+                        if "device_type" in device_def["attributes"]:
+                            device_type = device_def["attributes"]["device_type"]["data"]
+                        else:
+                            device_def["attributes"]["device_type"] = {
+                                "type": "string",
+                                "data": "sensor"
+                            }
+                            device_type = "sensor"
+
+                        device_definition_id = "::".join([make,model,format_version])
+                        request = DeviceDefinitionUpdate(
+                            device_definition_id=device_definition_id,
+                            make=make,
+                            model=model,
+                            version=format_version,
+                            device_type=device_type,
+                            valid_time=valid_time,
+                            attributes=attributes,
+                            dimensions=dimensions,
+                            variables=variables,
+                        )
 
                     self.logger.debug(
                         "device_definition_registry_update", extra={"request": request}
@@ -586,31 +594,38 @@ class Datastore:
     async def controller_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, controller_def in ce.data.items():
-                make = controller_def["attributes"]["make"]["data"]
-                model = controller_def["attributes"]["model"]["data"]
-                format_version = controller_def["attributes"]["format_version"]["data"]
-                parts = format_version.split(".")
-                version = f"v{parts[0]}"
-                valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
+                if definition_type != "device-definition":
+                    continue
+                
+                # FIX: If the payload is already a flattened database record (from a sync update)
+                if "controller_definition_id" in controller_def:
+                    request = ControllerDefinitionUpdate(**controller_def)
+                else:
+                    make = controller_def["attributes"]["make"]["data"]
+                    model = controller_def["attributes"]["model"]["data"]
+                    format_version = controller_def["attributes"]["format_version"]["data"]
+                    parts = format_version.split(".")
+                    version = f"v{parts[0]}"
+                    valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
 
-                if definition_type == "controller-definition":
-                    database = "registry"
-                    collection = "controller-definition"
-                    attributes = controller_def["attributes"]
-                    dimensions = controller_def["dimensions"]
-                    variables = controller_def["variables"]
+                    if definition_type == "controller-definition":
+                        database = "registry"
+                        collection = "controller-definition"
+                        attributes = controller_def["attributes"]
+                        dimensions = controller_def["dimensions"]
+                        variables = controller_def["variables"]
 
-                    controller_definition_id = "::".join([make,model,format_version])
-                    request = ControllerDefinitionUpdate(
-                        controller_definition_id=controller_definition_id,
-                        make=make,
-                        model=model,
-                        version=format_version,
-                        valid_time=valid_time,
-                        attributes=attributes,
-                        dimensions=dimensions,
-                        variables=variables,
-                    )
+                        controller_definition_id = "::".join([make,model,format_version])
+                        request = ControllerDefinitionUpdate(
+                            controller_definition_id=controller_definition_id,
+                            make=make,
+                            model=model,
+                            version=format_version,
+                            valid_time=valid_time,
+                            attributes=attributes,
+                            dimensions=dimensions,
+                            variables=variables,
+                        )
 
                     self.logger.debug(
                         "controller_definition_registry_update", extra={"request": request}
