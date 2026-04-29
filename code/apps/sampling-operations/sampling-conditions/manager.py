@@ -426,6 +426,8 @@ class SamplingConditionsManager:
 
         self.http_client = None
 
+        self._background_tasks = set()
+        
         self.configure()
         # print("here:7")
 
