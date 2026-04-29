@@ -571,7 +571,16 @@ class RedisClient(DBClient):
         try:
             self.connect()
             document = request.dict()
-            key = f"{database}:{collection}:{request.variablemap_definition_id.replace(':', '')}"
+            
+            # FIX: Only strip colons from the timestamp, preserve the "::" delimiters
+            redis_id = request.variablemap_definition_id
+            if "::" in redis_id:
+                redis_id = "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
+            else:
+                redis_id = redis_id.replace(":", "")
+                
+            key = f"{database}:{collection}:{redis_id}"
+            
             result = await self.client.json().set(key, "$", {"registration": document})
             if result and ttl > 0:
                 await self.client.expire(key, ttl)
@@ -630,7 +639,16 @@ class RedisClient(DBClient):
         try:
             self.connect()
             document = request.dict()
-            key = f"{database}:{collection}:{request.variableset_definition_id.replace(':', '')}"
+            
+            # FIX: Only strip colons from the timestamp, preserve the "::" delimiters
+            redis_id = request.variableset_definition_id
+            if "::" in redis_id:
+                redis_id = "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
+            else:
+                redis_id = redis_id.replace(":", "")
+                
+            key = f"{database}:{collection}:{redis_id}"
+            
             result = await self.client.json().set(key, "$", {"registration": document})
             if result and ttl > 0:
                 await self.client.expire(key, ttl)
