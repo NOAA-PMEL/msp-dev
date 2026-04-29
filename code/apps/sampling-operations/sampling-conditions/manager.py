@@ -720,8 +720,11 @@ class SamplingConditionsManager:
         await asyncio.sleep(5)
         while True:
             try:
+                self.logger.debug("publish_local_definitions", extra={"here": 1})
                 for cond_name, cond_data in self.sampling_conditions["conditions"].items():
+                    self.logger.debug("publish_local_definitions", extra={"cond_name": cond_name})
                     config = cond_data["config"]
+                    self.logger.debug("publish_local_definitions", extra={"cond_config": config})
                     if not config:
                         continue
                     
@@ -731,6 +734,7 @@ class SamplingConditionsManager:
                         data={"samplingcondition": config}
                     )
                     event["destpath"] = f"envds/{self.config.daq_id}/samplingcondition-definition/registry/update"
+                    self.logger.debug("publish_local_definitions", extra={"event": event})
                     await self.send_event(event)
 
             except Exception as e:
