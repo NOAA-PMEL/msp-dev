@@ -840,7 +840,7 @@ class Datastore:
     async def sampling_definition_registry_update(self, ce: CloudEvent, resource: str):
         try:
             for definition_type, resource_def in ce.data.items():
-                if definition_type not in [f"{resource}-definition", f"{resource}-definition-update"]:
+                if definition_type not in [f"{resource}", f"{resource}-definition", f"{resource}-definition-update"]:
                     continue
                 
                 # Setup safe references to all possible data locations
