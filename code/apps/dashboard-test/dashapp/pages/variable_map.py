@@ -186,7 +186,7 @@ def get_layout():
     # Optional: Log the first one specifically to see what we might load
     if available_ids:
         L.debug(f"DEBUG: Selecting '{available_ids[0]}' for initial load.")
-        api_data = get_variablemap_def(variableset_id=available_ids[0])
+        api_data = get_variablemap_def(variablemap_definition_id=available_ids[0])
     else:
         L.warning("DEBUG: No IDs found in registry, loading initial_variable_map fallback.")
         api_data = initial_variable_map
