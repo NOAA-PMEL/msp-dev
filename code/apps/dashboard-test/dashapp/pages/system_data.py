@@ -963,6 +963,7 @@ def layout(platform=None):
                         params = query_params
                         )
                     L.debug(f"def response status code: {def_response.status_code}")
+                    L.debug(f"layout varset def: {def_response}")
                     
                     if def_response.status_code == 200:
                         all_variablesets[varset_id] = def_response.json()
@@ -988,55 +989,57 @@ def layout(platform=None):
         table_columns_1d[varset_id] = []
 
         try:
-            dimensions = varset_definition.get("dimensions", {})
+            # dimensions = varset_definition.get("dimensions", {})
+
             
             for name, var in varset_definition.get("variables", {}).items():
                 
                 # Check variable type attributes
-                var_type = var.get("attributes", {}).get("variable_type", {}).get("data")
+                # var_type = var.get("attributes", {}).get("variable_type", {}).get("data")
                 
-                if var_type in ["setting", "main"]:
+                # if var_type in ["setting", "main"]:
                     
-                    # If it's a main variable, ensure it has the required shape/time
-                    if var_type == "main":
-                        if "shape" not in var or "time" not in var["shape"]:
-                            continue
+                #     # If it's a main variable, ensure it has the required shape/time
+                #     if var_type == "main":
+                #         if "shape" not in var or "time" not in var["shape"]:
+                #             continue
 
-                    # Get names
-                    long_name = name
-                    ln = var.get("attributes", {}).get("long_name", None)
-                    if ln:
-                        long_name = ln.get("data", name)
+                # Get names
+                long_name = name
+                ln = var.get("attributes", {}).get("long_name", None)
+                if ln:
+                    long_name = ln.get("data", name)
 
-                    # Get data type
-                    dtype = var.get("type", "unknown")
+                # Get data type
+                dtype = var.get("type", "unknown")
+                data_type = "text"
+                if dtype in ["float", "double", "int"]:
+                    data_type = "number"
+                elif dtype in ["str", "string", "char"]:
                     data_type = "text"
-                    if dtype in ["float", "double", "int"]:
-                        data_type = "number"
-                    elif dtype in ["str", "string", "char"]:
-                        data_type = "text"
-                    elif dtype in ["bool"]:
-                        data_type = "boolean"
+                elif dtype in ["bool"]:
+                    data_type = "boolean"
 
-                    # Build column definition
-                    cd = {
-                        "field": name,
-                        "headerName": long_name,
-                        "filter": False,
-                        "cellDataType": data_type,
-                    }
+                # Build column definition
+                cd = {
+                    "field": name,
+                    "headerName": long_name,
+                    "filter": False,
+                    "cellDataType": data_type,
+                }
 
-                    # Add the column to this specific dataset's table
-                    table_columns_1d[varset_id].append(cd)
+                # Add the column to this specific dataset's table
+                table_columns_1d[varset_id].append(cd)
 
-                    # Add the variable to the shared graph dropdown
-                    if data_type == "number" and name not in dimensions:
-                        shared_graph_dropdown.append(
-                            {
-                                "label": f"{varset_id} - {long_name}", 
-                                "value": f"{varset_id}::{name}"
-                            }
-                        )
+                # Add the variable to the shared graph dropdown
+                # if data_type == "number" and name not in dimensions:
+                if data_type == "number":
+                    shared_graph_dropdown.append(
+                        {
+                            "label": f"{varset_id} - {long_name}", 
+                            "value": f"{varset_id}::{name}"
+                        }
+                    )
 
         except KeyError as e:
             L.error(f"build column_defs error for {varset_id}: {e}")
