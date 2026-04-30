@@ -16,6 +16,7 @@ import plotly.express as px
 import json
 import dash_ace
 import traceback
+import os
 
 
 handler = logging.StreamHandler()
@@ -85,6 +86,23 @@ initial_variable_map = {
     ],
     "test_mode": True
 }
+
+
+
+def debug_local_files():
+    try:
+        # Get the current working directory
+        cwd = os.getcwd()
+        files = os.listdir(cwd)
+        
+        L.debug(f"DEBUG: Current Working Directory: {cwd}")
+        L.debug(f"DEBUG: Files in repo: {files}")
+    except Exception as e:
+        L.error(f"DEBUG: Could not list files: {e}")
+
+# Call this at the top level of your script or inside get_layout()
+debug_local_files()
+
 
 
 
