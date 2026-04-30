@@ -951,11 +951,12 @@ def layout(platform=None):
                     # ** Adjust this URL to match your API's definition endpoint **
                     def_url = f"http://{datastore_url}/variableset-definition/registry/get/{varset_id}"
                     def_response = httpx.get(def_url)
+                    L.debug(f"def response status code: {def_response.status_code}")
                     
                     if def_response.status_code == 200:
                         all_variablesets[varset_id] = def_response.json()
                         def_response_debug = def_response.json()
-                        L.debug(f"def response: {def_response_debug}")
+                        L.debug(f"def response 2: {def_response_debug}")
                     else:
                         L.error(f"API REJECTION for {varset_id}")
                         
