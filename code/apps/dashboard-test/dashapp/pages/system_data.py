@@ -966,9 +966,8 @@ def layout(platform=None):
                     L.debug(f"layout varset def: {def_response}")
                     
                     if def_response.status_code == 200:
-                        all_variablesets[varset_id] = def_response.json()
-                        def_response_debug = def_response.json()
-                        L.debug(f"def response 2: {def_response_debug}")
+                        new_varset_def = def_response.json().get("results", {})[0]
+                        all_variablesets[varset_id] = new_varset_def
                     else:
                         L.error(f"API REJECTION for {varset_id}")
                         
