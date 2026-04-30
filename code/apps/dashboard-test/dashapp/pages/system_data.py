@@ -956,6 +956,8 @@ def layout(platform=None):
                         all_variablesets[varset_id] = def_response.json()
                         def_response_debug = def_response.json()
                         L.debug(f"def response: {def_response_debug}")
+                    else:
+                        L.error(f"API REJECTION for {varset_id}")
                         
     except Exception as e:
         L.error(f"Initial variableset fetch error: {e}")
