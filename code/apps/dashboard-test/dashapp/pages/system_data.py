@@ -41,6 +41,7 @@ dash.register_page(
     __name__,
     path_template="/system_data",
     title="System Data",  # , prevent_initial_callbacks=True
+    order=1
 )
  
 

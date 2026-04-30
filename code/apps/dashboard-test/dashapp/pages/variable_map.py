@@ -25,7 +25,7 @@ L.setLevel(logging.DEBUG)
 
 
 # dash.register_page(__name__, path='/')
-dash.register_page(__name__, path='/variable_map', title="Variable Map", order=3)
+dash.register_page(__name__, path='/variable_map', title="Variable Map", order=4)
 
 CONTENT_STYLE = {
     "margin-left": "18rem",
@@ -89,7 +89,7 @@ initial_variable_map = {
 # def get_variablemap_def(device_id: str, device_type: str="sensor"):
 def get_variablemap_def(variableset_id: str):
     
-    query = {"variableset_id": variableset_id}
+    query = {variableset_id: str}
     # url = f"http://{datastore_url}/device/data/get/"
     # url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
     url = f"http://{datastore_url}/variableset/data/get/"

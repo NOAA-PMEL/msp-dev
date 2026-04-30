@@ -17,7 +17,7 @@ dash.register_page(
     __name__,
     path="/sensor-registry",
     title="Sensor Registry",  # , prevent_initial_callbacks=True
-    order=1
+    order=2
      )
 
 class Settings(BaseSettings):
@@ -453,9 +453,7 @@ def update_sensor_definitions(count, table_data):
         # print(f"device-definition-get: {url}, {query}")
         print(f"device-definition-get: {url}")
         # response = httpx.get(url, params=query)
-
-
-        response = httpx.get(url, timeout=20.0)
+        response = httpx.get(url)
         results = response.json()
         print(f"results: {results}")
         if "results" in results and results["results"]:
