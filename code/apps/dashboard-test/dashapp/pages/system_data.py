@@ -1841,11 +1841,12 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
             return new_row_data_list
         
         else:
-            return dash.no_update
+            return [dash.no_update] * len(table_ids)
     
     except Exception as e:
         L.error(f"data update error table: {e}")
         L.error(traceback.format_exc())
+        return [dash.no_update] * len(table_ids)
 
 
 # @callback(
