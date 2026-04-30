@@ -166,33 +166,33 @@ def get_variablemap_def(variablemap_definition_id: str):
 # def get_layout():
 #     get_variablemap_def(variablemap_definition_id='raz1::main')
 #     layout = html.Div([
-#         html.H1('Variable Map'),
-#         html.Div(id='status-message', style={'margin-bottom': '10px', 'font-weight': 'bold'}),
-#         html.Div([
-#             # dcc.Textarea(
-#             #     id='variable-map-editor',
-#             #     value=json.dumps(initial_variable_map, indent=4),
-#             #     style={'width': '100%', 'height': 500, 'font-family': 'monospace'}
-#             # ),
-#             dash_ace.DashAceEditor(
-#                 id='variable-map-editor',
-#                 value=json.dumps(initial_variable_map, indent=4),
-#                 mode='json',        # Enables JSON syntax highlighting
-#                 theme='monokai',     # Dark theme (change to 'github' for light)
-#                 tabSize=4,
-#                 showGutter=True,     # This shows the line numbers
-#                 showPrintMargin=False,
-#                 style={'width': '100%', 'height': '600px'}
-#             ),
-#             html.Br(),
-#             html.Button('Save Variable Map', id='save-button', n_clicks=0),
-#             html.Hr()
-#         ]),
-#         WebSocket(
-#                 id="ws-variable-map-instance",
-#                 # url=f"{ws_url_base}/msp/dashboardtest/ws/controller/{controller_id}",
-#             ),
-#             ws_send_buffer
+        # html.H1('Variable Map'),
+        # html.Div(id='status-message', style={'margin-bottom': '10px', 'font-weight': 'bold'}),
+        # html.Div([
+        #     # dcc.Textarea(
+        #     #     id='variable-map-editor',
+        #     #     value=json.dumps(initial_variable_map, indent=4),
+        #     #     style={'width': '100%', 'height': 500, 'font-family': 'monospace'}
+        #     # ),
+        #     dash_ace.DashAceEditor(
+        #         id='variable-map-editor',
+        #         value=json.dumps(initial_variable_map, indent=4),
+        #         mode='json',        # Enables JSON syntax highlighting
+        #         theme='monokai',     # Dark theme (change to 'github' for light)
+        #         tabSize=4,
+        #         showGutter=True,     # This shows the line numbers
+        #         showPrintMargin=False,
+        #         style={'width': '100%', 'height': '600px'}
+        #     ),
+        #     html.Br(),
+        #     html.Button('Save Variable Map', id='save-button', n_clicks=0),
+        #     html.Hr()
+        # ]),
+        # WebSocket(
+        #         id="ws-variable-map-instance",
+        #         # url=f"{ws_url_base}/msp/dashboardtest/ws/controller/{controller_id}",
+        #     ),
+        #     ws_send_buffer
 #     ])
 
 #     return layout
@@ -212,7 +212,33 @@ def get_layout():
         api_data = initial_variable_map
 
     layout = html.Div([
-        # ... rest of your layout code ...
+        html.H1('Variable Map'),
+        html.Div(id='status-message', style={'margin-bottom': '10px', 'font-weight': 'bold'}),
+        html.Div([
+            # dcc.Textarea(
+            #     id='variable-map-editor',
+            #     value=json.dumps(initial_variable_map, indent=4),
+            #     style={'width': '100%', 'height': 500, 'font-family': 'monospace'}
+            # ),
+            dash_ace.DashAceEditor(
+                id='variable-map-editor',
+                value=json.dumps(initial_variable_map, indent=4),
+                mode='json',        # Enables JSON syntax highlighting
+                theme='monokai',     # Dark theme (change to 'github' for light)
+                tabSize=4,
+                showGutter=True,     # This shows the line numbers
+                showPrintMargin=False,
+                style={'width': '100%', 'height': '600px'}
+            ),
+            html.Br(),
+            html.Button('Save Variable Map', id='save-button', n_clicks=0),
+            html.Hr()
+        ]),
+        WebSocket(
+                id="ws-variable-map-instance",
+                # url=f"{ws_url_base}/msp/dashboardtest/ws/controller/{controller_id}",
+            ),
+            ws_send_buffer
     ])
     return layout
 
