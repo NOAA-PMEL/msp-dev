@@ -487,8 +487,8 @@ async def handle_mqtt_buffer():
                 # controller_id = "::".join([make, model, serial_number])
                 variableset_id = "raz1::main"
 
-                # msg = {"data-update": ce.data}
-                msg = {"data-update": ce}
+                msg = {"data-update": ce.data, "attributes": ce.attributes}
+                # msg = {"data-update": ce}
                 # L.debug("handle_mqtt_buffer", extra={"msg": msg, "controller_id": controller_id})
                 await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
         

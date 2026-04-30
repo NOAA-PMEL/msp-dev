@@ -579,14 +579,15 @@ def update_variableset_buffers(event):
     if event is not None and "data" in event:
         event_data = json.loads(event["data"])
         L.debug(f"update_variableset_buffers: {event}")
-        if "data-update" in event_data:
-            try:
-                # msg = json.loads(event["data-update"])
-                # print(f"update_controller_data: {event_data}")
-                if event_data["data-update"]:
-                    return [event_data["data-update"]]
-            except Exception as event:
-                L.debug(f"data buffer update error: {event}")
+        return [event_data]
+        # if "data-update" in event_data:
+        #     try:
+        #         # msg = json.loads(event["data-update"])
+        #         # print(f"update_controller_data: {event_data}")
+        #         if event_data["data-update"]:
+        #             return [event_data["data-update"]]
+        #     except Exception as event:
+        #         L.debug(f"data buffer update error: {event}")
             
     return [dash.no_update]
 
@@ -1454,9 +1455,13 @@ def update_graph_1d(buffer_data, selected_values):
     try:
         L.debug(f"update graph buffer data {buffer_data}")
 
-        incoming_varset_id = buffer_data.get("attributes", {}).get("variablesetfullid", {})
-        
-        buffer_data = buffer_data[0].get("data", {})
+        incoming_varset_id = buffer_data[0].get("attributes", {}).get("variablesetfullid", {})
+        L.debug(f"incoming_varset_id {incoming_varset_id}")
+        buffer_data = buffer_data[0].get("data-udpate", {}).get("data", {})
+        L.debug(f"buffer_data {buffer_data}")
+
+       
+        # buffer_data = buffer_data[0].get("data", {})
         
         # Safely extract the ID
         # incoming_varset_id = buffer_data.get("attributes", {}).get("variablesetfullid", {})
@@ -1789,8 +1794,10 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
     
     try:
         # buffer_data = buffer_data[0]
-        id_dict = buffer_data.get("attributes", {}).get("variablesetfullid", {})
-        buffer_data = buffer_data[0].get("data", {})
+        id_dict = buffer_data[0].get("attributes", {}).get("variablesetfullid", {})
+        L.debug(f"id_dict {id_dict}")
+        buffer_data = buffer_data[0].get("data-udpate", {}).get("data", {})
+        L.debug(f"buffer_data table {buffer_data}")
         
         # --- DEBUG 1: See what the top level looks like ---
         L.debug(f"LIVE DATA KEYS: {buffer_data.keys()}")
