@@ -15,6 +15,7 @@ from logfmter import Logfmter
 import plotly.express as px
 import json
 import dash_ace
+import traceback
 
 
 handler = logging.StreamHandler()
@@ -86,67 +87,116 @@ initial_variable_map = {
 }
 
 
-# def get_variablemap_def(device_id: str, device_type: str="sensor"):
-def get_variablemap_def(variableset_id: str):
+
+def get_variablemap_ids():
+    """
+    Fetches the list of all registered Variable Map IDs and logs them.
+    """
+    url = f"http://{datastore_url}/variablemap-definition/registry/ids/get/"
     
-    query = {variableset_id: str}
-    # url = f"http://{datastore_url}/device/data/get/"
-    # url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
-    url = f"http://{datastore_url}/variableset/data/get/"
-    # print(f"variablemap-definition-get: {url}, query: {query}")
+    try:
+        timeout = httpx.Timeout(5.0)
+        response = httpx.get(url, timeout=timeout)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # Extract the list from common wrapper keys
+        ids = []
+        if isinstance(data, dict):
+            ids = data.get("results", data.get("ids", []))
+        elif isinstance(data, list):
+            ids = data
+
+        # --- DEBUG STATEMENT ---
+        L.debug(f"DEBUG: Found {len(ids)} available IDs: {ids}")
+        # If your logger isn't visible, you can also use:
+        # print(f"DEBUG IDs: {ids}") 
+        
+        return ids
+
+    except Exception as e:
+        L.error(f"DEBUG: Failed to retrieve IDs from {url}. Error: {e}")
+        return []
+
+
+
+def get_variablemap_def(variablemap_definition_id: str):
+    
+    url = f"http://{datastore_url}/variablemap-definition/registry/get/"
     L.debug(f"variablemap-definition-get: {url}")
+
+    query = {"variablemap_definition_id": variablemap_definition_id}
 
     try:
         timeout = httpx.Timeout(10.0, read=10.0)
         response = httpx.get(url, params=query, timeout=timeout)
-        # response = httpx.get(url)
+
         results = response.json()
         L.debug(f"variablemap_results: {results}")
+
         if "results" in results and results["results"]:
             return results["results"]
+        
     except Exception as e:
-        # L.error("get_device_data", extra={"reason": e})
-        # return []
-        # L.warning(f"Connection failed to {device_id}. Returning mock data for testing.")
-        # Return mock data for testing
-        L.debug(f"variablemap_error: {e}")
-        return [{"timestamp": "2024-01-01T00:00:00", "value": 1.23, "status": 0}]
+        L.error(f"variablemap_error: {e}")
+        L.error(traceback.format_exc())
 
 
-# print("here:1")
+# def get_layout():
+#     get_variablemap_def(variablemap_definition_id='raz1::main')
+#     layout = html.Div([
+#         html.H1('Variable Map'),
+#         html.Div(id='status-message', style={'margin-bottom': '10px', 'font-weight': 'bold'}),
+#         html.Div([
+#             # dcc.Textarea(
+#             #     id='variable-map-editor',
+#             #     value=json.dumps(initial_variable_map, indent=4),
+#             #     style={'width': '100%', 'height': 500, 'font-family': 'monospace'}
+#             # ),
+#             dash_ace.DashAceEditor(
+#                 id='variable-map-editor',
+#                 value=json.dumps(initial_variable_map, indent=4),
+#                 mode='json',        # Enables JSON syntax highlighting
+#                 theme='monokai',     # Dark theme (change to 'github' for light)
+#                 tabSize=4,
+#                 showGutter=True,     # This shows the line numbers
+#                 showPrintMargin=False,
+#                 style={'width': '100%', 'height': '600px'}
+#             ),
+#             html.Br(),
+#             html.Button('Save Variable Map', id='save-button', n_clicks=0),
+#             html.Hr()
+#         ]),
+#         WebSocket(
+#                 id="ws-variable-map-instance",
+#                 # url=f"{ws_url_base}/msp/dashboardtest/ws/controller/{controller_id}",
+#             ),
+#             ws_send_buffer
+#     ])
+
+#     return layout
+
+
+
 def get_layout():
-    get_variablemap_def(variableset_id='raz1::main')
-    layout = html.Div([
-        html.H1('Variable Map'),
-        html.Div(id='status-message', style={'margin-bottom': '10px', 'font-weight': 'bold'}),
-        html.Div([
-            # dcc.Textarea(
-            #     id='variable-map-editor',
-            #     value=json.dumps(initial_variable_map, indent=4),
-            #     style={'width': '100%', 'height': 500, 'font-family': 'monospace'}
-            # ),
-            dash_ace.DashAceEditor(
-                id='variable-map-editor',
-                value=json.dumps(initial_variable_map, indent=4),
-                mode='json',        # Enables JSON syntax highlighting
-                theme='monokai',     # Dark theme (change to 'github' for light)
-                tabSize=4,
-                showGutter=True,     # This shows the line numbers
-                showPrintMargin=False,
-                style={'width': '100%', 'height': '600px'}
-            ),
-            html.Br(),
-            html.Button('Save Variable Map', id='save-button', n_clicks=0),
-            html.Hr()
-        ]),
-        WebSocket(
-                id="ws-variable-map-instance",
-                # url=f"{ws_url_base}/msp/dashboardtest/ws/controller/{controller_id}",
-            ),
-            ws_send_buffer
-    ])
+    # Trigger the retrieval and the debug print
+    available_ids = get_variablemap_ids()
+    
+    # Optional: Log the first one specifically to see what we might load
+    if available_ids:
+        L.debug(f"DEBUG: Selecting '{available_ids[0]}' for initial load.")
+        api_data = get_variablemap_def(variableset_id=available_ids[0])
+    else:
+        L.warning("DEBUG: No IDs found in registry, loading initial_variable_map fallback.")
+        api_data = initial_variable_map
 
+    layout = html.Div([
+        # ... rest of your layout code ...
+    ])
     return layout
+
+
 
 layout = get_layout()
 
