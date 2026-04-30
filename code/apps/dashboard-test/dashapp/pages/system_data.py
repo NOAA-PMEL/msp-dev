@@ -534,11 +534,16 @@ def update_variableset_defs(varset_ids, current_defs):
     for varset_id in varset_ids:
         if varset_id not in current_defs:
             try:
-                url = f"http://{datastore_url}/variableset-definition/registry/get/{varset_id}"
-                L.debug(f"Fetching definition: {url}")
+                def_url = f"http://{datastore_url}/variableset-definition/registry/get/"
+                query_params = {"variableset_definition_id": varset_id}
+                L.debug(f"Fetching definition: {def_url}")
                 
-                response = httpx.get(url)
-                
+                response = httpx.get(
+                    def_url,
+                    params = query_params,
+                    follows_redirects=True
+                    )
+                                
                 if response.status_code == 200:
                     current_defs[varset_id] = response.json()
                     updated = True
