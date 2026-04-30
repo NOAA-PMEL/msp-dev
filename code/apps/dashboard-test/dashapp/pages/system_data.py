@@ -1453,11 +1453,13 @@ def update_graph_1d(buffer_data, selected_values):
 
     try:
         L.debug(f"update graph buffer data {buffer_data}")
+
+        incoming_varset_id = buffer_data.get("attributes", {}).get("variablesetfullid", {})
         
-        buffer_data = buffer_data[0]
+        buffer_data = buffer_data[0].get("data", {})
         
         # Safely extract the ID
-        incoming_varset_id = buffer_data.get("attributes", {}).get("variablesetfullid", {})
+        # incoming_varset_id = buffer_data.get("attributes", {}).get("variablesetfullid", {})
         if isinstance(incoming_varset_id, dict):
             incoming_varset_id = incoming_varset_id.get("data")
             
@@ -1786,14 +1788,16 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
         raise PreventUpdate
     
     try:
-        buffer_data = buffer_data[0]
+        # buffer_data = buffer_data[0]
+        id_dict = buffer_data.get("attributes", {}).get("variablesetfullid", {})
+        buffer_data = buffer_data[0].get("data", {})
         
         # --- DEBUG 1: See what the top level looks like ---
         L.debug(f"LIVE DATA KEYS: {buffer_data.keys()}")
         L.debug(f"ATTRIBUTE KEYS: {buffer_data.get('attributes', {}).keys()}")
         
         # FIX 1: Drill all the way down to the actual string, safely!
-        id_dict = buffer_data.get("attributes", {}).get("variablesetfullid", {})
+        # id_dict = buffer_data.get("attributes", {}).get("variablesetfullid", {})
         
         # If it's a dictionary, grab the 'data' key. If it's just a string, keep it.
         if isinstance(id_dict, dict):
