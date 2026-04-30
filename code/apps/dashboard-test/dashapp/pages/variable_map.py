@@ -223,7 +223,7 @@ def get_layout():
             dash_ace.DashAceEditor(
                 id='variable-map-editor',
                 # value=json.dumps(initial_variable_map, indent=4),
-                value = json.dumps(api_data, indent=4)
+                value = json.dumps(api_data, indent=4),
                 mode='json',        # Enables JSON syntax highlighting
                 theme='monokai',     # Dark theme (change to 'github' for light)
                 tabSize=4,
