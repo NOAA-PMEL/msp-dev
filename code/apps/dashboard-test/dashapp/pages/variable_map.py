@@ -218,7 +218,8 @@ def get_layout():
 
 
 
-layout = get_layout()
+# layout = get_layout()
+layout = get_layout
 
 @callback(
     [Output('variable-map-editor', 'value'),
