@@ -537,11 +537,10 @@ def update_variableset_defs(varset_ids, current_defs):
                 def_url = f"http://{datastore_url}/variableset-definition/registry/get/"
                 query_params = {"variableset_definition_id": varset_id}
                 L.debug(f"Fetching definition: {def_url}")
-                
+
                 response = httpx.get(
                     def_url,
-                    params = query_params,
-                    follows_redirects=True
+                    params = query_params
                     )
                                 
                 if response.status_code == 200:
@@ -958,8 +957,7 @@ def layout(platform=None):
                     query_params = {"variableset_definition_id": varset_id}
                     def_response = httpx.get(
                         def_url,
-                        params = query_params,
-                        follows_redirects=True
+                        params = query_params
                         )
                     L.debug(f"def response status code: {def_response.status_code}")
                     
