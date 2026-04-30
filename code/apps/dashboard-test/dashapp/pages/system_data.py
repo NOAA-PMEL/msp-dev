@@ -1457,7 +1457,7 @@ def update_graph_1d(buffer_data, selected_values):
 
         incoming_varset_id = buffer_data[0].get("variablesetfullid", {})
         L.debug(f"incoming_varset_id {incoming_varset_id}")
-        buffer_data = buffer_data[0].get("data-udpate", {}).get("data", {})
+        buffer_data = buffer_data[0].get("data-update", {})
         L.debug(f"buffer_data {buffer_data}")
 
        
@@ -1797,7 +1797,7 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
         L.debug(f"initial buffer data {buffer_data}")
         id_dict = buffer_data[0].get("variablesetfullid", {})
         L.debug(f"id_dict {id_dict}")
-        buffer_data = buffer_data[0].get("data-udpate", {}).get("data", {})
+        buffer_data = buffer_data[0].get("data-update", {})
         L.debug(f"buffer_data table {buffer_data}")
         
         # --- DEBUG 1: See what the top level looks like ---
