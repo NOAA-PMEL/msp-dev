@@ -1496,12 +1496,11 @@ def update_graph_1d(buffer_data, selected_values):
             return figs_to_update
         
         else:
-            raise PreventUpdate
+            return dash.no_update
 
     except Exception as e:
         print(f"data update error graph: {e}")
         L.error(traceback.format_exc())
-        raise PreventUpdate
 
 
 
@@ -1837,13 +1836,11 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
             return new_row_data_list
         
         else:
-            raise PreventUpdate
+            return dash.no_update
     
     except Exception as e:
         L.error(f"data update error table: {e}")
         L.error(traceback.format_exc())
-        raise PreventUpdate
-
 
 
 # @callback(
