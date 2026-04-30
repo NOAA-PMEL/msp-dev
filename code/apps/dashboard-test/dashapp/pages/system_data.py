@@ -949,7 +949,7 @@ def layout(platform=None):
                     
                     # Fetch the full definition for this specific ID
                     # ** Adjust this URL to match your API's definition endpoint **
-                    def_url = f"http://{datastore_url}/variableset-definition/registry/get/{varset_id}"
+                    def_url = f"http://{datastore_url}/variableset-definition/registry/get/{varset_id}/"
                     def_response = httpx.get(def_url)
                     L.debug(f"def response status code: {def_response.status_code}")
                     
