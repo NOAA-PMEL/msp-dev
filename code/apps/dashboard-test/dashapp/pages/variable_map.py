@@ -111,6 +111,7 @@ def get_variablemap_ids():
     Fetches the list of all registered Variable Map IDs and logs them.
     """
     url = f"http://{datastore_url}/variablemap-definition/registry/ids/get/"
+    L.debug(f"DEBUG: id url {url}")
     
     try:
         timeout = httpx.Timeout(5.0)
@@ -118,6 +119,7 @@ def get_variablemap_ids():
         response.raise_for_status()
         
         data = response.json()
+        L.debug(f"DEBUG: id data {data}")
         
         # Extract the list from common wrapper keys
         ids = []
