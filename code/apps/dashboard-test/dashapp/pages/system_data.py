@@ -982,6 +982,7 @@ def layout(platform=None):
 
     # 3. Parse the fetched definitions
     for varset_id, varset_definition in all_variablesets.items():
+        L.debug(f"layout varset {varset_id}, {varset_definition}")
         if not varset_definition:
             continue
             
