@@ -1387,36 +1387,40 @@ def update_graph_1d(buffer_data, selected_values):
         # e.g., incoming_varset_id = buffer_data.get("device_id") 
         # or    incoming_varset_id = buffer_data.get("id")
         buffer_data = buffer_data[0]
-        incoming_varset_id = buffer_data["attributes"].get("variablesetfullid") # Adjust this key to match your actual payload!
+        incoming_varset_id = buffer_data.get("attributes", {}).get("variablesetfullid", {}) # Adjust this key to match your actual payload!
         
-        figs_to_update = []
+        if incoming_varset_id:
+            figs_to_update = []
 
-        for selected_value in selected_values:
-            # If the dropdown is empty, don't update this graph
-            if not selected_value:
-                figs_to_update.append(dash.no_update)
-                continue
+            for selected_value in selected_values:
+                # If the dropdown is empty, don't update this graph
+                if not selected_value:
+                    figs_to_update.append(dash.no_update)
+                    continue
 
-            varset_id, y_axis = selected_value.rsplit("::", 1)
+                varset_id, y_axis = selected_value.rsplit("::", 1)
 
-            # ONLY extend the graph if the incoming data belongs to the selected dataset
-            if incoming_varset_id != varset_id:
-                figs_to_update.append(dash.no_update)
-                continue
+                # ONLY extend the graph if the incoming data belongs to the selected dataset
+                if incoming_varset_id != varset_id:
+                    figs_to_update.append(dash.no_update)
+                    continue
 
-            # Ensure the data has time and the selected variable
-            if "time" not in buffer_data["variables"] or y_axis not in buffer_data["variables"]:
-                figs_to_update.append(dash.no_update)
-                continue
+                # Ensure the data has time and the selected variable
+                if "time" not in buffer_data["variables"] or y_axis not in buffer_data["variables"]:
+                    figs_to_update.append(dash.no_update)
+                    continue
 
-            # Extract the live data points
-            x_val = buffer_data["variables"]["time"]["data"]
-            y_val = buffer_data["variables"][y_axis]["data"]
+                # Extract the live data points
+                x_val = buffer_data["variables"]["time"]["data"]
+                y_val = buffer_data["variables"][y_axis]["data"]
 
-            # Dash's extendData expects lists of lists: {"x": [[new_x]], "y": [[new_y]]}
-            figs_to_update.append({"x": [[x_val]], "y": [[y_val]]})
+                # Dash's extendData expects lists of lists: {"x": [[new_x]], "y": [[new_y]]}
+                figs_to_update.append({"x": [[x_val]], "y": [[y_val]]})
 
-        return figs_to_update
+            return figs_to_update
+        
+        else:
+            raise PreventUpdate
 
     except Exception as e:
         print(f"data update error: {e}")
@@ -1640,35 +1644,45 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
     if not buffer_data:
         raise PreventUpdate
     
-    L.debug(f"update table buffer data {buffer_data}")
-
-    # Get the ID of the incoming data (adjust "id" to match your websocket payload key)
-    buffer_data = buffer_data[0]
-    L.debug(f"LIVE DATA KEYS: {buffer_data.keys()}")
-    incoming_varset_id = buffer_data["attributes"].get("variablesetfullid")
-
-    new_row_data_list = []
+    try:
     
-    for row_data, col_defs, table_id in zip(row_data_list, col_defs_list, table_ids):
-        # ONLY process data if this table belongs to this dataset
-        if table_id["index"] == incoming_varset_id:
-            data = {}
-            for col in col_defs:
-                name = col["field"]
-                if name in buffer_data["variables"]:
-                    data[name] = buffer_data["variables"][name]["data"]
+        L.debug(f"update table buffer data {buffer_data}")
+
+        # Get the ID of the incoming data (adjust "id" to match your websocket payload key)
+        buffer_data = buffer_data[0]
+        L.debug(f"LIVE DATA KEYS: {buffer_data.keys()}")
+        incoming_varset_id = buffer_data.get("attributes", {}).get("variablesetfullid", {})
+
+        if incoming_varset_id:
+            new_row_data_list = []
+            
+            for row_data, col_defs, table_id in zip(row_data_list, col_defs_list, table_ids):
+                # ONLY process data if this table belongs to this dataset
+                if table_id["index"] == incoming_varset_id:
+                    data = {}
+                    for col in col_defs:
+                        name = col["field"]
+                        if name in buffer_data["variables"]:
+                            data[name] = buffer_data["variables"][name]["data"]
+                        else:
+                            data[name] = ""
+
+                    if len(row_data) > 30:
+                        new_row_data_list.append(row_data[:30])
+                    else:
+                        new_row_data_list.append(row_data)
                 else:
-                    data[name] = ""
+                    # Table doesn't match; keep existing data untouched
+                    new_row_data_list.append(row_data)
 
-            if len(row_data) > 30:
-                new_row_data_list.append(row_data[:30])
-            else:
-                new_row_data_list.append(row_data)
+            return new_row_data_list
+        
         else:
-            # Table doesn't match; keep existing data untouched
-            new_row_data_list.append(row_data)
-
-    return new_row_data_list
+            raise PreventUpdate
+    
+    except Exception as e:
+        print(f"data update error: {e}")
+        raise PreventUpdate
 
 
 
