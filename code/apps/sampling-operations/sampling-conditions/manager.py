@@ -101,10 +101,7 @@ class SamplingCondition:
         self.source_map = dict()
         self.criteria_map = dict()
         # self.source_data = dict()
-        self.default_criterion_module: str = (
-            # "apps.sampling-operations.sampling-conditions.criteria"
-            "criteria"
-        )
+        self.default_criterion_module: str = "criteria.default"
 
         self.current_state = False
 
@@ -114,79 +111,118 @@ class SamplingCondition:
         asyncio.create_task(self.condition_monitor())
         # asyncio.create_task(self.update_status_loop())
 
-    def configure(self):
+    # def configure(self):
 
+    #     if not self.config or "sources" not in self.config:
+    #         return
+
+    #     # for source_name, source in self.config["sources"].items():
+    #     #     vm = source["variablemap_name"]
+    #     #     vs = source["variableset_name"]
+    #     #     v = source["variable"]
+
+    #     for source_name, _ in self.config["sources"].items():
+    #         if source_name not in self.source_map:
+    #             # self.source_map[source_name] = {"data": dict(), "criteria": []}
+    #             self.source_map[source_name] = {"data": dict()}
+
+    #     #     if vm not in self.data:
+    #     #         self.data[vm] = dict()
+    #     #     if vs not in self.data[vm]:
+    #     #         self.data[vm][vs] = dict()
+    #     #     if v not in self.data[vm][vs]:
+    #     #         self.data[vm][vs][v] = dict()
+
+    #     try:
+    #         if "criteria" in self.config:
+    #             for group_type, group in self.config["criteria"].items():
+    #                 if group_type not in self.criteria_map:
+    #                     self.criteria_map[group_type] = {"criteria": []}
+    #                 for criterion_config in group:
+    #                     criterion_module = self.default_criterion_module
+    #                     if "criterion_module" in criterion_config:
+    #                         self.criterion_module = criterion_config["criterion_module"]
+    #                     mod_ = importlib.import_module(criterion_module)
+    #                     criterion_class = criterion_config["criterion_class"]
+    #                     criterion = getattr(mod_, criterion_class)(criterion_config)
+    #                     self.criteria_map[group_type]["criteria"].append(criterion)
+    #     except Exception as e:
+    #         self.logger.error("configure", extra={"reason": e})
+    #         # sys.exit()
+    #     # for source_name, _ in self.config["sources"].items():
+    #     #     if source_name not in self.source_map:
+    #     #         self.source_map[source_name] = {"data": dict(), "criteria": []}
+
+    #     # # for source_name, source in self.config["sources"].items():
+    #     # #     # TODO: fix this with "source_id"
+    #     # #     source_id = "variableset::variablemap::variable"
+    #     # #     if source_id not in self.source_map["source_id"]:
+    #     # #         self.source_map["source_id"][source_id] = {
+    #     # #             "source_name": source_name,
+    #     # #         }
+    #     # #     if source_name not in self.source_map["source_name"]:
+    #     # #         self.source_map["source_name"][source_name] = {
+    #     # #             "criteria": [],
+    #     # #         }
+
+    #     # if "criteria" in self.config:
+    #     #     for group_type, group in self.config["criteria"].items():
+    #     #         if group_type not in self.criteria_map:
+    #     #             self.criteria_map[group_type] = dict()
+    #     #         for _, criterion_config in group.items():
+    #     #             criterion_module = self.default_criterion_module
+    #     #             if "criterion_module" in criterion_config:
+    #     #                 self.criterion_module = criterion_config["criterion_module"]
+    #     #             mod_ = importlib.import_module(criterion_module)
+    #     #             criterion_class = criterion_config["criterion_class"]
+    #     #             criterion = getattr(mod_, criterion_class)(criterion_config)
+
+    #     # for source in criterion_config[group_type]["sources"]:
+    #     #     # if source in self.source_map["source_name"]:
+    #     #     if source in self.source_map:
+    #     #         # self.source_map["source_name"][source]["criteria"].append(
+    #     #         self.source_map[source]["criteria"].append(
+    #     #             {"sources":  criterion
+    #     #         )
+
+    def configure(self):
+        """
+        Parses the sampling condition configuration to map sources and instantiate 
+        criteria classes from specified or default modules.
+        """
         if not self.config or "sources" not in self.config:
             return
 
-        # for source_name, source in self.config["sources"].items():
-        #     vm = source["variablemap_name"]
-        #     vs = source["variableset_name"]
-        #     v = source["variable"]
-
+        # Initialize source mapping for each variable defined in the config
         for source_name, _ in self.config["sources"].items():
             if source_name not in self.source_map:
-                # self.source_map[source_name] = {"data": dict(), "criteria": []}
                 self.source_map[source_name] = {"data": dict()}
 
-        #     if vm not in self.data:
-        #         self.data[vm] = dict()
-        #     if vs not in self.data[vm]:
-        #         self.data[vm][vs] = dict()
-        #     if v not in self.data[vm][vs]:
-        #         self.data[vm][vs][v] = dict()
-
         try:
+            # Process criteria groups (e.g., "all", "any", "none")
             if "criteria" in self.config:
                 for group_type, group in self.config["criteria"].items():
                     if group_type not in self.criteria_map:
                         self.criteria_map[group_type] = {"criteria": []}
+                    
                     for criterion_config in group:
-                        criterion_module = self.default_criterion_module
-                        if "criterion_module" in criterion_config:
-                            self.criterion_module = criterion_config["criterion_module"]
-                        mod_ = importlib.import_module(criterion_module)
+                        # Check for the user-specified 'conditions_module', 
+                        # otherwise default to 'criteria.default'
+                        conditions_module = criterion_config.get(
+                            "conditions_module", 
+                            "criteria.default"
+                        )
+                        
+                        # Dynamically import the module and instantiate the class
+                        mod_ = importlib.import_module(conditions_module)
                         criterion_class = criterion_config["criterion_class"]
                         criterion = getattr(mod_, criterion_class)(criterion_config)
+                        
+                        # Add the instantiated criterion to the criteria map
                         self.criteria_map[group_type]["criteria"].append(criterion)
+                        
         except Exception as e:
             self.logger.error("configure", extra={"reason": e})
-            # sys.exit()
-        # for source_name, _ in self.config["sources"].items():
-        #     if source_name not in self.source_map:
-        #         self.source_map[source_name] = {"data": dict(), "criteria": []}
-
-        # # for source_name, source in self.config["sources"].items():
-        # #     # TODO: fix this with "source_id"
-        # #     source_id = "variableset::variablemap::variable"
-        # #     if source_id not in self.source_map["source_id"]:
-        # #         self.source_map["source_id"][source_id] = {
-        # #             "source_name": source_name,
-        # #         }
-        # #     if source_name not in self.source_map["source_name"]:
-        # #         self.source_map["source_name"][source_name] = {
-        # #             "criteria": [],
-        # #         }
-
-        # if "criteria" in self.config:
-        #     for group_type, group in self.config["criteria"].items():
-        #         if group_type not in self.criteria_map:
-        #             self.criteria_map[group_type] = dict()
-        #         for _, criterion_config in group.items():
-        #             criterion_module = self.default_criterion_module
-        #             if "criterion_module" in criterion_config:
-        #                 self.criterion_module = criterion_config["criterion_module"]
-        #             mod_ = importlib.import_module(criterion_module)
-        #             criterion_class = criterion_config["criterion_class"]
-        #             criterion = getattr(mod_, criterion_class)(criterion_config)
-
-        # for source in criterion_config[group_type]["sources"]:
-        #     # if source in self.source_map["source_name"]:
-        #     if source in self.source_map:
-        #         # self.source_map["source_name"][source]["criteria"].append(
-        #         self.source_map[source]["criteria"].append(
-        #             {"sources":  criterion
-        #         )
 
     async def update(self, data):
         self.logger.debug("update", extra={"update_data": data})
