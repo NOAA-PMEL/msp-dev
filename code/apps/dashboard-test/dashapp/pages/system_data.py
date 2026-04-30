@@ -545,8 +545,10 @@ def update_variableset_defs(varset_ids, current_defs):
                     )
                                 
                 if response.status_code == 200:
-                    current_defs[varset_id] = response.json()
+                    results = response.json()
+                    current_defs[varset_id] = results
                     updated = True
+                    L.debug(f"Varset definition: {results}")
 
                 else:
                     L.error(f"Failed to fetch {varset_id}: Status {response.status_code}")
