@@ -1828,9 +1828,11 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
                     
                     # FIX 2: Safely extract variables to prevent the KeyError crash
                     variables = buffer_data.get("variables", {})
+                    L.debug(f"EXTRACTED VARIABLES: '{variables}'")
                     
                     data = {}
                     for col in col_defs:
+                        L.debug(f"col: '{col}'")
                         name = col["field"]
                         if name in variables:
                             # Safely extract the data point
