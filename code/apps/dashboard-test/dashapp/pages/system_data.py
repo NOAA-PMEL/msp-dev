@@ -1790,6 +1790,7 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
         
         # --- DEBUG 1: See what the top level looks like ---
         L.debug(f"LIVE DATA KEYS: {buffer_data.keys()}")
+        L.debug(f"ATTRIBUTE KEYS: {buffer_data.get('attributes', {}).keys()}")
         
         # FIX 1: Drill all the way down to the actual string, safely!
         id_dict = buffer_data.get("attributes", {}).get("variablesetfullid", {})
