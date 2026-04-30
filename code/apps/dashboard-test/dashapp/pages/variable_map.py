@@ -156,7 +156,7 @@ def get_variablemap_def(variablemap_definition_id: str):
         L.debug(f"variablemap_results: {results}")
 
         if "results" in results and results["results"]:
-            return results["results"]
+            return results["results"][0]
         
     except Exception as e:
         L.error(f"variablemap_error: {e}")
