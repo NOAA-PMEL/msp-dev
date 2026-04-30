@@ -1824,7 +1824,7 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
                 # --- DEBUG 3: Watch the routing logic ---
                 L.debug(f"Comparing Table '{table_id['index']}' to Incoming '{incoming_varset_id}'")
                 
-                if table_id["index"] == incoming_varset_id:
+                if str(table_id["index"]) == str(incoming_varset_id):
                     
                     # FIX 2: Safely extract variables to prevent the KeyError crash
                     variables = buffer_data.get("variables", {})
