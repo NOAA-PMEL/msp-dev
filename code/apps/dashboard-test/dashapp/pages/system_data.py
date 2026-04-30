@@ -1367,13 +1367,79 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
 #     return [dash.no_update, dash.no_update]
 
 
+# @callback(
+#     Output({"type": "graph-1d", "index": ALL}, "extendData"),
+#     Input("variableset-data-buffer", "data"),
+#     [
+#         State({"type": "graph-1d-dropdown", "index": ALL}, "value"),
+#         # State("graph-axes", "data"),
+#         # State({"type": "graph-1d", "index": ALL}, "figure"),
+#     ],
+# )
+# def update_graph_1d(buffer_data, selected_values):
+#     if not buffer_data:
+#         raise PreventUpdate
+
+#     try:
+#         L.debug(f"update graph buffer data {buffer_data}")
+#         # NOTE: You need a way to identify WHICH dataset just arrived in the buffer.
+#         # Assuming your websocket payload includes a field identifying the varset_id:
+#         # e.g., incoming_varset_id = buffer_data.get("device_id") 
+#         # or    incoming_varset_id = buffer_data.get("id")
+#         buffer_data = buffer_data[0]
+#         incoming_varset_id = buffer_data.get("attributes", {}).get("variablesetfullid", {}) # Adjust this key to match your actual payload!
+        
+#         if isinstance(incoming_varset_id, dict):
+#             incoming_varset_id = incoming_varset_id.get("data")
+#         else:
+#             incoming_varset_id = incoming_varset_id
+
+#         figs_to_update = []
+
+#         if incoming_varset_id:
+
+#             for selected_value in selected_values:
+#                 # If the dropdown is empty, don't update this graph
+#                 if not selected_value:
+#                     figs_to_update.append(dash.no_update)
+#                     continue
+
+#                 varset_id, y_axis = selected_value.rsplit("::", 1)
+
+#                 # ONLY extend the graph if the incoming data belongs to the selected dataset
+#                 if incoming_varset_id != varset_id:
+#                     figs_to_update.append(dash.no_update)
+#                     continue
+
+#                 # Ensure the data has time and the selected variable
+#                 if "time" not in buffer_data.get("variables", {}) or y_axis not in buffer_data.get("variables", {}):
+#                     figs_to_update.append(dash.no_update)
+#                     continue
+
+#                 # Extract the live data points
+#                 x_val = buffer_data.get("variables", {}).get("time", {}).get("data", {})
+#                 y_val = buffer_data.get("variables", {}).get(y_axis, {}).get("data", {})
+
+#                 # Dash's extendData expects lists of lists: {"x": [[new_x]], "y": [[new_y]]}
+#                 figs_to_update.append({"x": [[x_val]], "y": [[y_val]]})
+
+#             return figs_to_update
+        
+#         else:
+#             raise PreventUpdate
+
+#     except Exception as e:
+#         print(f"data update error graph: {e}")
+#         L.error(traceback.format_exc())
+#         raise PreventUpdate
+
+
+
 @callback(
     Output({"type": "graph-1d", "index": ALL}, "extendData"),
     Input("variableset-data-buffer", "data"),
     [
         State({"type": "graph-1d-dropdown", "index": ALL}, "value"),
-        # State("graph-axes", "data"),
-        # State({"type": "graph-1d", "index": ALL}, "figure"),
     ],
 )
 def update_graph_1d(buffer_data, selected_values):
@@ -1382,29 +1448,29 @@ def update_graph_1d(buffer_data, selected_values):
 
     try:
         L.debug(f"update graph buffer data {buffer_data}")
-        # NOTE: You need a way to identify WHICH dataset just arrived in the buffer.
-        # Assuming your websocket payload includes a field identifying the varset_id:
-        # e.g., incoming_varset_id = buffer_data.get("device_id") 
-        # or    incoming_varset_id = buffer_data.get("id")
-        buffer_data = buffer_data[0]
-        incoming_varset_id = buffer_data.get("attributes", {}).get("variablesetfullid", {}) # Adjust this key to match your actual payload!
         
+        buffer_data = buffer_data[0]
+        
+        # Safely extract the ID
+        incoming_varset_id = buffer_data.get("attributes", {}).get("variablesetfullid", {})
         if isinstance(incoming_varset_id, dict):
             incoming_varset_id = incoming_varset_id.get("data")
-        else:
-            incoming_varset_id = incoming_varset_id
-
+            
         figs_to_update = []
 
         if incoming_varset_id:
-
             for selected_value in selected_values:
                 # If the dropdown is empty, don't update this graph
                 if not selected_value:
                     figs_to_update.append(dash.no_update)
                     continue
 
-                varset_id, y_axis = selected_value.rsplit("::", 1)
+                # Safely split varset_id and y_axis
+                try:
+                    varset_id, y_axis = selected_value.rsplit("::", 1)
+                except ValueError:
+                    figs_to_update.append(dash.no_update)
+                    continue
 
                 # ONLY extend the graph if the incoming data belongs to the selected dataset
                 if incoming_varset_id != varset_id:
@@ -1412,16 +1478,20 @@ def update_graph_1d(buffer_data, selected_values):
                     continue
 
                 # Ensure the data has time and the selected variable
-                if "time" not in buffer_data.get("variables", {}) or y_axis not in buffer_data.get("variables", {}):
+                variables = buffer_data.get("variables", {})
+                if "time" not in variables or y_axis not in variables:
                     figs_to_update.append(dash.no_update)
                     continue
 
-                # Extract the live data points
-                x_val = buffer_data.get("variables", {}).get("time", {}).get("data", {})
-                y_val = buffer_data.get("variables", {}).get(y_axis, {}).get("data", {})
+                # FIX 1: Extract the live data points (removed the {} fallback)
+                x_val = variables.get("time", {}).get("data")
+                y_val = variables.get(y_axis, {}).get("data")
 
-                # Dash's extendData expects lists of lists: {"x": [[new_x]], "y": [[new_y]]}
-                figs_to_update.append({"x": [[x_val]], "y": [[y_val]]})
+                # FIX 2: extendData requires a tuple: ( {data_dict}, [target_traces], max_points )
+                # [0] targets the first line on the graph. 1000 limits the line to 1000 points.
+                figs_to_update.append(
+                    ( {"x": [[x_val]], "y": [[y_val]]}, [0], 1000 )
+                )
 
             return figs_to_update
         
@@ -1432,6 +1502,8 @@ def update_graph_1d(buffer_data, selected_values):
         print(f"data update error graph: {e}")
         L.error(traceback.format_exc())
         raise PreventUpdate
+
+
 
 # @callback(
 #     Output({"type": "graph-2d-heatmap", "index": ALL}, "figure", allow_duplicate=True),
