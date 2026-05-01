@@ -185,7 +185,7 @@ def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
                     #     "type": "scatter",
                     # }
                 ),
-                style={"height": 300},
+                style={"height": 600},
             ),
         ]
     )
@@ -1504,7 +1504,7 @@ def update_graph_1d(buffer_data, selected_values):
                 L.debug(f"GRAPH ROUTING: Incoming '{incoming_varset_id}' vs Selected '{varset_id}'")
 
                 # ONLY extend the graph if the incoming data belongs to the selected dataset
-                if incoming_varset_id != varset_id:
+                if str(incoming_varset_id)[0:16] != str(varset_id)[0:16]:
                     figs_to_update.append(dash.no_update)
                     continue
 
