@@ -283,47 +283,14 @@ def update_variableset_buffers(event):
 
 
 
-def get_fake_trajectory_data(num_points=100, start_lat=50.0, start_lon=-1.0):
-    """
-    Generates a DataFrame with a simulated ship trajectory.
-    """
-    lats = [start_lat]
-    lons = [start_lon]
-    
-    # Simulate movement: small random changes + a slight northward/eastward drift
-    for i in range(1, num_points):
-        # Adding small increments (~0.01 degree is roughly 1km)
-        new_lat = lats[-1] + np.random.uniform(-0.005, 0.015) 
-        new_lon = lons[-1] + np.random.uniform(-0.005, 0.025)
-        
-        lats.append(new_lat)
-        lons.append(new_lon)
-    
-    df = pd.DataFrame({
-        'latitude': lats,
-        'longitude': lons,
-        'timestamp': pd.date_range(start='2024-01-01', periods=num_points, freq='1min')
-    })
-    
-    return df
-
-
-def get_dataset():
-    """Simple wrapper to return fake data."""
-    return get_fake_trajectory_data()
-
-
-
 @callback(
     Output("trajectory", "figure"),
-    # Input("global-status-container", "id") # Triggers when the health status container loads
     Input("variableset-data-buffer", "data"),
     State("trajectory", "figure"),
     prevent_initial_call=False
 )
 def update_trajectory(vs_data, current_figure):
     # Directly get the fake data
-    # df = get_dataset()
     if not vs_data:
         return dash.no_update
     
@@ -331,33 +298,14 @@ def update_trajectory(vs_data, current_figure):
         try:
             vs_data = vs_data[0].get("data-update", {})
             L.debug(f"variableset-data-trajectory{vs_data}")
-            L.debug(f"variableset-data-trajectory-attributes: {vs_data['attributes']}")
-            L.debug(f"variableset-data-trajectory-variables: {vs_data['variables']}")
-            lats = vs_data['variables']['latitude']['data']
-            lons = vs_data['variables']['longitude']['data']
 
-            # if current_figure is None or not current_figure.get('data'):
-            #     fig = px.scatter_map(
-            #         [{'latitude': lats, 'longitude': lons}],
-            #         lat='latitude', 
-            #         lon='longitude', 
-            #         title="Current Vessel Trajectory"
-            #     )
-            #     fig.update_traces(marker={'size': 8, 'color': '#007bff'})
-            #     fig.update_layout(
-            #         margin={"r":0,"t":30,"l":0,"b":0},
-            #         mapbox_style="open-street-map",
-            #         uirevision='constant' # Keeps zoom level fixed on updates
-            #     )
-            #     return fig
-
-        # # CONDITION: If it already exists, only send the patch (No Flicker!)
-        # patched_fig = Patch()
-        # patched_fig["data"][0]["lat"] = lats
-        # patched_fig["data"][0]["lon"] = lons
-        # return patched_fig
-
-        #     patched_fig = Patch()
+            variables = vs_data.get('variables', {})
+            
+            if 'latitude' not in variables or 'longitude' not in variables:
+                return dash.no_update
+                
+            lats = variables['latitude'].get('data')
+            lons = variables['longitude'].get('data')
             
             flattened_data = [
                 {
@@ -404,110 +352,6 @@ def update_trajectory(vs_data, current_figure):
 
 
 
-
-
-# @callback(
-#     Output("trajectory", "figure"),
-#     Input("variableset-data-buffer", "data"),
-#     State("trajectory", "figure"),
-#     prevent_initial_call=True
-# )
-# def update_trajectory(vs_data, current_fig):
-#     # 1. Guard against empty data
-#     if not vs_data or not vs_data[0].get('variables'):
-#         return dash.no_update
-        
-#     try:
-#         lats = vs_data[0]['variables']['latitude']['data']
-#         lons = vs_data[0]['variables']['longitude']['data']
-
-#         flattened_data = [
-#                 {
-#                     'latitude': lats,
-#                     'longitude': lons
-#                 }
-#             ]
-
-#         # 2. INITIAL CREATION: If figure is empty or has no data traces
-#         if current_fig is None or not current_fig.get('data'):
-#             fig = px.scatter_map(
-#                 flattened_data,
-#                 lat='latitude', 
-#                 lon='longitude', 
-#                 title="Current Vessel Trajectory"
-#             )
-#             fig.update_traces(marker={'size': 8, 'color': '#007bff'})
-#             fig.update_layout(
-#                 margin={"r":0,"t":30,"l":0,"b":0},
-#                 mapbox_style="open-street-map",
-#                 # THIS IS THE MOST IMPORTANT LINE:
-#                 uirevision='vessel-movement-const' 
-#             )
-#             return fig
-
-#         # 3. PARTIAL UPDATE: Modify existing figure
-#         patched_fig = Patch()
-        
-#         # We target 'lat' and 'lon' keys inside the first data trace
-#         patched_fig["data"][0]["lat"] = lats
-#         patched_fig["data"][0]["lon"] = lons
-#         patched_fig['data'][0]['marker']['color'] = '#007bff'
-#         patched_fig['data'][0]['marker']['size'] = 8
-#         patched_fig["data"][0]["marker"]["opacity"] = 1.0
-#         patched_fig["layout"]["datarevision"] = time.time()
-        
-#         # Ensure uirevision stays the same to prevent zoom reset
-#         patched_fig["layout"]["uirevision"] = 'vessel-movement-const'
-        
-#         return patched_fig
-
-#     except Exception as e:
-#         # Logging instead of crashing to prevent the UI from locking up
-#         print(f"Error: {e}")
-#         return dash.no_update
-
-
-
-
-# @callback(
-#     Output("trajectory", "figure"),
-#     Input("global-status-container", "id") # Triggers when the health status container loads
-# )
-# def plot_trajectory(_):
-#     # Directly get the fake data
-#     df = get_dataset()
-    
-#     lats = df['latitude']
-#     lons = df['longitude']
-    
-#     center_lat = lats.mean()
-#     center_lon = lons.mean()
-    
-#     # Dynamic Zoom Logic
-#     max_diff = max(np.abs(lats - center_lat).max(), np.abs(lons - center_lon).max(), 0.01)
-#     zoom_level = 8 - np.log2(max_diff)
-
-#     # Create the Map
-#     fig = px.scatter_map(
-#         df, 
-#         lat='latitude', 
-#         lon='longitude', 
-#         zoom=zoom_level, 
-#         center={"lat": center_lat, "lon": center_lon},
-#         title="Current Vessel Trajectory"
-#     )
-
-#     # Maritime Styling
-#     fig.update_traces(marker={'size': 8, 'color': '#007bff'}) # Nautical Blue
-#     fig.update_layout(
-#         margin={"r":0,"t":30,"l":0,"b":0},
-#         mapbox_style="open-street-map" # Reliable, no-token-needed map style
-#     )
-    
-#     return fig
-
-
-
 @callback(
     Output("trajectory-collapse", "is_open"),
     [Input("trajectory-toggle", "n_clicks")],
@@ -522,119 +366,7 @@ def toggle_trajectory_map(n_clicks, is_open):
         return not is_open
     return is_open
 
-# @callback(
-#     Output("trajectory", "figure"),
-#     # Input("dataset_options", "value"),
-#     Input("global-status-container", "id"),
-#     # prevent_initial_call=True
-# )
-# def plot_trajectory(sel_dataset):
-#     df = get_dataset()
-#     # if sel_dataset:
-#     #     if sel_dataset:
-#     #         # TESTING MODE: If you select a "Test" option, use the fake function
-#     #         if sel_dataset == "TEST_MODE":
-#     #             df = get_fake_trajectory_data(500)
-#     #         else:
-#     #             ds = get_dataset(sel_dataset)
-#     #             if not ds:
-#     #                 return go.Figure()
-#                 # df = ds.to_dataframe()
-#             # ds = get_dataset(sel_dataset)
-            
-#             # if ds:
-#             #     df = ds.to_dataframe()
-#     lats = df['latitude']
-#     lons = df['longitude']
-#     center_lat = np.mean(lats)
-#     center_lon = np.mean(lons)
-#     max_lat_diff = np.max(np.abs(lats - center_lat))
-#     max_lon_diff = np.max(np.abs(lons - center_lon))
-#     zoom_level = 8 - np.log2(max(max_lat_diff, max_lon_diff))
-#     if len(lats) > 500000:
-#         df_sub = df.iloc[::20, :]
-#     else:
-#         df_sub = df
-#     # fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
-#     #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
-#     # input_trig = ctx.triggered_id
-#     # if (input_trig != '1D_graph') and (input_trig != '2D_graph') :
-#     #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
-#     #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
-#     #     return fig
 
-#     # if tab_container == 'tab-1':               
-#     #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
-#     #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()}) 
-#     #     try:
-#     #         start_time = one_zoom_data['xaxis.range[0]']
-#     #         end_time = one_zoom_data['xaxis.range[1]']
-
-#     #         df_sel = df_sub.loc[start_time: end_time]
-
-#     #         trace = go.Scattermap(
-#     #             lat=df_sel['latitude'],
-#     #             lon=df_sel['longitude'],
-#     #             marker={'size': 7, 'color': 'red'})
-#     #         fig.add_trace(trace)
-
-#     #     except: 
-#     #         pass
-
-#     # if tab_container == 'tab-2':
-#     #     fig = px.scatter_map(df_sub, lat='latitude', lon='longitude', zoom=zoom_level, 
-#     #                 center={"lat": df['latitude'].mean(), "lon": df['longitude'].mean()})
-#     #     try: 
-#     #         start_time = two_zoom_data['xaxis.range[0]']
-#     #         end_time = two_zoom_data['xaxis.range[1]']
-
-#     #         df_sel = df_sub.loc[start_time: end_time]
-#     #         trace = go.Scattermap(
-#     #             lat=df_sel['latitude'],
-#     #             lon=df_sel['longitude'],
-#     #             marker={'size': 7, 'color': 'red'})
-#     #         fig.add_trace(trace)
-#     #         fig.update_traces()
-#     #         # fig.update_traces()
-#     #         # fig.update_layout()
-#     #         # print('update fig')
-#     #         # return fig
-#     #     except:
-#     #         pass
-#     #fig.update_maps(zoom=zoom_level, center_lat=center_lat, center_lon=center_lon)
-#     fig.update_traces()
-#     fig.update_layout()
-#     return fig
-#     else:
-#         #fig = go.Figure({'data': [], 'layout': {'autosize': True, 'xaxis': {'autorange': True}, 'yaxis': {'autorange': True}}})
-#         df_empty = pd.DataFrame({'lat': [], 'lon': []})
-#         fig = px.scatter_map(df_empty, lat='lat', lon='lon')
-#         fig.update_layout({'autosize': True})
-#         return fig
-#         #return no_update
-
-
-# Mock data - In a real app, this would come from your SQL or InfluxDB
-# def get_sensor_data():
-#     # In reality, this dict comes from your sensors/DB
-#     raw_data = [
-#         {'sensor': 'Flow Meter', 'value': 12.5, 'status_code': 0},
-#         {'sensor': 'Laser Diode', 'value': 98.2, 'status_code': 0},
-#         {'sensor': 'Vacuum Pump', 'value': 0.85, 'status_code': 14}, # 0x0E
-#         {'sensor': 'Inlet Temp', 'value': 22.1, 'status_code': 0}
-#     ]
-    
-#     processed = []
-#     for entry in raw_data:
-#         status, details = assign_sensor_status(entry['sensor'], entry['value'], entry['status_code'])
-#         processed.append({
-#             'Sensor': entry['sensor'],
-#             'Value': entry['value'],
-#             'Status': status,
-#             'Details': details,
-#             'Code': f"0x{entry['status_code']:02X}" if entry['status_code'] > 0 else "-"
-#         })
-#     return pd.DataFrame(processed)
 
 def get_sensor_data():
     sensors = ['Flow Meter', 'Laser Diode', 'Vacuum Pump', 'Inlet Temp']
