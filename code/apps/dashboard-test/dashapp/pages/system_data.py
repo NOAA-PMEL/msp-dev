@@ -989,6 +989,13 @@ def layout(platform=None):
         # Initialize the column list for this specific table
         table_columns_1d[varset_id] = []
 
+        table_columns_1d[varset_id].append({
+            "field": "time",
+            "headerName": "Timestamp",
+            "filter": False,
+            "cellDataType": "text",
+        })
+
         try:
             # dimensions = varset_definition.get("dimensions", {})
 
@@ -1836,6 +1843,18 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
                     for col in col_defs:
                         L.debug(f"col: '{col}'")
                         name = col["field"]
+
+                        if name == "time":
+                            # 1st attempt: Look inside 'variables' (where your previous log showed it)
+                            t_val = variables.get("time", {}).get("data")
+                            
+                            # 2nd attempt: Look at the root level (just in case the backend moves it)
+                            if not t_val:
+                                t_val = buffer_data.get("time", {}).get("data", "")
+                                
+                            data[name] = t_val
+                            continue
+                        
                         if name in variables:
                             # Safely extract the data point
                             data[name] = variables[name].get("data", "")
