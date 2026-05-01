@@ -491,6 +491,11 @@ async def handle_mqtt_buffer():
                 # msg = {"data-update": ce}
                 # L.debug("handle_mqtt_buffer", extra={"msg": msg, "controller_id": controller_id})
                 await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
+            
+            elif ce["type"] == "envds.samplingstate.status.update":
+                L.info(f"sampling state ce: {ce}")
+                L.info(f"variableset ce data: {ce.data}")
+                pass
         
         except Exception as e:
             L.error("handle_mqtt_buffer", extra={"reason": e})
