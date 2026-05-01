@@ -1509,11 +1509,12 @@ def update_graph_1d(buffer_data, selected_values):
             return figs_to_update
         
         else:
-            return dash.no_update
+            return [dash.no_update] * len(selected_values)
 
     except Exception as e:
         print(f"data update error graph: {e}")
         L.error(traceback.format_exc())
+        return [dash.no_update] * len(selected_values)
 
 
 
