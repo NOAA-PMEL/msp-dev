@@ -334,11 +334,10 @@ def update_trajectory(vs_data, current_figure):
                 title="Current Vessel Trajectory"
             )
 
-            # Maritime Styling
-            fig.update_traces(marker={'size': 8, 'color': '#007bff'}) # Nautical Blue
+            fig.update_traces(marker={'size': 8, 'color': '#007bff'})
             fig.update_layout(
                 margin={"r":0,"t":30,"l":0,"b":0},
-                mapbox_style="open-street-map" # Reliable, no-token-needed map style
+                mapbox_style="open-street-map"
             )
             
             return fig
@@ -359,8 +358,6 @@ def update_trajectory(vs_data, current_figure):
     prevent_initial_call=True # Prevents it from firing before the first click
 )
 def toggle_trajectory_map(n_clicks, is_open):
-    # This will print in your VS Code/Terminal window
-    print(f"Button clicked! Total clicks: {n_clicks}. Current state: {is_open}")
     
     if n_clicks:
         return not is_open

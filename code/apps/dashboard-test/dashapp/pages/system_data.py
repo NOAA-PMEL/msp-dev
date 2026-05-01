@@ -1125,7 +1125,7 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
             
             if unit_data:
                 units = f'({unit_data})'
-                
+
         except KeyError:
             pass
 
@@ -1501,6 +1501,8 @@ def update_graph_1d(buffer_data, selected_values):
                     figs_to_update.append(dash.no_update)
                     continue
 
+                L.debug(f"GRAPH ROUTING: Incoming '{incoming_varset_id}' vs Selected '{varset_id}'")
+
                 # ONLY extend the graph if the incoming data belongs to the selected dataset
                 if incoming_varset_id != varset_id:
                     figs_to_update.append(dash.no_update)
@@ -1508,13 +1510,28 @@ def update_graph_1d(buffer_data, selected_values):
 
                 # Ensure the data has time and the selected variable
                 variables = buffer_data.get("variables", {})
-                if "time" not in variables or y_axis not in variables:
+
+                
+                time_data = variables.get("time", {})
+                if not time_data:
+                    time_data = buffer_data.get("time", {}) # Check root if not in variables
+                
+                # CHECKPOINT 2: Did we find the data?
+                L.debug(f"GRAPH DATA CHECK: Time found? {bool(time_data)} | '{y_axis}' found? {y_axis in variables}")
+                
+                if not time_data or y_axis not in variables:
                     figs_to_update.append(dash.no_update)
                     continue
 
                 # FIX 1: Extract the live data points (removed the {} fallback)
                 x_val = variables.get("time", {}).get("data")
                 y_val = variables.get(y_axis, {}).get("data")
+
+                if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[0]
+                if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[0]
+
+                # CHECKPOINT 3: What is actually being sent to the graph?
+                L.debug(f"GRAPH APPENDING DATA: x=[{x_val}], y=[{y_val}]")
 
                 # FIX 2: extendData requires a tuple: ( {data_dict}, [target_traces], max_points )
                 # [0] targets the first line on the graph. 1000 limits the line to 1000 points.
