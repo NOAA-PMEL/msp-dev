@@ -1554,7 +1554,7 @@ def update_graph_1d(buffer_data, selected_values):
                 L.debug(f"GRAPH ROUTING: Incoming '{incoming_varset_id}' vs Selected '{varset_id}'")
 
                 # ONLY extend the graph if the incoming data belongs to the selected dataset
-                if str(incoming_varset_id)[0:16] != str(varset_id)[0:16]:
+                if str(incoming_varset_id) != str(varset_id):
                     figs_to_update.append(dash.no_update)
                     continue
 
@@ -1909,7 +1909,7 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
                 # --- DEBUG 3: Watch the routing logic ---
                 L.debug(f"Comparing Table '{table_id['index']}' to Incoming '{incoming_varset_id}'")
                 
-                if str(table_id["index"])[0:16] == str(incoming_varset_id)[0:16]:
+                if str(table_id["index"]) == str(incoming_varset_id):
                     
                     # FIX 2: Safely extract variables to prevent the KeyError crash
                     variables = buffer_data.get("variables", {})
