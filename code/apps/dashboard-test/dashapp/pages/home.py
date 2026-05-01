@@ -329,11 +329,12 @@ def update_trajectory(vs_data, current_figure):
     
     if vs_data:
         try:
+            vs_data = vs_data[0].get("data-update", {})
             L.debug(f"variableset-data-trajectory{vs_data}")
-            L.debug(f"variableset-data-trajectory-attributes: {vs_data[0]['attributes']}")
-            L.debug(f"variableset-data-trajectory-variables: {vs_data[0]['variables']}")
-            lats = vs_data[0]['variables']['latitude']['data']
-            lons = vs_data[0]['variables']['longitude']['data']
+            L.debug(f"variableset-data-trajectory-attributes: {vs_data['attributes']}")
+            L.debug(f"variableset-data-trajectory-variables: {vs_data['variables']}")
+            lats = vs_data['variables']['latitude']['data']
+            lons = vs_data['variables']['longitude']['data']
 
             # if current_figure is None or not current_figure.get('data'):
             #     fig = px.scatter_map(
