@@ -1084,6 +1084,7 @@ def layout(platform=None):
             dbc.Accordion(
                 build_graphs(shared_graph_dropdown, unique_varsets), # Uses the updated minimal build_graphs
                 id="sensor-plot-accordion",
+                style={"margin-top": "30px"}
             ),
 
             dcc.Store(id="master-dropdown-options", data=shared_graph_dropdown),
