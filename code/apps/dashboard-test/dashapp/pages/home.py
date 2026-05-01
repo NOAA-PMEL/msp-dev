@@ -285,11 +285,12 @@ def update_variableset_buffers(event):
 
 @callback(
     Output("trajectory", "figure"),
-    Input("variableset-data-buffer", "data"),
+    Input("variableset-interval", "n_intervals"),
+    State("variableset-data-buffer", "data"),
     State("trajectory", "figure"),
     prevent_initial_call=False
 )
-def update_trajectory(vs_data, current_figure):
+def update_trajectory(n_intervals, vs_data, current_figure):
     # Directly get the fake data
     if not vs_data:
         return dash.no_update
