@@ -454,6 +454,7 @@ async def handle_mqtt_buffer():
     while True:
         try:
             ce = await mqtt_buffer.get()
+            L.debug("handle_mqtt_buffer", extra={"ce received": ce})
 
             if ce["type"] == "envds.data.update":
                 attributes = ce.data["attributes"]
