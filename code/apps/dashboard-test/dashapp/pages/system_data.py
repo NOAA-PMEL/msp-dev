@@ -1108,7 +1108,7 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
         graph_axes["graph-1d"][graph_id["index"]] = {"x-axis": "time", "y-axis": y_axis}
 
         try:
-            unit_data = variableset_defs[varset_id]["variables"][y_axis]["attributes"]["units"]["data"]
+            unit_data = variableset_defs[varset_id]["variables"][y_axis].get("attributes", {}).get("units", {}).get("data", {})
             units = f'({unit_data})'
         except KeyError:
             pass
@@ -1125,6 +1125,7 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
 
     except Exception as e:
         print(f"select_graph_1d error: {e}")
+        L.error(traceback.format_exc())
         return dash.no_update  # , dash.no_update]
 
 
