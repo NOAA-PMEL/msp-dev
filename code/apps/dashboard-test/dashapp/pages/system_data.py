@@ -991,7 +991,7 @@ def layout(platform=None):
 
         table_columns_1d[varset_id].append({
             "field": "time",
-            "headerName": "Timestamp",
+            "headerName": "Time",
             "filter": False,
             "cellDataType": "text",
         })
@@ -1078,7 +1078,7 @@ def layout(platform=None):
             # Pre-populate the store with the IDs we just fetched so the interval 
             # callback has a baseline and doesn't immediately fire an update
             dcc.Store(id='variableset-store', data=current_sets),
-            dcc.Store(id='variableset-defs-store', data={}),            
+            dcc.Store(id='variableset-defs-store', data=all_variablesets),            
             dcc.Store(id='variableset-data-buffer', data={}),
             dcc.Interval(
                 id='variableset-interval',
@@ -1118,9 +1118,14 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
             graph_axes["graph-1d"] = dict()
         graph_axes["graph-1d"][graph_id["index"]] = {"x-axis": "time", "y-axis": y_axis}
 
+        units = ""
+
         try:
-            unit_data = variableset_defs[varset_id]["variables"][y_axis].get("attributes", {}).get("units", {}).get("data", {})
-            units = f'({unit_data})'
+            unit_data = variableset_defs[varset_id]["variables"][y_axis].get("attributes", {}).get("units", {}).get("data")
+            
+            if unit_data:
+                units = f'({unit_data})'
+                
         except KeyError:
             pass
 
