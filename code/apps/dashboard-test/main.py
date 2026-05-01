@@ -485,7 +485,8 @@ async def handle_mqtt_buffer():
                 # model = attributes["model"]["data"]
                 # serial_number = attributes["serial_number"]["data"]
                 # controller_id = "::".join([make, model, serial_number])
-                variableset_id = "raz1::main"
+                # variableset_id = "raz1::main"
+                variableset_id = ce["variablesetid"]
 
                 msg = {"data-update": ce.data, "variablesetfullid": ce["variablesetfullid"]}
                 # msg = {"data-update": ce}
