@@ -15,6 +15,7 @@ from dash import (
     MATCH,
     ALL,
     Patch,
+    ctx
 )
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
@@ -585,26 +586,55 @@ def update_variableset_defs(varset_ids, current_defs):
 
 
 
-@callback(
-        Output("variableset-data-buffer", "data"),
-        Input("ws-variableset-instance", "message")
-          )
-def update_variableset_buffers(event):
-    L.debug(f"update_variableset_buffers: {event}")
-    if event is not None and "data" in event:
-        event_data = json.loads(event["data"])
-        L.debug(f"update_variableset_buffers: {event}")
-        return [event_data]
-        # if "data-update" in event_data:
-        #     try:
-        #         # msg = json.loads(event["data-update"])
-        #         # print(f"update_controller_data: {event_data}")
-        #         if event_data["data-update"]:
-        #             return [event_data["data-update"]]
-        #     except Exception as event:
-        #         L.debug(f"data buffer update error: {event}")
+# @callback(
+#         Output("variableset-data-buffer", "data"),
+#         Input("ws-variableset-instance", "message")
+#           )
+# def update_variableset_buffers(event):
+#     L.debug(f"update_variableset_buffers: {event}")
+#     if event is not None and "data" in event:
+#         event_data = json.loads(event["data"])
+#         L.debug(f"update_variableset_buffers: {event}")
+#         return [event_data]
+#         # if "data-update" in event_data:
+#         #     try:
+#         #         # msg = json.loads(event["data-update"])
+#         #         # print(f"update_controller_data: {event_data}")
+#         #         if event_data["data-update"]:
+#         #             return [event_data["data-update"]]
+#         #     except Exception as event:
+#         #         L.debug(f"data buffer update error: {event}")
             
-    return [dash.no_update]
+#     return [dash.no_update]
+
+
+@callback(
+    Output("variableset-data-buffer", "data"),
+    Input({"type": "ws-variableset-instance", "index": ALL}, "message"),
+    prevent_initial_call=True
+)
+def update_variableset_buffers(events): # 'events' is now a list!
+    # 1. If nothing triggered, abort safely
+    if not ctx.triggered:
+        return dash.no_update
+        
+    # 2. Extract the exact event dictionary that just fired
+    event = ctx.triggered[0].get("value")
+    
+    L.debug(f"update_variableset_buffers: {event}")
+    
+    # 3. Your original JSON parsing logic!
+    if event is not None and "data" in event:
+        try:
+            event_data = json.loads(event["data"])
+            L.debug(f"update_variableset_buffers parsed: {event_data}")
+            return [event_data]
+            
+        except Exception as e:
+            L.error(f"data buffer JSON parse error: {e}")
+            return dash.no_update
+            
+    return dash.no_update
 
 
 
@@ -1089,11 +1119,18 @@ def layout(platform=None):
 
             dcc.Store(id="master-dropdown-options", data=shared_graph_dropdown),
             dcc.Store(id="graph-axes", data={}),
-            WebSocket(
-                id="ws-variableset-instance",
-                # You might need to dynamically handle this if multiple WebSockets are needed
-                url=f"{ws_url_base}/msp/dashboardtest/ws/variableset/raz1::main" 
-            ),
+            # WebSocket(
+            #     id="ws-variableset-instance",
+            #     # You might need to dynamically handle this if multiple WebSockets are needed
+            #     url=f"{ws_url_base}/msp/dashboardtest/ws/variableset/raz1::main" 
+            # ),
+
+            html.Div([
+                WebSocket(
+                    id={"type": "ws-variableset-instance", "index": v_id},
+                    url=f"{ws_url_base}/msp/dashboardtest/ws/variableset/{v_id}" 
+                ) for v_id in unique_varsets
+            ]),
             
             # Pre-populate the store with the IDs we just fetched so the interval 
             # callback has a baseline and doesn't immediately fire an update
@@ -1899,7 +1936,6 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
         else:
             incoming_varset_id = id_dict
 
-        # --- DEBUG 2: Verify we extracted a string like "raz1::main" ---
         L.debug(f"EXTRACTED INCOMING ID: '{incoming_varset_id}'")
 
         if incoming_varset_id:
