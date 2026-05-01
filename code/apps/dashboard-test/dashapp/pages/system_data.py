@@ -1017,6 +1017,10 @@ def layout(platform=None):
                 ln = var.get("attributes", {}).get("long_name", None)
                 if ln:
                     long_name = ln.get("data", name)
+                
+                unit_val = var.get("attributes", {}).get("units", {}).get("data")
+                if unit_val:
+                    long_name = f"{long_name} ({unit_val})"
 
                 # Get data type
                 dtype = var.get("type", "unknown")
@@ -1854,7 +1858,7 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
                                 
                             data[name] = t_val
                             continue
-                        
+
                         if name in variables:
                             # Safely extract the data point
                             data[name] = variables[name].get("data", "")
