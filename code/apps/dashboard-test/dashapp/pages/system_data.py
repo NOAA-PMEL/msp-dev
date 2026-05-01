@@ -1127,9 +1127,15 @@ def layout(platform=None):
 
             html.Div([
                 WebSocket(
-                    id={"type": "ws-variableset-instance", "index": v_id},
-                    url=f"{ws_url_base}/msp/dashboardtest/ws/variableset/{v_id}" 
-                ) for v_id in unique_varsets
+                    # Keep the Dash index as the long ID so the app routing works
+                    id={"type": "ws-variableset-instance", "index": v_id}, 
+                    
+                    # Extract 'raz1' and 'main' from the definition to build the correct URL!
+                    url=f"{ws_url_base}/msp/dashboardtest/ws/variableset/"
+                        f"{all_variablesets[v_id].get('attributes', {}).get('variablemap_id', 'unknown')}::"
+                        f"{all_variablesets[v_id].get('variableset', 'unknown')}"
+                ) 
+                for v_id in unique_varsets
             ]),
             
             # Pre-populate the store with the IDs we just fetched so the interval 
