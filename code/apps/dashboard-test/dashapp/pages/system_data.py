@@ -443,10 +443,25 @@ def build_graph_settings_3d():
 
 #     return graph_list
 
-def build_graphs(shared_dropdown_list):
+def build_graphs(shared_dropdown_list, unique_varsets):
     return [
         dbc.AccordionItem(
             [
+                dbc.Row(
+                    children=[
+                        dcc.Checklist(
+                            # Important: This index ("shared") must exactly match 
+                            # the index your dropdown uses inside build_graph_1d!
+                            id={"type": "graph-varset-filter", "index": "shared"}, 
+                            options=[{"label": f" {v}", "value": v} for v in unique_varsets],
+                            value=unique_varsets, # All checked by default
+                            inline=True,
+                            inputStyle={"margin-right": "5px", "margin-left": "15px"},
+                            style={"margin-bottom": "15px", "font-weight": "bold"}
+                        )
+                    ]
+                ),
+
                 dbc.Row(
                     children=[
                         build_graph_1d(
@@ -1048,13 +1063,15 @@ def layout(platform=None):
                 if data_type == "number":
                     shared_graph_dropdown.append(
                         {
-                            "label": f"{varset_id} - {long_name}", 
+                            "label": f"{long_name} - {varset_id}", 
                             "value": f"{varset_id}::{name}"
                         }
                     )
 
         except KeyError as e:
             L.error(f"build column_defs error for {varset_id}: {e}")
+    
+    unique_varsets = list(all_variablesets.keys())
 
     # 4. Build the layout
     layout_div = html.Div(
@@ -1065,9 +1082,11 @@ def layout(platform=None):
                 id="system-data-accordion",
             ),
             dbc.Accordion(
-                build_graphs(shared_graph_dropdown), # Uses the updated minimal build_graphs
+                build_graphs(shared_graph_dropdown, unique_varsets), # Uses the updated minimal build_graphs
                 id="sensor-plot-accordion",
             ),
+
+            dcc.Store(id="master-dropdown-options", data=shared_graph_dropdown),
             dcc.Store(id="graph-axes", data={}),
             WebSocket(
                 id="ws-variableset-instance",
@@ -1090,6 +1109,37 @@ def layout(platform=None):
 
     return layout_div
 
+
+
+
+@callback(
+    Output({"type": "graph-1d-dropdown", "index": MATCH}, "options"),
+    Input({"type": "graph-varset-filter", "index": MATCH}, "value"),
+    State("master-dropdown-options", "data"),
+    prevent_initial_call=False
+)
+def filter_graph_dropdown(selected_varsets, master_options):
+    if not master_options:
+        return dash.no_update
+        
+    # If the user unchecks every box, clear the dropdown completely
+    if not selected_varsets:
+        return [] 
+        
+    filtered_options = []
+    
+    for opt in master_options:
+        # Split the value to check which dataset it belongs to
+        try:
+            varset_id, variable_name = opt["value"].rsplit("::", 1)
+        except ValueError:
+            continue
+            
+        # If the ID matches one of the checked boxes, keep it in the list!
+        if varset_id in selected_varsets:
+            filtered_options.append(opt)
+            
+    return filtered_options
 
 
 
