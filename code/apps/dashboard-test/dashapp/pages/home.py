@@ -307,6 +307,10 @@ def update_trajectory(n_intervals, vs_data, current_figure):
                 
             lats = variables['latitude'].get('data')
             lons = variables['longitude'].get('data')
+
+            if not isinstance(lats, (int, float)) or not isinstance(lons, (int, float)):
+                L.debug(f"Ignored invalid GPS coordinates: lat={lats}, lon={lons}")
+                return dash.no_update
             
             flattened_data = [
                 {
