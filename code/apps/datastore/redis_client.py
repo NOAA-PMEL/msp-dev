@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import redis.asyncio as redis
 from redis.commands.json.path import Path
 from redis.commands.search.index_definition import IndexDefinition, IndexType
@@ -259,7 +260,20 @@ class RedisClient(DBClient):
             async for key in self.client.scan_iter(f"{prefix}*"):
                 if isinstance(key, bytes):
                     key = key.decode('utf-8')
-                ids.append(key.replace(prefix, ""))
+                
+                raw_id = key.replace(prefix, "")
+                
+                # Transparently restore colons for ISO8601 timestamp strings in the ID
+                if "::" in raw_id:
+                    parts = raw_id.split("::")
+                    for i in range(len(parts)):
+                        t = parts[i]
+                        # Match stripped ISO8601 YYYY-MM-DDTHHMMSSZ
+                        if re.match(r"^\d{4}-\d{2}-\d{2}T\d{6}(?:\.\d+)?Z$", t):
+                            parts[i] = f"{t[:13]}:{t[13:15]}:{t[15:]}"
+                    raw_id = "::".join(parts)
+
+                ids.append(raw_id)
         except Exception as e:
             self.logger.error("redis_client:get_ids_safely", extra={"prefix": prefix, "reason": str(e)})
         return {"results": ids}
@@ -551,7 +565,9 @@ class RedisClient(DBClient):
         if request.variablemap_type: query_args.append(f"@variablemap_type:{{{self.escape_query(request.variablemap_type)}}}")
         if request.variablemap_type_id: query_args.append(f"@variablemap_type_id:{{{self.escape_query(request.variablemap_type_id)}}}")
         if request.variablemap: query_args.append(f"@variablemap:{{{self.escape_query(request.variablemap)}}}")
-        if request.valid_config_time: query_args.append(f"@valid_config_time:{{{self.escape_query(request.valid_config_time.replace(':', ''))}}}")
+        # if request.valid_config_time: query_args.append(f"@valid_config_time:{{{self.escape_query(request.valid_config_time.replace(':', ''))}}}")
+        if request.valid_config_time: 
+            query_args.append(f"@valid_config_time:{{{self.escape_query(request.valid_config_time)}}}")
 
         qstring = " ".join(query_args) if query_args else "*"
         q = Query(qstring).return_fields("$")
@@ -614,9 +630,12 @@ class RedisClient(DBClient):
         # SLOW PATH: RediSearch Dashboard Lookups
         # ---------------------------------------------------------
         query_args = []
+        # if request.variablemap_definition_id:
+        #     vmap_id = request.variablemap_definition_id.replace(":", "") if "::" not in request.variablemap_definition_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(request.variablemap_definition_id.split("::"))])
+        #     query_args.append(f"@variablemap_definition_id:{{{self.escape_query(vmap_id)}}}")
         if request.variablemap_definition_id:
-            vmap_id = request.variablemap_definition_id.replace(":", "") if "::" not in request.variablemap_definition_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(request.variablemap_definition_id.split("::"))])
-            query_args.append(f"@variablemap_definition_id:{{{self.escape_query(vmap_id)}}}")
+            query_args.append(f"@variablemap_definition_id:{{{self.escape_query(request.variablemap_definition_id)}}}")
+
         if request.variableset: query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
         if request.index_type: query_args.append(f"@index_type:{{{self.escape_query(request.index_type)}}}")
         if request.index_value: query_args.append(f"@index_value:{{{self.escape_query(str(request.index_value))}}}")
@@ -674,6 +693,14 @@ class RedisClient(DBClient):
         try:
             self.connect()
             document = request.dict()
+
+            # FIX: Safely strip colons from the timestamp segment for the Redis Key
+            redis_id = request.variableset_id
+            if redis_id and "::" in redis_id:
+                redis_id = "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
+            elif redis_id:
+                redis_id = redis_id.replace(":", "")
+
             key = f"{database}:{collection}:{request.variableset_id}:{request.timestamp}"
             result = await self.client.json().set(key, "$", {"record": document})
             if result and ttl > 0:
@@ -704,6 +731,14 @@ class RedisClient(DBClient):
         try:
             self.connect()
             document = request.dict()
+
+            # FIX: Safely strip colons from the timestamp segment for the Redis Key
+            redis_id = request.variableset_id
+            if redis_id and "::" in redis_id:
+                redis_id = "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
+            elif redis_id:
+                redis_id = redis_id.replace(":", "")
+
             key = f"{database}:{collection}:{request.variableset_id}"
             result = await self.client.json().set(key, "$", {"registration": document})
             if result and ttl > 0:
@@ -732,7 +767,8 @@ class RedisClient(DBClient):
         try:
             self.connect()
             name = request.get("metadata", {}).get("name", "unknown")
-            valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z").replace(":", "")
+            # valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z").replace(":", "")
+            valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z")
             id = f"{name}::{valid_time}"
             key = f"{database}:{collection}:{id}"
             
