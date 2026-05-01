@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     mqtt_broker: str = 'mosquitto.default'
     mqtt_port: int = 1883
     # mqtt_topic_filter: str = 'aws-id/acg-daq/+'
-    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#' #['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
+    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#', 'envds/+/+/status/#' #['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
     # mqtt_client_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     mqtt_client_id: str = Field(str(ULID()))
 
@@ -480,11 +480,6 @@ async def handle_mqtt_buffer():
             elif ce["type"] == "envds.variableset.data.update":
                 L.info(f"variableset ce: {ce}")
                 L.info(f"variableset ce attributes: {ce.data}")
-                # attributes = ce.data["attributes"]
-                # make = attributes["make"]["data"]
-                # model = attributes["model"]["data"]
-                # serial_number = attributes["serial_number"]["data"]
-                # controller_id = "::".join([make, model, serial_number])
                 # variableset_id = "raz1::main"
                 variableset_id = ce["variablesetid"]
 
@@ -495,7 +490,7 @@ async def handle_mqtt_buffer():
             
             elif ce["type"] == "envds.samplingstate.status.update":
                 L.info(f"sampling state ce: {ce}")
-                L.info(f"variableset ce data: {ce.data}")
+                L.info(f"sampling state ce data: {ce.data}")
                 pass
         
         except Exception as e:
