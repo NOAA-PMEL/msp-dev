@@ -461,8 +461,10 @@ class SamplingConditionsManager:
         self.config = SamplingConditionsManagerConfig()
 
         self.http_client = None
-
         self._background_tasks = set()
+        self.mqtt_buffer = None
+        self.status_buffer = None
+        self.publish_queue = None
 
         self.configure()
         # print("here:7")
@@ -484,6 +486,8 @@ class SamplingConditionsManager:
         self.logger.info("Running SamplingConditionsManager async setup...")
         
         self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        self.publish_queue = asyncio.Queue(maxsize=2000)
+
         # FIX: Only create if it wasn't already created during configure()
         if not getattr(self, "status_buffer", None):
             self.status_buffer = asyncio.Queue(maxsize=2000)
@@ -498,9 +502,10 @@ class SamplingConditionsManager:
         task3 = asyncio.create_task(self.condition_status_monitor())
         task4 = asyncio.create_task(self.publish_local_definitions())
         task5 = asyncio.create_task(self.sync_sampling_definitions_loop())
+        task6 = asyncio.create_task(self.mqtt_publish_loop())
         
         # Save references to prevent garbage collection
-        self._background_tasks.update({task1, task2, task3, task4, task5})
+        self._background_tasks.update({task1, task2, task3, task4, task5, task6})
 
         self.logger.info("SamplingConditionsManager background tasks started successfully.")
 
@@ -693,30 +698,56 @@ class SamplingConditionsManager:
     #         print("error", e)
     #     await asyncio.sleep(0.01)
 
-    async def send_event(self, ce):
-        try:
-            self.logger.debug("send_event", extra={"cepayload": ce})
-            if not getattr(self, 'http_client', None):
-                self.open_http_client()
-            try:
-                timeout = httpx.Timeout(5.0, read=10.0)
-                headers, body = to_structured(ce)
+    # async def send_event(self, ce):
+    #     try:
+    #         self.logger.debug("send_event", extra={"cepayload": ce})
+    #         if not getattr(self, 'http_client', None):
+    #             self.open_http_client()
+    #         try:
+    #             timeout = httpx.Timeout(5.0, read=10.0)
+    #             headers, body = to_structured(ce)
                 
-                r = await self.http_client.post(
-                    self.config.knative_broker,
-                    headers=headers,
-                    data=body,
-                    timeout=timeout,
-                )
-                r.raise_for_status()
-            except InvalidStructuredJSON:
-                self.logger.error(f"INVALID MSG: {ce}")
-            except httpx.TimeoutException:
-                pass
-            except httpx.HTTPError as e:
-                self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+    #             r = await self.http_client.post(
+    #                 self.config.knative_broker,
+    #                 headers=headers,
+    #                 data=body,
+    #                 timeout=timeout,
+    #             )
+    #             r.raise_for_status()
+    #         except InvalidStructuredJSON:
+    #             self.logger.error(f"INVALID MSG: {ce}")
+    #         except httpx.TimeoutException:
+    #             pass
+    #         except httpx.HTTPError as e:
+    #             self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+    #     except Exception as e:
+    #         print("error", e)
+
+    async def send_event(self, ce):
+        """Converts CloudEvents to JSON and drops them onto the persistent MQTT publish queue."""
+        try:
+            self.logger.debug(ce)
+            
+            # Extract the topic from the event
+            topic = ce.get("destpath", "")
+            if not topic:
+                self.logger.warning("send_event called with no 'destpath' defined in the CloudEvent. Cannot route to MQTT.")
+                return
+
+            # Convert to structured JSON payload
+            headers, body = to_structured(ce)
+            
+            self.logger.debug("send_event (Routing to MQTT)", extra={"topic": topic, "body": body})
+            
+            # Drop the tuple onto the publisher queue
+            await self.publish_queue.put((topic, body))
+
+        except InvalidStructuredJSON:
+            self.logger.error(f"INVALID MSG JSON: {ce}")
         except Exception as e:
-            print("error", e)
+            self.logger.error("send_event failed", extra={"reason": str(e)})
+            
+        await asyncio.sleep(0.01)
 
     async def submit_get(self, path: str):
         try:
@@ -845,6 +876,7 @@ class SamplingConditionsManager:
                 )
 
                 await self.send_event(event)
+
             except Exception as e:
                 self.logger.error("condition_event_monitor", extra={"reason": e})
             
@@ -925,6 +957,26 @@ class SamplingConditionsManager:
 
             await asyncio.sleep(0.0001)
             self.mqtt_buffer.task_done()
+
+    async def mqtt_publish_loop(self):
+        """Maintains a persistent MQTT connection strictly for outbound status events."""
+        reconnect = 5
+        client_id = f"conditions-publisher-{ULID()}"
+        while True:
+            try:
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as client:
+                    self.logger.info("Connected to MQTT broker for outbound publishing.")
+                    while True:
+                        topic, payload = await self.publish_queue.get()
+                        # QoS 1 ensures the update makes it to the broker
+                        await client.publish(topic, payload, qos=1)
+                        self.publish_queue.task_done()
+            except MqttError as e:
+                self.logger.error(f"MQTT Publish Error: {e}. Reconnecting in {reconnect}s...")
+                await asyncio.sleep(reconnect)
+            except Exception as e:
+                self.logger.error("mqtt_publish_loop unexpected error", extra={"reason": str(e)})
+                await asyncio.sleep(reconnect)
 
     async def variableset_data_update(self, ce: CloudEvent):
 

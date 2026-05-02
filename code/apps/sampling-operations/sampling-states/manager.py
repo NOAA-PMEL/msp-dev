@@ -390,14 +390,18 @@ class SamplingStatesManager:
         # self.sampling_states = dict()
         self.sampling_states = {"states": dict(), "requirement_map": {}}
 
-        self.status_buffer = asyncio.Queue(maxsize=60)
-        # self.sampling_actions = dict()
-
+        # self.status_buffer = asyncio.Queue(maxsize=60)
+        # # self.sampling_actions = dict()
 
         self.config = SamplingStatesManagerConfig()
         self.http_client = None
 
         self._background_tasks = set()
+
+        # Initialize as None, will be set in setup()
+        self.status_buffer = None
+        self.mqtt_buffer = None
+        self.publish_queue = None
 
         self.configure()
         # print("here:7")
@@ -416,6 +420,7 @@ class SamplingStatesManager:
         
         self.status_buffer = asyncio.Queue(maxsize=2000)
         self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        self.publish_queue = asyncio.Queue(maxsize=2000) # Added outbound queue
         
         self.http_client = httpx.AsyncClient(
             limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
@@ -426,7 +431,8 @@ class SamplingStatesManager:
         task3 = asyncio.create_task(self.state_status_monitor())
         task4 = asyncio.create_task(self.publish_local_definitions())
         task5 = asyncio.create_task(self.sync_sampling_definitions_loop())
-        self._background_tasks.update({task1, task2, task3, task4, task5})
+        task6 = asyncio.create_task(self.mqtt_publish_loop())
+        self._background_tasks.update({task1, task2, task3, task4, task5, task6})
 
     def open_http_client(self):
         self.http_client = httpx.AsyncClient(
@@ -594,15 +600,41 @@ class SamplingStatesManager:
             self.logger.error("submit_request", extra={"reason": e})
             return {}
 
+    # async def send_event(self, ce):
+    #     try:
+    #         if not getattr(self, 'http_client', None): self.open_http_client()
+    #         timeout = httpx.Timeout(5.0, read=10.0)
+    #         headers, body = to_structured(ce)
+    #         r = await self.http_client.post(self.config.knative_broker, headers=headers, data=body, timeout=timeout)
+    #         r.raise_for_status()
+    #     except Exception as e:
+    #         self.logger.error("send_event error", extra={"reason": e})
+
     async def send_event(self, ce):
+        """Converts CloudEvents to JSON and drops them onto the persistent MQTT publish queue."""
         try:
-            if not getattr(self, 'http_client', None): self.open_http_client()
-            timeout = httpx.Timeout(5.0, read=10.0)
+            self.logger.debug(ce)
+            
+            # Extract the topic from the event
+            topic = ce.get("destpath", "")
+            if not topic:
+                self.logger.warning("send_event called with no 'destpath' defined in the CloudEvent. Cannot route to MQTT.")
+                return
+
+            # Convert to structured JSON payload
             headers, body = to_structured(ce)
-            r = await self.http_client.post(self.config.knative_broker, headers=headers, data=body, timeout=timeout)
-            r.raise_for_status()
+            
+            self.logger.debug("send_event (Routing to MQTT)", extra={"topic": topic, "body": body})
+            
+            # Drop the tuple onto the publisher queue
+            await self.publish_queue.put((topic, body))
+
+        except InvalidStructuredJSON:
+            self.logger.error(f"INVALID MSG JSON: {ce}")
         except Exception as e:
-            self.logger.error("send_event error", extra={"reason": e})
+            self.logger.error("send_event failed", extra={"reason": str(e)})
+            
+        await asyncio.sleep(0.01)
 
     async def publish_local_definitions(self):
         await asyncio.sleep(5)
@@ -699,6 +731,7 @@ class SamplingStatesManager:
                 )
 
                 await self.send_event(event)
+
             except Exception as e:
                 self.logger.error("state_status_monitor", extra={"reason": e})
             
@@ -794,6 +827,26 @@ class SamplingStatesManager:
                 self.mqtt_buffer.task_done()
             except Exception as e:
                 self.logger.error("handle_mqtt_buffer", extra={"reason": e})
+    
+    async def mqtt_publish_loop(self):
+        """Maintains a persistent MQTT connection strictly for outbound status events."""
+        reconnect = 5
+        client_id = f"states-publisher-{ULID()}"
+        while True:
+            try:
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as client:
+                    self.logger.info("Connected to MQTT broker for outbound publishing.")
+                    while True:
+                        topic, payload = await self.publish_queue.get()
+                        await client.publish(topic, payload, qos=1)
+                        self.publish_queue.task_done()
+            except MqttError as e:
+                self.logger.error(f"MQTT Publish Error: {e}. Reconnecting in {reconnect}s...")
+                await asyncio.sleep(reconnect)
+            except Exception as e:
+                self.logger.error("mqtt_publish_loop unexpected error", extra={"reason": str(e)})
+                await asyncio.sleep(reconnect)
+    
     async def requirement_status_update(self, ce: CloudEvent):
 
         try:
