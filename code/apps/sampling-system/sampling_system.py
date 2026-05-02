@@ -161,13 +161,20 @@ class SamplingSystem:
         self.index_ready_buffer = asyncio.Queue(maxsize=1000)
         self.outbound_mqtt_buffer = asyncio.Queue(maxsize=2000)
 
-        # Safely launch tasks on Uvicorn's active event loop
-        asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.handle_mqtt_buffer())
-        asyncio.create_task(self.index_monitor())
-        asyncio.create_task(self.publish_local_definitions())
-        asyncio.create_task(self.sync_sampling_definitions_loop())
-        asyncio.create_task(self.outbound_mqtt_worker())
+        # Add a set to hold task references
+        if not hasattr(self, '_background_tasks'):
+            self._background_tasks = set()
+
+        t1 = asyncio.create_task(self.get_from_mqtt_loop())
+        t2 = asyncio.create_task(self.handle_mqtt_buffer())
+        t3 = asyncio.create_task(self.index_monitor())
+        t4 = asyncio.create_task(self.publish_local_definitions())
+        t5 = asyncio.create_task(self.sync_sampling_definitions_loop())
+        t6 = asyncio.create_task(self.outbound_mqtt_worker())
+        
+        # Store strong references
+        self._background_tasks.update({t1, t2, t3, t4, t5, t6})
+        
         self.logger.info("SamplingSystem background tasks started successfully.")
 
     # --- Add/Update these methods to match the Registrar pattern ---
@@ -965,14 +972,14 @@ class SamplingSystem:
     #         print("error", e)
     #     await asyncio.sleep(0.01)
 
-    async def send_to_mqtt(self, topic: str, ce: CloudEvent):
-        """Publishes a CloudEvent directly to the local MQTT broker."""
-        try:
-            payload = to_json(ce) # Convert CloudEvent to JSON string
-            async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
-                await client.publish(topic, payload=payload)
-        except Exception as e:
-            self.logger.error("send_to_mqtt error", extra={"reason": e})
+    # async def send_to_mqtt(self, topic: str, ce: CloudEvent):
+    #     """Publishes a CloudEvent directly to the local MQTT broker."""
+    #     try:
+    #         payload = to_json(ce) # Convert CloudEvent to JSON string
+    #         async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
+    #             await client.publish(topic, payload=payload)
+    #     except Exception as e:
+    #         self.logger.error("send_to_mqtt error", extra={"reason": e})
 
     # async def sync_sampling_definitions_loop(self):
     #     """
