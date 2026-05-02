@@ -755,6 +755,14 @@ class SamplingSystem:
             current_vm["variablesets"][vs_name]["attributes"]["index_value"] = {"type": vtype, "data": vs_def["index"]["index_value"]}
             current_vm["variablesets"][vs_name]["attributes"]["variablemap_kind"] = {"type": "string", "data": vm["kind"]}
 
+            # ---------------------------------------------------------
+            # ADD THESE LINES: Forcefully inject the routing metadata
+            # ---------------------------------------------------------
+            current_vm["variablesets"][vs_name]["attributes"]["variablemap"] = {"type": "string", "data": vm_name}
+            current_vm["variablesets"][vs_name]["attributes"]["platform"] = {"type": "string", "data": platform_name}
+            current_vm["variablesets"][vs_name]["attributes"]["valid_config_time"] = {"type": "string", "data": valid_config_time}
+            # ---------------------------------------------------------
+            
             current_vm["variablesets"][vs_name]["dimensions"] = {"time": 0}
 
             # Add variables for variableset
