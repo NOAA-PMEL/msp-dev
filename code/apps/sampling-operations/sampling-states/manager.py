@@ -181,7 +181,15 @@ class SamplingState:
                         for ts, st in req["data"].items():
                             if string_to_datetime(ts).replace(tzinfo=timezone.utc) > transition_dt:
                                 req_status.append(st)
-                        req["status"] = all(req_status)
+
+                        # req["status"] = all(req_status)
+
+                        # FIX: Prevent the all([]) == True bug
+                        if not req_status:
+                            req["status"] = False
+                        else:
+                            req["status"] = all(req_status)
+
                         state_status.append(req["status"])
                         self.logger.debug("requirement_monitor", extra={"state_status": state_status, "req_status": req_status})
                 # current_dt = get_datetime()
@@ -277,103 +285,103 @@ class SamplingState:
 
 
 
-    async def evaluate_criteria(self, timestamp):
+    # async def evaluate_criteria(self, timestamp):
 
-        try:
-            crit_states = []
-            for group_type, group in self.criteria_map.items():
-                group_states = []
-                for criterion in group["criteria"]:
-                    data = {"time": timestamp}
-                    for src_name in criterion.get_sources():
-                        # self.logger.debug("evaluate_criteria", extra={"src_name": src_name})
-                        if (
-                            timestamp not in self.source_map[src_name]
-                            or self.source_map[src_name][timestamp] is None
-                        ):
-                            # missing source data, can't evaluate
-                            self.logger.info(
-                                "evaluate_criteria",
-                                extra={
-                                    "src_name": src_name,
-                                    "ts": timestamp,
-                                    "success": False,
-                                    "reason": "missing source value",
-                                },
-                            )
-                            return
-                        data[src_name] = self.source_map[src_name][timestamp]["data"]
-                    self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
-                    try:
-                        group_states.append(await criterion.evaluate(sources=data))
-                    except Exception as e:
-                        # what to do on error?
-                        group_states.append(False)
-                    # group_states.append(res)
-                if group_type == "all":
-                    crit_states.append(all(group_states))
-                elif group_type == "any":
-                    crit_states.append(any(group_states))
-                elif group_type == "none":
-                    crit_states.append(not any(group_states))
+    #     try:
+    #         crit_states = []
+    #         for group_type, group in self.criteria_map.items():
+    #             group_states = []
+    #             for criterion in group["criteria"]:
+    #                 data = {"time": timestamp}
+    #                 for src_name in criterion.get_sources():
+    #                     # self.logger.debug("evaluate_criteria", extra={"src_name": src_name})
+    #                     if (
+    #                         timestamp not in self.source_map[src_name]
+    #                         or self.source_map[src_name][timestamp] is None
+    #                     ):
+    #                         # missing source data, can't evaluate
+    #                         self.logger.info(
+    #                             "evaluate_criteria",
+    #                             extra={
+    #                                 "src_name": src_name,
+    #                                 "ts": timestamp,
+    #                                 "success": False,
+    #                                 "reason": "missing source value",
+    #                             },
+    #                         )
+    #                         return
+    #                     data[src_name] = self.source_map[src_name][timestamp]["data"]
+    #                 self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
+    #                 try:
+    #                     group_states.append(await criterion.evaluate(sources=data))
+    #                 except Exception as e:
+    #                     # what to do on error?
+    #                     group_states.append(False)
+    #                 # group_states.append(res)
+    #             if group_type == "all":
+    #                 crit_states.append(all(group_states))
+    #             elif group_type == "any":
+    #                 crit_states.append(any(group_states))
+    #             elif group_type == "none":
+    #                 crit_states.append(not any(group_states))
             
-            state = all(crit_states)
-            self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
-            if state != self.current_state:
-                # send event with updated condition state
-                self.logger.debug("evaluate_criteria - send update with new state")
+    #         state = all(crit_states)
+    #         self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
+    #         if state != self.current_state:
+    #             # send event with updated condition state
+    #             self.logger.debug("evaluate_criteria - send update with new state")
         
-                cond_name = self.config["metadata"]["name"]
-                cond_ns = self.config["metadata"]["sampling_namespace"]
-                cond_valid_time = self.config["metadata"]["valid_config_time"]
+    #             cond_name = self.config["metadata"]["name"]
+    #             cond_ns = self.config["metadata"]["sampling_namespace"]
+    #             cond_valid_time = self.config["metadata"]["valid_config_time"]
 
-                self.current_state = state
+    #             self.current_state = state
 
-                status = {
-                    "condition": {
-                        "kind": "SamplingState",
-                        "name": cond_name,
-                        "sampling_namespace": cond_ns,
-                        "valid_config_time": cond_valid_time,
-                        "status": self.current_state
-                    }
-                }
-                await self.status_buffer.put(status)
+    #             status = {
+    #                 "condition": {
+    #                     "kind": "SamplingState",
+    #                     "name": cond_name,
+    #                     "sampling_namespace": cond_ns,
+    #                     "valid_config_time": cond_valid_time,
+    #                     "status": self.current_state
+    #                 }
+    #             }
+    #             await self.status_buffer.put(status)
 
-                # await self.update_status(status)
+    #             # await self.update_status(status)
 
 
-            for src_name, _ in self.source_map.items():
-                # self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
-                # src_data.pop(timestamp)
-                self.source_map[src_name].pop(timestamp)
+    #         for src_name, _ in self.source_map.items():
+    #             # self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
+    #             # src_data.pop(timestamp)
+    #             self.source_map[src_name].pop(timestamp)
 
-        except Exception as e:
-            self.logger.error("evaluate_criteria", extra={"reason": e})
+    #     except Exception as e:
+    #         self.logger.error("evaluate_criteria", extra={"reason": e})
 
-    async def update_status_loop(self):
-        while True:
-            self.logger.debug("update_state_loop - send update")
+    # async def update_status_loop(self):
+    #     while True:
+    #         self.logger.debug("update_state_loop - send update")
 
-            cond_name = self.config["metadata"]["name"]
-            cond_ns = self.config["metadata"]["sampling_namespace"]
-            cond_valid_time = self.config["metadata"]["valid_config_time"]
+    #         cond_name = self.config["metadata"]["name"]
+    #         cond_ns = self.config["metadata"]["sampling_namespace"]
+    #         cond_valid_time = self.config["metadata"]["valid_config_time"]
 
-            status = {
-                "status": {
-                    "kind": "SamplingState",
-                    "time": get_datetime_string(),
-                    "name": cond_name,
-                    "sampling_namespace": cond_ns,
-                    "valid_config_time": cond_valid_time,
-                    "status": self.current_state
-                }
-            }
-            await self.status_buffer.put(status)
+    #         status = {
+    #             "status": {
+    #                 "kind": "SamplingState",
+    #                 "time": get_datetime_string(),
+    #                 "name": cond_name,
+    #                 "sampling_namespace": cond_ns,
+    #                 "valid_config_time": cond_valid_time,
+    #                 "status": self.current_state
+    #             }
+    #         }
+    #         await self.status_buffer.put(status)
 
-            # await self.update_status(status)
+    #         # await self.update_status(status)
 
-            await asyncio.sleep(10)
+    #         await asyncio.sleep(10)
 
 
 

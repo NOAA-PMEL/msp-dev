@@ -166,35 +166,89 @@ class SamplingAction:
         except Exception as e:
             self.logger.error("configure-action", extra={"reason": e})
 
+    # async def run(self):
+    #     source_vars = dict()
+
+    #     dt_now = get_datetime().replace(tzinfo=timezone.utc)
+    #     max_time = self.source_max_age
+    #     min_dt = get_datetime_with_delta(delta=(-(max_time)), dt=dt_now)
+    #     for src_name, src in self.sources["variables"].items():
+    #         src_id = "::".join([src["variablemap_name"], src["variableset_name"]])
+    #         last_var = self.sources["data"][src_id][src_name][src["variable"]]
+    #         if (
+    #             string_to_datetime(last_var["latest_update"]).replace(
+    #                 tzinfo=timezone.utc
+    #             )
+    #             < min_dt
+    #         ):
+    #             return None
+    #         source_vars[src_name] = last_var["data"]
+
+    #     result = await self.method(**source_vars)
+
+    #     target_vars = dict()
+    #     for trg_name, trg in self.targets["variables"].items():
+    #         if trg_name in result:
+    #             target_vars[trg_name] = {"data": result[trg_name], "metadata": trg}
+    #     await self.target_buffer.put(target_vars)
+
+    #     self.logger.debug(
+    #         "run - send set settings event", extra={"target_vars": target_vars}
+    #     )
+
     async def run(self):
         source_vars = dict()
 
         dt_now = get_datetime().replace(tzinfo=timezone.utc)
         max_time = self.source_max_age
         min_dt = get_datetime_with_delta(delta=(-(max_time)), dt=dt_now)
+        
         for src_name, src in self.sources["variables"].items():
             src_id = "::".join([src["variablemap_name"], src["variableset_name"]])
-            last_var = self.sources["data"][src_id][src_name][src["variable"]]
-            if (
-                string_to_datetime(last_var["latest_update"]).replace(
-                    tzinfo=timezone.utc
-                )
-                < min_dt
-            ):
+            v_name = src["variable"]
+            
+            # Safely fetch the variable data cache
+            last_var = self.sources["data"].get(src_id, {}).get(v_name, {})
+            last_update_str = last_var.get("last_update")
+            
+            # 1. Ensure data has actually arrived
+            if not last_update_str:
+                self.logger.debug(f"Action run aborted: No data yet for {src_name}")
                 return None
-            source_vars[src_name] = last_var["data"]
+                
+            last_update_dt = string_to_datetime(last_update_str).replace(tzinfo=timezone.utc)
+            
+            # 2. Ensure data hasn't expired (Jitter/Stale check)
+            if last_update_dt < min_dt:
+                self.logger.debug(f"Action run aborted: Stale data for {src_name}")
+                return None
+                
+            # Note: last_var.get("data") might be explicit `None` if the sensor is offline!
+            # Your custom action scripts must handle this explicitly.
+            source_vars[src_name] = last_var.get("data")
 
-        result = await self.method(**source_vars)
+        # 3. Execute the custom action method
+        try:
+            if asyncio.iscoroutinefunction(self.method):
+                result = await self.method(**source_vars)
+            else:
+                result = self.method(**source_vars)
+        except Exception as e:
+            self.logger.error("action method execution failed", extra={"reason": str(e)})
+            return None
+
+        # 4. If the script deliberately returns None (e.g. ignoring a None input), abort target push
+        if not result:
+            return None
 
         target_vars = dict()
         for trg_name, trg in self.targets["variables"].items():
             if trg_name in result:
                 target_vars[trg_name] = {"data": result[trg_name], "metadata": trg}
-        await self.target_buffer.put(target_vars)
-
-        self.logger.debug(
-            "run - send set settings event", extra={"target_vars": target_vars}
-        )
+                
+        if target_vars:
+            await self.target_buffer.put(target_vars)
+            self.logger.debug("run - send set settings event", extra={"target_vars": target_vars})
 
     async def update(self, data: CloudEvent):
         self.logger.debug("update", extra={"update_data": data})
@@ -1372,131 +1426,6 @@ class SamplingOperationsManager:
             self.logger.error("variableset_data_update", extra={"reason": e})
         pass
 
-    async def handle_condition_request(self, ce: CloudEvent):
-
-        # parse request and evaluate criteria
-
-        #   get source data from datastore
-        # query = {}
-        # results = await self.submit_request(
-        #     path="device-definition/registry/get", query=query
-        # )
-        # # results = httpx.get(f"http://{self.datastore_url}/device-definition/registry/get/", parmams=query)
-        # self.logger.debug("get_device_definitions_loop", extra={"results": results})
-
-        # compare result with current:
-        #   if changed, send immediate update
-        #   else, send update at regularly scheduled interval
-
-        pass
-
-    # this probably won't happen for conditions unless there is another layer of resources
-    async def handle_condition_update(self, ce: CloudEvent):
-        pass
-
-        # async def sampling_mode_monitor(self):
-        #     while True:
-
-        #         # get current sampling mode
-        #         #   or trigger off mode updates
-
-        #         await asyncio.sleep(1)
-
-        # # TODO change this for sampling-system
-        # async def device_data_update(self, ce: CloudEvent):
-
-        #     try:
-        #         attributes = ce.data["attributes"]
-        #         # dimensions = ce.data["dimensions"]
-        #         # variables = ce.data["variables"]
-
-        #         make = attributes["make"]["data"]
-        #         model = attributes["model"]["data"]
-        #         serial_number = attributes["serial_number"]["data"]
-        #         device_id = "::".join([make, model, serial_number])
-        #         self.logger.debug("device_data_update", extra={"device_id": device_id})
-        #         # if device_id in self.variablesets["sources"]:
-        #         await self.update_by_source(
-        #             source_id=device_id, source_data=ce
-        #         )
-
-        #     except Exception as e:
-        #         self.logger.error("device_data_update", extra={"reason": e})
-        #     pass
-
-        # async def index_monitor(self):
-        while True:
-            update = await self.index_ready_buffer.get()
-            self.index_ready_buffer.task_done()
-            try:
-                self.logger.debug("index_monitor", extra={"update": update})
-                index_type = update["index_type"]
-                index_value = update["index_value"]
-                update_type = update["update_type"]
-                target_time = update["index_ready"]
-
-                vm_list = await self.get_valid_variablemaps(target_time=target_time)
-                self.logger.debug(
-                    "index_monitor", extra={"len": len(vm_list), "vm_list": vm_list}
-                )
-                for vm in vm_list:
-                    # await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
-                    print(f"index_monitor:vm = {vm}")
-                    variablemap = vm["variablemap"]
-                    print(f"index_monitor: variablemap = {variablemap}")
-
-                    index_type = update["index_type"]
-                    if index_type == "time":
-                        print(f"index_monitor: index_type = {index_type}")
-                        await self.update_variablesets_by_time_index(
-                            variablemap=variablemap, time_index=update
-                        )
-                    # # handle timebase update
-                    # vm_name = update["variablemap"]
-                    # vm_cfg_time =  update["variablemap_revision_time"]
-                    # target_vm = self.platform_variablesets["maps"][vm_name][vm_cfg_time]
-                    # index_value = update["index_value"]
-                    # # for vg in self.platform_variablesets["maps"][vm_name]["indices"][index_type][index_value]["variablegroups"]:
-                    # for vg in target_vm["indices"][index_type][index_value]["variablegroups"]:
-                    #     var_set = {
-                    #         "attributes": {
-                    #             "variablemap": {"type": "string", "data": vm_name},
-                    #             "variablemap_revision_time": {"type": "string", "data": vm_cfg_time},
-                    #             "variablegroup": {"type": "string", "data": vg},
-                    #             "index_type": {"type": "string", "data": index_type},
-                    #             "index_value": {"type": "int", "data": index_value}
-                    #         },
-                    #         "dimensions": {"time": 1},
-                    #         "variables": {}
-                    #     }
-
-                    #     # for name, variable in self.platform_variablesets["maps"][vm_name]["indices"][index_type][index_value]["variablegroups"][vg]["variables"].items():
-                    #     for name, variable in target_vm["indices"][index_type][index_value]["variablegroups"][vg]["variables"].items():
-                    #         map_type = variable["map_type"]
-                    #         source = variable["source"]
-                    #         index_method = variable["index_method"]
-                    #         attributes = variable["attributes"]
-                    #         if map_type == "direct":
-                    #             source_variable = variable["direct_value"]["source_variable"]
-                    #         else:
-                    #             continue # TODO fill in for other types
-                    #         mapped_var = {
-                    #             "type": "float",
-                    #             "shape": ["time"],
-                    #             "attributes": {
-                    #                 # how to make sure these are always using proper config?
-                    #                 "source_type": {"type": "string", "data": source[source_variable]["source_type"]},
-                    #                 "source_id": {"type": "string", "data": source[source_variable]["source_id"]},
-                    #                 "source_variable": {"type": "string", "data": source[source_variable]["source_variable"]},
-                    #             }
-                    #         }
-
-                    pass
-                else:
-                    pass
-
-            except Exception as e:
-                self.logger.error("index_monitor", extra={"reason": e})
 
     # In sampling-operations/manager.py -> class SamplingOperationsManager
 

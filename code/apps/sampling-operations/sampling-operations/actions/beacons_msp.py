@@ -46,6 +46,16 @@ from envds.util.util import (
 from envds.sampling.event import SamplingEvent
 from envds.sampling.types import SamplingEventType as sampet
 
+## this is the model for the deterministic data approach.
+def calculate_heater_setpoint(temp, humidity):
+    # DEAD-MAN SWITCH: If either sensor is offline, turn off the heater!
+    if temp is None or humidity is None:
+        return {"heater_setpoint": 0.0}
+        
+    # Normal operation
+    setpoint = temp * 1.5 + humidity
+    return {"heater_setpoint": setpoint}
+
 async def set_nominal_inlet_flow(self, nominal_flow_rate):
     # since this is in beacons_msp
     nozzle_diam = .019 # m

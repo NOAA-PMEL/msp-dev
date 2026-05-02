@@ -294,39 +294,160 @@ class SamplingCondition:
 
 
 
-    async def evaluate_criteria(self, timestamp):
+    # async def evaluate_criteria(self, timestamp):
 
+    #     try:
+    #         crit_states = []
+    #         for group_type, group in self.criteria_map.items():
+    #             group_states = []
+    #             for criterion in group["criteria"]:
+    #                 data = {"time": timestamp}
+    #                 for src_name in criterion.get_sources():
+    #                     # self.logger.debug("evaluate_criteria", extra={"src_name": src_name})
+    #                     if (
+    #                         timestamp not in self.source_map[src_name]
+    #                         or self.source_map[src_name][timestamp] is None
+    #                     ):
+    #                         # missing source data, can't evaluate
+    #                         self.logger.info(
+    #                             "evaluate_criteria",
+    #                             extra={
+    #                                 "src_name": src_name,
+    #                                 "ts": timestamp,
+    #                                 "success": False,
+    #                                 "reason": "missing source value",
+    #                             },
+    #                         )
+    #                         return
+    #                     data[src_name] = self.source_map[src_name][timestamp]["data"]
+    #                 self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
+    #                 try:
+    #                     group_states.append(await criterion.evaluate(sources=data))
+    #                 except Exception as e:
+    #                     # what to do on error?
+    #                     group_states.append(False)
+    #                 # group_states.append(res)
+    #             if group_type == "all":
+    #                 crit_states.append(all(group_states))
+    #             elif group_type == "any":
+    #                 crit_states.append(any(group_states))
+    #             elif group_type == "none":
+    #                 crit_states.append(not any(group_states))
+            
+    #         state = all(crit_states)
+    #         self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
+    #         # if state != self.current_state:
+    #             # send event with updated condition state
+            
+    #         # Send status whenever data is available
+    #         self.logger.debug("evaluate_criteria - send update with new state")
+    
+    #         cond_name = self.config["metadata"]["name"]
+    #         cond_ns = self.config["metadata"]["sampling_namespace"]
+    #         cond_valid_time = self.config["metadata"]["valid_config_time"]
+
+    #         self.current_state = state
+
+    #         status = {
+    #             "status": {
+    #                 "kind": "SamplingCondition",
+    #                 "time": timestamp,
+    #                 "name": cond_name,
+    #                 "sampling_namespace": cond_ns,
+    #                 "valid_config_time": cond_valid_time,
+    #                 "status": state
+    #             }
+    #         }
+    #         await self.status_buffer.put(status)
+
+    #         # await self.update_status(status)
+
+
+    #         # for src_name, _ in self.source_map.items():
+    #         #     # self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
+    #         #     # src_data.pop(timestamp)
+    #         #     self.source_map[src_name].pop(timestamp)
+
+    #     except Exception as e:
+    #         self.logger.error("evaluate_criteria", extra={"reason": e})
+
+    #     finally:
+    #         # This guarantees cleanup runs even if the function hits a 'return'
+    #         try:
+    #             # Safely parse current timestamp
+    #             current_dt_raw = string_to_datetime(timestamp)
+    #             if not current_dt_raw:
+    #                 # If we can't parse the current time, skip cleanup this round
+    #                 return 
+                    
+    #             # Calculate a cutoff time (e.g., 60 seconds ago)
+    #             current_dt = current_dt_raw.replace(tzinfo=timezone.utc)
+    #             cutoff_dt = current_dt - timedelta(seconds=60)
+                
+    #             for src_name, src_dict in self.source_map.items():
+    #                 # Safely find all valid timestamps older than 60 seconds
+    #                 stale_keys = []
+    #                 for ts in src_dict.keys():
+    #                     dt_obj = string_to_datetime(ts)
+    #                     if dt_obj and dt_obj.replace(tzinfo=timezone.utc) < cutoff_dt:
+    #                         stale_keys.append(ts)
+                            
+    #                 # Delete them
+    #                 for ts in stale_keys:
+    #                     src_dict.pop(ts, None)
+    #         except Exception as clean_e:
+    #             self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
+
+    async def evaluate_criteria(self, timestamp):
         try:
             crit_states = []
             for group_type, group in self.criteria_map.items():
                 group_states = []
                 for criterion in group["criteria"]:
                     data = {"time": timestamp}
+                    has_all_sources = True
+                    
                     for src_name in criterion.get_sources():
-                        # self.logger.debug("evaluate_criteria", extra={"src_name": src_name})
-                        if (
-                            timestamp not in self.source_map[src_name]
-                            or self.source_map[src_name][timestamp] is None
-                        ):
-                            # missing source data, can't evaluate
-                            self.logger.info(
-                                "evaluate_criteria",
-                                extra={
-                                    "src_name": src_name,
-                                    "ts": timestamp,
-                                    "success": False,
-                                    "reason": "missing source value",
-                                },
+                        
+                        # 1. JITTER CHECK: Has the data arrived for this timestamp yet?
+                        if timestamp not in self.source_map[src_name]:
+                            # Data hasn't arrived. It might be calculated data in the Tier 2 wave (T+1.5s).
+                            # We abort evaluation for now and wait for the rest of the MQTT packets.
+                            self.logger.debug(
+                                "evaluate_criteria aborted",
+                                extra={"reason": "waiting for pending data", "src_name": src_name, "ts": timestamp}
                             )
-                            return
-                        data[src_name] = self.source_map[src_name][timestamp]["data"]
+                            return 
+
+                        src_payload = self.source_map[src_name][timestamp]
+                        
+                        # 2. DEAD-MAN CHECK: Did sampling-system explicitly declare it empty/offline?
+                        if src_payload is None or src_payload.get("data") is None:
+                            self.logger.info(
+                                "evaluate_criteria explicit null",
+                                extra={"reason": "sensor offline / missing data", "src_name": src_name, "ts": timestamp}
+                            )
+                            # The hardware is offline. We mark this criterion as a failure.
+                            has_all_sources = False
+                            break
+                            
+                        # Data is present and valid
+                        data[src_name] = src_payload["data"]
+
+                    # If the sensor was declared offline, the condition instantly fails
+                    if not has_all_sources:
+                        group_states.append(False)
+                        continue
+
+                    # 3. Evaluate normally
                     self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
                     try:
                         group_states.append(await criterion.evaluate(sources=data))
                     except Exception as e:
-                        # what to do on error?
+                        # Fallback to False if custom math throws an error
                         group_states.append(False)
-                    # group_states.append(res)
+
+                # Group evaluations
                 if group_type == "all":
                     crit_states.append(all(group_states))
                 elif group_type == "any":
@@ -334,12 +455,11 @@ class SamplingCondition:
                 elif group_type == "none":
                     crit_states.append(not any(group_states))
             
+            # Final state determination
             state = all(crit_states)
             self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
-            # if state != self.current_state:
-                # send event with updated condition state
             
-            # Send status whenever data is available
+            # Update internal state and broadcast the new status
             self.logger.debug("evaluate_criteria - send update with new state")
     
             cond_name = self.config["metadata"]["name"]
@@ -360,39 +480,26 @@ class SamplingCondition:
             }
             await self.status_buffer.put(status)
 
-            # await self.update_status(status)
-
-
-            # for src_name, _ in self.source_map.items():
-            #     # self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
-            #     # src_data.pop(timestamp)
-            #     self.source_map[src_name].pop(timestamp)
-
         except Exception as e:
             self.logger.error("evaluate_criteria", extra={"reason": e})
 
         finally:
-            # This guarantees cleanup runs even if the function hits a 'return'
+            # Memory cleanup for stale data > 60 seconds old
             try:
-                # Safely parse current timestamp
                 current_dt_raw = string_to_datetime(timestamp)
                 if not current_dt_raw:
-                    # If we can't parse the current time, skip cleanup this round
                     return 
                     
-                # Calculate a cutoff time (e.g., 60 seconds ago)
                 current_dt = current_dt_raw.replace(tzinfo=timezone.utc)
                 cutoff_dt = current_dt - timedelta(seconds=60)
                 
                 for src_name, src_dict in self.source_map.items():
-                    # Safely find all valid timestamps older than 60 seconds
                     stale_keys = []
                     for ts in src_dict.keys():
                         dt_obj = string_to_datetime(ts)
                         if dt_obj and dt_obj.replace(tzinfo=timezone.utc) < cutoff_dt:
                             stale_keys.append(ts)
                             
-                    # Delete them
                     for ts in stale_keys:
                         src_dict.pop(ts, None)
             except Exception as clean_e:

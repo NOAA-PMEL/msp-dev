@@ -1901,105 +1901,168 @@ class SamplingSystem:
     #         result = ""
     #     return result
 
+    # async def index_time_monitor(self, timebase: int):
+
+    #     # while True:
+    #     #     dt = get_datetime()
+    #     #     self.logger.debug("index_time_monitor", extra={"current_dt": dt, "timebase": timebase})
+    #     #     self.logger.debug("index_time_monitor", extra={"current_dt_period": round_to_nearest_N_seconds(dt=dt, Nsec=timebase)})
+    #     #     await asyncio.sleep(1)
+
+    #     try:
+    #         current_dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
+    #         self.logger.debug("index_time_monitor", extra={"current_dt": current_dt_period, "timebase": timebase})
+    #         last_dt_period = None
+    #         if timebase <= 5:
+    #             threshhold_direct = 0.75 * timebase
+    #             threshhold_final = 0.9 * timebase
+    #             update_threshhold = 0.8 * timebase
+    #         else:
+    #             threshhold_direct = 0.6 * timebase
+    #             threshhold_final = 0.75 * timebase
+    #             update_threshhold = 0.7 * timebase
+    #     except Exception as e:
+    #         self.logger.error("index_time_monitor-init", extra={"reason": e})
+
+    #     while True:
+    #         try:
+    #             # create timestamp for current interval and save to index values
+    #             # self.logger.debug("index_time_monitor: here")
+    #             dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
+    #             # self.logger.debug("index_time_monitor", extra={"dt_period": dt_period})
+
+    #             # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "dt_period": dt_period, "last_dt": last_dt_period})
+    #             if dt_period != current_dt_period:
+    #                 # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
+    #                 last_dt_period = current_dt_period
+    #                 current_dt_period = dt_period
+    #                 # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
+    #             # await asyncio.sleep(1)
+    #             # continue
+    #             # # get list of vs from self.variablesets["indices"]["time"][timebase]
+    #             # get all? valid variable maps based on time?
+    #             # loop through list of vs in each valid vm and update if index_type and value match
+
+
+    #             # current_time_period = timestamp_to_string(current_dt_period)
+    #             # target_vm = await self.get_variablemap_by_revision_time(
+    #             #     variablemap=variablemap, target_time=current_time_period
+    #             # )
+
+    #             # if current_time_period not in self.platform_variablesets["maps"][variablemap]["indices"]["timebase"][timebase]:
+    #             # if current_time_period not in target_vm["indices"]["timebase"][timebase]:
+    #             #     # self.platform_variablesets["maps"][variablemap]["indices"]["timebase"][timebase].append(current_time_period)
+    #             #     target_vm["indices"]["timebase"][timebase].append(current_time_period)
+
+    #             # check if current time is greater than threshold to create previous interval variableset
+    #             #   e.g., if tb=1, wait for next second, if tb>1, wait for 0.6*tb to pass (tb=10, wait for 6sec to pass)
+    #             if last_dt_period:
+    #                 # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
+    #                 if seconds_elapsed(initial_dt=last_dt_period) >= update_threshhold:
+    #                     self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
+    #                     last_time_period = datetime_to_string(last_dt_period)
+    #                     update = {
+    #                         # "variablemap": variablemap,
+    #                         # "variablemap_revision_time": target_vm["revision-time"],
+    #                         "index_type": "time",
+    #                         "index_value": timebase,
+    #                         "update_type": "update",
+    #                         "index_ready": last_time_period,
+    #                     }                   
+    #                     self.logger.debug("index_time_monitor", extra={"upate": update})
+    #                     await self.index_ready_buffer.put(update)
+    #                     last_dt_period = None
+
+    #                 # if seconds_elapsed(initial_dt=last_dt_period) >= threshhold_direct:
+    #                 #     update = {
+    #                 #         # "variablemap": variablemap,
+    #                 #         # "variablemap_revision_time": target_vm["revision-time"],
+    #                 #         "index_type": "time",
+    #                 #         "index_value": timebase,
+    #                 #         "update_type": "direct",
+    #                 #         "index_ready": last_time_period,
+    #                 #     }
+    #                 #     # await self.direct_timebase_ready_buffer.put(last_time_period)
+    #                 #     await self.index_ready_buffer.put(update)
+
+    #                 # elif seconds_elapsed(initial_dt=last_dt_period) >= threshhold_final:
+    #                 #     update = {
+    #                 #         # "variablemap": variablemap,
+    #                 #         # "variablemap_revision_time": target_vm["revision-time"],
+    #                 #         "index_type": "time",
+    #                 #         "index_value": timebase,
+    #                 #         "update_type": "final",
+    #                 #         "index_ready": last_time_period,
+    #                 #     }
+    #                     # await self.direct_timebase_ready_buffer.put(last_time_period)
+    #                     # await self.index_ready_buffer.put(update)
+    #         except Exception as e:
+    #             self.logger.error("index_time_monitor", extra={"reason": e})
+        
+    #             # await asyncio.sleep(time_to_next(timebase))
+    #         await asyncio.sleep(0.1)
+
     async def index_time_monitor(self, timebase: int):
-
-        # while True:
-        #     dt = get_datetime()
-        #     self.logger.debug("index_time_monitor", extra={"current_dt": dt, "timebase": timebase})
-        #     self.logger.debug("index_time_monitor", extra={"current_dt_period": round_to_nearest_N_seconds(dt=dt, Nsec=timebase)})
-        #     await asyncio.sleep(1)
-
         try:
-            current_dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
-            self.logger.debug("index_time_monitor", extra={"current_dt": current_dt_period, "timebase": timebase})
-            last_dt_period = None
+            # Define our Two-Tier Thresholds
             if timebase <= 5:
-                threshhold_direct = 0.75 * timebase
-                threshhold_final = 0.9 * timebase
-                update_threshhold = 0.8 * timebase
+                thresh_direct = 0.8 * timebase
+                thresh_calc = 1.5 * timebase  # 1.5 seconds for 1Hz
             else:
-                threshhold_direct = 0.6 * timebase
-                threshhold_final = 0.75 * timebase
-                update_threshhold = 0.7 * timebase
+                thresh_direct = 0.7 * timebase
+                thresh_calc = 1.2 * timebase
         except Exception as e:
-            self.logger.error("index_time_monitor-init", extra={"reason": e})
+            self.logger.error("index_time_monitor-init", extra={"reason": str(e)})
+
+        # Dictionary to track multiple overlapping time periods safely
+        active_periods = {}
 
         while True:
             try:
-                # create timestamp for current interval and save to index values
-                # self.logger.debug("index_time_monitor: here")
                 dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
-                # self.logger.debug("index_time_monitor", extra={"dt_period": dt_period})
+                period_str = datetime_to_string(dt_period)
 
-                # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "dt_period": dt_period, "last_dt": last_dt_period})
-                if dt_period != current_dt_period:
-                    # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
-                    last_dt_period = current_dt_period
-                    current_dt_period = dt_period
-                    # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
-                # await asyncio.sleep(1)
-                # continue
-                # # get list of vs from self.variablesets["indices"]["time"][timebase]
-                # get all? valid variable maps based on time?
-                # loop through list of vs in each valid vm and update if index_type and value match
+                # Register new time periods as they occur
+                if period_str not in active_periods:
+                    active_periods[period_str] = {
+                        "dt": dt_period,
+                        "direct_sent": False,
+                        "calculated_sent": False
+                    }
 
+                # Evaluate all active periods independently
+                for p_str, state in list(active_periods.items()):
+                    elapsed = seconds_elapsed(initial_dt=state["dt"])
 
-                # current_time_period = timestamp_to_string(current_dt_period)
-                # target_vm = await self.get_variablemap_by_revision_time(
-                #     variablemap=variablemap, target_time=current_time_period
-                # )
-
-                # if current_time_period not in self.platform_variablesets["maps"][variablemap]["indices"]["timebase"][timebase]:
-                # if current_time_period not in target_vm["indices"]["timebase"][timebase]:
-                #     # self.platform_variablesets["maps"][variablemap]["indices"]["timebase"][timebase].append(current_time_period)
-                #     target_vm["indices"]["timebase"][timebase].append(current_time_period)
-
-                # check if current time is greater than threshold to create previous interval variableset
-                #   e.g., if tb=1, wait for next second, if tb>1, wait for 0.6*tb to pass (tb=10, wait for 6sec to pass)
-                if last_dt_period:
-                    # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
-                    if seconds_elapsed(initial_dt=last_dt_period) >= update_threshhold:
-                        self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
-                        last_time_period = datetime_to_string(last_dt_period)
+                    # TIER 1: Raw / Direct Data
+                    if elapsed >= thresh_direct and not state["direct_sent"]:
                         update = {
-                            # "variablemap": variablemap,
-                            # "variablemap_revision_time": target_vm["revision-time"],
                             "index_type": "time",
                             "index_value": timebase,
-                            "update_type": "update",
-                            "index_ready": last_time_period,
-                        }                   
-                        self.logger.debug("index_time_monitor", extra={"upate": update})
+                            "update_type": "direct",  # Flag as Tier 1
+                            "index_ready": p_str,
+                        }
                         await self.index_ready_buffer.put(update)
-                        last_dt_period = None
+                        state["direct_sent"] = True
 
-                    # if seconds_elapsed(initial_dt=last_dt_period) >= threshhold_direct:
-                    #     update = {
-                    #         # "variablemap": variablemap,
-                    #         # "variablemap_revision_time": target_vm["revision-time"],
-                    #         "index_type": "time",
-                    #         "index_value": timebase,
-                    #         "update_type": "direct",
-                    #         "index_ready": last_time_period,
-                    #     }
-                    #     # await self.direct_timebase_ready_buffer.put(last_time_period)
-                    #     await self.index_ready_buffer.put(update)
+                    # TIER 2: Calculated / Derived Data
+                    if elapsed >= thresh_calc and not state["calculated_sent"]:
+                        update = {
+                            "index_type": "time",
+                            "index_value": timebase,
+                            "update_type": "calculated", # Flag as Tier 2
+                            "index_ready": p_str,
+                        }
+                        await self.index_ready_buffer.put(update)
+                        state["calculated_sent"] = True
 
-                    # elif seconds_elapsed(initial_dt=last_dt_period) >= threshhold_final:
-                    #     update = {
-                    #         # "variablemap": variablemap,
-                    #         # "variablemap_revision_time": target_vm["revision-time"],
-                    #         "index_type": "time",
-                    #         "index_value": timebase,
-                    #         "update_type": "final",
-                    #         "index_ready": last_time_period,
-                    #     }
-                        # await self.direct_timebase_ready_buffer.put(last_time_period)
-                        # await self.index_ready_buffer.put(update)
+                    # Cleanup periods only after both tiers have fired
+                    if state["direct_sent"] and state["calculated_sent"]:
+                        del active_periods[p_str]
+                        
             except Exception as e:
-                self.logger.error("index_time_monitor", extra={"reason": e})
-        
-                # await asyncio.sleep(time_to_next(timebase))
+                self.logger.error("index_time_monitor", extra={"reason": str(e)})
+            
             await asyncio.sleep(0.1)
 
     # async def index_time_monitor_bak(self, variablemap: str, timebase: int):
@@ -2298,55 +2361,116 @@ class SamplingSystem:
 
     #     return
 
-    async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict):
+    # async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict):
+    #     map_type = "direct"
+    #     try:
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"time_index": time_index})
+
+    #         index_type = time_index["index_type"]
+    #         index_value = time_index["index_value"]
+    #         target_time = time_index["index_ready"]
+
+    #         indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][map_type][variableset_name][variable_name]
+            
+    #         # Fetch the target variable's details to determine its shape
+    #         var_record = variableset_record["variables"][variable_name]
+    #         v_type = var_record.get("type", "float")
+    #         shape = var_record.get("shape", ["time"])
+
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"indexed_data": indexed_data})
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"variableset_record": variableset_record})
+
+    #         if len(indexed_data) == 0:
+    #             if v_type in ["string", "str", "char"]:
+    #                 val = ""
+    #             else:
+    #                 val = None
+    #         elif len(indexed_data) == 1:
+    #             val = indexed_data[0]
+    #         else:
+    #             if v_type in ["string", "str", "char"]:
+    #                 val = indexed_data[0]
+    #             else:
+    #                 # Check if data is 2-dimensional (e.g., ["time", "diameter"])
+    #                 if len(shape) > 1:
+    #                     try:
+    #                         # Use zip(*...) to transpose the list of lists and perform element-wise averaging
+    #                         val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
+    #                     except Exception as e:
+    #                         self.logger.error("2D averaging error", extra={"reason": e})
+    #                         val = indexed_data[0] # Fallback to first array if averaging fails
+    #                 else:
+    #                     # Standard 1D average
+    #                     val = round(
+    #                         sum(indexed_data) / len(indexed_data),
+    #                         3,
+    #                     )
+
+    #         variableset_record["variables"][variable_name]["data"] = val
+
+    #     except Exception as e:
+    #         self.logger.error("update_direct_variable_by_time_index", extra={"reason": e})
+
+    #     return
+
+    async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict, data_buffer: dict = None):
         map_type = "direct"
         try:
-            self.logger.debug("update_direct_variable_by_time_index", extra={"time_index": time_index})
-
-            index_type = time_index["index_type"]
-            index_value = time_index["index_value"]
-            target_time = time_index["index_ready"]
-
-            indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][map_type][variableset_name][variable_name]
+            # Safely fetch the array of data that arrived. If none arrived, returns an empty list []
+            if data_buffer is not None:
+                indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
+            else:
+                indexed_data = []
             
-            # Fetch the target variable's details to determine its shape
+            # Fetch the target variable's details
             var_record = variableset_record["variables"][variable_name]
             v_type = var_record.get("type", "float")
             shape = var_record.get("shape", ["time"])
+            
+            # Determine the configured indexing method (Default to average)
+            index_method = var_record.get("attributes", {}).get("index_method", {}).get("data", "average").lower()
 
-            self.logger.debug("update_direct_variable_by_time_index", extra={"indexed_data": indexed_data})
-            self.logger.debug("update_direct_variable_by_time_index", extra={"variableset_record": variableset_record})
-
+            val = None
+            
             if len(indexed_data) == 0:
                 if v_type in ["string", "str", "char"]:
                     val = ""
                 else:
                     val = None
+                    
             elif len(indexed_data) == 1:
                 val = indexed_data[0]
+                
             else:
                 if v_type in ["string", "str", "char"]:
-                    val = indexed_data[0]
+                    val = indexed_data[-1]  # Safest default for multiple string arrivals is the newest one
                 else:
-                    # Check if data is 2-dimensional (e.g., ["time", "diameter"])
-                    if len(shape) > 1:
-                        try:
-                            # Use zip(*...) to transpose the list of lists and perform element-wise averaging
-                            val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
-                        except Exception as e:
-                            self.logger.error("2D averaging error", extra={"reason": e})
-                            val = indexed_data[0] # Fallback to first array if averaging fails
-                    else:
-                        # Standard 1D average
-                        val = round(
-                            sum(indexed_data) / len(indexed_data),
-                            3,
-                        )
+                    # Apply specific math based on index_method
+                    if index_method == "last":
+                        val = indexed_data[-1]
+                    elif index_method == "first":
+                        val = indexed_data[0]
+                    elif index_method == "max":
+                        val = max(indexed_data)
+                    elif index_method == "min":
+                        val = min(indexed_data)
+                    else: # average / mean
+                        if len(shape) > 1:
+                            try:
+                                # Element-wise averaging for 2D arrays (e.g., ["time", "diameter"])
+                                val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
+                            except Exception as e:
+                                self.logger.error("2D averaging error", extra={"reason": str(e)})
+                                val = indexed_data[-1]
+                        else:
+                            # Standard 1D average
+                            val = round(sum(indexed_data) / len(indexed_data), 3)
 
+            # Apply the evaluated value
             variableset_record["variables"][variable_name]["data"] = val
 
         except Exception as e:
-            self.logger.error("update_direct_variable_by_time_index", extra={"reason": e})
+            self.logger.error("update_direct_variable_by_time_index", extra={"reason": str(e)})
 
         return
     
@@ -2677,6 +2801,109 @@ class SamplingSystem:
     #         except Exception as clean_e:
     #             self.logger.error("cleanup error", extra={"reason": clean_e})
 
+    # async def update_variablesets_by_time_index(self, variablemap: dict, time_index: dict):
+    #     variable_updates = {
+    #         "direct": self.update_direct_variable_by_time_index,
+    #         "calculate": self.update_calculated_variable_by_time_index,
+    #         "calculated": self.update_calculated_variable_by_time_index
+    #     }
+        
+    #     index_type = time_index["index_type"]
+    #     index_value = time_index["index_value"]
+    #     target_time = time_index["index_ready"]
+
+    #     try:
+    #         indexed_data = variablemap.get("indexed", {}).get(index_type, {}).get(index_value, {}).get("data", {})
+    #         if target_time not in indexed_data:
+    #             return
+
+    #         target_variablesets = indexed_data[target_time]
+            
+    #         # Collect unique variablesets to process in this tick
+    #         vs_names = set()
+    #         for m_type, vs_dict in target_variablesets.items():
+    #             vs_names.update(vs_dict.keys())
+                
+    #         for vs_name in vs_names:
+    #             # Load a fresh variableset object ONCE per variableset (not per map_type)
+    #             variableset = json.loads(json.dumps(variablemap["variablesets"][vs_name]))
+                
+    #             # 1. Process data-driven updates first (e.g., direct mappings)
+    #             for map_type in ["direct", "priority", "aggregate"]:
+    #                 if map_type in target_variablesets and vs_name in target_variablesets[map_type]:
+    #                     vs_data = target_variablesets[map_type][vs_name]
+    #                     for v_name, v_data in vs_data.items():
+    #                         if map_type in variable_updates:
+    #                             try:
+    #                                 await variable_updates[map_type](
+    #                                     variablemap=variablemap,
+    #                                     variableset_name=vs_name,
+    #                                     variableset_record=variableset,
+    #                                     variable_name=v_name,
+    #                                     time_index=time_index
+    #                                 )
+    #                             except Exception as var_e:
+    #                                 self.logger.error("variable update error", extra={"reason": var_e})
+                                    
+    #             # 2. Process Calculated updates (running after direct data is populated)
+    #             for v_name, v_record in variableset["variables"].items():
+    #                 record_map_type = v_record.get("map_type") or v_record.get("attributes", {}).get("map_type", {}).get("data")
+    #                 if record_map_type in ["calculate", "calculated"]:
+    #                     try:
+    #                         await variable_updates[record_map_type](
+    #                             variablemap=variablemap,
+    #                             variableset_name=vs_name,
+    #                             variableset_record=variableset,
+    #                             variable_name=v_name,
+    #                             time_index=time_index
+    #                         )
+    #                     except Exception as var_e:
+    #                         self.logger.error("calculated variable update error", extra={"reason": var_e})
+
+    #             # Attach time label
+    #             if "time" not in variableset["variables"]:
+    #                 variableset["variables"]["time"] = {
+    #                     "shape": ["time"], "type": "string", "data": ""
+    #                 }
+    #             variableset["variables"]["time"]["data"] = target_time
+                
+    #             # Setup MQTT event variables
+    #             varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
+    #             varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
+    #             varset_full_id = self.get_variableset_full_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
+    #             source_id = f"envds.{self.config.daq_id}.variableset.{varset_id}"
+    #             source_topic = source_id.replace(".", "/")
+
+    #             event = SamplingEvent.create_variableset_data_update(
+    #                 source=source_id,
+    #                 data=variableset,
+    #             )
+    #             destpath = f"{source_topic}/data/update"
+    #             event["destpath"] = destpath
+    #             event["samplingnamespace"] = varmap_ns
+    #             event["variablesetid"] = varset_id
+    #             event["variablesetfullid"] = varset_full_id
+
+    #             await self.send_to_mqtt(destpath, event)
+
+    #     except Exception as e:
+    #         self.logger.error("update_variablesets_by_time_index", extra={"reason": e})
+            
+    #     finally:
+    #         try:
+    #             # Cleanup the cache mapping matrix to avert leak buildup
+    #             indexed_dict = variablemap.get("indexed", {})
+    #             type_dict = indexed_dict.get(index_type, {})
+    #             val_dict = type_dict.get(index_value, {})
+    #             idx_data = val_dict.get("data")
+                
+    #             if idx_data:
+    #                 stale_keys = [t for t in list(idx_data.keys()) if t <= target_time]
+    #                 for t in stale_keys:
+    #                     idx_data.pop(t, None)
+    #         except Exception as clean_e:
+    #             self.logger.error("cleanup error", extra={"reason": clean_e})
+                
     async def update_variablesets_by_time_index(self, variablemap: dict, time_index: dict):
         variable_updates = {
             "direct": self.update_direct_variable_by_time_index,
@@ -2686,100 +2913,95 @@ class SamplingSystem:
         
         index_type = time_index["index_type"]
         index_value = time_index["index_value"]
+        update_type = time_index["update_type"] # Will be "direct" or "calculated"
         target_time = time_index["index_ready"]
 
         try:
-            indexed_data = variablemap.get("indexed", {}).get(index_type, {}).get(index_value, {}).get("data", {})
-            if target_time not in indexed_data:
+            indexed_dict = variablemap.get("indexed", {})
+            type_dict = indexed_dict.get(index_type, {})
+            val_dict = type_dict.get(index_value, {})
+            
+            target_time_data_buffer = val_dict.get("data", {}).get(target_time, {})
+            vs_names = val_dict.get("variablesets", [])
+
+            if not vs_names:
                 return
 
-            target_variablesets = indexed_data[target_time]
-            
-            # Collect unique variablesets to process in this tick
-            vs_names = set()
-            for m_type, vs_dict in target_variablesets.items():
-                vs_names.update(vs_dict.keys())
-                
             for vs_name in vs_names:
-                # Load a fresh variableset object ONCE per variableset (not per map_type)
                 variableset = json.loads(json.dumps(variablemap["variablesets"][vs_name]))
                 
-                # 1. Process data-driven updates first (e.g., direct mappings)
+                # Check if this VariableSet contains any Calculated variables
+                has_calculated = any(
+                    v.get("map_type", v.get("attributes", {}).get("map_type", {}).get("data")) in ["calculate", "calculated"]
+                    for v in variableset["variables"].values()
+                )
+
+                # --- TIER ROUTING LOGIC ---
+                # Tier 1 (0.8s): Skip VariableSets that need to wait for calculations
+                if update_type == "direct" and has_calculated:
+                    continue 
+                # Tier 2 (1.5s): Skip VariableSets that were already published
+                if update_type == "calculated" and not has_calculated:
+                    continue 
+                
+                # --- PROCESSING ---
                 for map_type in ["direct", "priority", "aggregate"]:
-                    if map_type in target_variablesets and vs_name in target_variablesets[map_type]:
-                        vs_data = target_variablesets[map_type][vs_name]
-                        for v_name, v_data in vs_data.items():
-                            if map_type in variable_updates:
-                                try:
-                                    await variable_updates[map_type](
-                                        variablemap=variablemap,
-                                        variableset_name=vs_name,
-                                        variableset_record=variableset,
-                                        variable_name=v_name,
-                                        time_index=time_index
-                                    )
-                                except Exception as var_e:
-                                    self.logger.error("variable update error", extra={"reason": var_e})
+                    for v_name, v_record in variableset["variables"].items():
+                        v_map_type = v_record.get("map_type") or v_record.get("attributes", {}).get("map_type", {}).get("data")
+                        
+                        if v_map_type == map_type and map_type in variable_updates:
+                            try:
+                                await variable_updates[map_type](
+                                    variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
+                                    variable_name=v_name, time_index=time_index, data_buffer=target_time_data_buffer 
+                                )
+                            except Exception as var_e:
+                                self.logger.error("variable update error", extra={"reason": str(var_e)})
                                     
-                # 2. Process Calculated updates (running after direct data is populated)
                 for v_name, v_record in variableset["variables"].items():
                     record_map_type = v_record.get("map_type") or v_record.get("attributes", {}).get("map_type", {}).get("data")
                     if record_map_type in ["calculate", "calculated"]:
                         try:
                             await variable_updates[record_map_type](
-                                variablemap=variablemap,
-                                variableset_name=vs_name,
-                                variableset_record=variableset,
-                                variable_name=v_name,
-                                time_index=time_index
+                                variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
+                                variable_name=v_name, time_index=time_index
                             )
                         except Exception as var_e:
-                            self.logger.error("calculated variable update error", extra={"reason": var_e})
+                            self.logger.error("calculated variable update error", extra={"reason": str(var_e)})
 
-                # Attach time label
                 if "time" not in variableset["variables"]:
-                    variableset["variables"]["time"] = {
-                        "shape": ["time"], "type": "string", "data": ""
-                    }
+                    variableset["variables"]["time"] = {"shape": ["time"], "type": "string", "data": ""}
                 variableset["variables"]["time"]["data"] = target_time
                 
-                # Setup MQTT event variables
                 varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
                 varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
                 varset_full_id = self.get_variableset_full_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
                 source_id = f"envds.{self.config.daq_id}.variableset.{varset_id}"
                 source_topic = source_id.replace(".", "/")
 
-                event = SamplingEvent.create_variableset_data_update(
-                    source=source_id,
-                    data=variableset,
-                )
-                destpath = f"{source_topic}/data/update"
-                event["destpath"] = destpath
+                event = SamplingEvent.create_variableset_data_update(source=source_id, data=variableset)
+                event["destpath"] = f"{source_topic}/data/update"
                 event["samplingnamespace"] = varmap_ns
                 event["variablesetid"] = varset_id
                 event["variablesetfullid"] = varset_full_id
 
-                await self.send_to_mqtt(destpath, event)
+                await self.send_to_mqtt(event["destpath"], event)
 
         except Exception as e:
-            self.logger.error("update_variablesets_by_time_index", extra={"reason": e})
+            self.logger.error("update_variablesets_by_time_index", extra={"reason": str(e)})
             
         finally:
-            try:
-                # Cleanup the cache mapping matrix to avert leak buildup
-                indexed_dict = variablemap.get("indexed", {})
-                type_dict = indexed_dict.get(index_type, {})
-                val_dict = type_dict.get(index_value, {})
-                idx_data = val_dict.get("data")
-                
-                if idx_data:
-                    stale_keys = [t for t in list(idx_data.keys()) if t <= target_time]
-                    for t in stale_keys:
-                        idx_data.pop(t, None)
-            except Exception as clean_e:
-                self.logger.error("cleanup error", extra={"reason": clean_e})
-                
+            # IMPORTANT: Only purge the data cache when Tier 2 finishes to prevent data loss
+            if update_type == "calculated":
+                try:
+                    idx_data = variablemap.get("indexed", {}).get(index_type, {}).get(index_value, {}).get("data")
+                    if idx_data:
+                        stale_keys = [t for t in list(idx_data.keys()) if t <= target_time]
+                        for t in stale_keys:
+                            idx_data.pop(t, None)
+                except Exception as clean_e:
+                    self.logger.error("cleanup error", extra={"reason": str(clean_e)})
+
     async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict):
         import importlib
         try:
