@@ -1256,6 +1256,54 @@ def filter_graph_dropdown(selected_varsets, master_options):
 #         State({"type": "graph-1d-dropdown", "index": MATCH}, "id"),
 #     ],
 # )
+# @callback(
+#     Output(
+#         {"type": "system-graph-1d", "index": MATCH}, "figure"
+#     ),
+#     Input({"type": "system-graph-1d-dropdown", "index": MATCH}, "value"),
+#     [
+#         State("system-graph-axes", "data"),
+#         State("variableset-defs-store", "data"),
+#         State({"type": "system-graph-1d-dropdown", "index": MATCH}, "id"),
+#     ],
+# )
+# def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
+#     if not selected_value:
+#         return {"x": [], "y": [], "type": "scatter"}
+    
+#     try:
+#         varset_id, y_axis = selected_value.rsplit("::", 1)
+
+#         if "graph-1d" not in graph_axes:
+#             graph_axes["graph-1d"] = dict()
+#         graph_axes["graph-1d"][graph_id["index"]] = {"x-axis": "time", "y-axis": y_axis}
+
+#         units = ""
+
+#         try:
+#             unit_data = variableset_defs[varset_id]["variables"][y_axis].get("attributes", {}).get("units", {}).get("data")
+            
+#             if unit_data:
+#                 units = f'({unit_data})'
+
+#         except KeyError:
+#             pass
+
+#         fig = go.Figure(
+#                 data=go.Scatter(x=[], y=[], type="scatter"),
+#                 layout={
+#                     "xaxis": {"title": "Time"},
+#                     "yaxis": {"title": f"{y_axis} {units}"},
+#                 },
+#             )
+
+#         return fig 
+
+#     except Exception as e:
+#         print(f"select_graph_1d error: {e}")
+#         L.error(traceback.format_exc())
+#         return dash.no_update  # , dash.no_update]
+
 @callback(
     Output(
         {"type": "system-graph-1d", "index": MATCH}, "figure"
@@ -1268,8 +1316,12 @@ def filter_graph_dropdown(selected_varsets, master_options):
     ],
 )
 def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
+    # FIX: Return a valid Plotly Figure object instead of a bare dictionary
     if not selected_value:
-        return {"x": [], "y": [], "type": "scatter"}
+        return go.Figure(
+            data=go.Scatter(x=[], y=[], type="scatter"),
+            layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}}
+        )
     
     try:
         varset_id, y_axis = selected_value.rsplit("::", 1)
@@ -1282,10 +1334,8 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
 
         try:
             unit_data = variableset_defs[varset_id]["variables"][y_axis].get("attributes", {}).get("units", {}).get("data")
-            
             if unit_data:
                 units = f'({unit_data})'
-
         except KeyError:
             pass
 
@@ -1302,8 +1352,7 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
     except Exception as e:
         print(f"select_graph_1d error: {e}")
         L.error(traceback.format_exc())
-        return dash.no_update  # , dash.no_update]
-
+        return dash.no_update
 
 # @callback(
 #     [
@@ -1642,14 +1691,9 @@ def update_graph_1d(buffers_data, selected_values):
         raise PreventUpdate
 
     try:
-        L.debug(f"update graph buffer data {triggered_val}")
-
         # 3. Now we safely parse the specific event that just arrived
         incoming_varset_id = triggered_val[0].get("variablesetfullid", {})
-        L.debug(f"incoming_varset_id {incoming_varset_id}")
-        
         event_data = triggered_val[0].get("data-update", {})
-        L.debug(f"buffer_data {event_data}")
 
         if isinstance(incoming_varset_id, dict):
             incoming_varset_id = incoming_varset_id.get("data")
@@ -1658,62 +1702,54 @@ def update_graph_1d(buffers_data, selected_values):
 
         if incoming_varset_id:
             for selected_value in selected_values:
-                # If the dropdown is empty, don't update this graph
                 if not selected_value:
                     figs_to_update.append(dash.no_update)
                     continue
 
-                # Safely split varset_id and y_axis
                 try:
                     varset_id, y_axis = selected_value.rsplit("::", 1)
                 except ValueError:
                     figs_to_update.append(dash.no_update)
                     continue
 
-                L.debug(f"GRAPH ROUTING: Incoming '{incoming_varset_id}' vs Selected '{varset_id}'")
-
-                # ONLY extend the graph if the incoming data belongs to the selected dataset
                 if str(incoming_varset_id) != str(varset_id):
                     figs_to_update.append(dash.no_update)
                     continue
 
                 variables = event_data.get("variables", {})
 
-                time_data = variables.get("time", {})
-                if not time_data:
-                    time_data = event_data.get("time", {}) 
-                
-                L.debug(f"GRAPH DATA CHECK: Time found? {bool(time_data)} | '{y_axis}' found? {y_axis in variables}")
-                
-                if not time_data or y_axis not in variables:
-                    figs_to_update.append(dash.no_update)
-                    continue
-
+                # Safely extract x and y
                 x_val = variables.get("time", {}).get("data")
                 if not x_val:
                     x_val = event_data.get("time", {}).get("data")
                     
                 y_val = variables.get(y_axis, {}).get("data")
 
+                if not x_val or y_val is None:
+                    figs_to_update.append(dash.no_update)
+                    continue
+
                 if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[0]
                 if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[0]
 
-                L.debug(f"GRAPH APPENDING DATA: x=[{x_val}], y=[{y_val}]")
-
+                # Format required by Plotly's extendData: ( {dict}, [traces], maxPoints )
                 figs_to_update.append(
                     ( {"x": [[x_val]], "y": [[y_val]]}, [0], 1000 )
                 )
 
+            # Prevent update if all graphs evaluated to no_update
+            if not any(f != dash.no_update for f in figs_to_update):
+                raise PreventUpdate
+
             return figs_to_update
         
         else:
-            return [dash.no_update] * len(selected_values)
+            raise PreventUpdate
 
     except Exception as e:
-        print(f"data update error graph: {e}")
+        L.error(f"data update error graph: {e}")
         L.error(traceback.format_exc())
-        return [dash.no_update] * len(selected_values)
-
+        raise PreventUpdate
 
 
 # @callback(
