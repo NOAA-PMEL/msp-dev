@@ -1516,44 +1516,115 @@ def layout(sensor_id=None):
 #         State({"type": "graph-1d-dropdown", "index": MATCH}, "id"),
 #     ],
 # )
+# @callback(
+#     Output({"type": "sensor-graph-1d", "index": MATCH}, "figure"), # ADDED 'sensor-'
+#     Input({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "value"), # ADDED 'sensor-'
+#     [
+#         State("sensor-meta", "data"),
+#         State("graph-axes", "data"),
+#         State("sensor-definition", "data"),
+#         State({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "id"), # ADDED 'sensor-'
+#     ],
+# )
+# # def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
+#     print(f"select_graph_1d: {y_axis}, {sensor_meta}, {graph_axes}")
+#     # print(f"current_fig: {current_fig}")
+#     try:
+#         if "graph-1d" not in graph_axes:
+#             graph_axes["graph-1d"] = dict()
+#         graph_axes["graph-1d"][graph_id["index"]] = {"x-axis": "time", "y-axis": y_axis}
+#         print(f"select_graph_1d: {graph_axes}")
+
+#         x = []
+#         y = []
+#         query = {
+#             "device_id": sensor_meta["device_id"],
+#             # "make": sensor_meta["make"],
+#             # "model": sensor_meta["model"],
+#             # "serial_number": sensor_meta["serial_number"],
+#         }
+#         # sort = {"variables.time.data": 1}
+#         results = get_device_data(device_id=sensor_meta["device_id"], device_type="sensor")
+#         # results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
+#         # # results = db_data_client.find("data", "sensor", query, sort)
+#         print(f"***results: {results}")
+#         if results is None or len(results) == 0:
+#             print("results = None")
+#             # return [{"x": [], "y": [], "type": "scatter"}, graph_axes]
+#             return {"x": [], "y": [], "type": "scatter"}  # , graph_axes]
+#         if results and len(results) > 0:
+#             print("results = good")
+#             for doc in results:
+#                 try:
+#                     x.append(doc["variables"]["time"]["data"])
+#                     y.append(doc["variables"][y_axis]["data"])
+#                 except KeyError:
+#                     continue
+
+#         # print(f"x,y: {x}, {y}")
+#         # # fig = go.Figure(data=[go.Scatter(x=x, y=y)])
+#         # print(f"go fig: {fig}")
+#         # fig = dict(data=[{'x': x, 'y': y}])
+#         units = ""
+#         try:
+#             units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
+#         except KeyError:
+#             pass
+
+#         # fig = {
+#         #     "data": [{"x": x, "y": y, "type": "scatter"}],
+#         #     "layout": {
+#         #         "xaxis": {"title": "Time"},
+#         #         "yaxis": {"title": f"{y_axis} {units}"},
+#         #     },
+#         # }
+#         fig = go.Figure(
+#             data=go.Scatter(x=x, y=y, type="scatter"),
+#             layout={
+#                 "xaxis": {"title": "Time"},
+#                 "yaxis": {"title": f"{y_axis} {units}"},
+#             },
+#         )
+#         # print(f"go fig: {fig}")
+#         # return [fig, graph_axes]
+#         return fig  # , graph_axes]
+#     except Exception as e:
+#         print(f"select_graph_1d error: {e}")
+#         # return [dash.no_update, dash.no_update]
+#         return dash.no_update  # , dash.no_update]
+
 @callback(
-    Output({"type": "sensor-graph-1d", "index": MATCH}, "figure"), # ADDED 'sensor-'
-    Input({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "value"), # ADDED 'sensor-'
+    Output({"type": "sensor-graph-1d", "index": MATCH}, "figure"),
+    Input({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "value"),
     [
         State("sensor-meta", "data"),
         State("graph-axes", "data"),
         State("sensor-definition", "data"),
-        State({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "id"), # ADDED 'sensor-'
+        State({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "id"),
     ],
 )
 def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
-    print(f"select_graph_1d: {y_axis}, {sensor_meta}, {graph_axes}")
-    # print(f"current_fig: {current_fig}")
+    # 1. Provide a default figure with "lines+markers" mode so single dots are visible
+    default_fig = go.Figure(
+        data=go.Scatter(x=[], y=[], type="scatter", mode="lines+markers"),
+        layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}}
+    )
+
+    if not y_axis:
+        return default_fig
+
     try:
+        if graph_axes is None:
+            graph_axes = {}
         if "graph-1d" not in graph_axes:
             graph_axes["graph-1d"] = dict()
+            
         graph_axes["graph-1d"][graph_id["index"]] = {"x-axis": "time", "y-axis": y_axis}
-        print(f"select_graph_1d: {graph_axes}")
 
-        x = []
-        y = []
-        query = {
-            "device_id": sensor_meta["device_id"],
-            # "make": sensor_meta["make"],
-            # "model": sensor_meta["model"],
-            # "serial_number": sensor_meta["serial_number"],
-        }
-        # sort = {"variables.time.data": 1}
-        results = get_device_data(device_id=sensor_meta["device_id"], device_type="sensor")
-        # results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
-        # # results = db_data_client.find("data", "sensor", query, sort)
-        print(f"***results: {results}")
-        if results is None or len(results) == 0:
-            print("results = None")
-            # return [{"x": [], "y": [], "type": "scatter"}, graph_axes]
-            return {"x": [], "y": [], "type": "scatter"}  # , graph_axes]
+        x, y = [], []
+        results = get_device_data(device_id=sensor_meta.get("device_id"), device_type="sensor")
+        
         if results and len(results) > 0:
-            print("results = good")
             for doc in results:
                 try:
                     x.append(doc["variables"]["time"]["data"])
@@ -1561,39 +1632,28 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
                 except KeyError:
                     continue
 
-        # print(f"x,y: {x}, {y}")
-        # # fig = go.Figure(data=[go.Scatter(x=x, y=y)])
-        # print(f"go fig: {fig}")
-        # fig = dict(data=[{'x': x, 'y': y}])
         units = ""
         try:
-            units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
-        except KeyError:
+            unit_data = sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]
+            if unit_data:
+                units = f'({unit_data})'
+        except Exception:
             pass
 
-        # fig = {
-        #     "data": [{"x": x, "y": y, "type": "scatter"}],
-        #     "layout": {
-        #         "xaxis": {"title": "Time"},
-        #         "yaxis": {"title": f"{y_axis} {units}"},
-        #     },
-        # }
+        # 2. Return a proper Figure object
         fig = go.Figure(
-            data=go.Scatter(x=x, y=y, type="scatter"),
+            data=go.Scatter(x=x, y=y, type="scatter", mode="lines+markers"),
             layout={
                 "xaxis": {"title": "Time"},
-                "yaxis": {"title": f"{y_axis} {units}"},
+                "yaxis": {"title": f"{y_axis} {units}".strip()},
             },
         )
-        # print(f"go fig: {fig}")
-        # return [fig, graph_axes]
-        return fig  # , graph_axes]
+        return fig
+
     except Exception as e:
-        print(f"select_graph_1d error: {e}")
-        # return [dash.no_update, dash.no_update]
-        return dash.no_update  # , dash.no_update]
-
-
+        L.error(f"select_graph_1d error: {e}")
+        return default_fig
+    
 @callback(
     # [Output({"type": "graph-1d", "index": MATCH}, "figure"), Output("graph-axes", "data")],
     [
@@ -1915,53 +1975,101 @@ def update_sensor_buffers(event):
 #         State({"type": "graph-1d", "index": ALL}, "figure"),
 #     ],
 # )
+# @callback(
+#     Output({"type": "sensor-graph-1d", "index": ALL}, "extendData"), # ADDED 'sensor-'
+#     Input("sensor-data-buffer", "data"),
+#     [
+#         State({"type": "sensor-graph-1d-dropdown", "index": ALL}, "value"), # ADDED 'sensor-'
+#     ],
+#     prevent_initial_call=True
+# )
+# def update_graph_1d(sensor_data, y_axis_list, graph_axes, current_figs):
+
+#     # # may need this later with multiple plots but I think it will still loop through drop downs
+#     # if "graph-1d" not in graph_axes:
+#     #     return dash.no_update
+
+#     # axes = graph_axes["graph-1d"]# = {"x-axis": "time", "y-axis": y_axis}
+#     try:
+#         figs = []
+#         if sensor_data:
+#             print(f"sensor_data: {sensor_data}")
+#             for y_axis in y_axis_list:
+#                 if (
+#                     "time" not in sensor_data["variables"]
+#                     or y_axis not in sensor_data["variables"]
+#                 ):
+#                     # return dash.no_update
+#                     figs.append(dash.no_update)
+#                     continue
+
+#                 x = [sensor_data["variables"]["time"]["data"]]
+#                 y = [sensor_data["variables"][y_axis]["data"]]
+#                 print(f"update: {[x]}, {[y]}")
+#                 figs.append({"x": [x], "y": [y]})
+#             # return {"x": [x], "y": [y]}
+
+#             # If everything was skipped, abort cleanly
+#             if not any(f != dash.no_update for f in figs):
+#                 raise PreventUpdate
+
+#             return figs
+
+#     except Exception as e:
+#         print(f"data update error: {e}")
+#         # return dash.no_update
+#         # return dash.no_update
+#     raise PreventUpdate
+#     # return dash.no_update
+
 @callback(
-    Output({"type": "sensor-graph-1d", "index": ALL}, "extendData"), # ADDED 'sensor-'
+    Output({"type": "sensor-graph-1d", "index": ALL}, "extendData"),
     Input("sensor-data-buffer", "data"),
     [
-        State({"type": "sensor-graph-1d-dropdown", "index": ALL}, "value"), # ADDED 'sensor-'
+        State({"type": "sensor-graph-1d-dropdown", "index": ALL}, "value"),
     ],
     prevent_initial_call=True
 )
-def update_graph_1d(sensor_data, y_axis_list, graph_axes, current_figs):
+def update_graph_1d(sensor_data, y_axis_list): # FIXED: Arguments now match decorator
+    if not sensor_data:
+        raise PreventUpdate
 
-    # # may need this later with multiple plots but I think it will still loop through drop downs
-    # if "graph-1d" not in graph_axes:
-    #     return dash.no_update
-
-    # axes = graph_axes["graph-1d"]# = {"x-axis": "time", "y-axis": y_axis}
     try:
-        figs = []
-        if sensor_data:
-            print(f"sensor_data: {sensor_data}")
-            for y_axis in y_axis_list:
-                if (
-                    "time" not in sensor_data["variables"]
-                    or y_axis not in sensor_data["variables"]
-                ):
-                    # return dash.no_update
-                    figs.append(dash.no_update)
-                    continue
+        figs_to_update = []
+        for y_axis in y_axis_list:
+            if not y_axis:
+                figs_to_update.append(dash.no_update)
+                continue
 
-                x = [sensor_data["variables"]["time"]["data"]]
-                y = [sensor_data["variables"][y_axis]["data"]]
-                print(f"update: {[x]}, {[y]}")
-                figs.append({"x": [x], "y": [y]})
-            # return {"x": [x], "y": [y]}
+            variables = sensor_data.get("variables", {})
+            if "time" not in variables or y_axis not in variables:
+                figs_to_update.append(dash.no_update)
+                continue
 
-            # If everything was skipped, abort cleanly
-            if not any(f != dash.no_update for f in figs):
-                raise PreventUpdate
+            x_val = variables["time"].get("data")
+            y_val = variables[y_axis].get("data")
 
-            return figs
+            if x_val is None or y_val is None:
+                figs_to_update.append(dash.no_update)
+                continue
+
+            # Ensure we have single scalars for the trace
+            if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[-1]
+            if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[-1]
+
+            # 3. Format required by Plotly's extendData: ( {dict}, [traces], maxPoints )
+            figs_to_update.append(
+                ( {"x": [[x_val]], "y": [[y_val]]}, [0], 1000 )
+            )
+
+        if not any(f != dash.no_update for f in figs_to_update):
+            raise PreventUpdate
+
+        return figs_to_update
 
     except Exception as e:
-        print(f"data update error: {e}")
-        # return dash.no_update
-        # return dash.no_update
-    raise PreventUpdate
-    # return dash.no_update
-
+        L.error(f"data update error graph: {e}")
+        raise PreventUpdate
 
 @callback(
     # Output({"type": "graph-2d-heatmap", "index": ALL}, "extendData"),

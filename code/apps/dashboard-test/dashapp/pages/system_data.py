@@ -522,7 +522,24 @@ def build_graphs(shared_dropdown_list, unique_varsets):
     ]
 
 
-
+def get_variableset_data(varset_id: str):
+    """Fetches historical data for a specific variableset from the datastore."""
+    query = {"variableset_id": varset_id}
+    # Using the variableset data endpoint pattern
+    url = f"http://{datastore_url}/variableset/data/get/"
+    
+    L.debug(f"variableset-data-get: {url}, query: {query}")
+    try:
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, params=query, timeout=timeout)
+        results = response.json()
+        
+        if "results" in results and results["results"]:
+            return results["results"]
+    except Exception as e:
+        L.error("get_variableset_data error", extra={"reason": e})
+    
+    return []
 
 
 
@@ -1316,43 +1333,66 @@ def filter_graph_dropdown(selected_varsets, master_options):
     ],
 )
 def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
-    # FIX: Return a valid Plotly Figure object instead of a bare dictionary
+    # Default empty figure with lines+markers to ensure visibility of single points
+    default_fig = go.Figure(
+        data=go.Scatter(x=[], y=[], type="scatter", mode="lines+markers"),
+        layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}}
+    )
+    
     if not selected_value:
-        return go.Figure(
-            data=go.Scatter(x=[], y=[], type="scatter"),
-            layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}}
-        )
+        return default_fig
     
     try:
+        # Split 'varset_id::variable_name'
         varset_id, y_axis = selected_value.rsplit("::", 1)
 
+        # Update local state for axes tracking
+        if graph_axes is None:
+            graph_axes = {}
         if "graph-1d" not in graph_axes:
             graph_axes["graph-1d"] = dict()
         graph_axes["graph-1d"][graph_id["index"]] = {"x-axis": "time", "y-axis": y_axis}
 
-        units = ""
+        x, y = [], []
+        
+        # NEW: Fetch historical data from datastore to prepopulate the graph
+        results = get_variableset_data(varset_id=varset_id)
+        
+        if results and len(results) > 0:
+            for doc in results:
+                try:
+                    # Extract values from nested 'variables' structure
+                    variables = doc.get("variables", {})
+                    if "time" in variables and y_axis in variables:
+                        x.append(variables["time"]["data"])
+                        y.append(variables[y_axis]["data"])
+                except (KeyError, TypeError):
+                    continue
 
+        # Get unit metadata for the Y-axis label
+        units = ""
         try:
-            unit_data = variableset_defs[varset_id]["variables"][y_axis].get("attributes", {}).get("units", {}).get("data")
+            unit_data = variableset_defs.get(varset_id, {}).get("variables", {}).get(y_axis, {}).get("attributes", {}).get("units", {}).get("data")
             if unit_data:
                 units = f'({unit_data})'
-        except KeyError:
+        except Exception:
             pass
 
+        # Return the populated figure
         fig = go.Figure(
-                data=go.Scatter(x=[], y=[], type="scatter"),
+                data=go.Scatter(x=x, y=y, type="scatter", mode="lines+markers"),
                 layout={
                     "xaxis": {"title": "Time"},
-                    "yaxis": {"title": f"{y_axis} {units}"},
+                    "yaxis": {"title": f"{y_axis} {units}".strip()},
                 },
             )
 
         return fig 
 
     except Exception as e:
-        print(f"select_graph_1d error: {e}")
+        L.error(f"select_graph_1d error: {e}")
         L.error(traceback.format_exc())
-        return dash.no_update
+        return default_fig
 
 # @callback(
 #     [
