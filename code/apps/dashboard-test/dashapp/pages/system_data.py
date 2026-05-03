@@ -522,26 +522,51 @@ def build_graphs(shared_dropdown_list, unique_varsets):
     ]
 
 
+# def get_variableset_data(varset_id: str):
+#     """Fetches historical data for a specific variableset from the datastore."""
+#     query = {"variableset_id": varset_id}
+#     # Using the variableset data endpoint pattern
+#     url = f"http://{datastore_url}/variableset/data/get/"
+    
+#     L.debug(f"variableset-data-get: {url}, query: {query}")
+#     try:
+#         timeout = httpx.Timeout(30.0, read=None)
+#         response = httpx.get(url, params=query, timeout=timeout)
+#         results = response.json()
+        
+#         if "results" in results and results["results"]:
+#             return results["results"]
+#     except Exception as e:
+#         L.error("get_variableset_data error", extra={"reason": e})
+    
+#     return []
+
 def get_variableset_data(varset_id: str):
     """Fetches historical data for a specific variableset from the datastore."""
-    query = {"variableset_id": varset_id}
-    # Using the variableset data endpoint pattern
+    
+    # The varset_id from the registry is: Platform::MapName::Time::SetName
+    # Strip Platform and Time to query the platform-agnostic, time-less data ID
+    parts = varset_id.split("::")
+    if len(parts) >= 4:
+        query_id = f"{parts[1]}::{parts[3]}"
+    else:
+        query_id = varset_id
+
+    query = {"variableset_id": query_id}
     url = f"http://{datastore_url}/variableset/data/get/"
     
     L.debug(f"variableset-data-get: {url}, query: {query}")
     try:
         timeout = httpx.Timeout(30.0, read=None)
         response = httpx.get(url, params=query, timeout=timeout)
-        results = response.json()
-        
-        if "results" in results and results["results"]:
-            return results["results"]
+        if response.status_code == 200:
+            results = response.json()
+            if "results" in results and results["results"]:
+                return results["results"]
     except Exception as e:
         L.error("get_variableset_data error", extra={"reason": e})
     
     return []
-
-
 
 @callback(
     Output("variableset-store", "data"),

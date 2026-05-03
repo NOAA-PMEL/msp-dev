@@ -1022,6 +1022,78 @@ class Datastore:
     # -------------------------------------------------------------------------------------
     # VARIABLE SET TELEMETRY DATA
     # -------------------------------------------------------------------------------------
+    # async def variableset_data_update(self, ce: CloudEvent):
+    #     try:
+    #         database = "data"
+    #         collection = "variableset"
+            
+    #         self.logger.debug("variableset_data_update")
+    #         data = ce.data
+    #         attributes = data.get("attributes", {})
+    #         dimensions = data.get("dimensions", {})
+    #         variables = data.get("variables", {})
+            
+    #         platform = attributes.get("platform", {}).get("data", "unknown")
+    #         vmap_name = attributes.get("variablemap", {}).get("data", "unknown")
+    #         vmap_time = attributes.get("valid_config_time", {}).get("data", "2020-01-01T00:00:00Z")
+
+    #         variablemap_id = f"{platform}::{vmap_name}::{vmap_time}"
+            
+    #         # --- STRICT SOURCE OF TRUTH TIME EXTRACTION ---
+    #         time_data = variables.get("time", {}).get("data")
+            
+    #         # If the variable set is chunked (array of times), use the latest time for the index
+    #         if isinstance(time_data, list) and len(time_data) > 0:
+    #             ts_str = time_data[-1] 
+    #         else:
+    #             ts_str = time_data
+
+    #         # FAIL FAST: Do not fall back. Reject if invalid.
+    #         if not ts_str:
+    #             raise ValueError("Missing or empty variables.time.data. Cannot index VariableSet without a valid measurement time.")
+                
+    #         timestamp = string_to_timestamp(str(ts_str))
+    #         # ----------------------------------------------
+
+    #         source_parts = ce.get("source", "").split(".")
+    #         variableset_id = source_parts[-1] if len(source_parts) > 0 else "unknown"
+            
+    #         request = VariableSetDataUpdate(
+    #             variableset_id=variableset_id,
+    #             variablemap_id=variablemap_id,
+    #             variableset=variableset_id.split("::")[-1] if "::" in variableset_id else "unknown",
+    #             timestamp=timestamp, 
+    #             attributes=attributes,
+    #             dimensions=dimensions,
+    #             variables=variables,
+    #         )
+            
+    #         self.logger.debug("variableset_data_update", extra={"req": request})
+    #         if self.db_client:
+    #             await self.db_client.variableset_data_update(
+    #                 database=database,
+    #                 collection=collection,
+    #                 request=request,
+    #                 ttl=self.config.db_data_ttl,
+    #             )
+            
+    #             instance_request = VariableSetInstanceUpdate(
+    #                 variableset_id=request.variableset_id,
+    #                 variablemap_id=request.variablemap_id,
+    #                 variableset=request.variableset,
+    #                 attributes=attributes,
+    #             )
+                
+    #             await self.db_client.variableset_instance_registry_update(
+    #                 database="registry",
+    #                 collection="variableset-instance",
+    #                 request=instance_request,
+    #                 ttl=self.config.db_reg_variableset_instance_ttl,
+    #             )
+                
+    #     except Exception as e:
+    #         self.logger.error("variableset_data_update", extra={"reason": str(e)})
+
     async def variableset_data_update(self, ce: CloudEvent):
         try:
             database = "data"
@@ -1033,8 +1105,9 @@ class Datastore:
             dimensions = data.get("dimensions", {})
             variables = data.get("variables", {})
             
+            # --- MAP ID RECONSTRUCTION ---
             platform = attributes.get("platform", {}).get("data", "unknown")
-            vmap_name = attributes.get("variablemap", {}).get("data", "unknown")
+            vmap_name = attributes.get("variablemap_id", {}).get("data") or attributes.get("variablemap", {}).get("data", "unknown")
             vmap_time = attributes.get("valid_config_time", {}).get("data", "2020-01-01T00:00:00Z")
 
             variablemap_id = f"{platform}::{vmap_name}::{vmap_time}"
@@ -1053,15 +1126,21 @@ class Datastore:
                 raise ValueError("Missing or empty variables.time.data. Cannot index VariableSet without a valid measurement time.")
                 
             timestamp = string_to_timestamp(str(ts_str))
-            # ----------------------------------------------
-
-            source_parts = ce.get("source", "").split(".")
-            variableset_id = source_parts[-1] if len(source_parts) > 0 else "unknown"
             
+            # --- DECOUPLED VARIABLESET ID RECONSTRUCTION ---
+            vs_name = attributes.get("variableset_id", {}).get("data") or attributes.get("variableset", {}).get("data")
+            if not vs_name:
+                source_parts = ce.get("source", "").split(".")
+                raw_source = source_parts[-1] if len(source_parts) > 0 else "unknown"
+                vs_name = raw_source.split("::")[-1] if "::" in raw_source else raw_source
+
+            # Build the decoupled variableset ID
+            variableset_id = f"{vmap_name}::{vs_name}"
+
             request = VariableSetDataUpdate(
                 variableset_id=variableset_id,
-                variablemap_id=variablemap_id,
-                variableset=variableset_id.split("::")[-1] if "::" in variableset_id else "unknown",
+                variablemap_id=variablemap_id, # Retain full definition ID for the registry link
+                variableset=vs_name,
                 timestamp=timestamp, 
                 attributes=attributes,
                 dimensions=dimensions,
@@ -1070,6 +1149,7 @@ class Datastore:
             
             self.logger.debug("variableset_data_update", extra={"req": request})
             if self.db_client:
+                # 1. Save historical data
                 await self.db_client.variableset_data_update(
                     database=database,
                     collection=collection,
@@ -1077,6 +1157,7 @@ class Datastore:
                     ttl=self.config.db_data_ttl,
                 )
             
+                # 2. Update active instance registry
                 instance_request = VariableSetInstanceUpdate(
                     variableset_id=request.variableset_id,
                     variablemap_id=request.variablemap_id,
