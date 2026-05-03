@@ -1906,37 +1906,128 @@ def update_graph_1d(buffer_data, selected_values):
 
 
 
+# @callback(
+#     Output(
+#         {"type": "data-table-1d", "index": ALL}, "rowData"
+#     ),
+#     Input("variableset-data-buffer", "data"),
+#     [
+#         State({"type": "data-table-1d", "index": ALL}, "rowData"),
+#         State({"type": "data-table-1d", "index": ALL}, "columnDefs"),
+#         State({"type": "data-table-1d", "index": ALL}, "id")
+#     ],
+# )
+# def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
+#     if not buffer_data:
+#         raise PreventUpdate
+    
+#     try:
+#         # buffer_data = buffer_data[0]
+#         L.debug(f"initial buffer data {buffer_data}")
+#         id_dict = buffer_data[0].get("variablesetfullid", {})
+#         L.debug(f"id_dict {id_dict}")
+#         buffer_data = buffer_data[0].get("data-update", {})
+#         L.debug(f"buffer_data table {buffer_data}")
+        
+#         # --- DEBUG 1: See what the top level looks like ---
+#         L.debug(f"LIVE DATA KEYS: {buffer_data.keys()}")
+#         L.debug(f"ATTRIBUTE KEYS: {buffer_data.get('attributes', {}).keys()}")
+        
+#         # FIX 1: Drill all the way down to the actual string, safely!
+#         # id_dict = buffer_data.get("attributes", {}).get("variablesetfullid", {})
+        
+#         # If it's a dictionary, grab the 'data' key. If it's just a string, keep it.
+#         if isinstance(id_dict, dict):
+#             incoming_varset_id = id_dict.get("data")
+#         else:
+#             incoming_varset_id = id_dict
+
+#         L.debug(f"EXTRACTED INCOMING ID: '{incoming_varset_id}'")
+
+#         if incoming_varset_id:
+#             new_row_data_list = []
+            
+#             for row_data, col_defs, table_id in zip(row_data_list, col_defs_list, table_ids):
+                
+#                 # --- DEBUG 3: Watch the routing logic ---
+#                 L.debug(f"Comparing Table '{table_id['index']}' to Incoming '{incoming_varset_id}'")
+                
+#                 if str(table_id["index"]) == str(incoming_varset_id):
+                    
+#                     # FIX 2: Safely extract variables to prevent the KeyError crash
+#                     variables = buffer_data.get("variables", {})
+#                     L.debug(f"EXTRACTED VARIABLES: '{variables}'")
+                    
+#                     data = {}
+#                     for col in col_defs:
+#                         L.debug(f"col: '{col}'")
+#                         name = col["field"]
+
+#                         if name == "time":
+#                             # 1st attempt: Look inside 'variables' (where your previous log showed it)
+#                             t_val = variables.get("time", {}).get("data")
+                            
+#                             # 2nd attempt: Look at the root level (just in case the backend moves it)
+#                             if not t_val:
+#                                 t_val = buffer_data.get("time", {}).get("data", "")
+                                
+#                             data[name] = t_val
+#                             continue
+
+#                         if name in variables:
+#                             # Safely extract the data point
+#                             data[name] = variables[name].get("data", "")
+#                         else:
+#                             data[name] = ""
+
+#                     # --- DEBUG 4: Verify the row was built successfully ---
+#                     L.debug(f"BUILT NEW ROW: {data}")
+
+#                     # FIX 3: Actually insert the new row into the table!
+#                     row_data.insert(0, data)
+
+#                     if len(row_data) > 30:
+#                         new_row_data_list.append(row_data[:30])
+#                     else:
+#                         new_row_data_list.append(row_data)
+#                 else:
+#                     new_row_data_list.append(row_data)
+
+#             return new_row_data_list
+        
+#         else:
+#             return [dash.no_update] * len(table_ids)
+    
+#     except Exception as e:
+#         L.error(f"data update error table: {e}")
+#         L.error(traceback.format_exc())
+#         return [dash.no_update] * len(table_ids)
+
 @callback(
     Output(
-        {"type": "data-table-1d", "index": ALL}, "rowData"
+        {"type": "data-table-1d", "index": ALL}, "rowTransaction"
     ),
     Input("variableset-data-buffer", "data"),
     [
-        State({"type": "data-table-1d", "index": ALL}, "rowData"),
         State({"type": "data-table-1d", "index": ALL}, "columnDefs"),
         State({"type": "data-table-1d", "index": ALL}, "id")
     ],
 )
-def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
+def update_table_1d(buffer_data, col_defs_list, table_ids):
     if not buffer_data:
         raise PreventUpdate
     
     try:
-        # buffer_data = buffer_data[0]
         L.debug(f"initial buffer data {buffer_data}")
         id_dict = buffer_data[0].get("variablesetfullid", {})
         L.debug(f"id_dict {id_dict}")
         buffer_data = buffer_data[0].get("data-update", {})
-        L.debug(f"buffer_data table {buffer_data}")
         
         # --- DEBUG 1: See what the top level looks like ---
         L.debug(f"LIVE DATA KEYS: {buffer_data.keys()}")
         L.debug(f"ATTRIBUTE KEYS: {buffer_data.get('attributes', {}).keys()}")
         
-        # FIX 1: Drill all the way down to the actual string, safely!
-        # id_dict = buffer_data.get("attributes", {}).get("variablesetfullid", {})
-        
-        # If it's a dictionary, grab the 'data' key. If it's just a string, keep it.
+        # FIX 1: If it's a dictionary, grab the 'data' key. If it's just a string, keep it.
         if isinstance(id_dict, dict):
             incoming_varset_id = id_dict.get("data")
         else:
@@ -1945,9 +2036,9 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
         L.debug(f"EXTRACTED INCOMING ID: '{incoming_varset_id}'")
 
         if incoming_varset_id:
-            new_row_data_list = []
+            transactions = []
             
-            for row_data, col_defs, table_id in zip(row_data_list, col_defs_list, table_ids):
+            for col_defs, table_id in zip(col_defs_list, table_ids):
                 
                 # --- DEBUG 3: Watch the routing logic ---
                 L.debug(f"Comparing Table '{table_id['index']}' to Incoming '{incoming_varset_id}'")
@@ -1964,7 +2055,7 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
                         name = col["field"]
 
                         if name == "time":
-                            # 1st attempt: Look inside 'variables' (where your previous log showed it)
+                            # 1st attempt: Look inside 'variables'
                             t_val = variables.get("time", {}).get("data")
                             
                             # 2nd attempt: Look at the root level (just in case the backend moves it)
@@ -1983,17 +2074,13 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
                     # --- DEBUG 4: Verify the row was built successfully ---
                     L.debug(f"BUILT NEW ROW: {data}")
 
-                    # FIX 3: Actually insert the new row into the table!
-                    row_data.insert(0, data)
-
-                    if len(row_data) > 30:
-                        new_row_data_list.append(row_data[:30])
-                    else:
-                        new_row_data_list.append(row_data)
+                    # FIX 3: Push a transaction dict to add the row at the top (index 0)
+                    transactions.append({"add": [data], "addIndex": 0})
                 else:
-                    new_row_data_list.append(row_data)
+                    # Table doesn't match; send no_update for this specific table output
+                    transactions.append(dash.no_update)
 
-            return new_row_data_list
+            return transactions
         
         else:
             return [dash.no_update] * len(table_ids)
@@ -2002,8 +2089,7 @@ def update_table_1d(buffer_data, row_data_list, col_defs_list, table_ids):
         L.error(f"data update error table: {e}")
         L.error(traceback.format_exc())
         return [dash.no_update] * len(table_ids)
-
-
+    
 # @callback(
 #     Output(
 #         {"type": "data-table-2d", "index": ALL}, "rowData"
