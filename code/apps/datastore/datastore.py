@@ -245,6 +245,7 @@ class Datastore:
         while True:
             try:
                 ce = await self.mqtt_buffer.get()
+                
                 if "variable" in ce["type"]:
                     self.logger.debug("handle_mqtt_buffer", extra={"ce-type": ce["type"]})
                 if ce["type"] == "envds.data.update":

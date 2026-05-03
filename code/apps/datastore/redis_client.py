@@ -218,8 +218,8 @@ class RedisClient(DBClient):
     # UTILITY HELPERS
     # -------------------------------------------------------------------------------------
     def escape_query(self, query: str) -> str:
-        # special = [",",".","<",">","{","}","[","]","'",":",";","!","@","#","$","%","^","&","*","(",")","-","+","=","~"]
-        special = [",",".","<",">","{","}","[","]","'","!",";","@","#","$","%","^","&","*","(",")","-","+","=","~"]
+        special = [",",".","<",">","{","}","[","]","'",":",";","!","@","#","$","%","^","&","*","(",")","-","+","=","~"]
+        # special = [",",".","<",">","{","}","[","]","'","!",";","@","#","$","%","^","&","*","(",")","-","+","=","~"]
         escaped = ""
         for ch in str(query):
             if ch in special: escaped += "\\"
@@ -303,8 +303,14 @@ class RedisClient(DBClient):
         if request.model: query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
         if request.serial_number: query_args.append(f"@serial_number:{{{self.escape_query(request.serial_number)}}}")
         if request.version: query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
-        if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
-        if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
+        # if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
+        # if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
+
+        # FIX: Correct RediSearch Numeric Range Syntax [start end]
+        if request.start_timestamp or request.end_timestamp:
+            start = request.start_timestamp if request.start_timestamp else "-inf"
+            end = request.end_timestamp if request.end_timestamp else "+inf"
+            query_args.append(f"@timestamp:[{start} {end}]")
 
         qstring = " ".join(query_args) if query_args else "*"
         q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp").return_fields("$")
@@ -434,8 +440,14 @@ class RedisClient(DBClient):
         if request.make: query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
         if request.model: query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
         if request.version: query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
-        if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
-        if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
+        # if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
+        # if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
+
+        # FIX: Correct RediSearch Numeric Range Syntax [start end]
+        if request.start_timestamp or request.end_timestamp:
+            start = request.start_timestamp if request.start_timestamp else "-inf"
+            end = request.end_timestamp if request.end_timestamp else "+inf"
+            query_args.append(f"@timestamp:[{start} {end}]")
 
         qstring = " ".join(query_args) if query_args else "*"
         q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp").return_fields("$")
@@ -682,8 +694,14 @@ class RedisClient(DBClient):
         if request.variableset_id: query_args.append(f"@variableset_id:{{{self.escape_query(request.variableset_id)}}}")
         if request.variablemap_id: query_args.append(f"@variablemap_id:{{{self.escape_query(request.variablemap_id)}}}")
         if request.variableset: query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
-        if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
-        if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
+        # if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
+        # if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
+
+        # FIX: Correct RediSearch Numeric Range Syntax [start end]
+        if request.start_timestamp or request.end_timestamp:
+            start = request.start_timestamp if request.start_timestamp else "-inf"
+            end = request.end_timestamp if request.end_timestamp else "+inf"
+            query_args.append(f"@timestamp:[{start} {end}]")
 
         qstring = " ".join(query_args) if query_args else "*"
         q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp").return_fields("$")
