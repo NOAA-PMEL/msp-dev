@@ -340,36 +340,58 @@ def build_tables(layout_options):
 
 
 # def build_graph_1d(dropdown_list):
-def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
+# def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
 
+#     graph = dbc.Card(
+#         children=[
+#             dbc.CardHeader(
+#                 children=[
+#                     dcc.Dropdown(
+#                         id={"type": "graph-1d-dropdown", "index": xaxis},
+#                         options=dropdown_list,
+#                         value="",
+#                     )
+#                 ]
+#             ),
+#             dcc.Graph(
+#                 id={"type": "graph-1d", "index": xaxis},
+#                 figure=go.Figure(
+#                     data=go.Scatter(x=[], y=[], type="scatter")
+#                     # {
+#                     #     "x": [],
+#                     #     "y": [],
+#                     #     "type": "scatter",
+#                     # }
+#                 ),
+#                 style={"height": 300},
+#             ),
+#         ]
+#     )
+
+#     return graph
+
+def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
     graph = dbc.Card(
         children=[
             dbc.CardHeader(
                 children=[
                     dcc.Dropdown(
-                        id={"type": "graph-1d-dropdown", "index": xaxis},
+                        id={"type": "sensor-graph-1d-dropdown", "index": xaxis}, # ADDED 'sensor-'
                         options=dropdown_list,
                         value="",
                     )
                 ]
             ),
             dcc.Graph(
-                id={"type": "graph-1d", "index": xaxis},
+                id={"type": "sensor-graph-1d", "index": xaxis}, # ADDED 'sensor-'
                 figure=go.Figure(
                     data=go.Scatter(x=[], y=[], type="scatter")
-                    # {
-                    #     "x": [],
-                    #     "y": [],
-                    #     "type": "scatter",
-                    # }
                 ),
                 style={"height": 300},
             ),
         ]
     )
-
     return graph
-
 
 def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
 
@@ -1481,17 +1503,27 @@ def layout(sensor_id=None):
 #         return dash.no_update
 
 
+# @callback(
+#     # [Output({"type": "graph-1d", "index": MATCH}, "figure"), Output("graph-axes", "data")],
+#     Output(
+#         {"type": "graph-1d", "index": MATCH}, "figure"
+#     ),  # Output("graph-axes", "data")],
+#     Input({"type": "graph-1d-dropdown", "index": MATCH}, "value"),
+#     [
+#         State("sensor-meta", "data"),
+#         State("graph-axes", "data"),
+#         State("sensor-definition", "data"),
+#         State({"type": "graph-1d-dropdown", "index": MATCH}, "id"),
+#     ],
+# )
 @callback(
-    # [Output({"type": "graph-1d", "index": MATCH}, "figure"), Output("graph-axes", "data")],
-    Output(
-        {"type": "graph-1d", "index": MATCH}, "figure"
-    ),  # Output("graph-axes", "data")],
-    Input({"type": "graph-1d-dropdown", "index": MATCH}, "value"),
+    Output({"type": "sensor-graph-1d", "index": MATCH}, "figure"), # ADDED 'sensor-'
+    Input({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "value"), # ADDED 'sensor-'
     [
         State("sensor-meta", "data"),
         State("graph-axes", "data"),
         State("sensor-definition", "data"),
-        State({"type": "graph-1d-dropdown", "index": MATCH}, "id"),
+        State({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "id"), # ADDED 'sensor-'
     ],
 )
 def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
@@ -1874,14 +1906,22 @@ def update_sensor_buffers(event):
     return [dash.no_update, dash.no_update]
 
 
+# @callback(
+#     Output({"type": "graph-1d", "index": ALL}, "extendData"),
+#     Input("sensor-data-buffer", "data"),
+#     [
+#         State({"type": "graph-1d-dropdown", "index": ALL}, "value"),
+#         State("graph-axes", "data"),
+#         State({"type": "graph-1d", "index": ALL}, "figure"),
+#     ],
+# )
 @callback(
-    Output({"type": "graph-1d", "index": ALL}, "extendData"),
+    Output({"type": "sensor-graph-1d", "index": ALL}, "extendData"), # ADDED 'sensor-'
     Input("sensor-data-buffer", "data"),
     [
-        State({"type": "graph-1d-dropdown", "index": ALL}, "value"),
-        State("graph-axes", "data"),
-        State({"type": "graph-1d", "index": ALL}, "figure"),
+        State({"type": "sensor-graph-1d-dropdown", "index": ALL}, "value"), # ADDED 'sensor-'
     ],
+    prevent_initial_call=True
 )
 def update_graph_1d(sensor_data, y_axis_list, graph_axes, current_figs):
 
