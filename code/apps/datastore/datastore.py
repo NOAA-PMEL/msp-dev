@@ -346,45 +346,60 @@ class Datastore:
             collection = "device"
             data = ce.data
             
-            # Extract main blocks
             attributes = data.get("attributes", {})
             variables = data.get("variables", {})
-            dimensions = data.get("dimensions", {}) # FIX: Guaranteed extraction
+            dimensions = data.get("dimensions", {}) 
 
-            # Metadata Extraction with Hardcoded Defaults to satisfy Pydantic
+            ts_str = data.get("timestamp")
+            timestamp = string_to_timestamp(ts_str)
+
             make = attributes.get("make", {}).get("data", "unknown")
             model = attributes.get("model", {}).get("data", "unknown")
             sn = attributes.get("serial_number", {}).get("data", "unknown")
             
-            # Version Extraction (Sample: "2.0.0" -> "v2")
             format_ver = attributes.get("format_version", {}).get("data", "1.0.0")
             version = f"v{str(format_ver).split('.')[0]}"
 
-            # ID Reconstruction
             device_id = attributes.get("device_id", {}).get("data")
             if not device_id:
                 device_id = f"{make}::{model}::{sn}"
-
-            # Timestamp Logic
-            ts_str = variables.get("time", {}).get("data") or data.get("time", {}).get("data") or data.get("timestamp")
-            timestamp = string_to_timestamp(ts_str)
 
             request = DataUpdate(
                 device_id=device_id,
                 make=make,
                 model=model,
                 serial_number=sn,
-                version=version,     # Guaranteed string
-                timestamp=timestamp, # Guaranteed float
+                version=version,     
+                timestamp=timestamp, 
                 attributes=attributes,
-                dimensions=dimensions, # Included to fix missing field error
+                dimensions=dimensions, 
                 variables=variables,
             )
 
             if self.db_client:
+                # 1. Save the historical data
                 await self.db_client.device_data_update(
                     database=database, collection=collection, request=request, ttl=self.config.db_data_ttl
                 )
+                
+                # 2. RESTORED: Register the active instance so definitions can be found!
+                device_type = attributes.get("device_type", {}).get("data", "sensor")
+                instance_request = DeviceInstanceUpdate(
+                    device_id=device_id,
+                    make=make,
+                    model=model,
+                    serial_number=sn,
+                    version=version,
+                    device_type=device_type,
+                    attributes=attributes,
+                )
+                await self.db_client.device_instance_registry_update(
+                    database="registry",
+                    collection="device-instance",
+                    request=instance_request,
+                    ttl=self.config.db_reg_device_instance_ttl,
+                )
+
         except Exception as e:
             L.error("device_data_update error", extra={"reason": str(e)})
 
@@ -620,6 +635,9 @@ class Datastore:
             variables = data.get("variables", {})
             dimensions = data.get("dimensions", {})
 
+            ts_str = data.get("timestamp")
+            timestamp = string_to_timestamp(ts_str)
+
             make = attributes.get("make", {}).get("data", "unknown")
             model = attributes.get("model", {}).get("data", "unknown")
             sn = attributes.get("serial_number", {}).get("data", "unknown")
@@ -630,9 +648,6 @@ class Datastore:
             controller_id = attributes.get("controller_id", {}).get("data")
             if not controller_id:
                 controller_id = f"{make}::{model}::{sn}"
-
-            ts_str = variables.get("time", {}).get("data") or data.get("time", {}).get("data") or data.get("timestamp")
-            timestamp = string_to_timestamp(ts_str)
 
             request = ControllerDataUpdate(
                 controller_id=controller_id,
@@ -647,9 +662,27 @@ class Datastore:
             )
 
             if self.db_client:
+                # 1. Save the historical data
                 await self.db_client.controller_data_update(
                     database=database, collection=collection, request=request, ttl=self.config.db_data_ttl
                 )
+                
+                # 2. RESTORED: Register the active instance!
+                instance_request = ControllerInstanceUpdate(
+                    controller_id=controller_id,
+                    make=make,
+                    model=model,
+                    serial_number=sn,
+                    version=version,
+                    attributes=attributes,
+                )
+                await self.db_client.controller_instance_registry_update(
+                    database="registry",
+                    collection="controller-instance",
+                    request=instance_request,
+                    ttl=self.config.db_reg_controller_instance_ttl,
+                )
+
         except Exception as e:
             L.error("controller_data_update error", extra={"reason": str(e)})
 
