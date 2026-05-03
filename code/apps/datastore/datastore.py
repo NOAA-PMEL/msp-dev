@@ -1033,33 +1033,41 @@ class Datastore:
             dimensions = data.get("dimensions", {})
             variables = data.get("variables", {})
             
-            # ---------------------------------------------------------
-            # FIX: Safely extract the nested ["data"] telemetry fields
-            # ---------------------------------------------------------
             platform = attributes.get("platform", {}).get("data", "unknown")
             vmap_name = attributes.get("variablemap", {}).get("data", "unknown")
             vmap_time = attributes.get("valid_config_time", {}).get("data", "2020-01-01T00:00:00Z")
 
-            # Reconstruct the parent VariableMap ID
             variablemap_id = f"{platform}::{vmap_name}::{vmap_time}"
             
-            # The time is attached as a variable object in the variablesets loop
-            timestamp_str = variables.get("time", {}).get("data")
-            timestamp = string_to_timestamp(timestamp_str) if timestamp_str else 0.0
+            # --- STRICT SOURCE OF TRUTH TIME EXTRACTION ---
+            time_data = variables.get("time", {}).get("data")
+            
+            # If the variable set is chunked (array of times), use the latest time for the index
+            if isinstance(time_data, list) and len(time_data) > 0:
+                ts_str = time_data[-1] 
+            else:
+                ts_str = time_data
 
-            # Reconstruct ID from the cloud event source 
+            # FAIL FAST: Do not fall back. Reject if invalid.
+            if not ts_str:
+                raise ValueError("Missing or empty variables.time.data. Cannot index VariableSet without a valid measurement time.")
+                
+            timestamp = string_to_timestamp(str(ts_str))
+            # ----------------------------------------------
+
             source_parts = ce.get("source", "").split(".")
             variableset_id = source_parts[-1] if len(source_parts) > 0 else "unknown"
             
             request = VariableSetDataUpdate(
                 variableset_id=variableset_id,
-                variablemap_id=variablemap_id, # <--- Successfully populated!
+                variablemap_id=variablemap_id,
                 variableset=variableset_id.split("::")[-1] if "::" in variableset_id else "unknown",
-                timestamp=timestamp,
+                timestamp=timestamp, 
                 attributes=attributes,
                 dimensions=dimensions,
                 variables=variables,
             )
+            
             self.logger.debug("variableset_data_update", extra={"req": request})
             if self.db_client:
                 await self.db_client.variableset_data_update(
@@ -1069,7 +1077,6 @@ class Datastore:
                     ttl=self.config.db_data_ttl,
                 )
             
-                # If the variableset is sending data, it is currently active.
                 instance_request = VariableSetInstanceUpdate(
                     variableset_id=request.variableset_id,
                     variablemap_id=request.variablemap_id,
@@ -1085,7 +1092,7 @@ class Datastore:
                 )
                 
         except Exception as e:
-            self.logger.error("variableset_data_update", extra={"reason": e})
+            self.logger.error("variableset_data_update", extra={"reason": str(e)})
 
     async def variableset_data_get(self, query: VariableSetDataRequest):
         if query.start_time:
