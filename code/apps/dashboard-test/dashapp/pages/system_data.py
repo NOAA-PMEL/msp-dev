@@ -141,6 +141,27 @@ ws_send_buffer = html.Div(id="ws-send-instance-buffer", style={"display": "none"
 #     return table_list
 
 
+# def build_tables(table_columns_dict):
+#     L.debug(f"ENTERING build_tables ---")
+#     L.debug(f"table_columns_dict looks like: {table_columns_dict}")
+#     table_list = []
+#     for varset_id, columns in table_columns_dict.items():
+#         L.debug(f"Varset {varset_id} and column len {len(columns)}")
+#         table_list.append(
+#             dbc.AccordionItem(
+#                 [
+#                     dag.AgGrid(
+#                         id={"type": "data-table-1d", "index": varset_id}, 
+#                         rowData=[],
+#                         columnDefs=columns,
+#                         columnSizeOptions="autoSize", 
+#                     )
+#                 ],
+#                 title=f"Data 1-D ({varset_id})",
+#             )
+#         )
+#     return table_list
+
 def build_tables(table_columns_dict):
     L.debug(f"ENTERING build_tables ---")
     L.debug(f"table_columns_dict looks like: {table_columns_dict}")
@@ -151,7 +172,8 @@ def build_tables(table_columns_dict):
             dbc.AccordionItem(
                 [
                     dag.AgGrid(
-                        id={"type": "data-table-1d", "index": varset_id}, 
+                        # ADDED 'system-' PREFIX
+                        id={"type": "system-data-table-1d", "index": varset_id}, 
                         rowData=[],
                         columnDefs=columns,
                         columnSizeOptions="autoSize", 
@@ -162,37 +184,60 @@ def build_tables(table_columns_dict):
         )
     return table_list
 
+# def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
+
+#     graph = dbc.Card(
+#         children=[
+#             dbc.CardHeader(
+#                 children=[
+#                     dcc.Dropdown(
+#                         id={"type": "graph-1d-dropdown", "index": xaxis},
+#                         options=dropdown_list,
+#                         value="",
+#                     )
+#                 ]
+#             ),
+#             dcc.Graph(
+#                 id={"type": "graph-1d", "index": xaxis},
+#                 figure=go.Figure(
+#                     data=go.Scatter(x=[], y=[], type="scatter")
+#                     # {
+#                     #     "x": [],
+#                     #     "y": [],
+#                     #     "type": "scatter",
+#                     # }
+#                 ),
+#                 style={"height": 600},
+#             ),
+#         ]
+#     )
+
+#     return graph
 
 def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
-
     graph = dbc.Card(
         children=[
             dbc.CardHeader(
                 children=[
                     dcc.Dropdown(
-                        id={"type": "graph-1d-dropdown", "index": xaxis},
+                        # ADDED 'system-' PREFIX
+                        id={"type": "system-graph-1d-dropdown", "index": xaxis},
                         options=dropdown_list,
                         value="",
                     )
                 ]
             ),
             dcc.Graph(
-                id={"type": "graph-1d", "index": xaxis},
+                # ADDED 'system-' PREFIX
+                id={"type": "system-graph-1d", "index": xaxis},
                 figure=go.Figure(
                     data=go.Scatter(x=[], y=[], type="scatter")
-                    # {
-                    #     "x": [],
-                    #     "y": [],
-                    #     "type": "scatter",
-                    # }
                 ),
                 style={"height": 600},
             ),
         ]
     )
-
     return graph
-
 
 def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
 
@@ -1118,7 +1163,7 @@ def layout(platform=None):
             ),
 
             dcc.Store(id="master-dropdown-options", data=shared_graph_dropdown),
-            dcc.Store(id="graph-axes", data={}),
+            dcc.Store(id="system-graph-axes", data={}),
             # WebSocket(
             #     id="ws-variableset-instance",
             #     # You might need to dynamically handle this if multiple WebSockets are needed
@@ -1157,7 +1202,7 @@ def layout(platform=None):
 
 
 @callback(
-    Output({"type": "graph-1d-dropdown", "index": MATCH}, "options"),
+    Output({"type": "system-graph-1d-dropdown", "index": MATCH}, "options"),
     Input({"type": "graph-varset-filter", "index": MATCH}, "value"),
     State("master-dropdown-options", "data"),
     prevent_initial_call=False
@@ -1190,15 +1235,26 @@ def filter_graph_dropdown(selected_varsets, master_options):
 
 
 
+# @callback(
+#     Output(
+#         {"type": "graph-1d", "index": MATCH}, "figure"
+#     ),  # Output("graph-axes", "data")],
+#     Input({"type": "graph-1d-dropdown", "index": MATCH}, "value"),
+#     [
+#         State("graph-axes", "data"),
+#         State("variableset-defs-store", "data"),
+#         State({"type": "graph-1d-dropdown", "index": MATCH}, "id"),
+#     ],
+# )
 @callback(
     Output(
-        {"type": "graph-1d", "index": MATCH}, "figure"
-    ),  # Output("graph-axes", "data")],
-    Input({"type": "graph-1d-dropdown", "index": MATCH}, "value"),
+        {"type": "system-graph-1d", "index": MATCH}, "figure"
+    ),
+    Input({"type": "system-graph-1d-dropdown", "index": MATCH}, "value"),
     [
-        State("graph-axes", "data"),
+        State("system-graph-axes", "data"),
         State("variableset-defs-store", "data"),
-        State({"type": "graph-1d-dropdown", "index": MATCH}, "id"),
+        State({"type": "system-graph-1d-dropdown", "index": MATCH}, "id"),
     ],
 )
 def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
@@ -1552,11 +1608,18 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
 
 
 
+# @callback(
+#     Output({"type": "graph-1d", "index": ALL}, "extendData"),
+#     Input("variableset-data-buffer", "data"),
+#     [
+#         State({"type": "graph-1d-dropdown", "index": ALL}, "value"),
+#     ],
+# )
 @callback(
-    Output({"type": "graph-1d", "index": ALL}, "extendData"),
+    Output({"type": "system-graph-1d", "index": ALL}, "extendData"),
     Input("variableset-data-buffer", "data"),
     [
-        State({"type": "graph-1d-dropdown", "index": ALL}, "value"),
+        State({"type": "system-graph-1d-dropdown", "index": ALL}, "value"),
     ],
 )
 def update_graph_1d(buffer_data, selected_values):
@@ -2003,14 +2066,24 @@ def update_graph_1d(buffer_data, selected_values):
 #         L.error(traceback.format_exc())
 #         return [dash.no_update] * len(table_ids)
 
+# @callback(
+#     Output(
+#         {"type": "data-table-1d", "index": ALL}, "rowTransaction"
+#     ),
+#     Input("variableset-data-buffer", "data"),
+#     [
+#         State({"type": "data-table-1d", "index": ALL}, "columnDefs"),
+#         State({"type": "data-table-1d", "index": ALL}, "id")
+#     ],
+# )
 @callback(
     Output(
-        {"type": "data-table-1d", "index": ALL}, "rowTransaction"
+        {"type": "system-data-table-1d", "index": ALL}, "rowTransaction"
     ),
     Input("variableset-data-buffer", "data"),
     [
-        State({"type": "data-table-1d", "index": ALL}, "columnDefs"),
-        State({"type": "data-table-1d", "index": ALL}, "id")
+        State({"type": "system-data-table-1d", "index": ALL}, "columnDefs"),
+        State({"type": "system-data-table-1d", "index": ALL}, "id")
     ],
 )
 def update_table_1d(buffer_data, col_defs_list, table_ids):

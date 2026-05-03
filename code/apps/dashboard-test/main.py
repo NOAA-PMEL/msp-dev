@@ -601,11 +601,26 @@ async def handle_mqtt_buffer():
                 }
                 await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
             
-            elif ce_type == "envds.samplingstate.status.update":
-                L.info(f"sampling state ce: {ce}")
-                L.info(f"sampling state ce data: {ce.data}")
-                pass
+            # elif ce_type == "envds.samplingstate.status.update":
+            #     L.info(f"sampling state ce: {ce}")
+            #     L.info(f"sampling state ce data: {ce.data}")
+            #     pass
         
+            elif ce_type in [
+                "envds.systemmode.status.update",
+                "envds.samplingmode.status.update",
+                "envds.samplingstate.status.update",
+                "envds.samplingcondition.status.update"
+            ]:
+                L.info(f"system ops ce: {ce_type}")
+                # Pack the type and the data together so the frontend knows what is updating
+                msg = {
+                    "type": ce_type,
+                    "data": ce.data
+                }
+                # Broadcast to a global 'system-ops' channel
+                await manager.broadcast(json.dumps(msg), "system-ops", "main")
+
         except Exception as e:
             L.error("handle_mqtt_buffer", extra={"reason": str(e)})
         
@@ -1473,4 +1488,18 @@ async def variableset_data_update(request: Request):
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+@app.websocket("/ws/system-ops")
+async def system_ops_ws_endpoint(websocket: WebSocket):
+    # Hardcode client_id to "main" since these are global system states
+    await manager.connect(websocket, client_type="system-ops", client_id="main")
+    L.debug(f"system-ops websocket connected: {websocket}")
 
+    try:
+        while True:
+            # Keep the connection alive, we don't expect messages FROM the dashboard here yet
+            data = await websocket.receive_text()
+            L.debug(f"system-ops received (ignored): {data}")
+    except WebSocketDisconnect:
+        L.info(f"system-ops websocket disconnect: {websocket}")
+        await manager.disconnect(websocket)
+        await asyncio.sleep(.1)
