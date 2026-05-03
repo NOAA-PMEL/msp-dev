@@ -161,6 +161,9 @@ class SamplingSystem:
         self.index_ready_buffer = asyncio.Queue(maxsize=1000)
         self.outbound_mqtt_buffer = asyncio.Queue(maxsize=2000)
 
+        # ADD THIS: Cache for Forward-Filling jittery data
+        self.forward_fill_cache = {}
+
         # Add a set to hold task references
         if not hasattr(self, '_background_tasks'):
             self._background_tasks = set()
@@ -762,7 +765,7 @@ class SamplingSystem:
             current_vm["variablesets"][vs_name]["attributes"]["platform"] = {"type": "string", "data": platform_name}
             current_vm["variablesets"][vs_name]["attributes"]["valid_config_time"] = {"type": "string", "data": valid_config_time}
             # ---------------------------------------------------------
-            
+
             current_vm["variablesets"][vs_name]["dimensions"] = {"time": 0}
 
             # Add variables for variableset
@@ -2421,39 +2424,115 @@ class SamplingSystem:
 
     #     return
 
+    # async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict, data_buffer: dict = None):
+    #     map_type = "direct"
+    #     try:
+    #         # Safely fetch the array of data that arrived. If none arrived, returns an empty list []
+    #         if data_buffer is not None:
+    #             indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
+    #         else:
+    #             indexed_data = []
+            
+    #         # Fetch the target variable's details
+    #         var_record = variableset_record["variables"][variable_name]
+    #         v_type = var_record.get("type", "float")
+    #         shape = var_record.get("shape", ["time"])
+            
+    #         # Determine the configured indexing method (Default to average)
+    #         index_method = var_record.get("attributes", {}).get("index_method", {}).get("data", "average").lower()
+
+    #         val = None
+            
+    #         if len(indexed_data) == 0:
+    #             if v_type in ["string", "str", "char"]:
+    #                 val = ""
+    #             else:
+    #                 val = None
+                    
+    #         elif len(indexed_data) == 1:
+    #             val = indexed_data[0]
+                
+    #         else:
+    #             if v_type in ["string", "str", "char"]:
+    #                 val = indexed_data[-1]  # Safest default for multiple string arrivals is the newest one
+    #             else:
+    #                 # Apply specific math based on index_method
+    #                 if index_method == "last":
+    #                     val = indexed_data[-1]
+    #                 elif index_method == "first":
+    #                     val = indexed_data[0]
+    #                 elif index_method == "max":
+    #                     val = max(indexed_data)
+    #                 elif index_method == "min":
+    #                     val = min(indexed_data)
+    #                 else: # average / mean
+    #                     if len(shape) > 1:
+    #                         try:
+    #                             # Element-wise averaging for 2D arrays (e.g., ["time", "diameter"])
+    #                             val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
+    #                         except Exception as e:
+    #                             self.logger.error("2D averaging error", extra={"reason": str(e)})
+    #                             val = indexed_data[-1]
+    #                     else:
+    #                         # Standard 1D average
+    #                         val = round(sum(indexed_data) / len(indexed_data), 3)
+
+    #         # Apply the evaluated value
+    #         variableset_record["variables"][variable_name]["data"] = val
+
+    #     except Exception as e:
+    #         self.logger.error("update_direct_variable_by_time_index", extra={"reason": str(e)})
+
+    #     return
+
     async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict, data_buffer: dict = None):
         map_type = "direct"
         try:
-            # Safely fetch the array of data that arrived. If none arrived, returns an empty list []
+            target_time = time_index["index_ready"]
+            timebase = time_index["index_value"]
+
             if data_buffer is not None:
                 indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
             else:
                 indexed_data = []
             
-            # Fetch the target variable's details
             var_record = variableset_record["variables"][variable_name]
             v_type = var_record.get("type", "float")
             shape = var_record.get("shape", ["time"])
-            
-            # Determine the configured indexing method (Default to average)
             index_method = var_record.get("attributes", {}).get("index_method", {}).get("data", "average").lower()
 
+            cache_key = f"{variableset_name}::{variable_name}"
             val = None
             
+            # --- ZOH / FORWARD-FILL LOGIC ---
             if len(indexed_data) == 0:
                 if v_type in ["string", "str", "char"]:
                     val = ""
                 else:
-                    val = None
-                    
+                    # Check our cache for a recent value
+                    last_record = getattr(self, "forward_fill_cache", {}).get(cache_key)
+                    if last_record:
+                        # Calculate the age of the cached value
+                        target_dt = string_to_datetime(target_time)
+                        last_dt = string_to_datetime(last_record["time"])
+                        age_seconds = (target_dt - last_dt).total_seconds()
+                        
+                        # If the value is younger than 1.5 intervals, carry it forward!
+                        if age_seconds <= (timebase * 1.5):
+                            val = last_record["val"]
+                        else:
+                            val = None # Too old, the sensor is genuinely offline
+                    else:
+                        val = None
+            
+            # --- STANDARD EVALUATION LOGIC ---
             elif len(indexed_data) == 1:
                 val = indexed_data[0]
                 
             else:
                 if v_type in ["string", "str", "char"]:
-                    val = indexed_data[-1]  # Safest default for multiple string arrivals is the newest one
+                    val = indexed_data[-1] 
                 else:
-                    # Apply specific math based on index_method
                     if index_method == "last":
                         val = indexed_data[-1]
                     elif index_method == "first":
@@ -2462,26 +2541,29 @@ class SamplingSystem:
                         val = max(indexed_data)
                     elif index_method == "min":
                         val = min(indexed_data)
-                    else: # average / mean
+                    else: 
                         if len(shape) > 1:
                             try:
-                                # Element-wise averaging for 2D arrays (e.g., ["time", "diameter"])
                                 val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
                             except Exception as e:
                                 self.logger.error("2D averaging error", extra={"reason": str(e)})
                                 val = indexed_data[-1]
                         else:
-                            # Standard 1D average
                             val = round(sum(indexed_data) / len(indexed_data), 3)
 
-            # Apply the evaluated value
+            # --- SAVE TO CACHE ---
+            if v_type not in ["string", "str", "char"] and val is not None:
+                if not hasattr(self, "forward_fill_cache"):
+                    self.forward_fill_cache = {}
+                self.forward_fill_cache[cache_key] = {"val": val, "time": target_time}
+
             variableset_record["variables"][variable_name]["data"] = val
 
         except Exception as e:
             self.logger.error("update_direct_variable_by_time_index", extra={"reason": str(e)})
 
         return
-    
+        
     # async def update_variablesets_by_time_index(self, variablemap:dict, time_index: dict):
 
     #     variable_updates = {
