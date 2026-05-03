@@ -653,9 +653,14 @@ def update_variableset_defs(varset_ids, current_defs):
 #     return [dash.no_update]
 
 
+# @callback(
+#     Output("variableset-data-buffer", "data"),
+#     Input({"type": "ws-variableset-instance", "index": ALL}, "message"),
+#     prevent_initial_call=True
+# )
 @callback(
-    Output("variableset-data-buffer", "data"),
-    Input({"type": "ws-variableset-instance", "index": ALL}, "message"),
+    Output({"type": "variableset-data-buffer", "index": MATCH}, "data"),
+    Input({"type": "ws-variableset-instance", "index": MATCH}, "message"),
     prevent_initial_call=True
 )
 def update_variableset_buffers(events): # 'events' is now a list!
@@ -1187,7 +1192,12 @@ def layout(platform=None):
             # callback has a baseline and doesn't immediately fire an update
             dcc.Store(id='variableset-store', data=current_sets),
             dcc.Store(id='variableset-defs-store', data=all_variablesets),            
-            dcc.Store(id='variableset-data-buffer', data={}),
+            # dcc.Store(id='variableset-data-buffer', data={}),
+            # FIX: Create a dedicated buffer Store for EACH WebSocket!
+            html.Div([
+                dcc.Store(id={"type": "variableset-data-buffer", "index": v_id}, data={})
+                for v_id in unique_varsets
+            ]),
             dcc.Interval(
                 id='variableset-interval',
                 interval=5*1000,
@@ -1617,10 +1627,9 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
 # )
 @callback(
     Output({"type": "system-graph-1d", "index": ALL}, "extendData"),
-    Input("variableset-data-buffer", "data"),
-    [
-        State({"type": "system-graph-1d-dropdown", "index": ALL}, "value"),
-    ],
+    Input({"type": "variableset-data-buffer", "index": ALL}, "data"),
+    State({"type": "system-graph-1d-dropdown", "index": ALL}, "value"),
+    prevent_initial_call=True
 )
 def update_graph_1d(buffer_data, selected_values):
     if not buffer_data:
@@ -2077,14 +2086,10 @@ def update_graph_1d(buffer_data, selected_values):
 #     ],
 # )
 @callback(
-    Output(
-        {"type": "system-data-table-1d", "index": ALL}, "rowTransaction"
-    ),
-    Input("variableset-data-buffer", "data"),
-    [
-        State({"type": "system-data-table-1d", "index": ALL}, "columnDefs"),
-        State({"type": "system-data-table-1d", "index": ALL}, "id")
-    ],
+    Output({"type": "system-data-table-1d", "index": MATCH}, "rowTransaction"),
+    Input({"type": "variableset-data-buffer", "index": MATCH}, "data"),
+    State({"type": "system-data-table-1d", "index": MATCH}, "columnDefs"),
+    prevent_initial_call=True
 )
 def update_table_1d(buffer_data, col_defs_list, table_ids):
     if not buffer_data:
