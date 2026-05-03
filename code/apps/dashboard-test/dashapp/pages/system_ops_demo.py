@@ -45,37 +45,33 @@ if config.ws_use_tls:
     ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
 
 def get_layout():
-    layout = html.Div([
+    return html.Div([
         html.H1("System Operations & Sampling Status", className="mb-4"),
         
-        # Top Row: Modes & States
         dbc.Row([
+            # Column 1: System Mode & Available Sampling Modes
             dbc.Col([
                 dbc.Card([
-                    dbc.CardHeader("System Mode", className="fw-bold text-center"),
-                    dbc.CardBody(
-                        html.H3(id="system-mode-display", children="UNKNOWN", className="text-center text-secondary")
-                    )
-                ], className="shadow-sm h-100")
-            ], width=4),
+                    dbc.CardHeader("System Mode & Available Sampling Modes", className="fw-bold"),
+                    dbc.CardBody([
+                        html.Div(id="system-mode-container", children=[
+                            html.P("Waiting for system mode update...", className="text-muted italic")
+                        ]) 
+                    ])
+                ], className="shadow-sm mb-4 h-100")
+            ], width=6),
             
+            # Column 2: Sampling Mode & Available States
             dbc.Col([
                 dbc.Card([
-                    dbc.CardHeader("Sampling Mode", className="fw-bold text-center"),
-                    dbc.CardBody(
-                        html.H3(id="sampling-mode-display", children="UNKNOWN", className="text-center text-primary")
-                    )
-                ], className="shadow-sm h-100")
-            ], width=4),
-            
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader("Sampling State", className="fw-bold text-center"),
-                    dbc.CardBody(
-                        html.H3(id="sampling-state-display", children="UNKNOWN", className="text-center text-info")
-                    )
-                ], className="shadow-sm h-100")
-            ], width=4),
+                    dbc.CardHeader("Current Sampling Mode & Available States", className="fw-bold"),
+                    dbc.CardBody([
+                        html.Div(id="sampling-mode-container", children=[
+                            html.P("Waiting for sampling mode update...", className="text-muted italic")
+                        ]) 
+                    ])
+                ], className="shadow-sm mb-4 h-100")
+            ], width=6),
         ], className="mb-4"),
 
         # Bottom Row: Conditions Table
@@ -86,12 +82,7 @@ def get_layout():
                     id="conditions-table",
                     columnDefs=[
                         {"field": "condition_name", "headerName": "Condition", "flex": 2},
-                        {
-                            "field": "status", 
-                            "headerName": "Status", 
-                            "flex": 1,
-                            "cellRenderer": "markdown" # Allows rendering emojis/colors if desired
-                        },
+                        {"field": "status", "headerName": "Status", "flex": 1},
                     ],
                     rowData=[],
                     columnSizeOptions="autoSize",
@@ -107,15 +98,12 @@ def get_layout():
         ),
         dcc.Store(id="conditions-store", data={})
     ], className="p-4")
-    
-    return layout
 
 layout = get_layout()
 
 @callback(
-    Output("system-mode-display", "children"),
-    Output("sampling-mode-display", "children"),
-    Output("sampling-state-display", "children"),
+    Output("system-mode-container", "children"),
+    Output("sampling-mode-container", "children"),
     Output("conditions-store", "data"),
     Input("ws-system-ops", "message"),
     State("conditions-store", "data")
@@ -129,39 +117,54 @@ def update_system_ops(event, current_conditions):
         ce_type = payload.get("type", "")
         event_data = payload.get("data", {})
         
-        # Default returns to preserve existing UI state
-        sys_mode = dash.no_update
-        samp_mode = dash.no_update
-        samp_state = dash.no_update
-        cond_data = dash.no_update
+        sys_ui = no_update
+        samp_ui = no_update
+        cond_data = no_update
 
+        # --- 1. SYSTEM MODE & NESTED SAMPLING MODES ---
         if "systemmode" in ce_type:
-            # Assuming payload contains {"mode": "AUTO"}
-            val = event_data.get("mode", "UNKNOWN")
-            sys_mode = html.Span(val, className="text-success" if val.upper() == "AUTO" else "text-warning")
+            active_mode = event_data.get("mode", "UNKNOWN")
+            # Uses available_modes from the event data to build the hierarchy list
+            available = event_data.get("available_modes", [active_mode])
+            
+            sys_ui = html.ListGroup([
+                dbc.ListGroupItem([
+                    html.Div([
+                        html.Span(m, className="fw-bold"),
+                        html.Badge("ACTIVE", color="success", className="ms-2") if m == active_mode else html.Small("Inactive", className="text-muted")
+                    ], className="d-flex justify-content-between align-items-center")
+                ], active=(m == active_mode)) for m in available
+            ])
 
-        elif "samplingmode" in ce_type:
-            val = event_data.get("mode", "UNKNOWN")
-            samp_mode = val
+        # --- 2. SAMPLING MODE & NESTED STATES ---
+        elif "samplingmode" in ce_type or "samplingstate" in ce_type:
+            # Handles both mode changes and specific state transitions (e.g., Idle -> Running)
+            active_state = event_data.get("state") or event_data.get("mode", "UNKNOWN")
+            available = event_data.get("available_states", [active_state])
+            
+            samp_ui = html.ListGroup([
+                dbc.ListGroupItem([
+                    html.Div([
+                        html.Span(s, className="fw-bold"),
+                        html.Badge("RUNNING", color="info", className="ms-2") if s == active_state else html.Small("Idle", className="text-muted")
+                    ], className="d-flex justify-content-between align-items-center")
+                ], active=(s == active_state)) for s in available
+            ])
 
-        elif "samplingstate" in ce_type:
-            val = event_data.get("state", "UNKNOWN")
-            samp_state = val
-
+        # --- 3. CONDITIONS ---
         elif "samplingcondition" in ce_type:
-            # Assuming payload is {"condition_name": "temperature_ok", "status": True}
             name = event_data.get("condition_name")
             status = event_data.get("status")
             if name:
                 current_conditions[name] = status
                 cond_data = current_conditions
 
-        return sys_mode, samp_mode, samp_state, cond_data
+        return sys_ui, samp_ui, cond_data
 
     except Exception as e:
-        L.error(f"Error parsing system ops event: {e}")
+        L.error(f"Error updating status UI: {e}")
         L.error(traceback.format_exc())
-        raise PreventUpdate
+        return no_update, no_update, no_update
 
 @callback(
     Output("conditions-table", "rowData"),
@@ -173,7 +176,6 @@ def update_conditions_table(conditions_dict):
     
     row_data = []
     for name, status in conditions_dict.items():
-        # Formatting the status to be user friendly
         status_text = "🟢 Active (True)" if status else "🔴 Inactive (False)"
         row_data.append({
             "condition_name": name,

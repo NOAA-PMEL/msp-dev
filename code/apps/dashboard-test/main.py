@@ -606,19 +606,16 @@ async def handle_mqtt_buffer():
             #     L.info(f"sampling state ce data: {ce.data}")
             #     pass
         
-            elif ce_type in [
-                "envds.systemmode.status.update",
-                "envds.samplingmode.status.update",
-                "envds.samplingstate.status.update",
-                "envds.samplingcondition.status.update"
-            ]:
-                L.info(f"system ops ce: {ce_type}")
-                # Pack the type and the data together so the frontend knows what is updating
+            # Broaden checks to catch plural/singular variations (e.g. systemmode vs systemmodes)
+            elif any(x in ce_type for x in ["systemmode", "samplingmode", "samplingstate", "samplingcondition"]):
+                L.info(f"system ops ce caught: {ce_type}")
                 msg = {
                     "type": ce_type,
                     "data": ce.data
                 }
-                # Broadcast to a global 'system-ops' channel
+                # FIX: Broadcast to the generic pool (matching how the WS connects)
+                # If your manager.connect doesn't specify a client_id for system-ops, 
+                # you must broadcast to that same 'None' or empty ID.
                 await manager.broadcast(json.dumps(msg), "system-ops", "main")
 
         except Exception as e:
