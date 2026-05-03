@@ -270,74 +270,142 @@ class Datastore:
     # -------------------------------------------------------------------------------------
     # DEVICES
     # -------------------------------------------------------------------------------------
+    # async def device_data_update(self, ce: CloudEvent):
+    #     try:
+    #         database = "data"
+    #         collection = "device"
+    #         attributes = ce.data["attributes"]
+    #         dimensions = ce.data["dimensions"]
+    #         variables = ce.data["variables"]
+
+    #         make = attributes["make"]["data"]
+    #         model = attributes["model"]["data"]
+    #         serial_number = attributes["serial_number"]["data"]
+
+    #         format_version = attributes["format_version"]["data"]
+    #         parts = format_version.split(".")
+    #         self.logger.debug(f"parts: {parts}, {format_version}")
+    #         erddap_version = f"v{parts[0]}"
+    #         device_id = "::".join([make, model, serial_number])
+    #         self.logger.debug("device_data_update", extra={"device_id": device_id})
+
+    #         # timestamp = string_to_timestamp(ce.data["timestamp"]) 
+    #         record_time_str = variables.get("time", {}).get("data")
+    #         if not record_time_str:
+    #             record_time_str = ce.data.get("timestamp")
+                
+    #         timestamp = string_to_timestamp(record_time_str)
+    #         self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
+
+    #         request = DataUpdate(
+    #             make=make,
+    #             model=model,
+    #             serial_number=serial_number,
+    #             version=erddap_version,
+    #             timestamp=timestamp,
+    #             attributes=attributes,
+    #             dimensions=dimensions,
+    #             variables=variables,
+    #         )
+
+    #         self.logger.debug("device_data_update", extra={"request": request})
+    #         await self.db_client.device_data_update(
+    #             database=database,
+    #             collection=collection,
+    #             request=request,
+    #             ttl=self.config.db_data_ttl,
+    #         )
+
+    #         # If the device is sending data, it is currently active.
+    #         device_type = attributes.get("device_type", {}).get("data", "sensor")
+    #         instance_request = DeviceInstanceUpdate(
+    #             device_id=device_id,
+    #             make=make,
+    #             model=model,
+    #             serial_number=serial_number,
+    #             version=erddap_version,
+    #             device_type=device_type,
+    #             attributes=attributes,
+    #         )
+            
+    #         await self.db_client.device_instance_registry_update(
+    #             database="registry",
+    #             collection="device-instance",
+    #             request=instance_request,
+    #             ttl=self.config.db_reg_device_instance_ttl,
+    #         )
+
+    #     except Exception as e:
+    #         L.error("device_data_update", extra={"reason": e})
+    #     pass
+
     async def device_data_update(self, ce: CloudEvent):
+        """Processes incoming device data CloudEvents and saves them to the datastore."""
         try:
             database = "data"
             collection = "device"
-            attributes = ce.data["attributes"]
-            dimensions = ce.data["dimensions"]
-            variables = ce.data["variables"]
+            
+            # 1. Extract the core payload components
+            data = ce.data
+            attributes = data.get("attributes", {})
+            variables = data.get("variables", {})
+            
+            # 2. FIX: Robust ID Extraction
+            # This prevents the "data:device:None:..." key issue by ensuring an ID exists.
+            device_id = attributes.get("device_id", {}).get("data")
+            
+            if not device_id:
+                # If device_id is missing, reconstruct it from make, model, and serial number
+                make = attributes.get("make", {}).get("data", "unknown")
+                model = attributes.get("model", {}).get("data", "unknown")
+                sn = attributes.get("serial_number", {}).get("data", "unknown")
+                device_id = f"{make}::{model}::{sn}"
 
-            make = attributes["make"]["data"]
-            model = attributes["model"]["data"]
-            serial_number = attributes["serial_number"]["data"]
+            # 3. Extract metadata for indexing
+            make = attributes.get("make", {}).get("data")
+            model = attributes.get("model", {}).get("data")
+            sn = attributes.get("serial_number", {}).get("data")
+            version = attributes.get("version", {}).get("data")
+            
+            # Use the time from variables or fallback to CloudEvent time
+            timestamp_data = variables.get("time", {}).get("data")
+            if not timestamp_data:
+                timestamp_data = data.get("time", {}).get("data")
+            
+            # Convert ISO8601 string to unix timestamp for Redis NumericField indexing
+            timestamp = 0
+            if timestamp_data:
+                try:
+                    dt = datetime.fromisoformat(timestamp_data.replace("Z", "+00:00"))
+                    timestamp = dt.timestamp()
+                except ValueError:
+                    timestamp = datetime.now(timezone.utc).timestamp()
 
-            format_version = attributes["format_version"]["data"]
-            parts = format_version.split(".")
-            self.logger.debug(f"parts: {parts}, {format_version}")
-            erddap_version = f"v{parts[0]}"
-            device_id = "::".join([make, model, serial_number])
-            self.logger.debug("device_data_update", extra={"device_id": device_id})
-
-            # timestamp = string_to_timestamp(ce.data["timestamp"]) 
-            record_time_str = variables.get("time", {}).get("data")
-            if not record_time_str:
-                record_time_str = ce.data.get("timestamp")
-                
-            timestamp = string_to_timestamp(record_time_str)
-            self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
-
+            # 4. Create the DataUpdate object
             request = DataUpdate(
-                make=make,
-                model=model,
-                serial_number=serial_number,
-                version=erddap_version,
-                timestamp=timestamp,
-                attributes=attributes,
-                dimensions=dimensions,
-                variables=variables,
-            )
-
-            self.logger.debug("device_data_update", extra={"request": request})
-            await self.db_client.device_data_update(
-                database=database,
-                collection=collection,
-                request=request,
-                ttl=self.config.db_data_ttl,
-            )
-
-            # If the device is sending data, it is currently active.
-            device_type = attributes.get("device_type", {}).get("data", "sensor")
-            instance_request = DeviceInstanceUpdate(
                 device_id=device_id,
                 make=make,
                 model=model,
-                serial_number=serial_number,
-                version=erddap_version,
-                device_type=device_type,
-                attributes=attributes,
-            )
-            
-            await self.db_client.device_instance_registry_update(
-                database="registry",
-                collection="device-instance",
-                request=instance_request,
-                ttl=self.config.db_reg_device_instance_ttl,
+                serial_number=sn,
+                version=version,
+                timestamp=timestamp,
+                variables=variables,
+                attributes=attributes
             )
 
+            # 5. Save to Redis
+            # This will now use the valid device_id instead of 'None' for the key.
+            success = await self.db.device_data_update(
+                database=database, 
+                collection=collection, 
+                request=request
+            )
+            
+            if not success:
+                self.logger.error("Failed to save device data to Redis", extra={"device_id": device_id})
+
         except Exception as e:
-            L.error("device_data_update", extra={"reason": e})
-        pass
+            self.logger.error("device_data_update error", extra={"reason": str(e)})
 
     async def device_data_get(self, query: DataRequest):
         self.logger.debug("device_data_get:3", extra={"query": query})
@@ -492,74 +560,142 @@ class Datastore:
     # -------------------------------------------------------------------------------------
     # CONTROLLERS
     # -------------------------------------------------------------------------------------
-    async def controller_data_update(self, ce: CloudEvent):
+    # async def controller_data_update(self, ce: CloudEvent):
+    #     try:
+    #         database = "data"
+    #         collection = "controller"
+    #         attributes = ce.data["attributes"]
+    #         dimensions = ce.data["dimensions"]
+    #         variables = ce.data["variables"]
+
+    #         make = attributes["make"]["data"]
+    #         model = attributes["model"]["data"]
+    #         serial_number = attributes["serial_number"]["data"]
+
+    #         format_version = attributes["format_version"]["data"]
+    #         parts = format_version.split(".")
+    #         self.logger.debug(f"parts: {parts}, {format_version}")
+    #         erddap_version = f"v{parts[0]}"
+    #         controller_id = "::".join([make, model, serial_number])
+    #         self.logger.debug("controller_data_update", extra={"device_id": controller_id})
+
+    #         # timestamp = string_to_timestamp(ce.data["timestamp"])
+
+    #         record_time_str = variables.get("time", {}).get("data")
+    #         if not record_time_str:
+    #             record_time_str = ce.data.get("timestamp")
+                
+    #         timestamp = string_to_timestamp(record_time_str)
+
+    #         self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
+
+    #         request = ControllerDataUpdate(
+    #             make=make,
+    #             model=model,
+    #             serial_number=serial_number,
+    #             version=erddap_version,
+    #             timestamp=timestamp,
+    #             attributes=attributes,
+    #             dimensions=dimensions,
+    #             variables=variables,
+    #         )
+
+    #         self.logger.debug("controller_data_update", extra={"request": request})
+    #         await self.db_client.controller_data_update(
+    #             database=database,
+    #             collection=collection,
+    #             request=request,
+    #             ttl=self.config.db_data_ttl,
+    #         )
+
+    #         # If the controller is sending data, it is currently active.
+    #         instance_request = ControllerInstanceUpdate(
+    #             controller_id=controller_id,
+    #             make=make,
+    #             model=model,
+    #             serial_number=serial_number,
+    #             version=erddap_version,
+    #             attributes=attributes,
+    #         )
+            
+    #         await self.db_client.controller_instance_registry_update(
+    #             database="registry",
+    #             collection="controller-instance",
+    #             request=instance_request,
+    #             ttl=self.config.db_reg_controller_instance_ttl,
+    #         )
+
+    #     except Exception as e:
+    #         L.error("device_data_update", extra={"reason": e})
+    #     pass
+
+    async def device_data_update(self, ce: CloudEvent):
+        """Processes incoming device data CloudEvents and saves them to the datastore."""
         try:
             database = "data"
-            collection = "controller"
-            attributes = ce.data["attributes"]
-            dimensions = ce.data["dimensions"]
-            variables = ce.data["variables"]
+            collection = "device"
+            
+            # 1. Extract the core payload components
+            data = ce.data
+            attributes = data.get("attributes", {})
+            variables = data.get("variables", {})
+            
+            # 2. FIX: Robust ID Extraction
+            # This prevents the "data:device:None:..." key issue by ensuring an ID exists.
+            device_id = attributes.get("device_id", {}).get("data")
+            
+            if not device_id:
+                # If device_id is missing, reconstruct it from make, model, and serial number
+                make = attributes.get("make", {}).get("data", "unknown")
+                model = attributes.get("model", {}).get("data", "unknown")
+                sn = attributes.get("serial_number", {}).get("data", "unknown")
+                device_id = f"{make}::{model}::{sn}"
 
-            make = attributes["make"]["data"]
-            model = attributes["model"]["data"]
-            serial_number = attributes["serial_number"]["data"]
+            # 3. Extract metadata for indexing
+            make = attributes.get("make", {}).get("data")
+            model = attributes.get("model", {}).get("data")
+            sn = attributes.get("serial_number", {}).get("data")
+            version = attributes.get("version", {}).get("data")
+            
+            # Use the time from variables or fallback to CloudEvent time
+            timestamp_data = variables.get("time", {}).get("data")
+            if not timestamp_data:
+                timestamp_data = data.get("time", {}).get("data")
+            
+            # Convert ISO8601 string to unix timestamp for Redis NumericField indexing
+            timestamp = 0
+            if timestamp_data:
+                try:
+                    dt = datetime.fromisoformat(timestamp_data.replace("Z", "+00:00"))
+                    timestamp = dt.timestamp()
+                except ValueError:
+                    timestamp = datetime.now(timezone.utc).timestamp()
 
-            format_version = attributes["format_version"]["data"]
-            parts = format_version.split(".")
-            self.logger.debug(f"parts: {parts}, {format_version}")
-            erddap_version = f"v{parts[0]}"
-            controller_id = "::".join([make, model, serial_number])
-            self.logger.debug("controller_data_update", extra={"device_id": controller_id})
-
-            # timestamp = string_to_timestamp(ce.data["timestamp"])
-
-            record_time_str = variables.get("time", {}).get("data")
-            if not record_time_str:
-                record_time_str = ce.data.get("timestamp")
-                
-            timestamp = string_to_timestamp(record_time_str)
-
-            self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
-
-            request = ControllerDataUpdate(
+            # 4. Create the DataUpdate object
+            request = DataUpdate(
+                device_id=device_id,
                 make=make,
                 model=model,
-                serial_number=serial_number,
-                version=erddap_version,
+                serial_number=sn,
+                version=version,
                 timestamp=timestamp,
-                attributes=attributes,
-                dimensions=dimensions,
                 variables=variables,
+                attributes=attributes
             )
 
-            self.logger.debug("controller_data_update", extra={"request": request})
-            await self.db_client.controller_data_update(
-                database=database,
-                collection=collection,
-                request=request,
-                ttl=self.config.db_data_ttl,
-            )
-
-            # If the controller is sending data, it is currently active.
-            instance_request = ControllerInstanceUpdate(
-                controller_id=controller_id,
-                make=make,
-                model=model,
-                serial_number=serial_number,
-                version=erddap_version,
-                attributes=attributes,
+            # 5. Save to Redis
+            # This will now use the valid device_id instead of 'None' for the key.
+            success = await self.db.device_data_update(
+                database=database, 
+                collection=collection, 
+                request=request
             )
             
-            await self.db_client.controller_instance_registry_update(
-                database="registry",
-                collection="controller-instance",
-                request=instance_request,
-                ttl=self.config.db_reg_controller_instance_ttl,
-            )
+            if not success:
+                self.logger.error("Failed to save device data to Redis", extra={"device_id": device_id})
 
         except Exception as e:
-            L.error("device_data_update", extra={"reason": e})
-        pass
+            self.logger.error("device_data_update error", extra={"reason": str(e)})
 
     async def controller_data_get(self, query: DataRequest):
         self.logger.debug("controller_data_get:3", extra={"query": query})
