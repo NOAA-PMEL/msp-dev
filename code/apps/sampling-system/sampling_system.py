@@ -2499,7 +2499,16 @@ class SamplingSystem:
             var_record = variableset_record["variables"][variable_name]
             v_type = var_record.get("type", "float")
             shape = var_record.get("shape", ["time"])
-            index_method = var_record.get("attributes", {}).get("index_method", {}).get("data", "average").lower()
+            
+            # FIX: Get index_method from raw definition, as load_variablemap strips it
+            raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
+            idx_meth_raw = raw_var_def.get("index_method", "average")
+            if isinstance(idx_meth_raw, list) and len(idx_meth_raw) > 0:
+                index_method = idx_meth_raw[-1].lower() # e.g. ["round", "average"] -> "average"
+            elif isinstance(idx_meth_raw, str):
+                index_method = idx_meth_raw.lower()
+            else:
+                index_method = "average"
 
             cache_key = f"{variableset_name}::{variable_name}"
             val = None
@@ -2509,19 +2518,16 @@ class SamplingSystem:
                 if v_type in ["string", "str", "char"]:
                     val = ""
                 else:
-                    # Check our cache for a recent value
                     last_record = getattr(self, "forward_fill_cache", {}).get(cache_key)
                     if last_record:
-                        # Calculate the age of the cached value
                         target_dt = string_to_datetime(target_time)
                         last_dt = string_to_datetime(last_record["time"])
                         age_seconds = (target_dt - last_dt).total_seconds()
                         
-                        # If the value is younger than 1.5 intervals, carry it forward!
                         if age_seconds <= (timebase * 1.5):
                             val = last_record["val"]
                         else:
-                            val = None # Too old, the sensor is genuinely offline
+                            val = None 
                     else:
                         val = None
             
@@ -2551,8 +2557,8 @@ class SamplingSystem:
                         else:
                             val = round(sum(indexed_data) / len(indexed_data), 3)
 
-            # --- SAVE TO CACHE ---
-            if v_type not in ["string", "str", "char"] and val is not None:
+            # --- SAVE TO CACHE (Only if new data actually arrived) ---
+            if len(indexed_data) > 0 and v_type not in ["string", "str", "char"] and val is not None:
                 if not hasattr(self, "forward_fill_cache"):
                     self.forward_fill_cache = {}
                 self.forward_fill_cache[cache_key] = {"val": val, "time": target_time}
@@ -3256,11 +3262,79 @@ class SamplingSystem:
     #     except Exception as e:
     #         self.logger.error("update_calculated_variable_by_time_index", extra={"reason": e, "variable": variable_name})
 
+    # async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
+    #     import importlib
+    #     try:
+    #         var_record = variableset_record["variables"][variable_name]
+    #         calc_method = var_record.get("calculate_method", {})
+    #         if not calc_method:
+    #             self.logger.warning(f"Missing calculate_method for {variable_name}")
+    #             return
+
+    #         module_name = calc_method.get("action_module", calc_method.get("service", "calculations.default"))
+    #         def_name = calc_method.get("action_def", calc_method.get("path", "").strip("/"))
+
+    #         if not def_name:
+    #             self.logger.error(f"No definition/function name provided for calculated variable: {variable_name}")
+    #             return
+
+    #         try:
+    #             mod = importlib.import_module(module_name)
+    #             calc_func = getattr(mod, def_name)
+    #         except Exception as mod_err:
+    #             self.logger.error(f"Failed to load module '{module_name}' or def '{def_name}'", extra={"reason": str(mod_err)})
+    #             return
+
+    #         kwargs = {}
+    #         parameters = calc_method.get("parameters", {})
+    #         sources = var_record.get("source", {})
+
+    #         for param_name, param_mapping in parameters.items():
+    #             src_var_key = param_mapping.get("source-variable")
+    #             val = None
+
+    #             if src_var_key and src_var_key in sources:
+    #                 src_def = sources[src_var_key]
+    #                 real_src_var = src_def.get("source_variable", src_var_key)
+                    
+    #                 # Look for explicit cross-variableset targets in the Varmap source definition
+    #                 target_vset_name = src_def.get("variableset", variableset_name)
+
+    #                 # 1. Check the global cross-reference state first
+    #                 if evaluated_vsets and target_vset_name in evaluated_vsets:
+    #                     target_vset = evaluated_vsets[target_vset_name]
+    #                     if real_src_var in target_vset["variables"]:
+    #                         val = target_vset["variables"][real_src_var].get("data")
+                    
+    #                 # 2. Fallback to the local record
+    #                 elif real_src_var in variableset_record["variables"]:
+    #                     val = variableset_record["variables"][real_src_var].get("data")
+
+    #             kwargs[param_name] = val
+
+    #         if asyncio.iscoroutinefunction(calc_func):
+    #             result = await calc_func(self, **kwargs)
+    #         else:
+    #             result = calc_func(self, **kwargs)
+
+    #         if isinstance(result, dict) and variable_name in result:
+    #             final_val = result[variable_name]
+    #         else:
+    #             final_val = result
+
+    #         variableset_record["variables"][variable_name]["data"] = final_val
+
+    #     except Exception as e:
+    #         self.logger.error("update_calculated_variable_by_time_index", extra={"reason": str(e), "variable": variable_name})
+
     async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
         import importlib
         try:
-            var_record = variableset_record["variables"][variable_name]
-            calc_method = var_record.get("calculate_method", {})
+            # FIX: Pull the FULL record from the raw JSON variablemap. 
+            # The local 'variableset_record' cache was stripped of 'calculate_method' during load_variablemap!
+            raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
+            
+            calc_method = raw_var_def.get("calculate_method", {})
             if not calc_method:
                 self.logger.warning(f"Missing calculate_method for {variable_name}")
                 return
@@ -3281,7 +3355,7 @@ class SamplingSystem:
 
             kwargs = {}
             parameters = calc_method.get("parameters", {})
-            sources = var_record.get("source", {})
+            sources = raw_var_def.get("source", {})
 
             for param_name, param_mapping in parameters.items():
                 src_var_key = param_mapping.get("source-variable")
@@ -3291,7 +3365,6 @@ class SamplingSystem:
                     src_def = sources[src_var_key]
                     real_src_var = src_def.get("source_variable", src_var_key)
                     
-                    # Look for explicit cross-variableset targets in the Varmap source definition
                     target_vset_name = src_def.get("variableset", variableset_name)
 
                     # 1. Check the global cross-reference state first
@@ -3306,15 +3379,20 @@ class SamplingSystem:
 
                 kwargs[param_name] = val
 
+            self.logger.error("update_calculated_variable_by_time_index", extra={"variable": variable_name})
             if asyncio.iscoroutinefunction(calc_func):
                 result = await calc_func(self, **kwargs)
+                self.logger.error("update_calculated_variable_by_time_index", extra={"variable": variable_name, "result": result})
             else:
                 result = calc_func(self, **kwargs)
-
+                self.logger.error("update_calculated_variable_by_time_index", extra={"variable": variable_name, "result": result})
+ 
             if isinstance(result, dict) and variable_name in result:
                 final_val = result[variable_name]
             else:
                 final_val = result
+
+            self.logger.error("update_calculated_variable_by_time_index", extra={"variable": variable_name, "final_val": final_val})
 
             variableset_record["variables"][variable_name]["data"] = final_val
 
