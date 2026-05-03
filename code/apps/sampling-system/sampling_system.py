@@ -3098,16 +3098,117 @@ class SamplingSystem:
     #             except Exception as clean_e:
     #                 self.logger.error("cleanup error", extra={"reason": str(clean_e)})
 
+    # async def update_variablesets_by_time_index(self, variablemap: dict, time_index: dict):
+    #     variable_updates = {
+    #         "direct": self.update_direct_variable_by_time_index,
+    #         # Calculated explicitly handled in Phase 2
+    #     }
+        
+    #     index_type = time_index["index_type"]
+    #     index_value = time_index["index_value"]
+    #     update_type = time_index["update_type"] 
+    #     target_time = time_index["index_ready"]
+
+    #     try:
+    #         indexed_dict = variablemap.get("indexed", {})
+    #         type_dict = indexed_dict.get(index_type, {})
+    #         val_dict = type_dict.get(index_value, {})
+            
+    #         target_time_data_buffer = val_dict.get("data", {}).get(target_time, {})
+    #         vs_names = val_dict.get("variablesets", [])
+
+    #         if not vs_names:
+    #             return
+
+    #         # --- PHASE 1: Build evaluated state for ALL variablesets ---
+    #         evaluated_vsets = {}
+    #         for vs_name in vs_names:
+    #             variableset = json.loads(json.dumps(variablemap["variablesets"][vs_name]))
+                
+    #             # Evaluate raw data ALWAYS, so cross-variableset calculations can see it
+    #             for map_type in ["direct", "priority", "aggregate"]:
+    #                 for v_name, v_record in variableset["variables"].items():
+    #                     v_map_type = v_record.get("map_type") or v_record.get("attributes", {}).get("map_type", {}).get("data")
+    #                     if v_map_type == map_type and map_type in variable_updates:
+    #                         try:
+    #                             await variable_updates[map_type](
+    #                                 variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
+    #                                 variable_name=v_name, time_index=time_index, data_buffer=target_time_data_buffer 
+    #                             )
+    #                         except Exception as var_e:
+    #                             self.logger.error("variable update error", extra={"reason": str(var_e)})
+                
+    #             evaluated_vsets[vs_name] = variableset
+
+    #         # --- PHASE 2: Evaluate Calculations and Publish based on Tier ---
+    #         for vs_name, variableset in evaluated_vsets.items():
+                
+    #             has_calculated = any(
+    #                 v.get("map_type", v.get("attributes", {}).get("map_type", {}).get("data")) in ["calculate", "calculated"]
+    #                 for v in variableset["variables"].values()
+    #             )
+
+    #             # Tier Routing: Decide if we should publish THIS variableset right now
+    #             if update_type == "direct" and has_calculated:
+    #                 continue 
+    #             if update_type == "calculated" and not has_calculated:
+    #                 continue 
+                
+    #             # Process Calculations with full access to evaluated_vsets
+    #             for v_name, v_record in variableset["variables"].items():
+    #                 record_map_type = v_record.get("map_type") or v_record.get("attributes", {}).get("map_type", {}).get("data")
+    #                 if record_map_type in ["calculate", "calculated"]:
+    #                     try:
+    #                         await self.update_calculated_variable_by_time_index(
+    #                             variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
+    #                             variable_name=v_name, time_index=time_index, evaluated_vsets=evaluated_vsets # <-- Passing global state
+    #                         )
+    #                     except Exception as var_e:
+    #                         self.logger.error("calculated variable update error", extra={"reason": str(var_e)})
+
+    #             if "time" not in variableset["variables"]:
+    #                 variableset["variables"]["time"] = {"shape": ["time"], "type": "string", "data": ""}
+    #             variableset["variables"]["time"]["data"] = target_time
+                
+    #             varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
+    #             varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
+    #             varset_full_id = self.get_variableset_full_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
+    #             source_id = f"envds.{self.config.daq_id}.variableset.{varset_id}"
+    #             source_topic = source_id.replace(".", "/")
+
+    #             event = SamplingEvent.create_variableset_data_update(source=source_id, data=variableset)
+    #             event["destpath"] = f"{source_topic}/data/update"
+    #             event["samplingnamespace"] = varmap_ns
+    #             event["variablesetid"] = varset_id
+    #             event["variablesetfullid"] = varset_full_id
+
+    #             await self.send_to_mqtt(event["destpath"], event)
+
+    #     except Exception as e:
+    #         self.logger.error("update_variablesets_by_time_index", extra={"reason": str(e)})
+            
+    #     finally:
+    #         if update_type == "calculated":
+    #             try:
+    #                 idx_data = variablemap.get("indexed", {}).get(index_type, {}).get(index_value, {}).get("data")
+    #                 if idx_data:
+    #                     stale_keys = [t for t in list(idx_data.keys()) if t <= target_time]
+    #                     for t in stale_keys:
+    #                         idx_data.pop(t, None)
+    #             except Exception as clean_e:
+    #                 self.logger.error("cleanup error", extra={"reason": str(clean_e)})
+
     async def update_variablesets_by_time_index(self, variablemap: dict, time_index: dict):
         variable_updates = {
             "direct": self.update_direct_variable_by_time_index,
-            # Calculated explicitly handled in Phase 2
         }
         
         index_type = time_index["index_type"]
         index_value = time_index["index_value"]
         update_type = time_index["update_type"] 
         target_time = time_index["index_ready"]
+        
+        self.logger.error(f"--- TICK START: {update_type.upper()} at {target_time} ---")
 
         try:
             indexed_dict = variablemap.get("indexed", {})
@@ -3118,6 +3219,7 @@ class SamplingSystem:
             vs_names = val_dict.get("variablesets", [])
 
             if not vs_names:
+                self.logger.error("TICK ABORT: No active variablesets found for this index.")
                 return
 
             # --- PHASE 1: Build evaluated state for ALL variablesets ---
@@ -3128,7 +3230,12 @@ class SamplingSystem:
                 # Evaluate raw data ALWAYS, so cross-variableset calculations can see it
                 for map_type in ["direct", "priority", "aggregate"]:
                     for v_name, v_record in variableset["variables"].items():
-                        v_map_type = v_record.get("map_type") or v_record.get("attributes", {}).get("map_type", {}).get("data")
+                        
+                        # FOOLPROOF EXTRACTION: Check root and attributes safely
+                        raw_mt = v_record.get("map_type")
+                        attr_mt = v_record.get("attributes", {}).get("map_type", {}).get("data")
+                        v_map_type = str(raw_mt or attr_mt or "").lower()
+                        
                         if v_map_type == map_type and map_type in variable_updates:
                             try:
                                 await variable_updates[map_type](
@@ -3143,28 +3250,38 @@ class SamplingSystem:
             # --- PHASE 2: Evaluate Calculations and Publish based on Tier ---
             for vs_name, variableset in evaluated_vsets.items():
                 
-                has_calculated = any(
-                    v.get("map_type", v.get("attributes", {}).get("map_type", {}).get("data")) in ["calculate", "calculated"]
-                    for v in variableset["variables"].values()
-                )
+                # Locate calculated variables safely
+                calc_vars = []
+                for v_name, v_record in variableset["variables"].items():
+                    raw_mt = v_record.get("map_type")
+                    attr_mt = v_record.get("attributes", {}).get("map_type", {}).get("data")
+                    record_map_type = str(raw_mt or attr_mt or "").lower()
+                    
+                    if record_map_type in ["calculate", "calculated", "calculation"]:
+                        calc_vars.append(v_name)
+                        
+                has_calculated = len(calc_vars) > 0
+                
+                self.logger.error(f"EVAL {vs_name}: has_calculated={has_calculated}, calculated_vars={calc_vars}")
 
                 # Tier Routing: Decide if we should publish THIS variableset right now
                 if update_type == "direct" and has_calculated:
+                    self.logger.error(f"ROUTING: Skipping {vs_name} (Waiting for Tier 2)")
                     continue 
                 if update_type == "calculated" and not has_calculated:
+                    self.logger.error(f"ROUTING: Skipping {vs_name} (Already sent in Tier 1)")
                     continue 
                 
-                # Process Calculations with full access to evaluated_vsets
-                for v_name, v_record in variableset["variables"].items():
-                    record_map_type = v_record.get("map_type") or v_record.get("attributes", {}).get("map_type", {}).get("data")
-                    if record_map_type in ["calculate", "calculated"]:
-                        try:
-                            await self.update_calculated_variable_by_time_index(
-                                variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
-                                variable_name=v_name, time_index=time_index, evaluated_vsets=evaluated_vsets # <-- Passing global state
-                            )
-                        except Exception as var_e:
-                            self.logger.error("calculated variable update error", extra={"reason": str(var_e)})
+                # Process Calculations
+                for v_name in calc_vars:
+                    self.logger.error(f"ROUTING: Sending {v_name} to calculation method")
+                    try:
+                        await self.update_calculated_variable_by_time_index(
+                            variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
+                            variable_name=v_name, time_index=time_index, evaluated_vsets=evaluated_vsets
+                        )
+                    except Exception as var_e:
+                        self.logger.error("calculated variable update error", extra={"reason": str(var_e)})
 
                 if "time" not in variableset["variables"]:
                     variableset["variables"]["time"] = {"shape": ["time"], "type": "string", "data": ""}
@@ -3182,6 +3299,7 @@ class SamplingSystem:
                 event["variablesetid"] = varset_id
                 event["variablesetfullid"] = varset_full_id
 
+                self.logger.error(f"PUBLISHING: {vs_name} via MQTT")
                 await self.send_to_mqtt(event["destpath"], event)
 
         except Exception as e:
@@ -3329,28 +3447,30 @@ class SamplingSystem:
 
     async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
         import importlib
+        
+        self.logger.debug(f"ENTERED update_calculated_variable_by_time_index for {variable_name}")
+        
         try:
-            # FIX: Pull the FULL record from the raw JSON variablemap. 
-            # The local 'variableset_record' cache was stripped of 'calculate_method' during load_variablemap!
             raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
             
-            calc_method = raw_var_def.get("calculate_method", {})
+            calc_method = raw_var_def.get("calculate_method") or raw_var_def.get("calculation_method") or raw_var_def.get("action") or {}
+            
             if not calc_method:
-                self.logger.warning(f"Missing calculate_method for {variable_name}")
+                self.logger.warning(f"ABORT: Missing calculate/calculation_method for {variable_name} in raw definition.")
                 return
 
             module_name = calc_method.get("action_module", calc_method.get("service", "calculations.default"))
             def_name = calc_method.get("action_def", calc_method.get("path", "").strip("/"))
 
             if not def_name:
-                self.logger.error(f"No definition/function name provided for calculated variable: {variable_name}")
+                self.logger.warning(f"ABORT: No definition/function name provided for calculated variable: {variable_name}")
                 return
 
             try:
                 mod = importlib.import_module(module_name)
                 calc_func = getattr(mod, def_name)
             except Exception as mod_err:
-                self.logger.error(f"Failed to load module '{module_name}' or def '{def_name}'", extra={"reason": str(mod_err)})
+                self.logger.error(f"ABORT: Failed to load module '{module_name}' or def '{def_name}'", extra={"reason": str(mod_err)})
                 return
 
             kwargs = {}
@@ -3358,46 +3478,56 @@ class SamplingSystem:
             sources = raw_var_def.get("source", {})
 
             for param_name, param_mapping in parameters.items():
-                src_var_key = param_mapping.get("source-variable")
+                src_var_alias = param_mapping.get("source-variable")
                 val = None
 
-                if src_var_key and src_var_key in sources:
-                    src_def = sources[src_var_key]
-                    real_src_var = src_def.get("source_variable", src_var_key)
+                if src_var_alias and src_var_alias in sources:
+                    src_def = sources[src_var_alias]
                     
+                    # 1. Get the actual variable name (e.g., "relative_wind_speed")
+                    real_src_var = src_def.get("source_variable", src_var_alias)
+                    
+                    # 2. Get the target variableset (e.g., "main")
                     target_vset_name = src_def.get("variableset", variableset_name)
 
-                    # 1. Check the global cross-reference state first
+                    # 3. Hunt for the data in evaluated_vsets
                     if evaluated_vsets and target_vset_name in evaluated_vsets:
                         target_vset = evaluated_vsets[target_vset_name]
                         if real_src_var in target_vset["variables"]:
                             val = target_vset["variables"][real_src_var].get("data")
                     
-                    # 2. Fallback to the local record
+                    # Fallback to local
                     elif real_src_var in variableset_record["variables"]:
                         val = variableset_record["variables"][real_src_var].get("data")
 
                 kwargs[param_name] = val
+                
+                # IMPORTANT DEBUG: Show exactly what was pulled for each parameter
+                self.logger.debug(f"CALC EXTRACT: {variable_name} -> param '{param_name}' got value: {val}")
 
-            self.logger.error("update_calculated_variable_by_time_index", extra={"variable": variable_name})
-            if asyncio.iscoroutinefunction(calc_func):
-                result = await calc_func(self, **kwargs)
-                self.logger.error("update_calculated_variable_by_time_index", extra={"variable": variable_name, "result": result})
-            else:
-                result = calc_func(self, **kwargs)
-                self.logger.error("update_calculated_variable_by_time_index", extra={"variable": variable_name, "result": result})
+            self.logger.debug("update_calculated_variable_by_time_index EXECUTE", extra={"variable": variable_name, "kwargs": kwargs})
+            
+            # Execute with explicit exception catching around the user function
+            try:
+                if asyncio.iscoroutinefunction(calc_func):
+                    result = await calc_func(self, **kwargs)
+                else:
+                    result = calc_func(self, **kwargs)
+            except Exception as user_func_err:
+                self.logger.debug(f"USER FUNCTION CRASH: {def_name} failed.", extra={"reason": str(user_func_err)})
+                return
+                
+            self.logger.debug("update_calculated_variable_by_time_index SUCCESS", extra={"variable": variable_name, "result": result})
  
             if isinstance(result, dict) and variable_name in result:
                 final_val = result[variable_name]
             else:
                 final_val = result
 
-            self.logger.error("update_calculated_variable_by_time_index", extra={"variable": variable_name, "final_val": final_val})
-
             variableset_record["variables"][variable_name]["data"] = final_val
 
         except Exception as e:
-            self.logger.error("update_calculated_variable_by_time_index", extra={"reason": str(e), "variable": variable_name})
+            self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
 
     async def index_monitor(self):
         while True: 
