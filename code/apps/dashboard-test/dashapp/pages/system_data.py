@@ -1631,23 +1631,26 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
     State({"type": "system-graph-1d-dropdown", "index": ALL}, "value"),
     prevent_initial_call=True
 )
-def update_graph_1d(buffer_data, selected_values):
-    if not buffer_data:
+def update_graph_1d(buffers_data, selected_values):
+    # 1. Ensure something actually triggered the callback
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    # 2. Extract exactly which buffer triggered the update
+    triggered_val = ctx.triggered[0].get("value")
+    if not triggered_val:
         raise PreventUpdate
 
     try:
-        L.debug(f"update graph buffer data {buffer_data}")
+        L.debug(f"update graph buffer data {triggered_val}")
 
-        incoming_varset_id = buffer_data[0].get("variablesetfullid", {})
+        # 3. Now we safely parse the specific event that just arrived
+        incoming_varset_id = triggered_val[0].get("variablesetfullid", {})
         L.debug(f"incoming_varset_id {incoming_varset_id}")
-        buffer_data = buffer_data[0].get("data-update", {})
-        L.debug(f"buffer_data {buffer_data}")
-
-       
-        # buffer_data = buffer_data[0].get("data", {})
         
-        # Safely extract the ID
-        # incoming_varset_id = buffer_data.get("attributes", {}).get("variablesetfullid", {})
+        event_data = triggered_val[0].get("data-update", {})
+        L.debug(f"buffer_data {event_data}")
+
         if isinstance(incoming_varset_id, dict):
             incoming_varset_id = incoming_varset_id.get("data")
             
@@ -1674,33 +1677,29 @@ def update_graph_1d(buffer_data, selected_values):
                     figs_to_update.append(dash.no_update)
                     continue
 
-                # Ensure the data has time and the selected variable
-                variables = buffer_data.get("variables", {})
+                variables = event_data.get("variables", {})
 
-                
                 time_data = variables.get("time", {})
                 if not time_data:
-                    time_data = buffer_data.get("time", {}) # Check root if not in variables
+                    time_data = event_data.get("time", {}) 
                 
-                # CHECKPOINT 2: Did we find the data?
                 L.debug(f"GRAPH DATA CHECK: Time found? {bool(time_data)} | '{y_axis}' found? {y_axis in variables}")
                 
                 if not time_data or y_axis not in variables:
                     figs_to_update.append(dash.no_update)
                     continue
 
-                # FIX 1: Extract the live data points (removed the {} fallback)
                 x_val = variables.get("time", {}).get("data")
+                if not x_val:
+                    x_val = event_data.get("time", {}).get("data")
+                    
                 y_val = variables.get(y_axis, {}).get("data")
 
                 if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[0]
                 if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[0]
 
-                # CHECKPOINT 3: What is actually being sent to the graph?
                 L.debug(f"GRAPH APPENDING DATA: x=[{x_val}], y=[{y_val}]")
 
-                # FIX 2: extendData requires a tuple: ( {data_dict}, [target_traces], max_points )
-                # [0] targets the first line on the graph. 1000 limits the line to 1000 points.
                 figs_to_update.append(
                     ( {"x": [[x_val]], "y": [[y_val]]}, [0], 1000 )
                 )
@@ -2091,82 +2090,44 @@ def update_graph_1d(buffer_data, selected_values):
     State({"type": "system-data-table-1d", "index": MATCH}, "columnDefs"),
     prevent_initial_call=True
 )
-def update_table_1d(buffer_data, col_defs_list, table_ids):
+def update_table_1d(buffer_data, col_defs):
     if not buffer_data:
         raise PreventUpdate
     
     try:
-        L.debug(f"initial buffer data {buffer_data}")
-        id_dict = buffer_data[0].get("variablesetfullid", {})
-        L.debug(f"id_dict {id_dict}")
-        buffer_data = buffer_data[0].get("data-update", {})
+        # Since MATCH routes this directly to the correct table, 
+        # we don't need to check IDs or loop through tables!
+        event_data = buffer_data[0].get("data-update", {})
+        variables = event_data.get("variables", {})
         
-        # --- DEBUG 1: See what the top level looks like ---
-        L.debug(f"LIVE DATA KEYS: {buffer_data.keys()}")
-        L.debug(f"ATTRIBUTE KEYS: {buffer_data.get('attributes', {}).keys()}")
-        
-        # FIX 1: If it's a dictionary, grab the 'data' key. If it's just a string, keep it.
-        if isinstance(id_dict, dict):
-            incoming_varset_id = id_dict.get("data")
-        else:
-            incoming_varset_id = id_dict
+        data = {}
+        for col in col_defs:
+            name = col["field"]
 
-        L.debug(f"EXTRACTED INCOMING ID: '{incoming_varset_id}'")
-
-        if incoming_varset_id:
-            transactions = []
-            
-            for col_defs, table_id in zip(col_defs_list, table_ids):
+            if name == "time":
+                # 1st attempt: Look inside 'variables'
+                t_val = variables.get("time", {}).get("data")
                 
-                # --- DEBUG 3: Watch the routing logic ---
-                L.debug(f"Comparing Table '{table_id['index']}' to Incoming '{incoming_varset_id}'")
-                
-                if str(table_id["index"]) == str(incoming_varset_id):
+                # 2nd attempt: Look at the root level
+                if not t_val:
+                    t_val = event_data.get("time", {}).get("data", "")
                     
-                    # FIX 2: Safely extract variables to prevent the KeyError crash
-                    variables = buffer_data.get("variables", {})
-                    L.debug(f"EXTRACTED VARIABLES: '{variables}'")
-                    
-                    data = {}
-                    for col in col_defs:
-                        L.debug(f"col: '{col}'")
-                        name = col["field"]
+                data[name] = t_val
+                continue
 
-                        if name == "time":
-                            # 1st attempt: Look inside 'variables'
-                            t_val = variables.get("time", {}).get("data")
-                            
-                            # 2nd attempt: Look at the root level (just in case the backend moves it)
-                            if not t_val:
-                                t_val = buffer_data.get("time", {}).get("data", "")
-                                
-                            data[name] = t_val
-                            continue
+            if name in variables:
+                # Safely extract the data point
+                data[name] = variables[name].get("data", "")
+            else:
+                data[name] = ""
 
-                        if name in variables:
-                            # Safely extract the data point
-                            data[name] = variables[name].get("data", "")
-                        else:
-                            data[name] = ""
-
-                    # --- DEBUG 4: Verify the row was built successfully ---
-                    L.debug(f"BUILT NEW ROW: {data}")
-
-                    # FIX 3: Push a transaction dict to add the row at the top (index 0)
-                    transactions.append({"add": [data], "addIndex": 0})
-                else:
-                    # Table doesn't match; send no_update for this specific table output
-                    transactions.append(dash.no_update)
-
-            return transactions
+        # Inject the row into the AG Grid seamlessly
+        return {"add": [data], "addIndex": 0}
         
-        else:
-            return [dash.no_update] * len(table_ids)
-    
     except Exception as e:
         L.error(f"data update error table: {e}")
         L.error(traceback.format_exc())
-        return [dash.no_update] * len(table_ids)
+        raise PreventUpdate
     
 # @callback(
 #     Output(
