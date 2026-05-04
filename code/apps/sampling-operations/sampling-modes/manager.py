@@ -154,16 +154,19 @@ class SamplingModesManager:
         if self.actions_buffer is None: self.actions_buffer = asyncio.Queue(maxsize=2000)
         name = cfg["metadata"]["name"]
         self.modes[name] = SamplingMode(cfg, self.status_buffer, self.actions_buffer)
-        L.info("loaded_mode", extra={"name": name})
+        # Rename "name" to "res_name"
+        L.info("loaded_mode", extra={"res_name": name})
 
     def load_action(self, cfg):
         if self.actions_target_buffer is None: self.actions_target_buffer = asyncio.Queue(maxsize=2000)
         name = cfg["metadata"]["name"]
         try:
             self.actions[name] = SamplingAction(cfg, self.actions_target_buffer)
-            L.info("loaded_action", extra={"name": name})
+            # Rename "name" to "res_name"
+            L.info("loaded_action", extra={"res_name": name})
         except Exception as e:
-            L.error("action_load_failed", extra={"name": name, "reason": str(e)})
+            # Rename "name" to "res_name"
+            L.error("action_load_failed", extra={"res_name": name, "reason": str(e)})
 
     async def setup(self):
         """Infrastructure and background task initialization."""
@@ -288,9 +291,11 @@ class SamplingModesManager:
                 continue
             name = req.get("action", {}).get("name")
             if name in self.actions:
+                # Rename "name" to "res_name"
+                L.info("executing_action", extra={"res_name": name})
                 await self.actions[name].run()
             self.actions_buffer.task_done()
-
+            
     async def action_target_monitor(self):
         while True:
             targets = await self.actions_target_buffer.get()

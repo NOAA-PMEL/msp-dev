@@ -113,7 +113,7 @@ class SystemModesManager:
         if self.transitions_buffer is None: self.transitions_buffer = asyncio.Queue(maxsize=2000)
         name = cfg["metadata"]["name"]
         self.modes[name] = SystemMode(cfg, self.status_buffer, self.transitions_buffer)
-        L.info("loaded_mode", extra={"name": name})
+        L.info("loaded_mode", extra={"res-name": name})
 
     async def setup(self):
         """Starts background task orchestration."""
