@@ -821,25 +821,73 @@ class SamplingOperationsManager:
         for req in reqs:
             self.activate_required_modes(req)
 
+    # def activate_system_mode(self, name: str):
+    #     try:
+    #         self.logger.debug("activate_system_mode")
+    #         # self.active_modes = {
+    #         #     "SystemMode": None,
+
+    #         # }
+    #         if name not in self.sampling_modes["SystemMode"]:
+    #             self.logger.info(
+    #                 "activate_system_mode-can't activate non SystemMode",
+    #                 extra={"req_name": name},
+    #             )
+    #             return
+    #         # if name in self.sampling_modes["SystemMode"]:
+    #         self.active_modes = {"SystemMode": [name], "SamplingMode": []}
+    #         reqs = self.sampling_modes["SystemMode"][name]["config"].get(
+    #             "requirements", []
+    #         )
+
+    #         for req in reqs:
+    #             self.activate_required_modes(req)
+
+    #         self.logger.debug(
+    #             "activate_system_mode", extra={"active_modes": self.active_modes}
+    #         )
+
+    #         # deactivate all modes
+    #         for mod_type, modes in self.sampling_modes.items():
+    #             for mode_name, mode in modes.items():
+    #                 mode["mode"].activate(False)
+
+    #         # activate modes in active map
+    #         for mode_type, modes in self.active_modes.items():
+    #             for mode_name in modes:
+    #                 mode = self.sampling_modes[mode_type][mode_name]
+    #                 mode["mode"].activate(True)
+    #                 self.logger.debug(
+    #                     "activate_system_mode",
+    #                     extra={mode_name: mode["mode"].is_active()},
+    #                 )
+    #     except Exception as e:
+    #         self.logger.error("activate_system_mode", extra={"reason": e})
+
     def activate_system_mode(self, name: str):
         try:
             self.logger.debug("activate_system_mode")
-            # self.active_modes = {
-            #     "SystemMode": None,
+            
+            # 1. FIX: Prevent KeyError if definitions haven't synced from Datastore yet
+            if "SystemMode" not in self.sampling_modes:
+                self.logger.warning("No SystemMode definitions loaded yet. Waiting for sync.")
+                return
 
-            # }
+            # 2. Check if the requested mode actually exists
             if name not in self.sampling_modes["SystemMode"]:
                 self.logger.info(
                     "activate_system_mode-can't activate non SystemMode",
                     extra={"req_name": name},
                 )
                 return
-            # if name in self.sampling_modes["SystemMode"]:
+            
+            # 3. Set the active modes list
             self.active_modes = {"SystemMode": [name], "SamplingMode": []}
             reqs = self.sampling_modes["SystemMode"][name]["config"].get(
                 "requirements", []
             )
 
+            # 4. Recursively activate any required sub-modes
             for req in reqs:
                 self.activate_required_modes(req)
 
@@ -847,12 +895,12 @@ class SamplingOperationsManager:
                 "activate_system_mode", extra={"active_modes": self.active_modes}
             )
 
-            # deactivate all modes
+            # 5. Deactivate ALL modes first to ensure a clean state
             for mod_type, modes in self.sampling_modes.items():
                 for mode_name, mode in modes.items():
                     mode["mode"].activate(False)
 
-            # activate modes in active map
+            # 6. Activate only the modes in the active map
             for mode_type, modes in self.active_modes.items():
                 for mode_name in modes:
                     mode = self.sampling_modes[mode_type][mode_name]
@@ -861,6 +909,7 @@ class SamplingOperationsManager:
                         "activate_system_mode",
                         extra={mode_name: mode["mode"].is_active()},
                     )
+                    
         except Exception as e:
             self.logger.error("activate_system_mode", extra={"reason": e})
 
@@ -956,18 +1005,18 @@ class SamplingOperationsManager:
             
         await asyncio.sleep(0.01)
 
-    async def submit_request(self, path: str, query: dict):
-        try:
-            self.logger.debug("submit_request", extra={"path": path, "query": query})
-            # results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
-            results = await self.http_client.get(
-                f"http://{self.datastore_url}/{path}/", params=query
-            )
-            self.logger.debug("submit_request", extra={"results": results.json()})
-            return results.json()
-        except Exception as e:
-            self.logger.error("submit_request", extra={"reason": e})
-            return {}
+    # async def submit_request(self, path: str, query: dict):
+    #     try:
+    #         self.logger.debug("submit_request", extra={"path": path, "query": query})
+    #         # results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
+    #         results = await self.http_client.get(
+    #             f"http://{self.datastore_url}/{path}/", params=query
+    #         )
+    #         self.logger.debug("submit_request", extra={"results": results.json()})
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_request", extra={"reason": e})
+    #         return {}
 
     # async def get_from_mqtt_loop(self):
     #     reconnect = 10
@@ -1149,32 +1198,80 @@ class SamplingOperationsManager:
                 self.logger.error("publish_local_definitions", extra={"reason": e})
             await asyncio.sleep(60)
 
+    # async def sync_sampling_definitions_loop(self):
+    #     """Syncs Actions, SystemModes, and SamplingModes dynamically."""
+    #     resources_to_sync = ["action", "systemmode", "samplingmode"]
+    #     while True:
+    #         try:
+    #             for res in resources_to_sync:
+    #                 ids_resp = await self.submit_get(path=f"{res}-definition/registry/ids/get")
+    #                 if ids_resp and "results" in ids_resp:
+                        
+    #                     async def fetch_def(def_id):
+    #                         return await self.submit_request(
+    #                             path=f"{res}-definition/registry/get", 
+    #                             query={"name": def_id}
+    #                         )
+
+    #                     responses = await asyncio.gather(*(fetch_def(did) for did in ids_resp["results"]))
+
+    #                     for resp in responses:
+    #                         if resp and "results" in resp and resp["results"]:
+    #                             config = resp["results"][0]
+    #                             # Note: You would route 'config' to an abstraction of your local parsing 
+    #                             # logic here (e.g. self.load_mode(config) or self.load_action(config)) 
+    #                             # matching the setup currently residing in your configure() method.
+                                
+    #         except Exception as e:
+    #             self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+    #         await asyncio.sleep(60)
+
     async def sync_sampling_definitions_loop(self):
-        """Syncs Actions, SystemModes, and SamplingModes dynamically."""
+        """Syncs Actions, SystemModes, and SamplingModes dynamically from the local Datastore."""
         resources_to_sync = ["action", "systemmode", "samplingmode"]
+        
+        # Give the local datastore time to boot and sync from the registrar on startup
+        await asyncio.sleep(10) 
+        
         while True:
             try:
                 for res in resources_to_sync:
+                    # 1. Ask the local Datastore for all known IDs for this resource type
                     ids_resp = await self.submit_get(path=f"{res}-definition/registry/ids/get")
+                    
                     if ids_resp and "results" in ids_resp:
                         
+                        # Helper to fetch a single definition by its ID
                         async def fetch_def(def_id):
                             return await self.submit_request(
                                 path=f"{res}-definition/registry/get", 
                                 query={"name": def_id}
                             )
 
+                        # 2. Fetch all definitions concurrently
                         responses = await asyncio.gather(*(fetch_def(did) for did in ids_resp["results"]))
 
+                        # 3. Parse the responses and route them to the correct loader
                         for resp in responses:
                             if resp and "results" in resp and resp["results"]:
                                 config = resp["results"][0]
-                                # Note: You would route 'config' to an abstraction of your local parsing 
-                                # logic here (e.g. self.load_mode(config) or self.load_action(config)) 
-                                # matching the setup currently residing in your configure() method.
+                                kind = config.get("kind", "")
                                 
+                                if "Action" in kind:
+                                    self.load_action(config)
+                                elif "Mode" in kind:
+                                    self.load_mode(config)
+                                    
+                # 4. Jumpstart the active mode if it was skipped on startup
+                #    (e.g., if activate_system_mode previously hit the "SystemMode not loaded" safeguard)
+                if "SystemMode" in self.sampling_modes and not self.active_modes.get("SystemMode"):
+                    self.logger.info("Definitions synced. Jumpstarting initial SystemMode.")
+                    self.activate_system_mode(self.config.system_init_mode)
+
             except Exception as e:
-                self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+                self.logger.error("sync_sampling_definitions_loop", extra={"reason": str(e)})
+                
+            # Wait before syncing again
             await asyncio.sleep(60)
 
     # async def mode_action_monitor(self):
@@ -1497,6 +1594,121 @@ class SamplingOperationsManager:
         event["destpath"] = topic
         self.logger.info(f"Broadcasting Remote Transition -> [{target_daq_id}] {kind}: {name}")
         await self.send_event(event)
+
+    # --- 1. LOCAL DATASTORE FETCH METHODS ---
+    async def submit_get(self, path: str):
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): self.open_http_client()
+            # Fetch from the local datastore (Registrar handles the underlying sync)
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", timeout=timeout)
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_get failed", extra={"reason": str(e)})
+            return {}
+
+    async def submit_request(self, path: str, query: dict):
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): self.open_http_client()
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", params=query, timeout=timeout)
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_request failed", extra={"reason": str(e)})
+            return {}
+
+    # --- 2. DYNAMIC DEFINITION LOADERS ---
+    def load_action(self, action_config: dict):
+        kind = action_config.get("kind")
+        name = action_config.get("metadata", {}).get("name")
+        if not kind or not name: return
+        
+        if kind not in self.sampling_actions:
+            self.sampling_actions[kind] = dict()
+            
+        self.sampling_actions[kind][name] = {
+            "config": action_config,
+            "action": SamplingAction(action_config, self.actions_target_buffer),
+        }
+
+        if "sources" in action_config:
+            for src_name, src in action_config["sources"].items():
+                src_id = f"{src['variablemap_name']}::{src['variableset_name']}"
+                if src_id not in self.actions_source_map:
+                    self.actions_source_map[src_id] = []
+                
+                entry = {"kind": kind, "name": name}
+                if entry not in self.actions_source_map[src_id]:
+                    self.actions_source_map[src_id].append(entry)
+        self.logger.info(f"Loaded dynamic action definition: {name}")
+
+    def load_mode(self, mode_config: dict):
+        kind = mode_config.get("kind")
+        name = mode_config.get("metadata", {}).get("name")
+        if not kind or not name: return
+        
+        if kind not in self.sampling_modes:
+            self.sampling_modes[kind] = dict()
+            
+        self.sampling_modes[kind][name] = {
+            "config": mode_config,
+            "mode": SamplingMode(mode_config, self.status_buffer, self.actions_buffer, self.transitions_buffer),
+        }
+
+        if "requirements" in mode_config:
+            for req_mode in mode_config["requirements"]:
+                req_kind = req_mode.get("kind")
+                req_name = req_mode.get("name")
+                if not req_kind or not req_name: continue
+                
+                if req_kind not in self.mode_requirements_map:
+                    self.mode_requirements_map[req_kind] = dict()
+                if req_name not in self.mode_requirements_map[req_kind]:
+                    self.mode_requirements_map[req_kind][req_name] = []
+                
+                entry = {"kind": kind, "name": name, "active": False}
+                if entry not in self.mode_requirements_map[req_kind][req_name]:
+                    self.mode_requirements_map[req_kind][req_name].append(entry)
+        self.logger.info(f"Loaded dynamic mode definition: {name}")
+
+    # --- 3. BACKGROUND SYNC LOOP ---
+    # async def sync_sampling_definitions_loop(self):
+    #     """Syncs Actions, SystemModes, and SamplingModes dynamically from local Datastore."""
+    #     resources_to_sync = ["action", "systemmode", "samplingmode"]
+    #     await asyncio.sleep(10) # Give datastore time to boot
+        
+    #     while True:
+    #         try:
+    #             for res in resources_to_sync:
+    #                 ids_resp = await self.submit_get(path=f"{res}-definition/registry/ids/get")
+    #                 if ids_resp and "results" in ids_resp:
+                        
+    #                     async def fetch_def(def_id):
+    #                         return await self.submit_request(
+    #                             path=f"{res}-definition/registry/get", 
+    #                             query={"name": def_id}
+    #                         )
+
+    #                     responses = await asyncio.gather(*(fetch_def(did) for did in ids_resp["results"]))
+
+    #                     for resp in responses:
+    #                         if resp and "results" in resp and resp["results"]:
+    #                             config = resp["results"][0]
+    #                             kind = config.get("kind", "")
+                                
+    #                             if "Action" in kind: self.load_action(config)
+    #                             elif "Mode" in kind: self.load_mode(config)
+                                    
+    #             # Jumpstart the system mode if it was skipped on startup
+    #             if "SystemMode" in self.sampling_modes and not self.active_modes.get("SystemMode"):
+    #                 self.activate_system_mode(self.config.system_init_mode)
+
+    #         except Exception as e:
+    #             self.logger.error("sync_sampling_definitions_loop", extra={"reason": str(e)})
+    #         await asyncio.sleep(60)
+
 
 async def shutdown():
     print("shutting down")
