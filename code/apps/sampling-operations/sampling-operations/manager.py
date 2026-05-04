@@ -322,7 +322,7 @@ class SamplingMode:
         self.configure()
         self._tasks.append(asyncio.create_task(self.update_monitor()))
         self._tasks.append(asyncio.create_task(self.requirements_monitor()))
-        self._tasks.append(asyncio.create_task(self.update_status_loop()))
+        # self._tasks.append(asyncio.create_task(self.update_status_loop()))
 
     def configure(self):
 
@@ -433,6 +433,118 @@ class SamplingMode:
             await asyncio.sleep(0.001)
             self.update_buffer.task_done()
 
+    # async def requirements_monitor(self):
+
+    #     while True:
+    #         self.logger.debug(
+    #             "SamplingMode.requirements_monitor",
+    #             extra={"data_buffer": self.requirements},
+    #         )
+
+    #         # all delays are done at state level so current status is directly updated
+    #         try:
+    #             mode_status = []
+    #             current_dt = get_datetime().replace(tzinfo=timezone.utc)
+    #             for req_type, req_kind in self.requirements.items():
+    #                 for req_name, req in req_kind.items():
+    #                     mode_status.append(req["status"])
+    #                     if self.active:
+    #                         self.logger.debug(
+    #                             "SamplingMode.requirements_monitor",
+    #                             extra={"req_name": req_name, "mode_status": mode_status},
+    #                         )
+
+    #             current_dt = get_datetime().replace(tzinfo=timezone.utc)
+    #             current_secs = current_dt.second
+    #             latest_status = all(mode_status)
+    #             if self.active:
+    #                 self.logger.debug(
+    #                     "SamplingMode.requirements_monitor:last_check",
+    #                     extra={
+    #                         "mode_name": self.config["metadata"]["name"],
+    #                         "active": self.is_active(),
+    #                         "mode_status": mode_status,
+    #                         "current_state": self.current_state,
+    #                         "new_state": latest_status,
+    #                     },
+    #                 )
+    #             if latest_status != self.current_state:
+    #                 # send event with updated condition state
+    #                 self.logger.debug(
+    #                     "SamplingMode.requirements_monitor - send update with new state"
+    #                 )
+    #                 try:
+    #                     self.current_state = latest_status
+    #                     if self.active:
+    #                         mode_kind = self.config["kind"]
+    #                         mode_name = self.config["metadata"]["name"]
+    #                         mode_ns = self.config["metadata"]["sampling_namespace"]
+    #                         mode_valid_time = self.config["metadata"]["valid_config_time"]
+
+    #                         status = {
+    #                             "status": {
+    #                                 "kind": mode_kind,
+    #                                 "time": get_datetime_string(),
+    #                                 "name": mode_name,
+    #                                 "sampling_namespace": mode_ns,
+    #                                 "valid_config_time": mode_valid_time,
+    #                                 "status": self.current_state,
+    #                             }
+    #                         }
+    #                         self.logger.debug(
+    #                             "active.status", extra={"current_status": status}
+    #                         )
+    #                         await self.status_buffer.put(status)
+
+    #                         run_type = str(self.current_state).lower()
+
+    #                         self.logger.debug("active.action.list", extra={"actions": self.actions})
+    #                         for act in self.actions[run_type]:
+    #                             action = {
+    #                                 "action": {"kind": act["kind"], "name": act["name"]}
+    #                             }
+    #                             self.logger.debug("active.action", extra={"action": action})
+    #                             await self.actions_buffer.put(action)
+
+    #                         for tran in self.transitions[run_type]:
+    #                             transition = {
+    #                                 "transition": {
+    #                                     "kind": tran["kind"],
+    #                                     "name": tran["name"],
+    #                                 }
+    #                             }
+    #                             self.logger.debug(
+    #                                 "active.transition", extra={"transition": transition}
+    #                             )
+    #                             await self.transitions_buffer.put(transition)
+    #                 except Exception as e:
+    #                     self.logger.error("requirments_monitor - update active modes", extra={"reason": e})
+
+    #             # elif (current_secs % 30) == 0:
+    #             #     self.current_state = latest_status
+    #             #     if self.active:
+    #             #         mode_kind = self.config["metadata"]["kind"]
+    #             #         mode_name = self.config["metadata"]["name"]
+    #             #         mode_ns = self.config["metadata"]["sampling_namespace"]
+    #             #         mode_valid_time = self.config["metadata"]["valid_config_time"]
+
+    #             #         status = {
+    #             #             "status": {
+    #             #                 "kind": mode_kind,
+    #             #                 "time": get_datetime_string(),
+    #             #                 "name": mode_name,
+    #             #                 "sampling_namespace": mode_ns,
+    #             #                 "valid_config_time": mode_valid_time,
+    #             #                 "status": self.current_state
+    #             #             }
+    #             #         }
+    #             #         await self.status_buffer.put(status)
+
+    #         except Exception as e:
+    #             self.logger.error("requirements_monitor", extra={"reason": e})
+
+    #         await asyncio.sleep(time_to_next(1))
+
     async def requirements_monitor(self):
 
         while True:
@@ -441,7 +553,6 @@ class SamplingMode:
                 extra={"data_buffer": self.requirements},
             )
 
-            # all delays are done at state level so current status is directly updated
             try:
                 mode_status = []
                 current_dt = get_datetime().replace(tzinfo=timezone.utc)
@@ -454,129 +565,119 @@ class SamplingMode:
                                 extra={"req_name": req_name, "mode_status": mode_status},
                             )
 
-                current_dt = get_datetime().replace(tzinfo=timezone.utc)
                 current_secs = current_dt.second
-                latest_status = all(mode_status)
+                
+                # Prevent all([]) == True bug if a mode has no requirements
+                if not mode_status:
+                    latest_status = False
+                else:
+                    latest_status = all(mode_status)
+                
                 if self.active:
                     self.logger.debug(
                         "SamplingMode.requirements_monitor:last_check",
                         extra={
-                            "mode_name": self.config["metadata"]["name"],
+                            "mode_name": self.config.get("metadata", {}).get("name", "unknown"),
                             "active": self.is_active(),
                             "mode_status": mode_status,
                             "current_state": self.current_state,
                             "new_state": latest_status,
                         },
                     )
-                if latest_status != self.current_state:
-                    # send event with updated condition state
+                    
+                is_changed = (latest_status != self.current_state)
+                is_heartbeat = ((current_secs % 30) == 0)
+
+                if is_changed or is_heartbeat:
                     self.logger.debug(
-                        "SamplingMode.requirements_monitor - send update with new state"
+                        "SamplingMode.requirements_monitor - heartbeat or status change"
                     )
                     try:
                         self.current_state = latest_status
-                        if self.active:
-                            mode_kind = self.config["kind"]
-                            mode_name = self.config["metadata"]["name"]
-                            mode_ns = self.config["metadata"]["sampling_namespace"]
-                            mode_valid_time = self.config["metadata"]["valid_config_time"]
+                        
+                        # SAFE METADATA LOOKUPS
+                        mode_kind = self.config.get("kind", "SamplingMode")
+                        mode_name = self.config.get("metadata", {}).get("name", "unknown")
+                        mode_ns = self.config.get("metadata", {}).get("sampling_namespace", "default")
+                        mode_valid_time = self.config.get("metadata", {}).get("valid_config_time", "unknown")
 
-                            status = {
-                                "status": {
-                                    "kind": mode_kind,
-                                    "time": get_datetime_string(),
-                                    "name": mode_name,
-                                    "sampling_namespace": mode_ns,
-                                    "valid_config_time": mode_valid_time,
-                                    "status": self.current_state,
-                                }
+                        status = {
+                            "status": {
+                                "kind": mode_kind,
+                                "time": get_datetime_string(),
+                                "name": mode_name,
+                                "sampling_namespace": mode_ns,
+                                "valid_config_time": mode_valid_time,
+                                "status": self.current_state,
                             }
-                            self.logger.debug(
-                                "active.status", extra={"current_status": status}
-                            )
-                            await self.status_buffer.put(status)
+                        }
+                        self.logger.debug("active.status", extra={"current_status": status})
+                        
+                        # Always report status so the UI is updated with a fresh timestamp
+                        await self.status_buffer.put(status)
 
+                        # Trigger actions and transitions ONLY if the status actually changed AND the mode is active
+                        if is_changed and self.active:
                             run_type = str(self.current_state).lower()
 
                             self.logger.debug("active.action.list", extra={"actions": self.actions})
-                            for act in self.actions[run_type]:
+                            for act in self.actions.get(run_type, []):
                                 action = {
-                                    "action": {"kind": act["kind"], "name": act["name"]}
+                                    "action": {"kind": act.get("kind"), "name": act.get("name")}
                                 }
                                 self.logger.debug("active.action", extra={"action": action})
                                 await self.actions_buffer.put(action)
 
-                            for tran in self.transitions[run_type]:
+                            for tran in self.transitions.get(run_type, []):
                                 transition = {
                                     "transition": {
-                                        "kind": tran["kind"],
-                                        "name": tran["name"],
+                                        "kind": tran.get("kind"),
+                                        "name": tran.get("name"),
                                     }
                                 }
-                                self.logger.debug(
-                                    "active.transition", extra={"transition": transition}
-                                )
+                                self.logger.debug("active.transition", extra={"transition": transition})
                                 await self.transitions_buffer.put(transition)
+                                
                     except Exception as e:
-                        self.logger.error("requirments_monitor - update active modes", extra={"reason": e})
-
-                # elif (current_secs % 30) == 0:
-                #     self.current_state = latest_status
-                #     if self.active:
-                #         mode_kind = self.config["metadata"]["kind"]
-                #         mode_name = self.config["metadata"]["name"]
-                #         mode_ns = self.config["metadata"]["sampling_namespace"]
-                #         mode_valid_time = self.config["metadata"]["valid_config_time"]
-
-                #         status = {
-                #             "status": {
-                #                 "kind": mode_kind,
-                #                 "time": get_datetime_string(),
-                #                 "name": mode_name,
-                #                 "sampling_namespace": mode_ns,
-                #                 "valid_config_time": mode_valid_time,
-                #                 "status": self.current_state
-                #             }
-                #         }
-                #         await self.status_buffer.put(status)
+                        self.logger.error("requirements_monitor - update active modes", extra={"reason": str(e)})
 
             except Exception as e:
-                self.logger.error("requirements_monitor", extra={"reason": e})
+                self.logger.error("requirements_monitor", extra={"reason": str(e)})
 
             await asyncio.sleep(time_to_next(1))
 
-    async def update_status_loop(self):
-        while True:
-            try:
-                if self.active:
-                    self.logger.debug("SamplingMode.update_state_loop - send update")
+    # async def update_status_loop(self):
+    #     while True:
+    #         try:
+    #             if self.active:
+    #                 self.logger.debug("SamplingMode.update_state_loop - send update")
 
-                    mode_kind = self.config["kind"]
-                    mode_name = self.config["metadata"]["name"]
-                    mode_ns = self.config["metadata"]["sampling_namespace"]
-                    mode_valid_time = self.config["metadata"]["valid_config_time"]
+    #                 mode_kind = self.config["kind"]
+    #                 mode_name = self.config["metadata"]["name"]
+    #                 mode_ns = self.config["metadata"]["sampling_namespace"]
+    #                 mode_valid_time = self.config["metadata"]["valid_config_time"]
 
-                    status = {
-                        "status": {
-                            "kind": mode_kind,
-                            "time": get_datetime_string(),
-                            "name": mode_name,
-                            "sampling_namespace": mode_ns,
-                            "valid_config_time": mode_valid_time,
-                            "status": self.current_state,
-                        }
-                    }
-                    self.logger.debug(
-                        "SamplingMode.update_state_loop - send update",
-                        extra={"sampling_status": status},
-                    )
-                    await self.status_buffer.put(status)
+    #                 status = {
+    #                     "status": {
+    #                         "kind": mode_kind,
+    #                         "time": get_datetime_string(),
+    #                         "name": mode_name,
+    #                         "sampling_namespace": mode_ns,
+    #                         "valid_config_time": mode_valid_time,
+    #                         "status": self.current_state,
+    #                     }
+    #                 }
+    #                 self.logger.debug(
+    #                     "SamplingMode.update_state_loop - send update",
+    #                     extra={"sampling_status": status},
+    #                 )
+    #                 await self.status_buffer.put(status)
 
-                # await self.update_status(status)
-            except Exception as e:
-                self.logger.error("SamplingMode.update_state_loop", extra={"reason": e})
+    #             # await self.update_status(status)
+    #         except Exception as e:
+    #             self.logger.error("SamplingMode.update_state_loop", extra={"reason": e})
 
-            await asyncio.sleep(10)
+    #         await asyncio.sleep(10)
 
 
 class SamplingOperationsManager:
