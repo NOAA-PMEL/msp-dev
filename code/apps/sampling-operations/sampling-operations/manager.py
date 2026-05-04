@@ -106,8 +106,10 @@ class SamplingAction:
         self.sources = {"variables": dict(), "data": dict()}
         self.targets = {"variables": dict()}
 
+        self._tasks = [] # ADD THIS to track tasks
+
         self.configure()
-        asyncio.create_task(self.update_monitor())
+        self._tasks.append(asyncio.create_task(self.update_monitor()))
         # asyncio.create_task(self.requirements_monitor())
         # asyncio.create_task(self.update_status_loop())
 
@@ -250,6 +252,12 @@ class SamplingAction:
             await self.target_buffer.put(target_vars)
             self.logger.debug("run - send set settings event", extra={"target_vars": target_vars})
 
+    def stop(self):
+        """Cancels all background tasks associated with this action instance."""
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+
     async def update(self, data: CloudEvent):
         self.logger.debug("update", extra={"update_data": data})
         try:
@@ -309,10 +317,12 @@ class SamplingMode:
         self.active = False
         self.current_state = False
 
+        self._tasks = []
+
         self.configure()
-        asyncio.create_task(self.update_monitor())
-        asyncio.create_task(self.requirements_monitor())
-        asyncio.create_task(self.update_status_loop())
+        self._tasks.append(asyncio.create_task(self.update_monitor()))
+        self._tasks.append(asyncio.create_task(self.requirements_monitor()))
+        self._tasks.append(asyncio.create_task(self.update_status_loop()))
 
     def configure(self):
 
@@ -370,6 +380,12 @@ class SamplingMode:
 
     def activate(self, active: bool):
         self.active = active
+
+    def stop(self):
+        """Cancels all background tasks associated with this mode instance."""
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
 
     def is_active(self) -> bool:
         return self.active
@@ -1172,7 +1188,7 @@ class SamplingOperationsManager:
             try:
                 # Group all local definitions
                 definitions = [
-                    (self.sampling_actions, "action"),
+                    (self.sampclass SamplingAction:ling_actions, "action"),
                     (self.sampling_modes, "samplingmode")
                 ]
                 
@@ -1628,6 +1644,12 @@ class SamplingOperationsManager:
         if kind not in self.sampling_actions:
             self.sampling_actions[kind] = dict()
             
+        # FIX: STOP OLD ACTION TASKS BEFORE REPLACING
+        if name in self.sampling_actions[kind]:
+            old_action = self.sampling_actions[kind][name].get("action")
+            if old_action:
+                old_action.stop()
+
         self.sampling_actions[kind][name] = {
             "config": action_config,
             "action": SamplingAction(action_config, self.actions_target_buffer),
@@ -1652,6 +1674,12 @@ class SamplingOperationsManager:
         if kind not in self.sampling_modes:
             self.sampling_modes[kind] = dict()
             
+        # FIX: STOP OLD MODE TASKS BEFORE REPLACING
+        if name in self.sampling_modes[kind]:
+            old_mode = self.sampling_modes[kind][name].get("mode")
+            if old_mode:
+                old_mode.stop()
+
         self.sampling_modes[kind][name] = {
             "config": mode_config,
             "mode": SamplingMode(mode_config, self.status_buffer, self.actions_buffer, self.transitions_buffer),
