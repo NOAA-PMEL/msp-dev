@@ -1532,18 +1532,17 @@ async def variableset_data_update(request: Request):
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-@app.websocket("/ws/system-ops")
-async def system_ops_ws_endpoint(websocket: WebSocket):
-    # Hardcode client_id to "main" since these are global system states
-    await manager.connect(websocket, client_type="system-ops", client_id="main")
-    L.debug(f"system-ops websocket connected: {websocket}")
+@app.websocket("/msp/dashboardtest/ws/system-ops/{client_id}") # Add prefix and {client_id}
+async def system_ops_ws_endpoint(websocket: WebSocket, client_id: str):
+    # Pass the actual client_id instead of hardcoding "main"
+    await manager.connect(websocket, client_type="system-ops", client_id=client_id)
+    L.debug(f"system-ops websocket connected: {client_id}")
 
     try:
         while True:
-            # Keep the connection alive, we don't expect messages FROM the dashboard here yet
             data = await websocket.receive_text()
-            L.debug(f"system-ops received (ignored): {data}")
+            # Broadcast back if needed, similar to sensor logic
+            await manager.broadcast(f"received: {data}", "system-ops", client_id)
     except WebSocketDisconnect:
-        L.info(f"system-ops websocket disconnect: {websocket}")
+        L.info(f"system-ops websocket disconnect: {client_id}")
         await manager.disconnect(websocket)
-        await asyncio.sleep(.1)
