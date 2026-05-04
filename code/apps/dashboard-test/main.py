@@ -1044,6 +1044,53 @@ async def controller_ws_endpoint(
         await asyncio.sleep(.1)
         # await manager.broadcast(f"Client left the chat")
 
+@app.websocket("/ws/controller-registry/{client_id}")
+async def controller_registry_ws_endpoint(
+    websocket: WebSocket,
+    client_id: str
+):
+    await manager.connect(websocket, client_type="controller-registry", client_id=client_id)
+    print(f"websocket_endpoint: {websocket}")
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            print(f"main data: {data}")
+            message = json.loads(data)
+            
+            if "client-request" in message:
+                if message['client-request'] == "start-updates":
+
+                    msg_type = "controller.registry.request"
+
+                    attributes = {
+                            "type": msg_type,
+                            "source": "uasdaq.dashboard",
+                            "id": str(ULID()),
+                            "datacontenttype": "application/json; charset=utf-8",
+                        }
+                    
+                    # Ask the datastore for controller definitions instead of sensor definitions
+                    reg_request = {"register-controller-request": "update-controller-definition-all"}
+                    ce = CloudEvent(attributes=attributes, data=reg_request)
+
+                    try:
+                        headers, body = to_structured(ce)
+                        # send to knative kafkabroker
+                        with httpx.Client() as client:
+                            r = client.post(
+                                config.knative_broker, headers=headers, data=body
+                            )
+                            L.info("register-request send", extra={"register-request": r.request.content})
+                    except InvalidStructuredJSON:
+                        L.error(f"INVALID MSG: {ce}")
+                    except httpx.HTTPError as e:
+                        L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+                        
+    except WebSocketDisconnect:
+        L.info(f"websocket disconnect: {websocket}")
+        await manager.disconnect(websocket)
+        await asyncio.sleep(.1)
 
 @app.websocket("/ws/variableset/{client_id}")
 # @app.websocket("/ws/{client_id}")
