@@ -1532,10 +1532,10 @@ async def variableset_data_update(request: Request):
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-@app.websocket("/msp/dashboardtest/ws/system-ops/{client_id}") # Add prefix and {client_id}
+@app.websocket("/ws/system-ops") # Add prefix and {client_id}
 async def system_ops_ws_endpoint(websocket: WebSocket, client_id: str):
     # Pass the actual client_id instead of hardcoding "main"
-    await manager.connect(websocket, client_type="system-ops", client_id=client_id)
+    await manager.connect(websocket, client_type="system-ops", client_id="main")
     L.debug(f"system-ops websocket connected: {client_id}")
 
     try:

@@ -11,7 +11,7 @@ import traceback
 from pydantic import BaseSettings
 from ulid import ULID
 
-# Configure logging consistent with the system architecture
+# Configure logging
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
@@ -27,9 +27,9 @@ dash.register_page(
 
 class Settings(BaseSettings):
     daq_id: str = "raz1"
-    external_hostname: str = "localhost"
+    external_hostname: str = "mspbase01.pmel.noaa.gov"
     ws_use_tls: bool = False
-    ws_port: int = 8787  # Matches the default port in main.py
+    ws_port: int = 8080  # Updated to match your deployment
     wss_port: int = 443
 
     class Config:
@@ -38,23 +38,22 @@ class Settings(BaseSettings):
 
 config = Settings()
 
-# Standardized WebSocket URL construction
+# Standardized WebSocket URL construction matching sensor.py
 ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 if config.ws_use_tls:
     ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
 
-# Top-level send buffer for outbound WebSocket commands
 ws_send_buffer = html.Div(id="ws-send-ops-buffer", style={"display": "none"})
 
 def get_layout():
-    # Generate unique ID for this session instance
-    client_id = str(ULID())
+    # Use 'main' as the ID to match the server-side global broadcast logic
+    client_id = "main" 
     
     return html.Div([
         html.H1("System Operations & Sampling Status", className="mb-4"),
         
         dbc.Row([
-            # Column 1: System Modes (The Orchestrator)
+            # Column 1: System Modes
             dbc.Col([
                 dbc.Card([
                     dbc.CardHeader("System Mode", className="fw-bold bg-primary text-white"),
@@ -64,7 +63,7 @@ def get_layout():
                 ], className="shadow-sm mb-4 h-100")
             ], width=4),
             
-            # Column 2: Sampling Modes (The Logic)
+            # Column 2: Sampling Modes
             dbc.Col([
                 dbc.Card([
                     dbc.CardHeader("Sampling Modes", className="fw-bold bg-info text-white"),
@@ -74,7 +73,7 @@ def get_layout():
                 ], className="shadow-sm mb-4 h-100")
             ], width=4),
 
-            # Column 3: Sampling States (The Validation)
+            # Column 3: Sampling States
             dbc.Col([
                 dbc.Card([
                     dbc.CardHeader("Sampling States", className="fw-bold bg-secondary text-white"),
@@ -103,14 +102,13 @@ def get_layout():
             ])
         ], className="shadow-sm"),
 
-        # Standardized WebSocket Component
+        # Standardized WebSocket with msp/dashboardtest prefix
         WebSocket(
             id="ws-system-ops",
-            url=f"{ws_url_base}/msp/dashboardtest/ws/system-ops/{client_id}"
+            url=f"{ws_url_base}/msp/dashboardtest/ws/system-ops"
         ),
         ws_send_buffer,
         
-        # Central store to accumulate status updates from the whole cluster
         dcc.Store(id="system-ops-state", data={
             "SystemMode": {},
             "SamplingMode": {},
@@ -127,15 +125,11 @@ layout = get_layout()
     State("system-ops-state", "data")
 )
 def update_state_store(msg, current_state):
-    """
-    Parses incoming WebSocket messages and updates the cumulative state store.
-    """
     if not msg or "data" not in msg:
         raise PreventUpdate
 
     try:
         payload = json.loads(msg["data"])
-        # Extract the CloudEvent data nested by the main.py broadcaster
         event_data = payload.get("data", {})
         status_obj = event_data.get("status", {})
         
@@ -161,10 +155,7 @@ def update_state_store(msg, current_state):
     Input("system-ops-state", "data")
 )
 def render_ui(state):
-    """
-    Generates UI components based on the current accumulated state.
-    """
-    # 1. Render System Modes
+    # 1. System Modes
     sys_list = [
         dbc.ListGroupItem([
             html.Span(name, className="fw-bold"),
@@ -173,7 +164,7 @@ def render_ui(state):
         ], active=data["status"]) for name, data in state["SystemMode"].items()
     ]
 
-    # 2. Render Sampling Modes
+    # 2. Sampling Modes
     samp_mode_list = [
         dbc.ListGroupItem([
             html.Span(name),
@@ -182,7 +173,7 @@ def render_ui(state):
         ]) for name, data in state["SamplingMode"].items()
     ]
 
-    # 3. Render Sampling States
+    # 3. Sampling States
     state_list = [
         dbc.ListGroupItem([
             html.Span(name, className="small"),
@@ -191,7 +182,7 @@ def render_ui(state):
         ]) for name, data in state["SamplingState"].items()
     ]
 
-    # 4. Format row data for the Conditions Table
+    # 4. Conditions
     grid_data = [
         {"name": k, "status": "🟢 True" if v["status"] else "🔴 False", "time": v["time"]}
         for k, v in state["SamplingCondition"].items()
@@ -203,16 +194,3 @@ def render_ui(state):
         dbc.ListGroup(state_list) if state_list else no_update,
         grid_data
     )
-
-@callback(
-    Output("ws-system-ops", "send"), 
-    Input("ws-send-ops-buffer", "children")
-)
-def send_to_ops(value):
-    """
-    Forwards commands from the hidden buffer to the WebSocket instance.
-    """
-    if value:
-        L.debug(f"Sending to system-ops WS: {value}")
-        return value
-    return no_update
