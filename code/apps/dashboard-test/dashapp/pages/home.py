@@ -297,11 +297,14 @@ def update_trajectory(n_intervals, vs_data, current_figure):
     
     if vs_data:
         try:
-            vs_data = vs_data[0].get("data-update", {})
-            L.debug(f"variableset-data-trajectory{vs_data}")
+            # vs_data = vs_data[0].get("data-update", {})
+            # L.debug(f"variableset-data-trajectory{vs_data}")
+            update_data = vs_data[0]
+            L.debug(f"variableset-data-trajectory{update_data}")
 
-            variables = vs_data.get('variables', {})
-            
+            # variables = vs_data.get('variables', {})
+            variables = update_data.get('variables', {})
+
             if 'latitude' not in variables or 'longitude' not in variables:
                 return dash.no_update
                 
