@@ -54,7 +54,7 @@ class SystemMode:
         self.active = False 
         self._configure_logic()
 
-    def _configure_requirements(self):
+    def _configure_logic(self):
         """Initializes internal requirement tracking from config."""
         for req in self.config.get("requirements", []):
             kind, name = req.get("kind"), req.get("name")
