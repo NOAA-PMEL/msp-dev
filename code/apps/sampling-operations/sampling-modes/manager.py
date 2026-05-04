@@ -2,13 +2,17 @@ import asyncio
 import importlib
 import logging
 import httpx
+import os
+import json
+import sys
 from ulid import ULID
 from datetime import timezone
-from pydantic import BaseSettings
-from logfmter import Logfmter  #
+from pydantic import BaseSettings, Field
+from logfmter import Logfmter 
 from cloudevents.http import CloudEvent, from_json
 from cloudevents.conversion import to_structured
 from aiomqtt import Client, MqttError
+import uvicorn
 from envds.util.util import (
     get_datetime_string, 
     get_datetime, 
@@ -25,6 +29,8 @@ L = logging.getLogger("SamplingModesManager")
 L.setLevel(logging.DEBUG)
 
 class SamplingModesConfig(BaseSettings):
+    host: str = "0.0.0.0"
+    port: int = 8080
     daq_id: str = "default_daq"
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
@@ -41,15 +47,13 @@ class SamplingMode:
         self.config = config
         self.status_buffer = status_buffer
         self.actions_buffer = actions_buffer
-        
         self.requirements = {}
         self.actions = {"true": [], "false": []}
         self.current_state = False
         self.active = True 
+        self._configure_requirements()
 
-        self.configure()
-
-    def configure(self):
+    def _configure_requirements(self):
         """Initialize requirement tracking and action mapping from config."""
         for req in self.config.get("requirements", []):
             kind, name = req.get("kind"), req.get("name")
@@ -64,48 +68,32 @@ class SamplingMode:
 
     async def update(self, status_update: dict):
         """Updates internal requirement cache from external status updates."""
-        kind = status_update.get("kind")
-        name = status_update.get("name")
-        status = status_update.get("status")
+        kind, name, status = status_update.get("kind"), status_update.get("name"), status_update.get("status")
         if kind in self.requirements and name in self.requirements[kind]:
             self.requirements[kind][name]["status"] = status
 
     async def evaluate(self):
         """Checks requirements and dispatches actions on state changes."""
         if not self.active: return
-
-        mode_status = [
-            req["status"] 
-            for kind in self.requirements.values() 
-            for req in kind.values()
-        ]
-        
-        # Default to False if no requirements are present
+        mode_status = [req["status"] for kind in self.requirements.values() for req in kind.values()]
         latest_status = all(mode_status) if mode_status else False
-        current_secs = get_datetime().replace(tzinfo=timezone.utc).second
         is_changed = (latest_status != self.current_state)
 
         # Heartbeat every 30s or broadcast immediately on state change
-        if is_changed or (current_secs % 30 == 0):
+        if is_changed or (get_datetime().replace(tzinfo=timezone.utc).second % 30 == 0):
             self.current_state = latest_status
-            
-            # 1. Dispatch own status update
             await self.status_buffer.put({
                 "status": {
                     "kind": "SamplingMode",
-                    "name": self.config.get("metadata", {}).get("name", "unknown"),
+                    "name": self.config["metadata"]["name"],
                     "status": self.current_state,
                     "time": get_datetime_string()
                 }
             })
-
-            # 2. Trigger configured actions ONLY on state change
             if is_changed:
                 run_type = str(self.current_state).lower()
                 for act in self.actions.get(run_type, []):
-                    await self.actions_buffer.put({
-                        "action": {"kind": act.get("kind"), "name": act.get("name")}
-                    })
+                    await self.actions_buffer.put({"action": act})
 
 class SamplingAction:
     """Executes python modules to compute physical system settings."""
@@ -113,7 +101,6 @@ class SamplingAction:
         self.config = config
         self.actions_target_buffer = actions_target_buffer
         self.sources = {"data": {}}
-        
         mod_name = config["metadata"].get("action_module", "default_actions")
         def_name = config["metadata"].get("action_def", "default_def")
         mod_ = importlib.import_module(mod_name)
@@ -124,103 +111,118 @@ class SamplingAction:
         source_vars = {}
         for src_name, src in self.config.get("sources", {}).items():
             src_id = f"{src['variablemap_name']}::{src['variableset_name']}"
-            last_var = self.sources["data"].get(src_id, {}).get(src["variable"], {})
-            source_vars[src_name] = last_var.get("data")
-            
+            source_vars[src_name] = self.sources["data"].get(src_id, {}).get(src["variable"], {}).get("data")
         try:
-            result = await self.method(**source_vars) if asyncio.iscoroutinefunction(self.method) else self.method(**source_vars)
-            if not result: return
-
-            for trg_name, trg in self.config.get("targets", {}).items():
-                if trg_name in result:
-                    await self.actions_target_buffer.put({
-                        trg_name: {"data": result[trg_name], "metadata": trg}
-                    })
+            res = await self.method(**source_vars) if asyncio.iscoroutinefunction(self.method) else self.method(**source_vars)
+            if res:
+                for t_name, t in self.config.get("targets", {}).items():
+                    if t_name in res:
+                        await self.actions_target_buffer.put({t_name: {"data": res[t_name], "metadata": t}})
         except Exception as e:
             L.error("action_execution_failed", extra={"reason": str(e)})
 
 class SamplingModesManager:
     def __init__(self):
         self.config = SamplingModesConfig()
-        self.modes = {}
-        self.actions = {}
-        
-        self.status_buffer = asyncio.Queue()
-        self.actions_buffer = asyncio.Queue()
-        self.actions_target_buffer = asyncio.Queue()
-        self.publish_queue = asyncio.Queue()
+        self.modes, self.actions = {}, {}
+        self.status_buffer = None
+        self.actions_buffer = None
+        self.actions_target_buffer = None
+        self.publish_queue = None
         self.http_client = None
+        
+        # Consistent load pattern from sampling-states
+        self.configure()
+
+    def configure(self):
+        """Loads definitions from local mounted files."""
+        try:
+            modes_path = "/app/config/sampling_modes_modes.json"
+            if os.path.exists(modes_path):
+                with open(modes_path, "r") as f:
+                    for cfg in json.load(f): self.load_mode(cfg)
+            
+            actions_path = "/app/config/sampling_modes_actions.json"
+            if os.path.exists(actions_path):
+                with open(actions_path, "r") as f:
+                    for cfg in json.load(f): self.load_action(cfg)
+        except Exception as e:
+            L.error("configure_failed", extra={"reason": str(e)})
+
+    def load_mode(self, cfg):
+        if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)
+        if self.actions_buffer is None: self.actions_buffer = asyncio.Queue(maxsize=2000)
+        name = cfg["metadata"]["name"]
+        self.modes[name] = SamplingMode(cfg, self.status_buffer, self.actions_buffer)
+        L.info("loaded_mode", extra={"name": name})
+
+    def load_action(self, cfg):
+        if self.actions_target_buffer is None: self.actions_target_buffer = asyncio.Queue(maxsize=2000)
+        name = cfg["metadata"]["name"]
+        try:
+            self.actions[name] = SamplingAction(cfg, self.actions_target_buffer)
+            L.info("loaded_action", extra={"name": name})
+        except Exception as e:
+            L.error("action_load_failed", extra={"name": name, "reason": str(e)})
 
     async def setup(self):
+        """Infrastructure and background task initialization."""
+        if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)
+        if self.actions_buffer is None: self.actions_buffer = asyncio.Queue(maxsize=2000)
+        if self.actions_target_buffer is None: self.actions_target_buffer = asyncio.Queue(maxsize=2000)
+        if self.publish_queue is None: self.publish_queue = asyncio.Queue(maxsize=2000)
+        
         self.http_client = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=50))
         
-        # Patterns for synchronization and definition broadcasting
         asyncio.create_task(self.publish_local_definitions())
         asyncio.create_task(self.sync_sampling_definitions_loop())
-        
-        # Communication loops
         asyncio.create_task(self.mqtt_listen_loop())
         asyncio.create_task(self.mqtt_publish_loop())
-        
-        # Operational monitors
         asyncio.create_task(self.mode_evaluation_loop())
         asyncio.create_task(self.action_execution_monitor())
         asyncio.create_task(self.action_target_monitor())
         asyncio.create_task(self.status_publish_monitor())
 
     async def publish_local_definitions(self):
-        """Broadcasts locally mounted definitions to the global registry."""
         await asyncio.sleep(5)
         while True:
             try:
-                definitions = [(self.actions, "action"), (self.modes, "samplingmode")]
-                for registry_dict, res_type in definitions:
-                    for name, data_obj in registry_dict.items():
-                        config = data_obj.config
+                for registry, res_type in [(self.actions, "action"), (self.modes, "samplingmode")]:
+                    for obj in registry.values():
                         event = SamplingEvent.create_definition_registry_update(
                             resource=f"{res_type}-definition",
                             source=f"envds.{self.config.daq_id}.sampling-modes",
-                            data={res_type: config}
+                            data={res_type: obj.config}
                         )
                         event["destpath"] = f"envds/{self.config.daq_id}/{res_type}-definition/registry/update"
                         await self.send_event(event)
             except Exception as e:
-                L.error("publish_local_definitions_failed", extra={"reason": str(e)})
+                L.error("publish_failed", extra={"reason": str(e)})
             await asyncio.sleep(60)
 
     async def sync_sampling_definitions_loop(self):
-        """Keeps local instances in sync with the central Datastore."""
-        await asyncio.sleep(10)
         while True:
             try:
                 ds_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
                 for res in ["action", "samplingmode"]:
-                    ids_resp = await self.http_client.get(f"http://{ds_url}/{res}-definition/registry/ids/get/")
-                    if ids_resp.status_code == 200:
-                        for did in ids_resp.json().get("results", []):
-                            resp = await self.http_client.get(f"http://{ds_url}/{res}-definition/registry/get/", params={"name": did})
-                            if resp.status_code == 200 and resp.json().get("results"):
-                                cfg = resp.json()["results"][0]
-                                name = cfg["metadata"]["name"]
-                                if res == "action" and name not in self.actions:
-                                    self.actions[name] = SamplingAction(cfg, self.actions_target_buffer)
-                                    L.info("loaded_action", extra={"name": name})
-                                elif res == "samplingmode" and name not in self.modes:
-                                    self.modes[name] = SamplingMode(cfg, self.status_buffer, self.actions_buffer)
-                                    L.info("loaded_mode", extra={"name": name})
+                    resp = await self.http_client.get(f"http://{ds_url}/{res}-definition/registry/ids/get/")
+                    if resp.status_code == 200:
+                        for did in resp.json().get("results", []):
+                            d_resp = await self.http_client.get(f"http://{ds_url}/{res}-definition/registry/get/", params={"name": did})
+                            if d_resp.status_code == 200 and d_resp.json().get("results"):
+                                cfg = d_resp.json()["results"][0]
+                                if res == "action": self.load_action(cfg)
+                                else: self.load_mode(cfg)
             except Exception as e:
-                L.error("sync_definitions_failed", extra={"reason": str(e)})
+                L.error("sync_failed", extra={"reason": str(e)})
             await asyncio.sleep(60)
 
-    async def send_event(self, ce: CloudEvent):
-        """Encapsulates CloudEvents for MQTT publishing."""
+    async def send_event(self, ce):
         topic = ce.get("destpath", "")
         if topic:
-            headers, body = to_structured(ce)
-            await self.publish_queue.put((topic, body))
+            await self.publish_queue.put((topic, to_structured(ce)[1]))
 
     async def mqtt_listen_loop(self):
-        """Listens for telemetry and requirements while filtering own echoes."""
         my_id = f"envds.{self.config.daq_id}.sampling-modes"
         while True:
             try:
@@ -230,27 +232,27 @@ class SamplingModesManager:
                     async for msg in client.messages:
                         try:
                             ce = from_json(msg.payload)
-                            # Anti-loop Filter to prevent processing internal broadcasts
                             if ce.get("source") == my_id: continue
                             
                             if "data.update" in ce.get("type", ""):
                                 src_id = ce.get("source", "").split(".")[-1]
                                 ts = ce.data.get("variables", {}).get("time", {}).get("data")
-                                for evaluator in self.actions.values():
-                                    for req_src in evaluator.config.get("sources", {}).values():
+                                for action_obj in self.actions.values():
+                                    for req_src in action_obj.config.get("sources", {}).values():
                                         rid = f"{req_src['variablemap_name']}::{req_src['variableset_name']}"
                                         if rid == src_id:
-                                            if rid not in evaluator.sources["data"]: evaluator.sources["data"][rid] = {}
+                                            if rid not in action_obj.sources["data"]: action_obj.sources["data"][rid] = {}
                                             for k, v in ce.data.get("variables", {}).items():
-                                                evaluator.sources["data"][rid][k] = {"data": v.get("data"), "last_update": ts}
+                                                action_obj.sources["data"][rid][k] = {"data": v.get("data"), "last_update": ts}
+                            
                             elif "status.update" in ce.get("type", ""):
-                                for m in self.modes.values(): 
-                                    await m.update(ce.data.get("status", {}))
+                                for mode in self.modes.values(): 
+                                    await mode.update(ce.data.get("status", {}))
                         except Exception: pass
-            except MqttError: await asyncio.sleep(5)
+            except MqttError:
+                await asyncio.sleep(5)
 
     async def mqtt_publish_loop(self):
-        """Handles outbound MQTT communications."""
         while True:
             try:
                 async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
@@ -258,24 +260,20 @@ class SamplingModesManager:
                         t, p = await self.publish_queue.get()
                         await client.publish(t, p, qos=1)
                         self.publish_queue.task_done()
-            except MqttError: await asyncio.sleep(5)
+            except MqttError:
+                await asyncio.sleep(5)
 
     async def mode_evaluation_loop(self):
-        """Periodically triggers evaluation for all loaded modes."""
         while True:
-            for mode in self.modes.values():
+            for mode in list(self.modes.values()): 
                 await mode.evaluate()
             await asyncio.sleep(time_to_next(1))
 
     async def status_publish_monitor(self):
-        """Broadcasts current mode statuses to the cluster."""
         while True:
             data = await self.status_buffer.get()
             event = CloudEvent(
-                attributes={
-                    "type": "envds.samplingmode.status.update", 
-                    "source": f"envds.{self.config.daq_id}.sampling-modes"
-                },
+                attributes={"type": "envds.samplingmode.status.update", "source": f"envds.{self.config.daq_id}.sampling-modes"},
                 data=data
             )
             event["destpath"] = f"envds/{self.config.daq_id}/sampling-modes/status/update"
@@ -283,7 +281,6 @@ class SamplingModesManager:
             self.status_buffer.task_done()
 
     async def action_execution_monitor(self):
-        """Executes actions if this node is the primary controller."""
         while True:
             req = await self.actions_buffer.get()
             if not self.config.is_primary_controller:
@@ -291,12 +288,10 @@ class SamplingModesManager:
                 continue
             name = req.get("action", {}).get("name")
             if name in self.actions:
-                L.info("executing_action", extra={"name": name})
                 await self.actions[name].run()
             self.actions_buffer.task_done()
 
     async def action_target_monitor(self):
-        """Translates action results into controller settings updates."""
         while True:
             targets = await self.actions_target_buffer.get()
             for name, data in targets.items():
@@ -304,12 +299,45 @@ class SamplingModesManager:
                 t_type = meta.get("target_type", "controller").lower()
                 t_id = meta.get("target_id", meta.get("variablemap_name", "unknown"))
                 event = CloudEvent(
-                    attributes={
-                        "type": f"envds.{t_type}.settings.update", 
-                        "source": f"envds.{self.config.daq_id}.sampling-modes"
-                    },
+                    attributes={"type": f"envds.{t_type}.settings.update", "source": f"envds.{self.config.daq_id}.sampling-modes"},
                     data={"variables": {meta.get("variable", name): {"data": val}}}
                 )
                 event["destpath"] = f"envds/{self.config.daq_id}/{t_type}/{t_id}/settings/update"
                 await self.send_event(event)
             self.actions_target_buffer.task_done()
+
+# Consistent entry point logic from sampling-states
+async def shutdown():
+    print("shutting down")
+
+async def main(config):
+    # uvicorn.Config points to main.py app instance
+    config_uv = uvicorn.Config(
+        "main:app", 
+        host=config.host, 
+        port=config.port, 
+        root_path="/msp/sampling-modes"
+    )
+
+    server = uvicorn.Server(config_uv)
+    L.info(f"server: {server}")
+    await server.serve()
+
+    print("starting shutdown...")
+    await shutdown()
+    print("done.")
+
+if __name__ == "__main__":
+    mgr_config = SamplingModesConfig()
+    # Parsing sys.argv for simple command line override support
+    try:
+        idx = sys.argv.index("--host")
+        mgr_config.host = sys.argv[idx + 1]
+    except (ValueError, IndexError): pass
+    try:
+        idx = sys.argv.index("--port")
+        mgr_config.port = int(sys.argv[idx + 1])
+    except (ValueError, IndexError): pass
+    
+    print("going to run(main)")
+    asyncio.run(main(mgr_config))

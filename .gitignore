@@ -179,3 +179,4 @@ certs/*
 bootstrap/**
 code/apps/datastore/tmp/**
 aerosoldynamics/**
+code/apps/sampling-operations/sampling-operations_bak/**
