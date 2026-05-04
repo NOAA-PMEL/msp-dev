@@ -1188,7 +1188,7 @@ class SamplingOperationsManager:
             try:
                 # Group all local definitions
                 definitions = [
-                    (self.sampclass SamplingAction:ling_actions, "action"),
+                    (self.sampling_actions, "action"),
                     (self.sampling_modes, "samplingmode")
                 ]
                 
