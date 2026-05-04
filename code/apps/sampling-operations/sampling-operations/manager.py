@@ -622,7 +622,7 @@ class SamplingOperationsManager:
         self.config = SamplingOperationsManagerConfig()
         self.http_client = None
 
-        self._background_tasks.update = set()
+        self._background_tasks = set()
 
         self.configure()
         # print("here:7")

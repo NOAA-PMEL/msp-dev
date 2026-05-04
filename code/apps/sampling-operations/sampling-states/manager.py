@@ -110,13 +110,13 @@ class SamplingState:
         )
 
         self.current_status = False
-
+        self._tasks = [] # ADD THIS to track tasks
         self.criterion_tasks = []
         
         self.configure()
-        asyncio.create_task(self.update_monitor())
-        asyncio.create_task(self.requirement_monitor())
-        asyncio.create_task(self.data_gc())
+        self._tasks.append(asyncio.create_task(self.update_monitor()))
+        self._tasks.append(asyncio.create_task(self.requirement_monitor()))
+        self._tasks.append(asyncio.create_task(self.data_gc()))
 
     def configure(self):
 
@@ -134,6 +134,12 @@ class SamplingState:
                 "status": False,
                 "data": dict()
             }
+
+    def stop(self):
+        """Cancels all background tasks associated with this state instance."""
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
 
     async def update(self, status):
         self.logger.debug("update", extra={"update_status": status})
@@ -515,7 +521,13 @@ class SamplingStatesManager:
         # Ensure status_buffer exists if loaded during sync loop
         if not getattr(self, "status_buffer", None):
             self.status_buffer = asyncio.Queue(maxsize=2000)
-            
+
+        # FIX: STOP OLD TASKS BEFORE OVERWRITING
+        if state_name in self.sampling_states["states"]:
+            old_state = self.sampling_states["states"][state_name].get("state")
+            if old_state:
+                old_state.stop()
+
         if state_name not in self.sampling_states["states"]:
             self.sampling_states["states"][state_name] = {"config": None, "state": None}
             
@@ -746,61 +758,61 @@ class SamplingStatesManager:
             await asyncio.sleep(0.001)
             self.status_buffer.task_done()
 
-    async def get_from_mqtt_loop(self):
-        reconnect = 10
-        while True:
-            try:
-                self.logger.debug("listen", extra={"config": self.config})
-                client_id = str(ULID())
-                async with Client(
-                    self.config.mqtt_broker,
-                    port=self.config.mqtt_port,
-                    identifier=client_id,
-                ) as self.client:
-                    # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
-                    for topic in self.config.mqtt_topic_subscriptions.split(","):
-                        # print(f"run - topic: {topic.strip()}")
-                        # self.logger.debug("run", extra={"topic": topic})
-                        if topic.strip():
-                            self.logger.debug(
-                                "subscribe", extra={"topic": topic.strip()}
-                            )
-                            await self.client.subscribe(
-                                f"$share/sampling-states/{topic.strip()}"
-                            )
+    # async def get_from_mqtt_loop(self):
+    #     reconnect = 10
+    #     while True:
+    #         try:
+    #             self.logger.debug("listen", extra={"config": self.config})
+    #             client_id = str(ULID())
+    #             async with Client(
+    #                 self.config.mqtt_broker,
+    #                 port=self.config.mqtt_port,
+    #                 identifier=client_id,
+    #             ) as self.client:
+    #                 # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+    #                 for topic in self.config.mqtt_topic_subscriptions.split(","):
+    #                     # print(f"run - topic: {topic.strip()}")
+    #                     # self.logger.debug("run", extra={"topic": topic})
+    #                     if topic.strip():
+    #                         self.logger.debug(
+    #                             "subscribe", extra={"topic": topic.strip()}
+    #                         )
+    #                         await self.client.subscribe(
+    #                             f"$share/sampling-states/{topic.strip()}"
+    #                         )
 
-                        # await client.subscribe(config.mqtt_topic_subscription, qos=2)
-                    # async with client.messages() as messages:
-                    async for message in self.client.messages:  # () as messages:
+    #                     # await client.subscribe(config.mqtt_topic_subscription, qos=2)
+    #                 # async with client.messages() as messages:
+    #                 async for message in self.client.messages:  # () as messages:
 
-                        try:
-                            ce = from_json(message.payload)
-                            topic = message.topic.value
-                            ce["sourcepath"] = topic
-                            await self.mqtt_buffer.put(ce)
-                            self.logger.debug(
-                                "get_from_mqtt_loop",
-                                extra={"cetype": ce["type"], "topic": topic},
-                            )
-                        except Exception as e:
-                            self.logger.error("get_from_mqtt_loop", extra={"reason": e})
-                        # try:
-                        #     self.logger.debug("listen", extra={"payload_type": type(ce), "ce": ce})
-                        #     await self.send_to_knbroker(ce)
-                        # except Exception as e:
-                        #     self.logger.error("Error sending to knbroker", extra={"reason": e})
-            except MqttError as error:
-                self.logger.error(
-                    f"{error}. Trying again in {reconnect} seconds",
-                    extra={
-                        k: v
-                        for k, v in self.config.dict().items()
-                        if k.lower().startswith("mqtt_")
-                    },
-                )
-                await asyncio.sleep(reconnect)
-            finally:
-                await asyncio.sleep(0.0001)
+    #                     try:
+    #                         ce = from_json(message.payload)
+    #                         topic = message.topic.value
+    #                         ce["sourcepath"] = topic
+    #                         await self.mqtt_buffer.put(ce)
+    #                         self.logger.debug(
+    #                             "get_from_mqtt_loop",
+    #                             extra={"cetype": ce["type"], "topic": topic},
+    #                         )
+    #                     except Exception as e:
+    #                         self.logger.error("get_from_mqtt_loop", extra={"reason": e})
+    #                     # try:
+    #                     #     self.logger.debug("listen", extra={"payload_type": type(ce), "ce": ce})
+    #                     #     await self.send_to_knbroker(ce)
+    #                     # except Exception as e:
+    #                     #     self.logger.error("Error sending to knbroker", extra={"reason": e})
+    #         except MqttError as error:
+    #             self.logger.error(
+    #                 f"{error}. Trying again in {reconnect} seconds",
+    #                 extra={
+    #                     k: v
+    #                     for k, v in self.config.dict().items()
+    #                     if k.lower().startswith("mqtt_")
+    #                 },
+    #             )
+    #             await asyncio.sleep(reconnect)
+    #         finally:
+    #             await asyncio.sleep(0.0001)
 
     # async def handle_mqtt_buffer(self):
     #     while True:
