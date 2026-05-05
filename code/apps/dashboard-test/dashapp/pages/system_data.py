@@ -75,7 +75,7 @@ config = Settings()
 
 # TODO: add readOnly user for this connection
 
-datastore_url = f"datastore.{config.daq_id}-system"
+datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 http_url_base = f"http://{config.external_hostname}:{config.http_port}"
 if config.http_use_tls:
@@ -581,7 +581,8 @@ def update_variableset_list(count, current_sets):
         # url = f"http://{datastore_url}/variableset-definition/registry/get/"
         url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
         L.debug(f"variableset-definition-get: {url}")
-        response = httpx.get(url)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, timeout=timeout)
         results = response.json()
         L.debug(f"variableset-results: {results}")
         if "results" in results and results["results"]:
@@ -641,10 +642,11 @@ def update_variableset_defs(varset_ids, current_defs):
                 def_url = f"http://{datastore_url}/variableset-definition/registry/get/"
                 query_params = {"variableset_definition_id": varset_id}
                 L.debug(f"Fetching definition: {def_url}")
-
+                timeout = httpx.Timeout(30.0, read=None)
                 response = httpx.get(
                     def_url,
-                    params = query_params
+                    params = query_params,
+                    timeout=timeout
                     )
                                 
                 if response.status_code == 200:
@@ -1082,7 +1084,8 @@ def layout(platform=None):
     try:
         # Fetch the list of IDs
         url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
-        response = httpx.get(url)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, timeout=timeout)
         results = response.json()
         
         if "results" in results and results["results"]:
@@ -1098,7 +1101,8 @@ def layout(platform=None):
                     query_params = {"variableset_definition_id": varset_id}
                     def_response = httpx.get(
                         def_url,
-                        params = query_params
+                        params = query_params,
+                        timeout=timeout
                         )
                     L.debug(f"def response status code: {def_response.status_code}")
                     L.debug(f"layout varset def: {def_response}")

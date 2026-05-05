@@ -445,7 +445,8 @@ def update_controller_definitions(count, table_data):
         url = f"http://{datastore_url}/controller-definition/registry/ids/get/"
         print(f"controller-definition-get: {url}")
         # response = httpx.get(url, params=query)
-        response = httpx.get(url)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, timeout=timeout)
         results = response.json()
         print(f"controller definition results: {results}")
         if "results" in results and results["results"]:
@@ -565,7 +566,8 @@ def update_active_controllers(count, table_data):
         query = {"device_type": "controller"}
         url = f"http://{datastore_url}/controller-instance/registry/get/"
         print(f"controller-definition-get: {url}")
-        response = httpx.get(url, params=query)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
         print(f"results: {results}")
         if "results" in results and results["results"]:

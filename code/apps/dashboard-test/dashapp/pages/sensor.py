@@ -762,7 +762,8 @@ def get_device_instance(device_id: str, device_type: str="sensor"):
     url = f"http://{datastore_url}/device-instance/registry/get/"
     L.debug("get_device_instance", extra={"url": url, "query": query})
     try:
-        response = httpx.get(url, params=query)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
         # print(f"device_instance results: {results}")
         L.debug("get_device_instance", extra={"results": results})

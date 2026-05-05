@@ -63,7 +63,7 @@ class Settings(BaseSettings):
 
 config = Settings()
 
-datastore_url = f"datastore.{config.daq_id}-system"
+datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 http_url_base = f"http://{config.external_hostname}:{config.http_port}"
 if config.http_use_tls:
     http_url_base = f"https://{config.external_hostname}:{config.https_port}"
@@ -220,7 +220,8 @@ def update_variableset_list(count, current_sets):
         # url = f"http://{datastore_url}/variableset-definition/registry/get/"
         url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
         L.debug(f"variableset-definition-get: {url}")
-        response = httpx.get(url)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url,timeout=timeout)
         results = response.json()
         L.debug(f"variableset-results: {results}")
         if "results" in results and results["results"]:

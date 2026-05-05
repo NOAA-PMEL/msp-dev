@@ -251,7 +251,7 @@ config = Settings()
 # db_data_client = DBClient(connection=config.mongodb_data_connection)
 # db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 
-datastore_url = f"datastore.{config.daq_id}-system"
+datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 # link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 
 http_url_base = f"http://{config.external_hostname}:{config.http_port}"
@@ -625,7 +625,8 @@ def get_controller_data(controller_id: str):
     url = f"http://{datastore_url}/controller/data/get/"
     print(f"controller-data-get: {url}, query: {query}")
     try:
-        response = httpx.get(url, params=query)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
         # print(f"results: {results}")
         if "results" in results and results["results"]:
@@ -640,8 +641,9 @@ def get_controller_instance(controller_id: str, device_type: str = "controller")
     query = {"controller_id": controller_id}
     url = f"http://{datastore_url}/controller-instance/registry/get/"
     L.debug("get_controller_instance", extra={"url": url, "query": query})
+    timeout = httpx.Timeout(30.0, read=None)
     try:
-        response = httpx.get(url, params=query)
+        response = httpx.get(url, params=query,timeout=timeout)
         results = response.json()
         # print(f"controller_instance results: {results}")
         L.debug("get_controller_instance", extra={"results": results})
@@ -677,8 +679,9 @@ def get_controller_definition(controller_definition_id: str):
     query = {"controller_definition_id": controller_definition_id}
     url = f"http://{datastore_url}/controller-definition/registry/get/"
     print(f"controller-definition-get: {url}")
+    timeout = httpx.Timeout(30.0, read=None)
     try:
-        response = httpx.get(url, params=query)
+        response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
         print(f"controller_definition results: {results}")
         if "results" in results and results["results"]:
