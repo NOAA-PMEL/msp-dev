@@ -248,3 +248,43 @@ Similarly, reindexing the data can be done in multiple ways:
  As there is a need to wait for all the data to come in, there will be a slight delay in the mapped variable set. For example, using the timebase=1, the service will need to wait until until the 0.5 second mark is reached to assure that all data have been collected for collation.
 
 Once collated, each group of variables will be sent out similar to a device/data/update to be consumed as needed downstream
+
+
+# Updates
+
+## Role-based control notes
+
+Based on our architectural discussions and the specific needs of a distributed Data Acquisition (DAQ) system, here is the suggested taxonomy of roles.
+
+These roles allow you to precisely dictate how compute and decision-making are distributed across your hardware without coupling configurations to specific hostnames.
+
+1. operations-controller
+Purpose: The "brain" of the edge network. This role evaluates the variables necessary to trigger safety limits, geofences, and system-wide operational actions (like flow control or inlet switching).
+
+What it evaluates: Scalars critical for real-time control (e.g., cn, relative_wind_speed, latitude, inlet_flow).
+
+Typical Deployment: The main payload/system controller (e.g., raz1).
+
+2. data-server (or archive-server)
+Purpose: The heavy lifter and data sink. This role is responsible for processing data for dashboards, plotting, and historical archival (like ERDDAP). It has the CPU and memory to handle complex math and large arrays.
+
+What it evaluates: Everything. It evaluates the same scalars as the operations controller, plus computationally expensive derived math (true_wind_direction) and multi-dimensional arrays (aps_dNdlogDp).
+
+Typical Deployment: The central hub or shore-side server (e.g., mspbase01).
+
+3. sensor-node (or publisher)
+Purpose: A lightweight, pure data-ingestion role. A node with this role acts strictly as a "dumb" hardware bridge. It reads serial/I2C/USB data from sensors and publishes it to the local MQTT broker, but it performs zero variable evaluations itself.
+
+What it evaluates: Nothing. (It purposely does not match any evaluate_by fields in the active variable maps).
+
+Typical Deployment: Compute-constrained edge payloads that only host sensors and don't make local decisions (e.g., payload01 in our current setup).
+
+4. local-controller (Optional)
+Purpose: Fast, closed-loop local control. Sometimes a payload needs to perform its own safety checks or PID loops (like adjusting a TEC heater based on a local case thermocouple) without waiting for a round-trip network hop to the operations-controller.
+
+What it evaluates: Only the hyper-local variables strictly required for its own hardware safety.
+
+Typical Deployment: Specific edge payloads that manage their own active environmental controls. (If payload01 ever gets a local heater, you would add this role to its ConfigMap).
+
+How to use them practically
+You can mix and match these. If a node is powerful enough, you could give it node_roles: "operations-controller, data-server", and it will happily do both jobs. If you realize a node is overheating, you just delete the compute-heavy role from its Kubernetes ConfigMap and restart the pod—the math will instantly route itself elsewhere in the cluster.
