@@ -934,7 +934,32 @@ class SamplingSystem:
                             
                             source_id_val = v["source"][direct_var]["source_id"]
                             if source_id_val not in current_vm["sources"]:
-                                current_vm["sources"]
+                                current_vm["sources"][source_id_val] = []
+                                
+                            source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
+                            if source_entry not in current_vm["sources"][source_id_val]:
+                                current_vm["sources"][source_id_val].append(source_entry)
+
+            # Indexed xrefs and task creation
+            index_type = vs_def["index"]["index_type"]
+            index_value = vs_def["index"]["index_value"]
+            
+            if index_type not in current_vm["indexed"]:
+                current_vm["indexed"][index_type] = dict()
+            if index_value not in current_vm["indexed"][index_type]:
+                current_vm["indexed"][index_type][index_value] = {
+                    "variablesets": [],
+                    "data": dict()
+                }
+
+            if vs_name not in current_vm["indexed"][index_type][index_value]["variablesets"]:
+                current_vm["indexed"][index_type][index_value]["variablesets"].append(vs_name)
+
+            if index_type not in self.index_monitor_tasks:
+                self.index_monitor_tasks[index_type] = dict()
+            if index_type == "time":
+                if index_value not in self.index_monitor_tasks[index_type] or not self.index_monitor_tasks[index_type][index_value]:
+                    self.index_monitor_tasks[index_type][index_value] = asyncio.create_task(self.index_time_monitor(timebase=index_value))
 
     # def open_http_client(self):
     #     self.http_client = httpx.AsyncClient()
