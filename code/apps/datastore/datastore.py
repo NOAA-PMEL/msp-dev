@@ -343,6 +343,69 @@ class Datastore:
     #         L.error("device_data_update", extra={"reason": e})
     #     pass
 
+    # async def device_data_update(self, ce: CloudEvent):
+    #     try:
+    #         database = "data"
+    #         collection = "device"
+    #         data = ce.data
+            
+    #         attributes = data.get("attributes", {})
+    #         variables = data.get("variables", {})
+    #         dimensions = data.get("dimensions", {}) 
+
+    #         ts_str = data.get("timestamp")
+    #         timestamp = string_to_timestamp(ts_str)
+
+    #         make = attributes.get("make", {}).get("data", "unknown")
+    #         model = attributes.get("model", {}).get("data", "unknown")
+    #         sn = attributes.get("serial_number", {}).get("data", "unknown")
+            
+    #         format_ver = attributes.get("format_version", {}).get("data", "1.0.0")
+    #         version = f"v{str(format_ver).split('.')[0]}"
+
+    #         device_id = attributes.get("device_id", {}).get("data")
+    #         if not device_id:
+    #             device_id = f"{make}::{model}::{sn}"
+
+    #         request = DataUpdate(
+    #             device_id=device_id,
+    #             make=make,
+    #             model=model,
+    #             serial_number=sn,
+    #             version=version,     
+    #             timestamp=timestamp, 
+    #             attributes=attributes,
+    #             dimensions=dimensions, 
+    #             variables=variables,
+    #         )
+
+    #         if self.db_client:
+    #             # 1. Save the historical data
+    #             await self.db_client.device_data_update(
+    #                 database=database, collection=collection, request=request, ttl=self.config.db_data_ttl
+    #             )
+                
+    #             # 2. RESTORED: Register the active instance so definitions can be found!
+    #             device_type = attributes.get("device_type", {}).get("data", "sensor")
+    #             instance_request = DeviceInstanceUpdate(
+    #                 device_id=device_id,
+    #                 make=make,
+    #                 model=model,
+    #                 serial_number=sn,
+    #                 version=version,
+    #                 device_type=device_type,
+    #                 attributes=attributes,
+    #             )
+    #             await self.db_client.device_instance_registry_update(
+    #                 database="registry",
+    #                 collection="device-instance",
+    #                 request=instance_request,
+    #                 ttl=self.config.db_reg_device_instance_ttl,
+    #             )
+
+    #     except Exception as e:
+    #         L.error("device_data_update error", extra={"reason": str(e)})
+
     async def device_data_update(self, ce: CloudEvent):
         try:
             database = "data"
@@ -360,8 +423,9 @@ class Datastore:
             model = attributes.get("model", {}).get("data", "unknown")
             sn = attributes.get("serial_number", {}).get("data", "unknown")
             
+            # FIX: Use exact semantic version string
             format_ver = attributes.get("format_version", {}).get("data", "1.0.0")
-            version = f"v{str(format_ver).split('.')[0]}"
+            version = str(format_ver)
 
             device_id = attributes.get("device_id", {}).get("data")
             if not device_id:
@@ -380,12 +444,10 @@ class Datastore:
             )
 
             if self.db_client:
-                # 1. Save the historical data
                 await self.db_client.device_data_update(
                     database=database, collection=collection, request=request, ttl=self.config.db_data_ttl
                 )
                 
-                # 2. RESTORED: Register the active instance so definitions can be found!
                 device_type = attributes.get("device_type", {}).get("data", "sensor")
                 instance_request = DeviceInstanceUpdate(
                     device_id=device_id,
@@ -485,36 +547,92 @@ class Datastore:
     #     except Exception as e:
     #         self.logger.error("device_definition_registry_update", extra={"reason": str(e)})
 
+    # async def device_definition_registry_update(self, ce: CloudEvent):
+    #     try:
+    #         for definition_type, device_def in ce.data.items():
+    #             if definition_type not in ["device-definition", "device-definition-update"]:
+    #                 continue
+
+    #             # 1. Safely extract core identity (handles both flat syncs and nested local payloads)
+    #             make = device_def.get("make") or device_def.get("attributes", {}).get("make", {}).get("data", "unknown")
+    #             model = device_def.get("model") or device_def.get("attributes", {}).get("model", {}).get("data", "unknown")
+                
+    #             # 2. Extract version, explicitly keeping the old truncated syntax (e.g., 'v2')
+    #             if "version" in device_def:
+    #                 version = device_def["version"]
+    #             else:
+    #                 format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+    #                 version = f"v{format_version.split('.')[0]}"
+                
+    #             # 3. Reconstruct ID using the old syntax
+    #             device_definition_id = device_def.get("device_definition_id")
+    #             if not device_definition_id:
+    #                 device_definition_id = f"{make}::{model}::{version}"
+                    
+    #             # 4. Safely extract remaining Pydantic requirements (Providing strict defaults to prevent validation crashes)
+    #             device_type = device_def.get("device_type") or device_def.get("attributes", {}).get("device_type", {}).get("data", "sensor")
+    #             valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
+    #             attributes = device_def.get("attributes", {})
+    #             dimensions = device_def.get("dimensions", {})
+    #             variables = device_def.get("variables", {})
+
+    #             # Ensure top-level keys exist for indexing
+    #             device_def["device_definition_id"] = device_definition_id
+    #             device_def["make"] = make
+    #             device_def["model"] = model
+    #             device_def["version"] = version
+    #             device_def["device_type"] = device_type
+    #             device_def["valid_time"] = valid_time
+
+    #             # 5. Build Pydantic model explicitly
+    #             request = DeviceDefinitionUpdate(
+    #                 device_definition_id=device_definition_id,
+    #                 make=make,
+    #                 model=model,
+    #                 version=version,
+    #                 device_type=device_type,
+    #                 valid_time=valid_time,
+    #                 attributes=attributes,
+    #                 dimensions=dimensions,
+    #                 variables=variables
+    #             )
+
+    #             self.logger.debug("device_definition_registry_update", extra={"request": request.device_definition_id})
+    #             if self.db_client:
+    #                 await self.db_client.device_definition_registry_update(
+    #                     database="registry",
+    #                     collection="device-definition",
+    #                     request=request,
+    #                     ttl=self.config.db_reg_device_definition_ttl,
+    #                 )
+    #     except Exception as e:
+    #         self.logger.error("device_definition_registry_update", extra={"reason": str(e)})
+
     async def device_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, device_def in ce.data.items():
                 if definition_type not in ["device-definition", "device-definition-update"]:
                     continue
 
-                # 1. Safely extract core identity (handles both flat syncs and nested local payloads)
                 make = device_def.get("make") or device_def.get("attributes", {}).get("make", {}).get("data", "unknown")
                 model = device_def.get("model") or device_def.get("attributes", {}).get("model", {}).get("data", "unknown")
                 
-                # 2. Extract version, explicitly keeping the old truncated syntax (e.g., 'v2')
+                # FIX: Use exact semantic version string
                 if "version" in device_def:
-                    version = device_def["version"]
+                    version = str(device_def["version"])
                 else:
-                    format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-                    version = f"v{format_version.split('.')[0]}"
+                    version = str(device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0"))
                 
-                # 3. Reconstruct ID using the old syntax
                 device_definition_id = device_def.get("device_definition_id")
                 if not device_definition_id:
                     device_definition_id = f"{make}::{model}::{version}"
                     
-                # 4. Safely extract remaining Pydantic requirements (Providing strict defaults to prevent validation crashes)
                 device_type = device_def.get("device_type") or device_def.get("attributes", {}).get("device_type", {}).get("data", "sensor")
                 valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
                 attributes = device_def.get("attributes", {})
                 dimensions = device_def.get("dimensions", {})
                 variables = device_def.get("variables", {})
 
-                # Ensure top-level keys exist for indexing
                 device_def["device_definition_id"] = device_definition_id
                 device_def["make"] = make
                 device_def["model"] = model
@@ -522,7 +640,6 @@ class Datastore:
                 device_def["device_type"] = device_type
                 device_def["valid_time"] = valid_time
 
-                # 5. Build Pydantic model explicitly
                 request = DeviceDefinitionUpdate(
                     device_definition_id=device_definition_id,
                     make=make,
@@ -559,6 +676,63 @@ class Datastore:
         
         return {"results": []}
 
+    # async def device_instance_registry_update(self, ce: CloudEvent):
+    #     try:
+    #         self.logger.debug("device_instance_registry_update", extra={"ce": ce})
+    #         for instance_type, instance_reg in ce.data.items():
+    #             request = None
+    #             self.logger.debug("device_instance_registry_update", extra={"instance_type": instance_type, "instance_reg": instance_reg})
+    #             try:
+    #                 make = instance_reg["make"]
+    #                 model = instance_reg["model"]
+    #                 serial_number = instance_reg["serial_number"]
+    #                 format_version = instance_reg["format_version"]
+    #                 parts = format_version.split(".")
+    #                 version = f"v{parts[0]}"
+
+    #                 if make is None or model is None or serial_number is None:
+    #                     self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
+    #                     return
+                    
+    #                 device_id = "::".join([make, model, serial_number])
+
+    #                 if instance_type == "device-instance":
+    #                     database = "registry"
+    #                     collection = "device-instance"
+    #                     attributes = instance_reg["attributes"]
+
+    #                     if "device_type" in instance_reg["attributes"]:
+    #                         device_type = instance_reg["attributes"]["device_type"]["data"]
+    #                     else:
+    #                         device_type = "sensor"
+
+    #                     request = DeviceInstanceUpdate(
+    #                         device_id=device_id,
+    #                         make=make,
+    #                         model=model,
+    #                         serial_number=serial_number,
+    #                         version=format_version,
+    #                         device_type=device_type,
+    #                         attributes=attributes,
+    #                     )
+
+    #             except (KeyError, IndexError) as e:
+    #                     self.logger.error("datastore:device_instance_registry_update", extra={"reason": e})
+    #                     continue
+
+    #             self.logger.debug("datastore:device_instance_registry_update", extra={"request": request, "db_client": self.db_client})
+    #             if self.db_client and request:
+    #                 await self.db_client.device_instance_registry_update(
+    #                     database=database,
+    #                     collection=collection,
+    #                     request=request,
+    #                     ttl=self.config.db_reg_device_instance_ttl,
+    #                 )
+
+    #     except Exception as e:
+    #         L.error("device_instance_registry_update", extra={"reason": e})
+    #     pass
+
     async def device_instance_registry_update(self, ce: CloudEvent):
         try:
             self.logger.debug("device_instance_registry_update", extra={"ce": ce})
@@ -569,9 +743,9 @@ class Datastore:
                     make = instance_reg["make"]
                     model = instance_reg["model"]
                     serial_number = instance_reg["serial_number"]
-                    format_version = instance_reg["format_version"]
-                    parts = format_version.split(".")
-                    version = f"v{parts[0]}"
+                    
+                    # FIX: Use exact semantic version string
+                    version = str(instance_reg.get("format_version", "1.0.0"))
 
                     if make is None or model is None or serial_number is None:
                         self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
@@ -594,7 +768,7 @@ class Datastore:
                             make=make,
                             model=model,
                             serial_number=serial_number,
-                            version=format_version,
+                            version=version,
                             device_type=device_type,
                             attributes=attributes,
                         )
@@ -603,7 +777,6 @@ class Datastore:
                         self.logger.error("datastore:device_instance_registry_update", extra={"reason": e})
                         continue
 
-                self.logger.debug("datastore:device_instance_registry_update", extra={"request": request, "db_client": self.db_client})
                 if self.db_client and request:
                     await self.db_client.device_instance_registry_update(
                         database=database,
@@ -614,7 +787,6 @@ class Datastore:
 
         except Exception as e:
             L.error("device_instance_registry_update", extra={"reason": e})
-        pass
 
     async def device_instance_registry_get_ids(self) -> dict:
         if self.db_client:
@@ -699,6 +871,67 @@ class Datastore:
     #         L.error("device_data_update", extra={"reason": e})
     #     pass
 
+    # async def controller_data_update(self, ce: CloudEvent):
+    #     try:
+    #         database = "data"
+    #         collection = "controller"
+    #         data = ce.data
+            
+    #         attributes = data.get("attributes", {})
+    #         variables = data.get("variables", {})
+    #         dimensions = data.get("dimensions", {})
+
+    #         ts_str = data.get("timestamp")
+    #         timestamp = string_to_timestamp(ts_str)
+
+    #         make = attributes.get("make", {}).get("data", "unknown")
+    #         model = attributes.get("model", {}).get("data", "unknown")
+    #         sn = attributes.get("serial_number", {}).get("data", "unknown")
+            
+    #         format_ver = attributes.get("format_version", {}).get("data", "1.0.0")
+    #         version = f"v{str(format_ver).split('.')[0]}"
+
+    #         controller_id = attributes.get("controller_id", {}).get("data")
+    #         if not controller_id:
+    #             controller_id = f"{make}::{model}::{sn}"
+
+    #         request = ControllerDataUpdate(
+    #             controller_id=controller_id,
+    #             make=make,
+    #             model=model,
+    #             serial_number=sn,
+    #             version=version,
+    #             timestamp=timestamp,
+    #             attributes=attributes,
+    #             dimensions=dimensions,
+    #             variables=variables,
+    #         )
+
+    #         if self.db_client:
+    #             # 1. Save the historical data
+    #             await self.db_client.controller_data_update(
+    #                 database=database, collection=collection, request=request, ttl=self.config.db_data_ttl
+    #             )
+                
+    #             # 2. RESTORED: Register the active instance!
+    #             instance_request = ControllerInstanceUpdate(
+    #                 controller_id=controller_id,
+    #                 make=make,
+    #                 model=model,
+    #                 serial_number=sn,
+    #                 version=version,
+    #                 attributes=attributes,
+    #             )
+    #             await self.db_client.controller_instance_registry_update(
+    #                 database="registry",
+    #                 collection="controller-instance",
+    #                 request=instance_request,
+    #                 ttl=self.config.db_reg_controller_instance_ttl,
+    #             )
+
+    #     except Exception as e:
+    #         L.error("controller_data_update error", extra={"reason": str(e)})
+
     async def controller_data_update(self, ce: CloudEvent):
         try:
             database = "data"
@@ -716,8 +949,9 @@ class Datastore:
             model = attributes.get("model", {}).get("data", "unknown")
             sn = attributes.get("serial_number", {}).get("data", "unknown")
             
+            # FIX: Use exact semantic version string
             format_ver = attributes.get("format_version", {}).get("data", "1.0.0")
-            version = f"v{str(format_ver).split('.')[0]}"
+            version = str(format_ver)
 
             controller_id = attributes.get("controller_id", {}).get("data")
             if not controller_id:
@@ -736,12 +970,10 @@ class Datastore:
             )
 
             if self.db_client:
-                # 1. Save the historical data
                 await self.db_client.controller_data_update(
                     database=database, collection=collection, request=request, ttl=self.config.db_data_ttl
                 )
                 
-                # 2. RESTORED: Register the active instance!
                 instance_request = ControllerInstanceUpdate(
                     controller_id=controller_id,
                     make=make,
@@ -839,6 +1071,59 @@ class Datastore:
     #     except Exception as e:
     #         self.logger.error("controller_definition_registry_update", extra={"reason": str(e)})
 
+    # async def controller_definition_registry_update(self, ce: CloudEvent):
+    #     try:
+    #         for definition_type, controller_def in ce.data.items():
+    #             if definition_type not in ["controller-definition", "controller-definition-update"]:
+    #                 continue
+
+    #             make = controller_def.get("make") or controller_def.get("attributes", {}).get("make", {}).get("data", "unknown")
+    #             model = controller_def.get("model") or controller_def.get("attributes", {}).get("model", {}).get("data", "unknown")
+                
+    #             if "version" in controller_def:
+    #                 version = controller_def["version"]
+    #             else:
+    #                 format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+    #                 version = f"v{format_version.split('.')[0]}"
+                
+    #             controller_definition_id = controller_def.get("controller_definition_id")
+    #             if not controller_definition_id:
+    #                 controller_definition_id = f"{make}::{model}::{version}"
+
+    #             valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
+    #             attributes = controller_def.get("attributes", {})
+    #             dimensions = controller_def.get("dimensions", {})
+    #             variables = controller_def.get("variables", {})
+
+    #             controller_def["controller_definition_id"] = controller_definition_id
+    #             controller_def["make"] = make
+    #             controller_def["model"] = model
+    #             controller_def["version"] = version
+    #             controller_def["valid_time"] = valid_time
+
+    #             request = ControllerDefinitionUpdate(
+    #                 controller_definition_id=controller_definition_id,
+    #                 make=make,
+    #                 model=model,
+    #                 version=version,
+    #                 valid_time=valid_time,
+    #                 attributes=attributes,
+    #                 dimensions=dimensions,
+    #                 variables=variables
+    #             )
+
+    #             self.logger.debug("controller_definition_registry_update", extra={"request": request.controller_definition_id})
+                
+    #             if self.db_client:
+    #                 await self.db_client.controller_definition_registry_update(
+    #                     database="registry",
+    #                     collection="controller-definition",
+    #                     request=request,
+    #                     ttl=self.config.db_reg_controller_definition_ttl,
+    #                 )
+    #     except Exception as e:
+    #         self.logger.error("controller_definition_registry_update", extra={"reason": str(e)})
+
     async def controller_definition_registry_update(self, ce: CloudEvent):
         try:
             for definition_type, controller_def in ce.data.items():
@@ -848,11 +1133,11 @@ class Datastore:
                 make = controller_def.get("make") or controller_def.get("attributes", {}).get("make", {}).get("data", "unknown")
                 model = controller_def.get("model") or controller_def.get("attributes", {}).get("model", {}).get("data", "unknown")
                 
+                # FIX: Use exact semantic version string
                 if "version" in controller_def:
-                    version = controller_def["version"]
+                    version = str(controller_def["version"])
                 else:
-                    format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-                    version = f"v{format_version.split('.')[0]}"
+                    version = str(controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0"))
                 
                 controller_definition_id = controller_def.get("controller_definition_id")
                 if not controller_definition_id:
@@ -905,6 +1190,57 @@ class Datastore:
         
         return {"results": []}
 
+    # async def controller_instance_registry_update(self, ce: CloudEvent):
+    #     try:
+    #         self.logger.debug("controller_instance_registry_update", extra={"ce": ce})
+    #         for instance_type, instance_reg in ce.data.items():
+    #             request = None
+    #             self.logger.debug("controller_instance_registry_update", extra={"instance_type": instance_type, "instance_reg": instance_reg})
+    #             try:
+    #                 make = instance_reg["make"]
+    #                 model = instance_reg["model"]
+    #                 serial_number = instance_reg["serial_number"]
+    #                 format_version = instance_reg["format_version"]
+    #                 parts = format_version.split(".")
+    #                 version = f"v{parts[0]}"
+
+    #                 if make is None or model is None or serial_number is None:
+    #                     self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
+    #                     return
+                    
+    #                 controller_id = "::".join([make, model, serial_number])
+
+    #                 if instance_type == "controller-instance":
+    #                     database = "registry"
+    #                     collection = "controller-instance"
+    #                     attributes = instance_reg["attributes"]
+
+    #                     request = ControllerInstanceUpdate(
+    #                         controller_id=controller_id,
+    #                         make=make,
+    #                         model=model,
+    #                         serial_number=serial_number,
+    #                         version=format_version,
+    #                         attributes=attributes,
+    #                     )
+
+    #             except (KeyError, IndexError) as e:
+    #                     self.logger.error("datastore:controller_instance_registry_update", extra={"reason": e})
+    #                     continue
+
+    #             self.logger.debug("datastore:controller_instance_registry_update", extra={"request": request, "db_client": self.db_client})
+    #             if self.db_client and request:
+    #                 await self.db_client.controller_instance_registry_update(
+    #                     database=database,
+    #                     collection=collection,
+    #                     request=request,
+    #                     ttl=self.config.db_reg_controller_instance_ttl,
+    #                 )
+
+    #     except Exception as e:
+    #         L.error("controller_instance_registry_update", extra={"reason": e})
+    #     pass
+
     async def controller_instance_registry_update(self, ce: CloudEvent):
         try:
             self.logger.debug("controller_instance_registry_update", extra={"ce": ce})
@@ -915,9 +1251,9 @@ class Datastore:
                     make = instance_reg["make"]
                     model = instance_reg["model"]
                     serial_number = instance_reg["serial_number"]
-                    format_version = instance_reg["format_version"]
-                    parts = format_version.split(".")
-                    version = f"v{parts[0]}"
+                    
+                    # FIX: Use exact semantic version string
+                    version = str(instance_reg.get("format_version", "1.0.0"))
 
                     if make is None or model is None or serial_number is None:
                         self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
@@ -935,7 +1271,7 @@ class Datastore:
                             make=make,
                             model=model,
                             serial_number=serial_number,
-                            version=format_version,
+                            version=version,
                             attributes=attributes,
                         )
 
@@ -943,7 +1279,6 @@ class Datastore:
                         self.logger.error("datastore:controller_instance_registry_update", extra={"reason": e})
                         continue
 
-                self.logger.debug("datastore:controller_instance_registry_update", extra={"request": request, "db_client": self.db_client})
                 if self.db_client and request:
                     await self.db_client.controller_instance_registry_update(
                         database=database,
@@ -954,7 +1289,6 @@ class Datastore:
 
         except Exception as e:
             L.error("controller_instance_registry_update", extra={"reason": e})
-        pass
 
     async def controller_instance_registry_get_ids(self) -> dict:
         if self.db_client:
