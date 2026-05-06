@@ -112,12 +112,14 @@ class Tx(Interface):
         self.host = "localhost"
         self.labjack = None # labjack handle
         # self.run_task_list.append(self.connection_monitor())
-        # --- FIX: STRONG TASK REFERENCE ---
-        # Explicitly create the task and store it so the Garbage Collector 
-        # doesn't destroy the connection monitor silently.
         monitor_task = asyncio.create_task(self.connection_monitor())
         self.run_task_list.append(monitor_task)
-        # ----------------------------------
+        # # --- FIX: STRONG TASK REFERENCE ---
+        # # Explicitly create the task and store it so the Garbage Collector 
+        # # doesn't destroy the connection monitor silently.
+        # monitor_task = asyncio.create_task(self.connection_monitor())
+        # self.run_task_list.append(monitor_task)
+        # # ----------------------------------
 
         # self.labjack = None
 
@@ -269,30 +271,30 @@ class Tx(Interface):
     #             self.labjack = None
     #         await asyncio.sleep(5)
 
-    # --- FIX: GRACEFUL INTERFACE SHUTDOWN ---
-    async def shutdown(self):
-        self.logger.info("Tx Interface starting shutdown sequence...")
+    # # --- FIX: GRACEFUL INTERFACE SHUTDOWN ---
+    # async def shutdown(self):
+    #     self.logger.info("Tx Interface starting shutdown sequence...")
         
-        # 1. Cancel the connection monitor task
-        for task in self.run_task_list:
-            if not task.done():
-                task.cancel()
+    #     # 1. Cancel the connection monitor task
+    #     for task in self.run_task_list:
+    #         if not task.done():
+    #             task.cancel()
                 
-        # 2. Cancel all client background tasks and receiver loops
-        for client_id, client_info in self.client_map.items():
-            client = client_info.get("client")
-            if client and hasattr(client, "shutdown"):
-                await client.shutdown()
+    #     # 2. Cancel all client background tasks and receiver loops
+    #     for client_id, client_info in self.client_map.items():
+    #         client = client_info.get("client")
+    #         if client and hasattr(client, "shutdown"):
+    #             await client.shutdown()
                 
-            recv_task = client_info.get("recv_task")
-            if recv_task and not recv_task.done():
-                recv_task.cancel()
+    #         recv_task = client_info.get("recv_task")
+    #         if recv_task and not recv_task.done():
+    #             recv_task.cancel()
 
-        # 3. Call the base Interface shutdown (if it exists)
-        if hasattr(super(), "shutdown"):
-            await super().shutdown()
+    #     # 3. Call the base Interface shutdown (if it exists)
+    #     if hasattr(super(), "shutdown"):
+    #         await super().shutdown()
             
-        self.logger.info("Tx Interface shutdown complete.")
+    #     self.logger.info("Tx Interface shutdown complete.")
         
     async def connection_monitor(self):
         while True:
