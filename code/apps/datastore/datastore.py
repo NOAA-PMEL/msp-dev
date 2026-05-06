@@ -431,43 +431,48 @@ class Datastore:
                 if definition_type not in ["device-definition", "device-definition-update"]:
                     continue
 
-                # ROBUST EXTRACTION: Works for both flat sync payloads AND nested sensor payloads
-                make = device_def.get("make") or device_def.get("attributes", {}).get("make", {}).get("data", "unknown")
-                model = device_def.get("model") or device_def.get("attributes", {}).get("model", {}).get("data", "unknown")
-                
-                # # Handle version extraction cleanly
-                # version = device_def.get("version")
-                # if not version:
-                #     format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-                #     version = f"v{format_version.split('.')[0]}"
+                # FIX: If this is a flattened sync payload from another registrar, 
+                # map it directly to the Pydantic model and bypass extraction!
+                if "device_definition_id" in device_def:
+                    request = DeviceDefinitionUpdate(**device_def)
+                else:
+                    # ROBUST EXTRACTION: Works for both flat sync payloads AND nested sensor payloads
+                    make = device_def.get("make") or device_def.get("attributes", {}).get("make", {}).get("data", "unknown")
+                    model = device_def.get("model") or device_def.get("attributes", {}).get("model", {}).get("data", "unknown")
+                    
+                    # # Handle version extraction cleanly
+                    # version = device_def.get("version")
+                    # if not version:
+                    #     format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+                    #     version = f"v{format_version.split('.')[0]}"
 
-                # --- CODE UPDATE: Always extract version from attributes to prevent stale v1 caching ---
-                format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-                version = f"v{format_version.split('.')[0]}"
+                    # --- CODE UPDATE: Always extract version from attributes to prevent stale v1 caching ---
+                    format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+                    version = f"v{format_version.split('.')[0]}"
 
-                valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
-                # device_definition_id = device_def.get("device_definition_id", f"{make}::{model}::{version}")
-                # --- CODE UPDATE: Always recalculate the ID to prevent overwriting the v1 record ---
-                device_definition_id = f"{make}::{model}::{version}"
+                    valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
+                    # device_definition_id = device_def.get("device_definition_id", f"{make}::{model}::{version}")
+                    # --- CODE UPDATE: Always recalculate the ID to prevent overwriting the v1 record ---
+                    device_definition_id = f"{make}::{model}::{version}"
 
-                # Ensure these top-level keys exist so RediSearch can index them
-                device_def["device_definition_id"] = device_definition_id
-                device_def["make"] = make
-                device_def["model"] = model
-                device_def["version"] = version
+                    # Ensure these top-level keys exist so RediSearch can index them
+                    device_def["device_definition_id"] = device_definition_id
+                    device_def["make"] = make
+                    device_def["model"] = model
+                    device_def["version"] = version
 
-                # Build a simple Pydantic model ONLY for structured insertion, passing the whole dict as **kwargs
-                request = DeviceDefinitionUpdate(
-                    device_definition_id=device_definition_id,
-                    make=make,
-                    model=model,
-                    version=version,
-                    device_type=device_def.get("device_type") or device_def.get("attributes", {}).get("device_type", {}).get("data", "sensor"),
-                    valid_time=valid_time,
-                    attributes=device_def.get("attributes", {}),
-                    dimensions=device_def.get("dimensions", {}),
-                    variables=device_def.get("variables", {})
-                )
+                    # Build a simple Pydantic model ONLY for structured insertion, passing the whole dict as **kwargs
+                    request = DeviceDefinitionUpdate(
+                        device_definition_id=device_definition_id,
+                        make=make,
+                        model=model,
+                        version=version,
+                        device_type=device_def.get("device_type") or device_def.get("attributes", {}).get("device_type", {}).get("data", "sensor"),
+                        valid_time=valid_time,
+                        attributes=device_def.get("attributes", {}),
+                        dimensions=device_def.get("dimensions", {}),
+                        variables=device_def.get("variables", {})
+                    )
 
                 self.logger.debug("device_definition_registry_update", extra={"request": request.device_definition_id})
                 if self.db_client:
@@ -720,43 +725,47 @@ class Datastore:
                 if definition_type not in ["controller-definition", "controller-definition-update"]:
                     continue
 
-                # ROBUST EXTRACTION: Works for both flat sync payloads AND nested local payloads
-                make = controller_def.get("make") or controller_def.get("attributes", {}).get("make", {}).get("data", "unknown")
-                model = controller_def.get("model") or controller_def.get("attributes", {}).get("model", {}).get("data", "unknown")
-                
-                # # Handle version extraction cleanly
-                # version = controller_def.get("version")
-                # if not version:
-                #     format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-                #     version = f"v{format_version.split('.')[0]}"
+                # FIX: Direct mapping for sync payloads
+                if "controller_definition_id" in controller_def:
+                    request = ControllerDefinitionUpdate(**controller_def)
+                else:
+                    # ROBUST EXTRACTION: Works for both flat sync payloads AND nested local payloads
+                    make = controller_def.get("make") or controller_def.get("attributes", {}).get("make", {}).get("data", "unknown")
+                    model = controller_def.get("model") or controller_def.get("attributes", {}).get("model", {}).get("data", "unknown")
+                    
+                    # # Handle version extraction cleanly
+                    # version = controller_def.get("version")
+                    # if not version:
+                    #     format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+                    #     version = f"v{format_version.split('.')[0]}"
 
-                # --- FIX: ALWAYS extract from attributes first to prevent stale 'v1' caching ---
-                format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-                version = f"v{format_version.split('.')[0]}"
+                    # --- FIX: ALWAYS extract from attributes first to prevent stale 'v1' caching ---
+                    format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+                    version = f"v{format_version.split('.')[0]}"
 
-                valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
-                # controller_definition_id = controller_def.get("controller_definition_id", f"{make}::{model}::{version}")
-                # --- FIX: ALWAYS rebuild the ID from the fresh version string ---
-                controller_definition_id = f"{make}::{model}::{version}"
+                    valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
+                    # controller_definition_id = controller_def.get("controller_definition_id", f"{make}::{model}::{version}")
+                    # --- FIX: ALWAYS rebuild the ID from the fresh version string ---
+                    controller_definition_id = f"{make}::{model}::{version}"
 
-                # Ensure these top-level keys exist so RediSearch can index them
-                controller_def["controller_definition_id"] = controller_definition_id
-                controller_def["make"] = make
-                controller_def["model"] = model
-                controller_def["version"] = version
-                controller_def["valid_time"] = valid_time
+                    # Ensure these top-level keys exist so RediSearch can index them
+                    controller_def["controller_definition_id"] = controller_definition_id
+                    controller_def["make"] = make
+                    controller_def["model"] = model
+                    controller_def["version"] = version
+                    controller_def["valid_time"] = valid_time
 
-                # Build a simple Pydantic model ONLY for structured insertion
-                request = ControllerDefinitionUpdate(
-                    controller_definition_id=controller_definition_id,
-                    make=make,
-                    model=model,
-                    version=version,
-                    valid_time=valid_time,
-                    attributes=controller_def.get("attributes", {}),
-                    dimensions=controller_def.get("dimensions", {}),
-                    variables=controller_def.get("variables", {})
-                )
+                    # Build a simple Pydantic model ONLY for structured insertion
+                    request = ControllerDefinitionUpdate(
+                        controller_definition_id=controller_definition_id,
+                        make=make,
+                        model=model,
+                        version=version,
+                        valid_time=valid_time,
+                        attributes=controller_def.get("attributes", {}),
+                        dimensions=controller_def.get("dimensions", {}),
+                        variables=controller_def.get("variables", {})
+                    )
 
                 self.logger.debug("controller_definition_registry_update", extra={"request": request.controller_definition_id})
                 
