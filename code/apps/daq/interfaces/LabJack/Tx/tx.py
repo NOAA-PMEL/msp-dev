@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import signal
 import sys
@@ -110,7 +111,13 @@ class Tx(Interface):
 
         self.host = "localhost"
         self.labjack = None # labjack handle
-        self.run_task_list.append(self.connection_monitor())
+        # self.run_task_list.append(self.connection_monitor())
+        # --- FIX: STRONG TASK REFERENCE ---
+        # Explicitly create the task and store it so the Garbage Collector 
+        # doesn't destroy the connection monitor silently.
+        monitor_task = asyncio.create_task(self.connection_monitor())
+        self.run_task_list.append(monitor_task)
+        # ----------------------------------
 
         # self.labjack = None
 
@@ -172,7 +179,8 @@ class Tx(Interface):
                 print("here:2")
                 try:
                     path_defaults = path_types[val["path_type"]]
-                    client_config["attributes"] = path_defaults["attributes"].copy()
+                    # client_config["attributes"] = path_defaults["attributes"].copy()
+                    client_config["attributes"] = copy.deepcopy(path_defaults["attributes"])
                     print("here:3")
 
                     for path_att_name, path_att in val.items():
@@ -261,6 +269,31 @@ class Tx(Interface):
     #             self.labjack = None
     #         await asyncio.sleep(5)
 
+    # --- FIX: GRACEFUL INTERFACE SHUTDOWN ---
+    async def shutdown(self):
+        self.logger.info("Tx Interface starting shutdown sequence...")
+        
+        # 1. Cancel the connection monitor task
+        for task in self.run_task_list:
+            if not task.done():
+                task.cancel()
+                
+        # 2. Cancel all client background tasks and receiver loops
+        for client_id, client_info in self.client_map.items():
+            client = client_info.get("client")
+            if client and hasattr(client, "shutdown"):
+                await client.shutdown()
+                
+            recv_task = client_info.get("recv_task")
+            if recv_task and not recv_task.done():
+                recv_task.cancel()
+
+        # 3. Call the base Interface shutdown (if it exists)
+        if hasattr(super(), "shutdown"):
+            await super().shutdown()
+            
+        self.logger.info("Tx Interface shutdown complete.")
+        
     async def connection_monitor(self):
         while True:
             try:
@@ -296,32 +329,69 @@ class Tx(Interface):
                     self.logger.error("connection_monitor", extra={"reason": e})
             await asyncio.sleep(5)
 
-    async def recv_data_loop(self, client_id: str):
+    # async def recv_data_loop(self, client_id: str):
         
-        # self.logger.debug("recv_data_loop", extra={"client_id": client_id})
+    #     # self.logger.debug("recv_data_loop", extra={"client_id": client_id})
+    #     while True:
+    #         try:
+    #             # client = self.config.paths[client_id]["client"]
+    #             client = self.client_map[client_id]["client"]
+    #             # data_buffer = self.client_map[client_id]["data_buffer"]
+    #             # while client is not None:
+    #             # if data_buffer:
+    #             if client:
+    #                 self.logger.debug("recv_data_loop", extra={"client": client})
+    #                 data = await client.recv()
+    #                 # data = await data_buffer.get()
+    #                 self.logger.debug("recv_data", extra={"client_id": client_id, "data": data})
+
+    #                 await self.update_recv_data(client_id=client_id, data=data)
+    #                 # await asyncio.sleep(self.min_recv_delay)
+    #             else:
+    #                 await asyncio.sleep(1)
+    #         except (KeyError, Exception) as e:
+    #             self.logger.error("recv_data_loop", extra={"error": e})
+    #             await asyncio.sleep(1)
+
+    #         # await asyncio.sleep(self.min_recv_delay)
+    #         await asyncio.sleep(0.001)
+
+    async def recv_data_loop(self, client_id: str):
+        self.logger.debug("recv_data_loop starting", extra={"client_id": client_id})
+        
         while True:
             try:
-                # client = self.config.paths[client_id]["client"]
+                # Access the client from the map
                 client = self.client_map[client_id]["client"]
-                # data_buffer = self.client_map[client_id]["data_buffer"]
-                # while client is not None:
-                # if data_buffer:
+                
                 if client:
-                    self.logger.debug("recv_data_loop", extra={"client": client})
+                    # This should block until data is placed in the client's data_buffer
                     data = await client.recv()
-                    # data = await data_buffer.get()
-                    self.logger.debug("recv_data", extra={"client_id": client_id, "data": data})
-
-                    await self.update_recv_data(client_id=client_id, data=data)
-                    # await asyncio.sleep(self.min_recv_delay)
+                    
+                    # FIX: Only process if data is actually returned.
+                    # If recv() fails and returns None, do not just spin instantly.
+                    if data is not None:
+                        self.logger.debug("recv_data", extra={"client_id": client_id, "data": data})
+                        await self.update_recv_data(client_id=client_id, data=data)
+                    else:
+                        # If recv() returned None (e.g. internal queue error), back off slightly
+                        # to prevent a tight CPU spin loop.
+                        await asyncio.sleep(0.1) 
                 else:
-                    await asyncio.sleep(1)
-            except (KeyError, Exception) as e:
-                self.logger.error("recv_data_loop", extra={"error": e})
-                await asyncio.sleep(1)
-
-            # await asyncio.sleep(self.min_recv_delay)
-            await asyncio.sleep(0.001)
+                    # Client hasn't been instantiated yet (waiting for connection/config)
+                    # Sleep a reasonable amount of time before checking again.
+                    await asyncio.sleep(1.0)
+                    
+            except KeyError:
+                # client_id not in map, wait and try again
+                self.logger.error("recv_data_loop: client not found in client_map", extra={"client_id": client_id})
+                await asyncio.sleep(1.0)
+            except Exception as e:
+                # Catch-all for unexpected errors during receive or update
+                self.logger.error("recv_data_loop exception", extra={"error": e, "client_id": client_id})
+                
+                # FIX: Prevent rapid failure loops that spike CPU
+                await asyncio.sleep(1.0)
 
     async def wait_for_ok(self, timeout=0):
         pass
