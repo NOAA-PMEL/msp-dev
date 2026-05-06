@@ -111,7 +111,14 @@ class TimeserverNTP(Sensor):
         self.first_record = 'RMC'
         self.last_record = 'GGA'
         self.array_buffer = []
-        self.default_data_buffer = asyncio.Queue()
+        self.default_data_buffer = asyncio.Queue(maxsize=100)
+
+        # FIX: O(1) map for NMEA parsing (Assuming you update your metadata to include these)
+        self.nmea_map = {
+            'RMC': ['time', 'status', 'lat', 'lat_dir', 'lon', 'lon_dir'], # Update to your actual RMC needs
+            'VTG': ['speed_knots'],
+            'GGA': ['fix_quality', 'num_sats', 'hdop', 'altitude']
+        }
 
         # os.environ["REDIS_OM_URL"] = "redis://redis.default"
 
@@ -190,8 +197,8 @@ class TimeserverNTP(Sensor):
             for name, setting in settings_def["variables"].items():
             
                 requested = setting["attributes"]["default_value"]["data"]
-                if "settings" in config and name in config["settings"]:
-                    requested = config["settings"][name]
+                if "settings" in conf and name in conf["settings"]:
+                    requested = conf["settings"][name]
 
                 self.settings.set_setting(name, requested=requested)
 
@@ -333,148 +340,276 @@ class TimeserverNTP(Sensor):
 
 
 
+    # async def default_data_loop(self):
+
+    #     while True:
+    #         try:
+    #             data = await self.default_data_buffer.get()
+    #             self.logger.debug("default_data_loop", extra={"data": data})
+    #             if data:
+    #                 self.collecting = True
+
+    #             if self.first_record in data.data['data']:
+    #                 record1 = self.default_parse(data)
+    #                 continue
+
+    #             elif self.last_record in data.data['data']:
+    #                 record2 = self.default_parse(data)
+    #                 for var in record2["variables"]:
+    #                     if var != 'time':
+    #                         if record2["variables"][var]["data"] is not None:
+    #                             record1["variables"][var]["data"] = record2["variables"][var]["data"]
+
+    #             else:
+    #                 record2 = self.default_parse(data)
+    #                 if not record2:
+    #                     continue
+    #                 else:
+    #                     for var in record2["variables"]:
+    #                         if var != 'time':
+    #                             if record2["variables"][var]["data"] is not None:
+    #                                 record1["variables"][var]["data"] = record2["variables"][var]["data"]
+    #                     continue
+    #             record = record1
+    #             # record = self.default_parse(data)
+    #             if record:
+    #                 self.collecting = True
+
+
+    #             if record and self.sampling():
+    #                 event = DAQEvent.create_data_update(
+    #                     source=self.get_id_as_source(),
+    #                     data=record,
+    #                 )
+    #                 destpath = f"{self.get_id_as_topic()}/data/update"
+    #                 event["destpath"] = destpath
+    #                 self.logger.debug(
+    #                     "default_data_loop",
+    #                     extra={"data": event, "destpath": destpath},
+    #                 )
+    #                 # message = Message(data=event, destpath=destpath)
+    #                 message = event
+    #                 self.logger.debug("default_data_loop", extra={"m": message})
+    #                 await self.send_message(message)
+
+    #             self.logger.debug("default_data_loop", extra={"record": record})
+    #         except Exception as e:
+    #             print(f"default_data_loop error: {e}")
+    #             print(traceback.format_exc())
+    #         await asyncio.sleep(0.001)
+
     async def default_data_loop(self):
+        record_buffer = None # FIX: Pre-initialize to prevent UnboundLocalError
 
         while True:
             try:
                 data = await self.default_data_buffer.get()
-                self.logger.debug("default_data_loop", extra={"data": data})
                 if data:
                     self.collecting = True
 
-                if self.first_record in data.data['data']:
-                    record1 = self.default_parse(data)
+                raw_data = data.data if isinstance(data.data, dict) else {}
+                raw_str = raw_data.get('data', '')
+
+                # Start of a new aggregate record
+                if self.first_record in raw_str:
+                    record_buffer = self.default_parse(data)
                     continue
 
-                elif self.last_record in data.data['data']:
-                    record2 = self.default_parse(data)
-                    for var in record2["variables"]:
-                        if var != 'time':
-                            if record2["variables"][var]["data"] is not None:
-                                record1["variables"][var]["data"] = record2["variables"][var]["data"]
+                # Discard fragments if we don't have a starting record
+                if record_buffer is None:
+                    continue
 
-                else:
-                    record2 = self.default_parse(data)
-                    if not record2:
-                        continue
-                    else:
-                        for var in record2["variables"]:
-                            if var != 'time':
-                                if record2["variables"][var]["data"] is not None:
-                                    record1["variables"][var]["data"] = record2["variables"][var]["data"]
-                        continue
-                record = record1
-                # record = self.default_parse(data)
-                if record:
-                    self.collecting = True
+                # Parse intermediate/end records
+                parsed_fragment = self.default_parse(data)
+                if parsed_fragment:
+                    for var, val_dict in parsed_fragment["variables"].items():
+                        if var != 'time' and val_dict["data"] is not None:
+                            record_buffer["variables"][var]["data"] = val_dict["data"]
 
-
-                if record and self.sampling():
+                # If it's the last string in the sequence, emit the event
+                if self.last_record in raw_str and self.sampling():
                     event = DAQEvent.create_data_update(
                         source=self.get_id_as_source(),
-                        data=record,
+                        data=record_buffer,
                     )
                     destpath = f"{self.get_id_as_topic()}/data/update"
                     event["destpath"] = destpath
-                    self.logger.debug(
-                        "default_data_loop",
-                        extra={"data": event, "destpath": destpath},
-                    )
-                    # message = Message(data=event, destpath=destpath)
-                    message = event
-                    self.logger.debug("default_data_loop", extra={"m": message})
-                    await self.send_message(message)
+                    
+                    await self.send_message(event)
+                    
+                    # Reset buffer for the next cycle
+                    record_buffer = None 
 
-                self.logger.debug("default_data_loop", extra={"record": record})
             except Exception as e:
-                print(f"default_data_loop error: {e}")
-                print(traceback.format_exc())
-            await asyncio.sleep(0.001)
+                self.logger.error(f"default_data_loop error: {e}")
+                record_buffer = None  # Reset on error to prevent corrupted data
 
+    # def default_parse(self, data):
+    #     if data:
+    #         try:
+    #             variables = list(self.config.metadata.variables.keys())
+    #             variables.remove("time")
+    #             print(f"variables: \n{variables}")
+
+    #             record = self.build_data_record(meta=self.include_metadata)
+    #             self.include_metadata = False
+
+    #             try:
+    #                 record["timestamp"] = data.data["timestamp"]
+    #                 record["variables"]["time"]["data"] = data.data["timestamp"]
+    #                 parts = data.data["data"].split(",")
+
+    #                 if (datavar := 'RMC') in data.data["data"]:
+    #                     parts = parts[1:7]
+    #                 elif (datavar := 'VTG') in data.data["data"]:
+    #                     parts = parts[7:8]
+    #                 elif (datavar := 'GGA') in data.data["data"]:
+    #                     parts = parts[7:8]
+    #                 else:
+    #                     return None
+                                        
+    #                 self.var_name = []
+    #                 for key, value in self.config.metadata.variables.items():
+    #                     try:
+    #                         if value.attributes["description"].data:
+    #                             if datavar in value.attributes["description"].data:
+    #                                 self.var_name.append(key)
+    #                     except Exception as e:
+    #                         continue
+
+    #                 for index, name in enumerate(self.var_name):
+    #                     if name in record["variables"]:
+    #                         instvar = self.config.metadata.variables[name]
+    #                         try:
+    #                             if instvar.type == "int":
+    #                                 if isinstance(parts[index], list):
+    #                                     record["variables"][name]["data"] = [int(item) for item in parts[index]]
+    #                                 else:
+    #                                     record["variables"][name]["data"] = int(parts[index])
+
+    #                             elif instvar.type == "float":
+    #                                 if isinstance(parts[index], list):
+    #                                     record["variables"][name]["data"] = [float(item) for item in parts[index]]
+    #                                 else:
+    #                                     record["variables"][name]["data"] = float(parts[index])
+                                        
+    #                             else:
+    #                                 record["variables"][name]["data"] = parts[index]
+
+    #                         except ValueError:
+    #                             if instvar.type == "str" or instvar.type == "char":
+    #                                 record["variables"][name]["data"] = ""
+    #                             else:
+    #                                 record["variables"][name]["data"] = None
+    #                 # convert lat/lon to decimal
+    #                 if record["variables"]["lat"]["data"]:
+    #                     deg = int(record["variables"]["lat"]["data"]/100)
+    #                     mm_mm = ((record["variables"]["lat"]["data"]/100) - deg)*100.0
+    #                     dec_deg = deg + (mm_mm/60.0)
+    #                     if record["variables"]["lat_dir"]["data"] == "S":
+    #                         dec_deg *= -1.0
+    #                     record["variables"]["lat"]["data"] = round(dec_deg, 5)
+
+    #                 if record["variables"]["lon"]["data"]:
+    #                     deg = int(record["variables"]["lon"]["data"]/100)
+    #                     mm_mm = ((record["variables"]["lon"]["data"]/100) - deg)*100.0
+    #                     dec_deg = deg + (mm_mm/60.0)
+    #                     if record["variables"]["lon_dir"]["data"] == "W":
+    #                         dec_deg *= -1.0
+    #                     record["variables"]["lon"]["data"] = round(dec_deg, 5)
+
+    #                 return record
+    #             except KeyError:
+    #                 pass
+    #         except Exception as e:
+    #             print(f"default_parse error: {e}")
+    #             print(traceback.format_exc())
+    #     # else:
+    #     return None
 
     def default_parse(self, data):
-        if data:
-            try:
-                variables = list(self.config.metadata.variables.keys())
-                variables.remove("time")
-                print(f"variables: \n{variables}")
+        if not data:
+            return None
 
-                record = self.build_data_record(meta=self.include_metadata)
-                self.include_metadata = False
+        try:
+            record = self.build_data_record(meta=self.include_metadata)
+            self.include_metadata = False
 
-                try:
-                    record["timestamp"] = data.data["timestamp"]
-                    record["variables"]["time"]["data"] = data.data["timestamp"]
-                    parts = data.data["data"].split(",")
+            # Safely handle dict vs CloudEvent
+            raw_payload = data.data if isinstance(data.data, dict) else {}
+            record["timestamp"] = raw_payload.get("timestamp")
+            record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+            raw_str = raw_payload.get("data", "")
+            
+            parts = raw_str.split(",")
 
-                    if (datavar := 'RMC') in data.data["data"]:
-                        parts = parts[1:7]
-                    elif (datavar := 'VTG') in data.data["data"]:
-                        parts = parts[7:8]
-                    elif (datavar := 'GGA') in data.data["data"]:
-                        parts = parts[7:8]
-                    else:
-                        return None
-                                        
-                    self.var_name = []
-                    for key, value in self.config.metadata.variables.items():
-                        try:
-                            if value.attributes["description"].data:
-                                if datavar in value.attributes["description"].data:
-                                    self.var_name.append(key)
-                        except Exception as e:
-                            continue
+            # Fast O(1) lookup using the map initialized in __init__
+            datavar = None
+            for key in self.nmea_map.keys():
+                if key in raw_str:
+                    datavar = key
+                    break
 
-                    for index, name in enumerate(self.var_name):
-                        if name in record["variables"]:
-                            instvar = self.config.metadata.variables[name]
-                            try:
-                                if instvar.type == "int":
-                                    if isinstance(parts[index], list):
-                                        record["variables"][name]["data"] = [int(item) for item in parts[index]]
-                                    else:
-                                        record["variables"][name]["data"] = int(parts[index])
+            if not datavar:
+                return None
 
-                                elif instvar.type == "float":
-                                    if isinstance(parts[index], list):
-                                        record["variables"][name]["data"] = [float(item) for item in parts[index]]
-                                    else:
-                                        record["variables"][name]["data"] = float(parts[index])
-                                        
-                                else:
-                                    record["variables"][name]["data"] = parts[index]
+            # Slice the parts array depending on the NMEA sentence type
+            if datavar == 'RMC':
+                parts = parts[1:7]
+            elif datavar == 'VTG':
+                parts = parts[7:8]
+            elif datavar == 'GGA':
+                parts = parts[7:8]
 
-                            except ValueError:
-                                if instvar.type == "str" or instvar.type == "char":
-                                    record["variables"][name]["data"] = ""
-                                else:
-                                    record["variables"][name]["data"] = None
-                    # convert lat/lon to decimal
-                    if record["variables"]["lat"]["data"]:
-                        deg = int(record["variables"]["lat"]["data"]/100)
-                        mm_mm = ((record["variables"]["lat"]["data"]/100) - deg)*100.0
-                        dec_deg = deg + (mm_mm/60.0)
-                        if record["variables"]["lat_dir"]["data"] == "S":
+            # Map parts to variables directly based on our lookup table
+            var_names = self.nmea_map[datavar]
+            for index, name in enumerate(var_names):
+                if name in record["variables"] and index < len(parts):
+                    instvar = self.config.metadata.variables[name]
+                    val = parts[index]
+                    try:
+                        if instvar.type == "int":
+                            record["variables"][name]["data"] = [int(item) for item in val] if isinstance(val, list) else int(val)
+                        elif instvar.type == "float":
+                            record["variables"][name]["data"] = [float(item) for item in val] if isinstance(val, list) else float(val)
+                        else:
+                            record["variables"][name]["data"] = val
+                    except ValueError:
+                        # Handle empty strings when no GPS fix is available
+                        record["variables"][name]["data"] = "" if instvar.type in ("str", "char") else None
+
+            # Safely convert lat/lon to decimal (checking if they exist in the record first)
+            if "lat" in record["variables"]:
+                lat_data = record["variables"]["lat"]["data"]
+                if lat_data is not None and lat_data != "":
+                    try:
+                        deg = int(lat_data / 100)
+                        mm_mm = ((lat_data / 100) - deg) * 100.0
+                        dec_deg = deg + (mm_mm / 60.0)
+                        if record["variables"].get("lat_dir", {}).get("data") == "S":
                             dec_deg *= -1.0
                         record["variables"]["lat"]["data"] = round(dec_deg, 5)
+                    except Exception as e:
+                        self.logger.debug(f"Lat conversion warning: {e}")
 
-                    if record["variables"]["lon"]["data"]:
-                        deg = int(record["variables"]["lon"]["data"]/100)
-                        mm_mm = ((record["variables"]["lon"]["data"]/100) - deg)*100.0
-                        dec_deg = deg + (mm_mm/60.0)
-                        if record["variables"]["lon_dir"]["data"] == "W":
+            if "lon" in record["variables"]:
+                lon_data = record["variables"]["lon"]["data"]
+                if lon_data is not None and lon_data != "":
+                    try:
+                        deg = int(lon_data / 100)
+                        mm_mm = ((lon_data / 100) - deg) * 100.0
+                        dec_deg = deg + (mm_mm / 60.0)
+                        if record["variables"].get("lon_dir", {}).get("data") == "W":
                             dec_deg *= -1.0
                         record["variables"]["lon"]["data"] = round(dec_deg, 5)
+                    except Exception as e:
+                        self.logger.debug(f"Lon conversion warning: {e}")
 
-                    return record
-                except KeyError:
-                    pass
-            except Exception as e:
-                print(f"default_parse error: {e}")
-                print(traceback.format_exc())
-        # else:
-        return None
-
+            return record
+            
+        except Exception as e:
+            self.logger.error(f"default_parse error: {e}")
+            return None
 class ServerConfig(BaseModel):
     host: str = "localhost"
     port: int = 9080
