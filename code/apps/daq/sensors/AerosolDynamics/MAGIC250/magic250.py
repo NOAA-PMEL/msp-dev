@@ -373,8 +373,17 @@ class MAGIC250(Sensor):
         self.data_rate = 1
         # self.configure()
 
-        self.default_data_buffer = asyncio.Queue()
+        self.default_data_buffer = asyncio.Queue(maxsize=100)
 
+        # FIX: Explicit hardware-to-variable map to prevent alignment errors
+        self.csv_map = [
+            "magic_timestamp", "concentration", "dew_point", "input_T",
+            "input_rh", "cond_T", "init_T", "mod_T", "opt_T", "heatsink_T",
+            "case_T", "wick_sensor", "mod_T_sp", "humid_exit_dew_point",
+            "abs_pressure", "flow", "log_interval", "corr_live_time",
+            "meas_dead_time", "raw_counts", "dthr2_pctl", "status_hex",
+            "status_ascii", "magic_serial_number"
+        ]
 
         self.sensor_definition_file = "AerosolDynamics_MAGIC250_sensor_definition.json"
 
@@ -461,8 +470,8 @@ class MAGIC250(Sensor):
         for name, setting in settings_def["variables"].items():
         
             requested = setting["attributes"]["default_value"]["data"]
-            if "settings" in config and name in config["settings"]:
-                requested = config["settings"][name]
+            if "settings" in conf and name in conf["settings"]:
+                requested = conf["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
 
@@ -686,62 +695,108 @@ class MAGIC250(Sensor):
                 print(f"default_data_loop error: {e}")
             await asyncio.sleep(0.1)
 
+    # def default_parse(self, data):
+    #     if data:
+    #         print("DATA HERE", data)
+    #         try:
+    #             # variables = [
+    #             #     "time",
+    #             #     "temperature",
+    #             #     "rh",
+    #             #     "pressure",
+    #             #     "wind_speed",
+    #             #     "wind_direction",
+    #             # ]
+    #             # variables = list(self.config.variables.keys())
+    #             variables = list(self.config.metadata.variables.keys())
+    #             # print(f"variables: \n{variables}\n{variables2}")
+    #             variables.remove("time")
+    #             # variables2.remove("time")
+    #             print(f"variables: \n{variables}")
+
+    #             print(f"include metadata: {self.include_metadata}")
+    #             record = self.build_data_record(meta=self.include_metadata)
+    #             print(f"default_parse: data: {data}, record: {record}")
+    #             self.include_metadata = False
+    #             try:
+    #                 record["timestamp"] = data.data["timestamp"]
+    #                 record["variables"]["time"]["data"] = data.data["timestamp"]
+    #                 parts = data.data["data"].split(",")
+    #                 # print(f"parts: {parts}, {variables}")
+    #                 if len(parts) < 10:
+    #                     return None
+    #                 for index, name in enumerate(variables):
+    #                     if name in record["variables"]:
+    #                         # instvar = self.config.variables[name]
+    #                         instvar = self.config.metadata.variables[name]
+    #                         vartype = instvar.type
+    #                         if instvar.type == "string":
+    #                             vartype = "str"
+    #                         try:
+    #                             # print(f"default_parse: {record['variables'][name]} - {parts[index].strip()}")
+    #                             record["variables"][name]["data"] = eval(vartype)(
+    #                                 parts[index].strip()
+    #                             )
+    #                         except ValueError:
+    #                             if vartype == "str" or vartype == "char":
+    #                                 record["variables"][name]["data"] = ""
+    #                             else:
+    #                                 record["variables"][name]["data"] = None
+    #                 return record
+    #             except KeyError:
+    #                 pass
+    #         except Exception as e:
+    #             print(f"default_parse error: {e}")
+    #     # else:
+    #     return None
+
     def default_parse(self, data):
-        if data:
-            print("DATA HERE", data)
-            try:
-                # variables = [
-                #     "time",
-                #     "temperature",
-                #     "rh",
-                #     "pressure",
-                #     "wind_speed",
-                #     "wind_direction",
-                # ]
-                # variables = list(self.config.variables.keys())
-                variables = list(self.config.metadata.variables.keys())
-                # print(f"variables: \n{variables}\n{variables2}")
-                variables.remove("time")
-                # variables2.remove("time")
-                print(f"variables: \n{variables}")
+        if not data:
+            return None
 
-                print(f"include metadata: {self.include_metadata}")
-                record = self.build_data_record(meta=self.include_metadata)
-                print(f"default_parse: data: {data}, record: {record}")
-                self.include_metadata = False
-                try:
-                    record["timestamp"] = data.data["timestamp"]
-                    record["variables"]["time"]["data"] = data.data["timestamp"]
-                    parts = data.data["data"].split(",")
-                    # print(f"parts: {parts}, {variables}")
-                    if len(parts) < 10:
-                        return None
-                    for index, name in enumerate(variables):
-                        if name in record["variables"]:
-                            # instvar = self.config.variables[name]
-                            instvar = self.config.metadata.variables[name]
-                            vartype = instvar.type
-                            if instvar.type == "string":
-                                vartype = "str"
-                            try:
-                                # print(f"default_parse: {record['variables'][name]} - {parts[index].strip()}")
-                                record["variables"][name]["data"] = eval(vartype)(
-                                    parts[index].strip()
-                                )
-                            except ValueError:
-                                if vartype == "str" or vartype == "char":
-                                    record["variables"][name]["data"] = ""
-                                else:
-                                    record["variables"][name]["data"] = None
-                    return record
-                except KeyError:
-                    pass
-            except Exception as e:
-                print(f"default_parse error: {e}")
-        # else:
-        return None
+        try:
+            record = self.build_data_record(meta=self.include_metadata)
+            self.include_metadata = False
 
+            raw_payload = data.data if isinstance(data.data, dict) else {}
+            record["timestamp"] = raw_payload.get("timestamp")
+            record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+            
+            raw_str = raw_payload.get("data", "")
+            parts = raw_str.split(",")
+            
+            # The MAGIC250 should output exactly as many fields as our map
+            if len(parts) < len(self.csv_map):
+                self.logger.warning(f"Incomplete data frame received. Expected {len(self.csv_map)}, got {len(parts)}")
+                return None
 
+            # Map explicitly using our hardware definition, ignoring JSON dictionary order
+            for index, name in enumerate(self.csv_map):
+                if name in record["variables"]:
+                    instvar = self.config.metadata.variables[name]
+                    raw_val = parts[index].strip()
+                    
+                    try:
+                        # FIX: Remove eval() and safely cast types
+                        if instvar.type == "int":
+                            record["variables"][name]["data"] = int(raw_val)
+                        elif instvar.type == "float":
+                            record["variables"][name]["data"] = float(raw_val)
+                        else:
+                            record["variables"][name]["data"] = raw_val
+                            
+                    except ValueError:
+                        # Fallback for empty/invalid values based on expected type
+                        if instvar.type in ("str", "string", "char"):
+                            record["variables"][name]["data"] = ""
+                        else:
+                            record["variables"][name]["data"] = None
+
+            return record
+
+        except Exception as e:
+            self.logger.error(f"default_parse error: {e}")
+            return None
 class ServerConfig(BaseModel):
     host: str = "localhost"
     port: int = 9080
