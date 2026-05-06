@@ -435,14 +435,20 @@ class Datastore:
                 make = device_def.get("make") or device_def.get("attributes", {}).get("make", {}).get("data", "unknown")
                 model = device_def.get("model") or device_def.get("attributes", {}).get("model", {}).get("data", "unknown")
                 
-                # Handle version extraction cleanly
-                version = device_def.get("version")
-                if not version:
-                    format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-                    version = f"v{format_version.split('.')[0]}"
+                # # Handle version extraction cleanly
+                # version = device_def.get("version")
+                # if not version:
+                #     format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+                #     version = f"v{format_version.split('.')[0]}"
+
+                # --- CODE UPDATE: Always extract version from attributes to prevent stale v1 caching ---
+                format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+                version = f"v{format_version.split('.')[0]}"
 
                 valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
-                device_definition_id = device_def.get("device_definition_id", f"{make}::{model}::{version}")
+                # device_definition_id = device_def.get("device_definition_id", f"{make}::{model}::{version}")
+                # --- CODE UPDATE: Always recalculate the ID to prevent overwriting the v1 record ---
+                device_definition_id = f"{make}::{model}::{version}"
 
                 # Ensure these top-level keys exist so RediSearch can index them
                 device_def["device_definition_id"] = device_definition_id
@@ -718,14 +724,20 @@ class Datastore:
                 make = controller_def.get("make") or controller_def.get("attributes", {}).get("make", {}).get("data", "unknown")
                 model = controller_def.get("model") or controller_def.get("attributes", {}).get("model", {}).get("data", "unknown")
                 
-                # Handle version extraction cleanly
-                version = controller_def.get("version")
-                if not version:
-                    format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-                    version = f"v{format_version.split('.')[0]}"
+                # # Handle version extraction cleanly
+                # version = controller_def.get("version")
+                # if not version:
+                #     format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+                #     version = f"v{format_version.split('.')[0]}"
+
+                # --- FIX: ALWAYS extract from attributes first to prevent stale 'v1' caching ---
+                format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
+                version = f"v{format_version.split('.')[0]}"
 
                 valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
-                controller_definition_id = controller_def.get("controller_definition_id", f"{make}::{model}::{version}")
+                # controller_definition_id = controller_def.get("controller_definition_id", f"{make}::{model}::{version}")
+                # --- FIX: ALWAYS rebuild the ID from the fresh version string ---
+                controller_definition_id = f"{make}::{model}::{version}"
 
                 # Ensure these top-level keys exist so RediSearch can index them
                 controller_def["controller_definition_id"] = controller_definition_id
