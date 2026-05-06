@@ -85,16 +85,19 @@ class DatastoreConfig(BaseSettings):
     db_clear_db: bool | None = False
 
     db_data_ttl: int = 600  # seconds
-    db_reg_device_definition_ttl: int = 0  # permanent
+    db_reg_device_definition_ttl: int = 3600  # permanent
     db_reg_device_instance_ttl: int = 600  # seconds
-    db_reg_controller_definition_ttl: int = 0  # permanent
+    db_reg_controller_definition_ttl: int = 3600  # permanent
     db_reg_controller_instance_ttl: int = 600  # seconds
 
-    db_reg_variablemap_definition_ttl: int = 0  # permanent
-    db_reg_variableset_definition_ttl: int = 0  # permanent
-    db_reg_variableset_definition_ttl: int = 0  # permanent
+    db_reg_variablemap_definition_ttl: int = 3600  # permanent
+    db_reg_variableset_definition_ttl: int = 3600  # permanent
+    db_reg_variableset_definition_ttl: int = 3600  # permanent
     db_reg_variableset_instance_ttl: int = 600  # Added: 10 minute active timeout
     db_reg_platform_definition_ttl: int = 0  # permanent
+
+    # FIX: Add the missing config for dynamic sampling definitions (platforms, projects, etc)
+    db_reg_sampling_definition_ttl: int = 3600
 
     erddap_enable: bool = False
     erddap_http_connection: str | None = None
@@ -1003,7 +1006,9 @@ class Datastore:
                         database="registry",
                         collection=f"{resource}-definition",
                         request=resource_def,
-                        ttl=0
+                        # ttl=0
+                        # FIX: Use the configured TTL instead of hardcoded 0
+                        ttl=self.config.db_reg_sampling_definition_ttl
                     )
         except Exception as e:
             self.logger.error(f"sampling_definition_registry_update:{resource}", extra={"reason": str(e)})
