@@ -217,24 +217,26 @@ class Datastore:
                             L.debug("subscribe", extra={"topic": topic.strip()})
                             await self.client.subscribe(f"$share/datastore/{topic.strip()}")
 
-                    async for message in self.client.messages: 
-
-                        try:
-                            ce = from_json(message.payload)
-                            topic = message.topic.value
-                            ce["sourcepath"] = topic
-
-                            # FIX: Use wait_for to drop messages if the buffer is full, 
-                            # preventing the async for loop (and ping responses) from blocking indefinitely.
+                    # async for message in self.client.messages: 
+                    # FIX 1: aiomqtt 2.0+ context manager syntax prevents the silent crash
+                    async with self.client.messages() as messages:
+                        async for message in messages:
                             try:
-                                await asyncio.wait_for(self.mqtt_buffer.put(ce), timeout=1.0)
-                                L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
-                            except asyncio.TimeoutError:
-                                L.warning("MQTT buffer full! Dropping message to prevent backpressure.", extra={"topic": topic})
+                                ce = from_json(message.payload)
+                                topic = message.topic.value
+                                ce["sourcepath"] = topic
 
-                            L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
-                        except Exception as e:
-                            L.error("get_from_mqtt_loop", extra={"reason": e})
+                                # FIX: Use wait_for to drop messages if the buffer is full, 
+                                # preventing the async for loop (and ping responses) from blocking indefinitely.
+                                try:
+                                    await asyncio.wait_for(self.mqtt_buffer.put(ce), timeout=1.0)
+                                    L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+                                except asyncio.TimeoutError:
+                                    L.warning("MQTT buffer full! Dropping message to prevent backpressure.", extra={"topic": topic})
+
+                                L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+                            except Exception as e:
+                                L.error("get_from_mqtt_loop", extra={"reason": e})
             except MqttError as error:
                 L.error(
                     f'{error}. Trying again in {reconnect} seconds',
