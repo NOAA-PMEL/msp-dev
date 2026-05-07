@@ -384,28 +384,61 @@ class Registrar:
             except Exception as e:
                 self.logger.error("handle_registry_sync_loop", extra={"reason": e})
 
-    async def handle_registry_sync(self, message: CloudEvent):
+    # async def handle_registry_sync(self, message: CloudEvent):
 
-        # Extract the source of the CloudEvent
+    #     # Extract the source of the CloudEvent
+    #     source = message.get("source", "")
+    #     self.logger.debug("handle_registry_sync", extra={"ce-type": message["type"], "ce-source": source})
+    #     if message["type"] == det.registry_sync_bcast():
+
+    #         # Drop broadcasts from unallowed sources (e.g., servers pushing down to raz1)
+    #         if not self.is_sync_allowed(source):
+    #             self.logger.debug("handle_registry_sync: dropping bcast from unallowed source", extra={"source": source})
+    #             return
+
+    #         self.logger.debug(
+    #             "handle_registry_sync",
+    #             extra={"ce-type": message["type"], "data": message.data},
+    #         )
+    #         # compare with local registry and request updates for any changes
+    #         await self.registry_compare_bcast(message)
+
+    #     elif message["type"] == det.registry_sync_update():
+
+    #         # Drop proactive updates from unallowed sources
+    #         if not self.is_sync_allowed(source):
+    #             self.logger.debug("handle_registry_sync: dropping update from unallowed source", extra={"source": source})
+    #             return
+
+    #         self.logger.debug(
+    #             "handle_registry_sync",
+    #             extra={"ce-type": message["type"], "data": message.data},
+    #         )
+    #         # add to registry if needed
+    #         await self.registry_do_update(message)
+    #     elif message["type"] == det.registry_sync_request():
+    #         self.logger.debug(
+    #             "handle_registry_sync",
+    #             extra={"ce-type": message["type"], "data": message.data},
+    #         )
+    #         # respond with requested information
+    #         await self.registry_send_update(message)
+
+    async def handle_registry_sync(self, message: CloudEvent):
         source = message.get("source", "")
         self.logger.debug("handle_registry_sync", extra={"ce-type": message["type"], "ce-source": source})
+        
         if message["type"] == det.registry_sync_bcast():
-
-            # Drop broadcasts from unallowed sources (e.g., servers pushing down to raz1)
-            if not self.is_sync_allowed(source):
-                self.logger.debug("handle_registry_sync: dropping bcast from unallowed source", extra={"source": source})
-                return
-
+            # REMOVED: Do not drop broadcasts from unallowed sources here.
+            # We MUST process broadcasts to see what they are missing so we can push our updates!
             self.logger.debug(
                 "handle_registry_sync",
                 extra={"ce-type": message["type"], "data": message.data},
             )
-            # compare with local registry and request updates for any changes
             await self.registry_compare_bcast(message)
 
         elif message["type"] == det.registry_sync_update():
-
-            # Drop proactive updates from unallowed sources
+            # KEEP: Drop proactive updates from unallowed sources
             if not self.is_sync_allowed(source):
                 self.logger.debug("handle_registry_sync: dropping update from unallowed source", extra={"source": source})
                 return
@@ -414,14 +447,14 @@ class Registrar:
                 "handle_registry_sync",
                 extra={"ce-type": message["type"], "data": message.data},
             )
-            # add to registry if needed
             await self.registry_do_update(message)
+            
         elif message["type"] == det.registry_sync_request():
             self.logger.debug(
                 "handle_registry_sync",
                 extra={"ce-type": message["type"], "data": message.data},
             )
-            # respond with requested information
+            # Anyone is allowed to ask us for definitions we have
             await self.registry_send_update(message)
 
     async def registry_do_update(self, message: CloudEvent):
@@ -725,8 +758,70 @@ class Registrar:
     #         elif bcast_type == "controller-instance-list":
     #             pass
 
+    # async def registry_compare_bcast(self, message: CloudEvent):
+    #     data = message.data
+        
+    #     for bcast_type, bcast_list in data.items():
+    #         if bcast_type.endswith("-definition-list"):
+    #             # Extract the base resource name (e.g., 'device', 'variablemap', 'platform')
+    #             resource = bcast_type.replace("-definition-list", "")
+                
+    #             # Fetch the corresponding local state list dynamically
+    #             local_list_name = f"current_{resource.replace('-', '_')}_definition_list"
+    #             local_list = getattr(self, local_list_name, [])
+                
+    #             # 1. Identify what the remote node is missing and send it
+    #             missing_remote = [item for item in local_list if item not in bcast_list]
+    #             if missing_remote:
+    #                 self.logger.debug(f"missing_remote ({resource})", extra={"missing": missing_remote})
+    #                 for definition_id in missing_remote:
+    #                     # Route to the appropriate update sender
+    #                     if resource == "device":
+    #                         await self.send_device_definition_update(definition_id)
+    #                     elif resource == "controller":
+    #                         await self.send_controller_definition_update(definition_id)
+    #                     else:
+    #                         await self.send_sampling_update(resource, definition_id)
+                            
+    #             # 2. Identify what we are missing and request it
+    #             missing_local = [item for item in bcast_list if item not in local_list]
+    #             if missing_local:
+    #                 self.logger.debug(f"missing_local ({resource})", extra={"missing": missing_local})
+                    
+    #                 if resource == "device":
+    #                     request = DAQEvent.create_registry_sync_request(
+    #                         source=f"envds.{self.config.daq_id}.registrar",
+    #                         data={"device-definition-request": missing_local},
+    #                     )
+    #                     destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     if self.config.mqtt_bridge_prefix:
+    #                         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+    #                     request["destpath"] = destpath
+    #                     await self.send_event(request)
+                        
+    #                 elif resource == "controller":
+    #                     request = DAQEvent.create_registry_sync_request(
+    #                         source=f"envds.{self.config.daq_id}.registrar",
+    #                         data={"controller-definition-request": missing_local},
+    #                     )
+    #                     destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     if self.config.mqtt_bridge_prefix:
+    #                         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+    #                     request["destpath"] = destpath
+    #                     await self.send_event(request)
+                        
+    #                 else:
+    #                     await self.request_sampling_definitions(resource, missing_local)
+                        
+    #         elif bcast_type.endswith("-instance-list"):
+    #             pass  # Instance syncing logic
+
     async def registry_compare_bcast(self, message: CloudEvent):
         data = message.data
+        source = message.get("source", "")
+        
+        # Determine if we are allowed to request/pull updates from this node
+        can_accept_updates = self.is_sync_allowed(source)
         
         for bcast_type, bcast_list in data.items():
             if bcast_type.endswith("-definition-list"):
@@ -737,12 +832,14 @@ class Registrar:
                 local_list_name = f"current_{resource.replace('-', '_')}_definition_list"
                 local_list = getattr(self, local_list_name, [])
                 
+                # -------------------------------------------------------------
                 # 1. Identify what the remote node is missing and send it
+                #    (Always execute this, even for unallowed sources)
+                # -------------------------------------------------------------
                 missing_remote = [item for item in local_list if item not in bcast_list]
                 if missing_remote:
                     self.logger.debug(f"missing_remote ({resource})", extra={"missing": missing_remote})
                     for definition_id in missing_remote:
-                        # Route to the appropriate update sender
                         if resource == "device":
                             await self.send_device_definition_update(definition_id)
                         elif resource == "controller":
@@ -750,35 +847,41 @@ class Registrar:
                         else:
                             await self.send_sampling_update(resource, definition_id)
                             
-                # 2. Identify what we are missing and request it
-                missing_local = [item for item in bcast_list if item not in local_list]
-                if missing_local:
-                    self.logger.debug(f"missing_local ({resource})", extra={"missing": missing_local})
-                    
-                    if resource == "device":
-                        request = DAQEvent.create_registry_sync_request(
-                            source=f"envds.{self.config.daq_id}.registrar",
-                            data={"device-definition-request": missing_local},
-                        )
-                        destpath = f"envds/{self.config.daq_id}/registry/sync-request"
-                        if self.config.mqtt_bridge_prefix:
-                            destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
-                        request["destpath"] = destpath
-                        await self.send_event(request)
+                # -------------------------------------------------------------
+                # 2. Identify what we are missing and request it 
+                #    (ONLY IF ALLOWED SOURCE)
+                # -------------------------------------------------------------
+                if can_accept_updates:
+                    missing_local = [item for item in bcast_list if item not in local_list]
+                    if missing_local:
+                        self.logger.debug(f"missing_local ({resource})", extra={"missing": missing_local})
                         
-                    elif resource == "controller":
-                        request = DAQEvent.create_registry_sync_request(
-                            source=f"envds.{self.config.daq_id}.registrar",
-                            data={"controller-definition-request": missing_local},
-                        )
-                        destpath = f"envds/{self.config.daq_id}/registry/sync-request"
-                        if self.config.mqtt_bridge_prefix:
-                            destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
-                        request["destpath"] = destpath
-                        await self.send_event(request)
-                        
-                    else:
-                        await self.request_sampling_definitions(resource, missing_local)
+                        if resource == "device":
+                            request = DAQEvent.create_registry_sync_request(
+                                source=f"envds.{self.config.daq_id}.registrar",
+                                data={"device-definition-request": missing_local},
+                            )
+                            destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+                            if self.config.mqtt_bridge_prefix:
+                                destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                            request["destpath"] = destpath
+                            await self.send_event(request)
+                            
+                        elif resource == "controller":
+                            request = DAQEvent.create_registry_sync_request(
+                                source=f"envds.{self.config.daq_id}.registrar",
+                                data={"controller-definition-request": missing_local},
+                            )
+                            destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+                            if self.config.mqtt_bridge_prefix:
+                                destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                            request["destpath"] = destpath
+                            await self.send_event(request)
+                            
+                        else:
+                            await self.request_sampling_definitions(resource, missing_local)
+                else:
+                    self.logger.debug(f"registry_compare_bcast: skipping missing_local request for unallowed source", extra={"source": source})
                         
             elif bcast_type.endswith("-instance-list"):
                 pass  # Instance syncing logic
