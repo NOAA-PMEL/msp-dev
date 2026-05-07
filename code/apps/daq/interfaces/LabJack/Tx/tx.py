@@ -111,9 +111,9 @@ class Tx(Interface):
 
         self.host = "localhost"
         self.labjack = None # labjack handle
-        # self.run_task_list.append(self.connection_monitor())
-        monitor_task = asyncio.create_task(self.connection_monitor())
-        self.run_task_list.append(monitor_task)
+        self.run_task_list.append(self.connection_monitor())
+        # monitor_task = asyncio.create_task(self.connection_monitor())
+        # self.run_task_list.append(monitor_task)
         # # --- FIX: STRONG TASK REFERENCE ---
         # # Explicitly create the task and store it so the Garbage Collector 
         # # doesn't destroy the connection monitor silently.
