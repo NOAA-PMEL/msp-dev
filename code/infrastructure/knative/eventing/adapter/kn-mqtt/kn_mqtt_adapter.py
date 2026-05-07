@@ -193,7 +193,7 @@ class KNMQTTClient():
     async def _post_ce_to_knative(self, ce: CloudEvent):
         try:
             # Safer timeout for Knative cold-starts
-            timeout = httpx.Timeout(10.0, read=10.0) 
+            timeout = httpx.Timeout(30.0, read=30.0) 
             
             ce["datacontenttype"] = "application/json"
             attrs = {
@@ -414,7 +414,7 @@ class KNMQTTClient():
 
                 L.debug(ce)#, extra=template)
                 try:
-                    timeout = httpx.Timeout(5.0, read=10.0)
+                    timeout = httpx.Timeout(30.0, read=30.0)
                     ce["datacontenttype"] = "application/json"
                     attrs = {
                         # "type": "envds.controller.control.request",
