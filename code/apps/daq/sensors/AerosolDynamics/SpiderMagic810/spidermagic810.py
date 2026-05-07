@@ -44,6 +44,8 @@ from pydantic import BaseModel
 import json
 import numpy as np
 
+from inversion import StandardInversion, AerosolDynamicsInversion
+
 # from envds.daq.db import init_sensor_type_registration, register_sensor_type
 
 task_list = []
@@ -663,6 +665,17 @@ class SpiderMagic810(Sensor):
 
         self.logger.debug("iface_map", extra={"map": self.iface_map})
 
+        # 2. Set up the inversion strategy
+        # You can eventually pull this "method" string from your sensor.conf
+        inversion_method = "standard" 
+        
+        if inversion_method == "aerosol_dynamics":
+            self.inversion_routine = AerosolDynamicsInversion(config=conf)
+            self.logger.info("Initialized Aerosol Dynamics Inversion")
+        else:
+            self.inversion_routine = StandardInversion(config=conf)
+            self.logger.info("Initialized Standard Inversion")
+
     # async def handle_interface_message(self, message: Message):
     async def handle_interface_message(self, message: CloudEvent):
         pass
@@ -789,51 +802,226 @@ class SpiderMagic810(Sensor):
             await asyncio.sleep(0.1)
 
 
-    async def default_data_loop(self):
+    # async def default_data_loop(self):
 
+    #     while True:
+    #         try:
+    #             data = await self.default_data_buffer.get()
+    #             if data:
+    #                 self.collecting = True
+
+    #             # if "v1" in data.data['data']:
+    #             #     record_heading = self.default_parse(data)
+    #             #     continue
+
+    #             # elif self.sequence_end:
+    #             #     self.sequence_end = False
+    #             #     for var in record_heading["variables"]:
+    #             #         if record_heading["variables"][var]["data"]:
+    #             #             ongoing_record["variables"][var]["data"] = record_heading["variables"][var]["data"]
+                    
+    #             #     # THIS WILL CHANGE WHEN AN INVERSION ROUTINE IS IMPLEMENTED
+    #             #     ongoing_record["variables"]['diameter']["data"] = [None]*53
+    #             #     ongoing_record["variables"]['dN']["data"] = [None]*53
+    #             #     ongoing_record["variables"]['dlogDp']["data"] = [None]*53
+    #             #     ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
+    #             #     ongoing_record["variables"]['intN']["data"] = [None]*53
+                
+    #             # elif "STARTING" in data.data['data']:
+    #             #     ongoing_record = self.default_parse(data)
+    #             #     continue
+
+    #             # else:
+    #             #     record2 = self.default_parse(data)
+    #             #     if not record2:
+    #             #         continue
+    #             #     else:
+    #             #         for var in record2["variables"]:
+    #             #             if var != 'time':
+    #             #                 try:
+    #             #                     if record2["variables"][var]["data"].any():
+    #             #                         ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
+    #             #                 except Exception:
+    #             #                     if record2["variables"][var]["data"]:
+    #             #                         ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
+    #             #         continue
+    #             # record = ongoing_record
+    #             # print('FINAL RECORD', record)
+
+    #             record = self.default_parse(data)
+    #             if not record:
+    #                 continue
+
+    #             if record:
+    #                 self.collecting = True
+
+    #             if record and self.sampling():
+
+    #             #     ongoing_record["variables"]['diameter']["data"] = [None]*53
+    #             #     ongoing_record["variables"]['dN']["data"] = [None]*53
+    #             #     ongoing_record["variables"]['dlogDp']["data"] = [None]*53
+    #             #     ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
+    #             #     ongoing_record["variables"]['intN']["data"] = [None]*53
+
+    #                 # TODO make this (127) a config variable?
+    #                 if len(record["variables"]["read_V"]["data"]) != 127:
+    #                     self.logger.info("Incorrect number of scan readings", extra={"expected": 127, "actual": len(record["variables"]["read_V"]["data"])})
+    #                     continue
+
+    #                 #TODO do inversion when available
+
+    #                 # check if scanning in "down" direction and reverse data
+    #                 vp_rd = record["variables"]["vp_rd"]["data"].strip()
+    #                 self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
+    #                 if vp_rd == "pd" or vp_rd == "nd":
+    #                     for name,variable in self.metadata["variables"].items():
+    #                         if name in ["time", "diameter", "dN", "dlogDp", "dNdlogDp"]:
+    #                             continue
+    #                         self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
+    #                         if variable["shape"] == ["time", "diameter"]:
+    #                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": record["variables"][name]["data"]})
+    #                             record["variables"][name]["data"].reverse()
+    #                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": record["variables"][name]["data"]})
+
+    #                 # this is a temp calc for diameters based on table in manual
+    #                 # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
+    #                 voltages = record["variables"]["read_V"]["data"]
+    #                 diameters = []
+    #                 for v in voltages:
+    #                     v = abs(v)
+    #                     diameters.append(round(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4, 3))
+    #                 record["variables"]["diameter"]["data"] = diameters
+    #                 self.logger.debug("default_data_loop:diameter", extra={"scan_length": len(diameters), "volts": voltages, "diameter": diameters})
+
+    #                 record["variables"]['dN']["data"] = [None]*len(diameters)
+    #                 record["variables"]['dlogDp']["data"] = [None]*len(diameters)
+    #                 record["variables"]['dNdlogDp']["data"] = [None]*len(diameters)
+    #                 record["variables"]['intN']["data"] = None
+
+
+
+    #                 event = DAQEvent.create_data_update(
+    #                     # source="sensor.mockco-mock1-1234", data=record
+    #                     source=self.get_id_as_source(),
+    #                     data=record,
+    #                 )
+    #                 destpath = f"{self.get_id_as_topic()}/data/update"
+    #                 event["destpath"] = destpath
+    #                 self.logger.debug(
+    #                     "default_data_loop",
+    #                     extra={"data": event, "destpath": destpath},
+    #                 )
+    #                 # message = Message(data=event, destpath=destpath)
+    #                 message = event
+    #                 # self.logger.debug("default_data_loop", extra={"m": message})
+    #                 await self.send_message(message)
+
+    #             self.logger.debug("default_data_loop", extra={"record": record})
+    #         except Exception as e:
+    #             print(f"default_data_loop error: {e}")
+    #             print(traceback.format_exc())
+    #         await asyncio.sleep(0.001)
+
+    # async def default_data_loop_bak(self):
+
+    #     while True:
+    #         try:
+    #             data = await self.default_data_buffer.get()
+    #             if data:
+    #                 self.collecting = True
+
+    #             if "v1" in data.data['data']:
+    #                 record_heading = self.default_parse(data)
+    #                 continue
+
+    #             elif self.sequence_end:
+    #                 self.sequence_end = False
+    #                 for var in record_heading["variables"]:
+    #                     if record_heading["variables"][var]["data"]:
+    #                         ongoing_record["variables"][var]["data"] = record_heading["variables"][var]["data"]
+                    
+    #                 # THIS WILL CHANGE WHEN AN INVERSION ROUTINE IS IMPLEMENTED
+    #                 ongoing_record["variables"]['diameter']["data"] = [None]*53
+    #                 ongoing_record["variables"]['dN']["data"] = [None]*53
+    #                 ongoing_record["variables"]['dlogDp']["data"] = [None]*53
+    #                 ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
+    #                 ongoing_record["variables"]['intN']["data"] = [None]*53
+                
+    #             elif "STARTING" in data.data['data']:
+    #                 ongoing_record = self.default_parse(data)
+    #                 continue
+
+    #             else:
+    #                 record2 = self.default_parse(data)
+    #                 if not record2:
+    #                     continue
+    #                 else:
+    #                     for var in record2["variables"]:
+    #                         if var != 'time':
+    #                             try:
+    #                                 if record2["variables"][var]["data"].any():
+    #                                     ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
+    #                             except Exception:
+    #                                 if record2["variables"][var]["data"]:
+    #                                     ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
+    #                     continue
+    #             record = ongoing_record
+    #             print('FINAL RECORD', record)
+    #             if record:
+    #                 self.collecting = True
+
+    #             if record and self.sampling():
+
+    #                 # check if scanning in "down" direction and reverse data
+    #                 vp_rd = record["variables"]["vp_rd"]["data"]
+    #                 self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
+    #                 if vp_rd == "pd" or vp_rd == "nd":
+    #                     for name,variable in self.metadata["variables"].items():
+    #                         if name == "time" or name == "diameter":
+    #                             continue
+    #                         self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
+    #                         if variable["shape"] == ["time", "diameter"]:
+    #                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
+    #                             variable["data"] = variable["data"].reverse()
+    #                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
+
+    #                 # this is a temp calc for diameters based on table in manual
+    #                 # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
+    #                 voltages = record["variables"]["read_V"]["data"]
+    #                 diameters = []
+    #                 for v in voltages:
+    #                     v = abs(v)
+    #                     diameters.append(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4)
+    #                 record["variables"]["diameter"]["data"] = diameters
+    #                 self.logger.debug("default_data_loop:diameter", extra={"volts": voltages, "diameter": diameters})
+    #                 event = DAQEvent.create_data_update(
+    #                     # source="sensor.mockco-mock1-1234", data=record
+    #                     source=self.get_id_as_source(),
+    #                     data=record,
+    #                 )
+    #                 destpath = f"{self.get_id_as_topic()}/data/update"
+    #                 event["destpath"] = destpath
+    #                 self.logger.debug(
+    #                     "default_data_loop",
+    #                     extra={"data": event, "destpath": destpath},
+    #                 )
+    #                 # message = Message(data=event, destpath=destpath)
+    #                 message = event
+    #                 # self.logger.debug("default_data_loop", extra={"m": message})
+    #                 await self.send_message(message)
+
+    #             self.logger.debug("default_data_loop", extra={"record": record})
+    #         except Exception as e:
+    #             print(f"default_data_loop error: {e}")
+    #             print(traceback.format_exc())
+    #         await asyncio.sleep(0.0001)
+
+    async def default_data_loop(self):
         while True:
             try:
                 data = await self.default_data_buffer.get()
                 if data:
                     self.collecting = True
-
-                # if "v1" in data.data['data']:
-                #     record_heading = self.default_parse(data)
-                #     continue
-
-                # elif self.sequence_end:
-                #     self.sequence_end = False
-                #     for var in record_heading["variables"]:
-                #         if record_heading["variables"][var]["data"]:
-                #             ongoing_record["variables"][var]["data"] = record_heading["variables"][var]["data"]
-                    
-                #     # THIS WILL CHANGE WHEN AN INVERSION ROUTINE IS IMPLEMENTED
-                #     ongoing_record["variables"]['diameter']["data"] = [None]*53
-                #     ongoing_record["variables"]['dN']["data"] = [None]*53
-                #     ongoing_record["variables"]['dlogDp']["data"] = [None]*53
-                #     ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
-                #     ongoing_record["variables"]['intN']["data"] = [None]*53
-                
-                # elif "STARTING" in data.data['data']:
-                #     ongoing_record = self.default_parse(data)
-                #     continue
-
-                # else:
-                #     record2 = self.default_parse(data)
-                #     if not record2:
-                #         continue
-                #     else:
-                #         for var in record2["variables"]:
-                #             if var != 'time':
-                #                 try:
-                #                     if record2["variables"][var]["data"].any():
-                #                         ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
-                #                 except Exception:
-                #                     if record2["variables"][var]["data"]:
-                #                         ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
-                #         continue
-                # record = ongoing_record
-                # print('FINAL RECORD', record)
 
                 record = self.default_parse(data)
                 if not record:
@@ -844,164 +1032,61 @@ class SpiderMagic810(Sensor):
 
                 if record and self.sampling():
 
-                #     ongoing_record["variables"]['diameter']["data"] = [None]*53
-                #     ongoing_record["variables"]['dN']["data"] = [None]*53
-                #     ongoing_record["variables"]['dlogDp']["data"] = [None]*53
-                #     ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
-                #     ongoing_record["variables"]['intN']["data"] = [None]*53
-
-                    # TODO make this (127) a config variable?
-                    if len(record["variables"]["read_V"]["data"]) != 127:
-                        self.logger.info("Incorrect number of scan readings", extra={"expected": 127, "actual": len(record["variables"]["read_V"]["data"])})
+                    # Validate we actually have scan data before proceeding.
+                    # Since scan_bins is now dynamic, we check for a minimum threshold
+                    # (e.g., > 10 readings) to ensure we don't process empty/broken scans.
+                    try:
+                        scan_length = len(record["variables"]["read_V"]["data"])
+                        if scan_length < 10:
+                            self.logger.info("Scan data too short, skipping", extra={"actual_length": scan_length})
+                            continue
+                    except (KeyError, TypeError):
+                        self.logger.warning("Missing or invalid 'read_V' in record, skipping scan.")
                         continue
 
-                    #TODO do inversion when available
-
-                    # check if scanning in "down" direction and reverse data
+                    # Check if scanning in "down" direction and reverse raw data
+                    # so that the raw scan_bins always represent ascending voltages/sizes.
                     vp_rd = record["variables"]["vp_rd"]["data"].strip()
                     self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
-                    if vp_rd == "pd" or vp_rd == "nd":
-                        for name,variable in self.metadata["variables"].items():
-                            if name in ["time", "diameter", "dN", "dlogDp", "dNdlogDp"]:
-                                continue
-                            self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
-                            if variable["shape"] == ["time", "diameter"]:
-                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": record["variables"][name]["data"]})
-                                record["variables"][name]["data"].reverse()
-                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": record["variables"][name]["data"]})
-
-                    # this is a temp calc for diameters based on table in manual
-                    # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
-                    voltages = record["variables"]["read_V"]["data"]
-                    diameters = []
-                    for v in voltages:
-                        v = abs(v)
-                        diameters.append(round(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4, 3))
-                    record["variables"]["diameter"]["data"] = diameters
-                    self.logger.debug("default_data_loop:diameter", extra={"scan_length": len(diameters), "volts": voltages, "diameter": diameters})
-
-                    record["variables"]['dN']["data"] = [None]*len(diameters)
-                    record["variables"]['dlogDp']["data"] = [None]*len(diameters)
-                    record["variables"]['dNdlogDp']["data"] = [None]*len(diameters)
-                    record["variables"]['intN']["data"] = None
-
-
-
-                    event = DAQEvent.create_data_update(
-                        # source="sensor.mockco-mock1-1234", data=record
-                        source=self.get_id_as_source(),
-                        data=record,
-                    )
-                    destpath = f"{self.get_id_as_topic()}/data/update"
-                    event["destpath"] = destpath
-                    self.logger.debug(
-                        "default_data_loop",
-                        extra={"data": event, "destpath": destpath},
-                    )
-                    # message = Message(data=event, destpath=destpath)
-                    message = event
-                    # self.logger.debug("default_data_loop", extra={"m": message})
-                    await self.send_message(message)
-
-                self.logger.debug("default_data_loop", extra={"record": record})
-            except Exception as e:
-                print(f"default_data_loop error: {e}")
-                print(traceback.format_exc())
-            await asyncio.sleep(0.001)
-
-    async def default_data_loop_bak(self):
-
-        while True:
-            try:
-                data = await self.default_data_buffer.get()
-                if data:
-                    self.collecting = True
-
-                if "v1" in data.data['data']:
-                    record_heading = self.default_parse(data)
-                    continue
-
-                elif self.sequence_end:
-                    self.sequence_end = False
-                    for var in record_heading["variables"]:
-                        if record_heading["variables"][var]["data"]:
-                            ongoing_record["variables"][var]["data"] = record_heading["variables"][var]["data"]
                     
-                    # THIS WILL CHANGE WHEN AN INVERSION ROUTINE IS IMPLEMENTED
-                    ongoing_record["variables"]['diameter']["data"] = [None]*53
-                    ongoing_record["variables"]['dN']["data"] = [None]*53
-                    ongoing_record["variables"]['dlogDp']["data"] = [None]*53
-                    ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
-                    ongoing_record["variables"]['intN']["data"] = [None]*53
-                
-                elif "STARTING" in data.data['data']:
-                    ongoing_record = self.default_parse(data)
-                    continue
-
-                else:
-                    record2 = self.default_parse(data)
-                    if not record2:
-                        continue
-                    else:
-                        for var in record2["variables"]:
-                            if var != 'time':
-                                try:
-                                    if record2["variables"][var]["data"].any():
-                                        ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
-                                except Exception:
-                                    if record2["variables"][var]["data"]:
-                                        ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
-                        continue
-                record = ongoing_record
-                print('FINAL RECORD', record)
-                if record:
-                    self.collecting = True
-
-                if record and self.sampling():
-
-                    # check if scanning in "down" direction and reverse data
-                    vp_rd = record["variables"]["vp_rd"]["data"]
-                    self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
                     if vp_rd == "pd" or vp_rd == "nd":
-                        for name,variable in self.metadata["variables"].items():
-                            if name == "time" or name == "diameter":
-                                continue
-                            self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
-                            if variable["shape"] == ["time", "diameter"]:
-                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
-                                variable["data"] = variable["data"].reverse()
-                                self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
+                        for name, variable in self.metadata["variables"].items():
+                            # We only reverse the raw 2D variables mapped to the scan_bins dimension
+                            if "shape" in variable and variable["shape"] == ["time", "scan_bins"]:
+                                if name in record["variables"] and record["variables"][name]["data"]:
+                                    self.logger.debug("default_data_loop:reverse", extra={"vname": name})
+                                    record["variables"][name]["data"].reverse()
 
-                    # this is a temp calc for diameters based on table in manual
-                    # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
-                    voltages = record["variables"]["read_V"]["data"]
-                    diameters = []
-                    for v in voltages:
-                        v = abs(v)
-                        diameters.append(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4)
-                    record["variables"]["diameter"]["data"] = diameters
-                    self.logger.debug("default_data_loop:diameter", extra={"volts": voltages, "diameter": diameters})
+                    # --- RUN THE INVERSION ---
+                    # The strategy pattern seamlessly handles whatever inversion class was 
+                    # instantiated in self.configure(). It reads the dynamic scan_bins arrays 
+                    # and populates the fixed diameter arrays.
+                    try:
+                        record = self.inversion_routine.invert(record)
+                    except Exception as inv_e:
+                        self.logger.error("Inversion routine failed", extra={"error": str(inv_e)})
+                        print(f"Inversion error details: {inv_e}")
+
+                    # --- SEND THE DATA ---
                     event = DAQEvent.create_data_update(
-                        # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
                         data=record,
                     )
                     destpath = f"{self.get_id_as_topic()}/data/update"
                     event["destpath"] = destpath
+                    
                     self.logger.debug(
                         "default_data_loop",
-                        extra={"data": event, "destpath": destpath},
+                        extra={"destpath": destpath},
                     )
-                    # message = Message(data=event, destpath=destpath)
-                    message = event
-                    # self.logger.debug("default_data_loop", extra={"m": message})
-                    await self.send_message(message)
+                    
+                    await self.send_message(event)
 
-                self.logger.debug("default_data_loop", extra={"record": record})
             except Exception as e:
                 print(f"default_data_loop error: {e}")
                 print(traceback.format_exc())
-            await asyncio.sleep(0.0001)
+            
+            await asyncio.sleep(0.001)
 
     def check_array_buffer(self, data, array_cond = False):
         self.array_buffer.append(data)
@@ -1040,39 +1125,283 @@ class SpiderMagic810(Sensor):
         # return record
 
 
+    # def default_parse(self, data):
+    #     if data:
+    #         try:
+    #             variables = list(self.config.metadata.variables.keys())
+    #             variables.remove("time")
+
+    #             # record = self.build_data_record(meta=self.include_metadata)
+    #             self.include_metadata = False
+    #             try:
+    #                 self.logger.debug("default_parse", extra={"data.data": data.data["data"]})
+    #                 # record["timestamp"] = data.data["timestamp"]
+    #                 # record["variables"]["time"]["data"] = data.data["timestamp"]
+    #                 parts = data.data["data"].strip().split(",")
+    #                 # parts = [item.replace('\r\n', '').strip() for item in parts]
+
+    #                 if (datavar := 'v1') in data.data["data"]:
+    #                     parts = parts[2:3] + parts[4:8]
+    #                     parts = [item.replace('Hz', '').replace('tau=', '').strip() for item in parts]
+    #                     self.var_name = variables[0:5]
+    #                     self.extra_var_names = variables[0:5]
+    #                     self.extra_vars = parts
+    #                     self.logger.debug("default_parse:v1", extra={"var_name": self.var_name, "parts": parts})
+    #                     return None
+                    
+    #                 # starts scan
+    #                 elif (datavar := 'STARTING') in data.data["data"]:
+
+    #                     parts = parts[1:3] + parts[4:25]
+    #                     parts = [item.replace('V', '').strip() for item in parts]
+    #                     self.var_name = variables[5:28]
+    #                     self.extra_var_names += variables[5:28]
+    #                     self.extra_vars += parts
+    #                     self.logger.debug("default_parse:STARTING", extra={"var_name": self.var_name, "parts": parts})
+    #                     return None
+
+    #                 elif (datavar := 'Vi') in data.data["data"]:
+    #                     parts = parts[0:4]
+    #                     parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '').strip() for item in parts]
+    #                     elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
+    #                     parts.append(elapsed_time)
+    #                     self.var_name = variables[28:33]
+    #                     self.extra_var_names += variables[28:33]
+    #                     self.extra_vars += parts
+    #                     self.logger.debug("default_parse:vi", extra={"var_name": self.var_name, "parts": parts})
+    #                     return None
+                    
+    #                 # actual start of scan, use this for timestamp
+    #                 elif (datavar := 'START SEQ') in data.data["data"]:
+
+    #                     self.current_record = self.build_data_record(meta=self.include_metadata)
+    #                     self.current_record["timestamp"] = data.data["timestamp"]
+    #                     self.current_record["variables"]["time"]["data"] = data.data["timestamp"]
+
+    #                     # add extra_vars
+    #                     self.add_to_record(self.current_record, self.extra_var_names, self.extra_vars)
+    #                     self.sequence_start = True
+    #                     self.seq_counter = 0
+    #                     self.logger.debug("default_parse:START SEQ", extra={"vdata": data.data["data"]})
+    #                     return None
+                    
+    #                 # done with scan, complete record and return
+    #                 elif (datavar := 'END SEQ') in data.data["data"]:
+                        
+    #                     self.scan_var_names = variables[33:41]
+                        
+
+    #                     parts = np.array(list(self.array_buffer), dtype=object)
+    #                     transposed = np.transpose(parts)
+    #                     parts = transposed.tolist()
+    #                     self.array_buffer = []
+    #                     self.logger.debug("default_parse:check_array", extra={"parts": parts})
+
+    #                     self.add_to_record(self.current_record, self.scan_var_names, parts)
+
+    #                     self.sequence_end = True
+    #                     self.sequence_start = False
+    #                     self.logger.debug("default_parse:END SEQ", extra={"vdata": data.data["data"]})
+    #                     return self.current_record
+                    
+    #                 elif self.sequence_start:
+    #                     self.var_name = variables[33:41]
+    #                     if len(parts) != 8:
+    #                         return None
+    #                     self.check_array_buffer(parts, array_cond=False)
+
+
+    #                     # if self.seq_counter < 52:
+    #                     #     self.check_array_buffer(parts, array_cond=False)
+    #                     #     self.seq_counter += 1
+    #                     #     return
+                        
+    #                     # else:
+    #                     #     parts = self.check_array_buffer(parts, array_cond=True)
+    #                     #     self.logger.debug("default_parse:check_array", extra={"parts": parts})
+    #                     #     self.seq_counter = 0
+    #                     #     parts = np.array(list(parts), dtype=object)
+    #                     #     transposed = np.transpose(parts)
+    #                     #     parts = transposed.tolist()
+    #                     #     self.array_buffer = []
+    #                     #     self.logger.debug("default_parse:check_array", extra={"parts": parts})
+
+    #                     # pass
+
+    #                 else:
+    #                     return None
+
+    #                 # for index, name in enumerate(self.var_name):
+    #                 #     if name in record["variables"]:
+    #                 #         instvar = self.config.metadata.variables[name]
+    #                 #         try:
+    #                 #             if instvar.type == "int":
+    #                 #                 if isinstance(parts[index], list):
+    #                 #                     record["variables"][name]["data"] = [int(item) for item in parts[index]]
+    #                 #                 else:
+    #                 #                     record["variables"][name]["data"] = int(parts[index])
+
+    #                 #             elif instvar.type == "float":
+    #                 #                 if isinstance(parts[index], list):
+    #                 #                     record["variables"][name]["data"] = [float(item) for item in parts[index]]
+    #                 #                 else:
+    #                 #                     record["variables"][name]["data"] = float(parts[index])
+                                        
+    #                 #             else:
+    #                 #                 record["variables"][name]["data"] = parts[index]
+
+    #                 #         except ValueError:
+    #                 #             if instvar.type == "str" or instvar.type == "char":
+    #                 #                 record["variables"][name]["data"] = ""
+    #                 #             else:
+    #                 #                 record["variables"][name]["data"] = None
+    #                 # self.logger.debug("default_parse:record", extra={"record": record})
+    #                 # return record
+    #             except KeyError:
+    #                 pass
+    #         except Exception as e:
+    #             print(f"default_parse error: {e}")
+    #     # else:
+    #     return None
+
+    # def default_parse_bak(self, data):
+    #     if data:
+    #         try:
+    #             variables = list(self.config.metadata.variables.keys())
+    #             variables.remove("time")
+
+    #             record = self.build_data_record(meta=self.include_metadata)
+    #             self.include_metadata = False
+    #             try:
+    #                 self.logger.debug("default_parse", extra={"data.data": data.data["data"]})
+    #                 record["timestamp"] = data.data["timestamp"]
+    #                 record["variables"]["time"]["data"] = data.data["timestamp"]
+    #                 parts = data.data["data"].strip().split(",")
+    #                 # parts = [item.replace('\r\n', '').strip() for item in parts]
+
+    #                 if (datavar := 'v1') in data.data["data"]:
+    #                     parts = parts[2:3] + parts[4:8]
+    #                     parts = [item.replace('Hz', '').replace('tau=', '') for item in parts]
+    #                     self.var_name = variables[0:5]
+    #                     self.logger.debug("default_parse:v1", extra={"var_name": self.var_name, "parts": parts})
+
+    #                 elif (datavar := 'STARTING') in data.data["data"]:
+    #                     parts = parts[1:3] + parts[4:25]
+    #                     parts = [item.replace('V', '') for item in parts]
+    #                     self.var_name = variables[5:28]
+    #                     self.logger.debug("default_parse:STARTING", extra={"var_name": self.var_name, "parts": parts})
+
+
+    #                 elif (datavar := 'Vi') in data.data["data"]:
+    #                     parts = parts[0:4]
+    #                     parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '') for item in parts]
+    #                     elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
+    #                     parts.append(elapsed_time)
+    #                     self.var_name = variables[28:33]
+    #                     self.logger.debug("default_parse:vi", extra={"var_name": self.var_name, "parts": parts})
+
+    #                 elif (datavar := 'START SEQ') in data.data["data"]:
+    #                     self.sequence_start = True
+    #                     self.seq_counter = 0
+    #                     self.logger.debug("default_parse:START SEQ", extra={"vdata": data.data["data"]})
+    #                     return None
+                    
+    #                 elif (datavar := 'END SEQ') in data.data["data"]:
+    #                     self.sequence_end = True
+    #                     self.sequence_start = False
+    #                     self.logger.debug("default_parse:END SEQ", extra={"vdata": data.data["data"]})
+    #                     return None
+                    
+    #                 elif self.sequence_start:
+    #                     self.var_name = variables[33:41]
+
+    #                     if self.seq_counter < 52:
+    #                         self.check_array_buffer(parts, array_cond=False)
+    #                         self.seq_counter += 1
+    #                         return
+                        
+    #                     else:
+    #                         parts = self.check_array_buffer(parts, array_cond=True)
+    #                         self.logger.debug("default_parse:check_array", extra={"parts": parts})
+    #                         self.seq_counter = 0
+    #                         parts = np.array(list(parts), dtype=object)
+    #                         transposed = np.transpose(parts)
+    #                         parts = transposed.tolist()
+    #                         self.array_buffer = []
+    #                         self.logger.debug("default_parse:check_array", extra={"parts": parts})
+
+    #                     pass
+
+    #                 else:
+    #                     return None
+
+    #                 for index, name in enumerate(self.var_name):
+    #                     if name in record["variables"]:
+    #                         instvar = self.config.metadata.variables[name]
+    #                         try:
+    #                             if instvar.type == "int":
+    #                                 if isinstance(parts[index], list):
+    #                                     record["variables"][name]["data"] = [int(item) for item in parts[index]]
+    #                                 else:
+    #                                     record["variables"][name]["data"] = int(parts[index])
+
+    #                             elif instvar.type == "float":
+    #                                 if isinstance(parts[index], list):
+    #                                     record["variables"][name]["data"] = [float(item) for item in parts[index]]
+    #                                 else:
+    #                                     record["variables"][name]["data"] = float(parts[index])
+                                        
+    #                             else:
+    #                                 record["variables"][name]["data"] = parts[index]
+
+    #                         except ValueError:
+    #                             if instvar.type == "str" or instvar.type == "char":
+    #                                 record["variables"][name]["data"] = ""
+    #                             else:
+    #                                 record["variables"][name]["data"] = None
+    #                 self.logger.debug("default_parse:record", extra={"record": record})
+    #                 return record
+    #             except KeyError:
+    #                 pass
+    #         except Exception as e:
+    #             print(f"default_parse error: {e}")
+    #     # else:
+    #     return None
+
     def default_parse(self, data):
         if data:
             try:
-                variables = list(self.config.metadata.variables.keys())
-                variables.remove("time")
+                # EXPLICIT VARIABLE MAPPING: 
+                # Prevents parser from breaking if JSON definition order changes.
+                V1_NAMES = ["tau", "HV_polarity", "scan_dir", "data_freq", "HV_status"]
+                STARTING_NAMES = ["vp_rd", "spidermagic_timestamp", "dew_point", "input_T", "input_rh", 
+                                  "cond_T", "init_T", "mod_T", "opt_T", "heatsink_T", "case_T", 
+                                  "wick_sensor", "mod_T_sp", "humid_exit_dew_point", "wadc", "DMA_V", 
+                                  "Qsh", "abs_pressure", "flow", "pHt2.%", "status_hex", "status_ascii", 
+                                  "spidermagic_serial_number"]
+                VI_NAMES = ["Vi", "Vf", "Vmax", "Tc", "elap_time"]
+                SCAN_NAMES = ["scan_status", "set_V", "read_V", "concentration", 
+                              "raw_counts", "dead_counts", "sh_flow", "aer_flow"]
 
-                # record = self.build_data_record(meta=self.include_metadata)
                 self.include_metadata = False
                 try:
                     self.logger.debug("default_parse", extra={"data.data": data.data["data"]})
-                    # record["timestamp"] = data.data["timestamp"]
-                    # record["variables"]["time"]["data"] = data.data["timestamp"]
                     parts = data.data["data"].strip().split(",")
-                    # parts = [item.replace('\r\n', '').strip() for item in parts]
 
                     if (datavar := 'v1') in data.data["data"]:
                         parts = parts[2:3] + parts[4:8]
                         parts = [item.replace('Hz', '').replace('tau=', '').strip() for item in parts]
-                        self.var_name = variables[0:5]
-                        self.extra_var_names = variables[0:5]
+                        self.extra_var_names = V1_NAMES
                         self.extra_vars = parts
-                        self.logger.debug("default_parse:v1", extra={"var_name": self.var_name, "parts": parts})
+                        self.logger.debug("default_parse:v1", extra={"var_name": V1_NAMES, "parts": parts})
                         return None
                     
-                    # starts scan
                     elif (datavar := 'STARTING') in data.data["data"]:
-
                         parts = parts[1:3] + parts[4:25]
                         parts = [item.replace('V', '').strip() for item in parts]
-                        self.var_name = variables[5:28]
-                        self.extra_var_names += variables[5:28]
+                        self.extra_var_names += STARTING_NAMES
                         self.extra_vars += parts
-                        self.logger.debug("default_parse:STARTING", extra={"var_name": self.var_name, "parts": parts})
+                        self.logger.debug("default_parse:STARTING", extra={"var_name": STARTING_NAMES, "parts": parts})
                         return None
 
                     elif (datavar := 'Vi') in data.data["data"]:
@@ -1080,207 +1409,55 @@ class SpiderMagic810(Sensor):
                         parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '').strip() for item in parts]
                         elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
                         parts.append(elapsed_time)
-                        self.var_name = variables[28:33]
-                        self.extra_var_names += variables[28:33]
+                        self.extra_var_names += VI_NAMES
                         self.extra_vars += parts
-                        self.logger.debug("default_parse:vi", extra={"var_name": self.var_name, "parts": parts})
+                        self.logger.debug("default_parse:vi", extra={"var_name": VI_NAMES, "parts": parts})
                         return None
                     
                     # actual start of scan, use this for timestamp
                     elif (datavar := 'START SEQ') in data.data["data"]:
-
                         self.current_record = self.build_data_record(meta=self.include_metadata)
                         self.current_record["timestamp"] = data.data["timestamp"]
                         self.current_record["variables"]["time"]["data"] = data.data["timestamp"]
 
-                        # add extra_vars
+                        # add collected header variables (v1, STARTING, Vi) to record
                         self.add_to_record(self.current_record, self.extra_var_names, self.extra_vars)
+                        
                         self.sequence_start = True
-                        self.seq_counter = 0
+                        self.array_buffer = []  # Ensure buffer is empty for new scan
                         self.logger.debug("default_parse:START SEQ", extra={"vdata": data.data["data"]})
                         return None
                     
-                    # done with scan, complete record and return
+                    # done with scan, transpose buffer, complete record, and return
                     elif (datavar := 'END SEQ') in data.data["data"]:
                         
-                        self.scan_var_names = variables[33:41]
+                        if len(self.array_buffer) > 0:
+                            parts = np.array(list(self.array_buffer), dtype=object)
+                            transposed = np.transpose(parts).tolist()
+                            self.add_to_record(self.current_record, SCAN_NAMES, transposed)
                         
-
-                        parts = np.array(list(self.array_buffer), dtype=object)
-                        transposed = np.transpose(parts)
-                        parts = transposed.tolist()
                         self.array_buffer = []
-                        self.logger.debug("default_parse:check_array", extra={"parts": parts})
-
-                        self.add_to_record(self.current_record, self.scan_var_names, parts)
-
                         self.sequence_end = True
                         self.sequence_start = False
                         self.logger.debug("default_parse:END SEQ", extra={"vdata": data.data["data"]})
+                        
                         return self.current_record
                     
+                    # collecting the fast scan data at 4 Hz
                     elif self.sequence_start:
-                        self.var_name = variables[33:41]
                         if len(parts) != 8:
                             return None
-                        self.check_array_buffer(parts, array_cond=False)
-
-
-                        # if self.seq_counter < 52:
-                        #     self.check_array_buffer(parts, array_cond=False)
-                        #     self.seq_counter += 1
-                        #     return
                         
-                        # else:
-                        #     parts = self.check_array_buffer(parts, array_cond=True)
-                        #     self.logger.debug("default_parse:check_array", extra={"parts": parts})
-                        #     self.seq_counter = 0
-                        #     parts = np.array(list(parts), dtype=object)
-                        #     transposed = np.transpose(parts)
-                        #     parts = transposed.tolist()
-                        #     self.array_buffer = []
-                        #     self.logger.debug("default_parse:check_array", extra={"parts": parts})
-
-                        # pass
+                        self.array_buffer.append(parts)
 
                     else:
                         return None
 
-                    # for index, name in enumerate(self.var_name):
-                    #     if name in record["variables"]:
-                    #         instvar = self.config.metadata.variables[name]
-                    #         try:
-                    #             if instvar.type == "int":
-                    #                 if isinstance(parts[index], list):
-                    #                     record["variables"][name]["data"] = [int(item) for item in parts[index]]
-                    #                 else:
-                    #                     record["variables"][name]["data"] = int(parts[index])
-
-                    #             elif instvar.type == "float":
-                    #                 if isinstance(parts[index], list):
-                    #                     record["variables"][name]["data"] = [float(item) for item in parts[index]]
-                    #                 else:
-                    #                     record["variables"][name]["data"] = float(parts[index])
-                                        
-                    #             else:
-                    #                 record["variables"][name]["data"] = parts[index]
-
-                    #         except ValueError:
-                    #             if instvar.type == "str" or instvar.type == "char":
-                    #                 record["variables"][name]["data"] = ""
-                    #             else:
-                    #                 record["variables"][name]["data"] = None
-                    # self.logger.debug("default_parse:record", extra={"record": record})
-                    # return record
                 except KeyError:
                     pass
             except Exception as e:
                 print(f"default_parse error: {e}")
-        # else:
-        return None
-
-    def default_parse_bak(self, data):
-        if data:
-            try:
-                variables = list(self.config.metadata.variables.keys())
-                variables.remove("time")
-
-                record = self.build_data_record(meta=self.include_metadata)
-                self.include_metadata = False
-                try:
-                    self.logger.debug("default_parse", extra={"data.data": data.data["data"]})
-                    record["timestamp"] = data.data["timestamp"]
-                    record["variables"]["time"]["data"] = data.data["timestamp"]
-                    parts = data.data["data"].strip().split(",")
-                    # parts = [item.replace('\r\n', '').strip() for item in parts]
-
-                    if (datavar := 'v1') in data.data["data"]:
-                        parts = parts[2:3] + parts[4:8]
-                        parts = [item.replace('Hz', '').replace('tau=', '') for item in parts]
-                        self.var_name = variables[0:5]
-                        self.logger.debug("default_parse:v1", extra={"var_name": self.var_name, "parts": parts})
-
-                    elif (datavar := 'STARTING') in data.data["data"]:
-                        parts = parts[1:3] + parts[4:25]
-                        parts = [item.replace('V', '') for item in parts]
-                        self.var_name = variables[5:28]
-                        self.logger.debug("default_parse:STARTING", extra={"var_name": self.var_name, "parts": parts})
-
-
-                    elif (datavar := 'Vi') in data.data["data"]:
-                        parts = parts[0:4]
-                        parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '') for item in parts]
-                        elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
-                        parts.append(elapsed_time)
-                        self.var_name = variables[28:33]
-                        self.logger.debug("default_parse:vi", extra={"var_name": self.var_name, "parts": parts})
-
-                    elif (datavar := 'START SEQ') in data.data["data"]:
-                        self.sequence_start = True
-                        self.seq_counter = 0
-                        self.logger.debug("default_parse:START SEQ", extra={"vdata": data.data["data"]})
-                        return None
-                    
-                    elif (datavar := 'END SEQ') in data.data["data"]:
-                        self.sequence_end = True
-                        self.sequence_start = False
-                        self.logger.debug("default_parse:END SEQ", extra={"vdata": data.data["data"]})
-                        return None
-                    
-                    elif self.sequence_start:
-                        self.var_name = variables[33:41]
-
-                        if self.seq_counter < 52:
-                            self.check_array_buffer(parts, array_cond=False)
-                            self.seq_counter += 1
-                            return
-                        
-                        else:
-                            parts = self.check_array_buffer(parts, array_cond=True)
-                            self.logger.debug("default_parse:check_array", extra={"parts": parts})
-                            self.seq_counter = 0
-                            parts = np.array(list(parts), dtype=object)
-                            transposed = np.transpose(parts)
-                            parts = transposed.tolist()
-                            self.array_buffer = []
-                            self.logger.debug("default_parse:check_array", extra={"parts": parts})
-
-                        pass
-
-                    else:
-                        return None
-
-                    for index, name in enumerate(self.var_name):
-                        if name in record["variables"]:
-                            instvar = self.config.metadata.variables[name]
-                            try:
-                                if instvar.type == "int":
-                                    if isinstance(parts[index], list):
-                                        record["variables"][name]["data"] = [int(item) for item in parts[index]]
-                                    else:
-                                        record["variables"][name]["data"] = int(parts[index])
-
-                                elif instvar.type == "float":
-                                    if isinstance(parts[index], list):
-                                        record["variables"][name]["data"] = [float(item) for item in parts[index]]
-                                    else:
-                                        record["variables"][name]["data"] = float(parts[index])
-                                        
-                                else:
-                                    record["variables"][name]["data"] = parts[index]
-
-                            except ValueError:
-                                if instvar.type == "str" or instvar.type == "char":
-                                    record["variables"][name]["data"] = ""
-                                else:
-                                    record["variables"][name]["data"] = None
-                    self.logger.debug("default_parse:record", extra={"record": record})
-                    return record
-                except KeyError:
-                    pass
-            except Exception as e:
-                print(f"default_parse error: {e}")
-        # else:
+                
         return None
 
 
