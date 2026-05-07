@@ -625,7 +625,7 @@ class POPS1100(Sensor):
         print(f"self.config: {self.config}")
 
         try:
-            self.sensor_format_version = self.config.metadata.attributes[
+            self.device_format_version = self.config.metadata.attributes[
                 "format_version"
             ].data
         except KeyError:
