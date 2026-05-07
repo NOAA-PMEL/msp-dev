@@ -236,7 +236,8 @@ class Filemanager:
                 ce = await self.save_buffer.get()
                 ctype = ce["type"]
 
-                if ctype in [det.data_update(), det.sensor_data_update(), "envds.data.update"]:
+                # if ctype in [det.data_update(), det.sensor_data_update(), "envds.data.update"]:
+                if ctype in [det.data_update(), "envds.data.update"]:
                     if self.config.save_device_data:
                         await self.process_data_record(ce, component="device")
                 
