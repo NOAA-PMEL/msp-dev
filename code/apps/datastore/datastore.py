@@ -251,48 +251,47 @@ class Datastore:
         while True:
             try:
                 L.debug("listen", extra={"config": self.config})
-                client_id=str(ULID())
+                client_id = str(ULID())
                 async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as self.client:
                     for topic in self.config.mqtt_topic_subscriptions.split(","):
                         if topic.strip():
                             L.debug("subscribe", extra={"topic": topic.strip()})
                             await self.client.subscribe(f"$share/datastore/{topic.strip()}")
 
-                    # FIX 1: aiomqtt 2.0+ syntax to prevent the silent connection crash
-                    async with self.client.messages() as messages:
-                        async for message in messages: 
-                            try:
-                                # FIX 2: Safely decode bytes
-                                payload = message.payload
-                                if isinstance(payload, bytes):
-                                    payload = payload.decode('utf-8')
-                                    
-                                # FIX 3: Auto-repair the invalid single-quote JSON from your sensor
-                                if payload.startswith("{'"):
-                                    payload = payload.replace("'", '"').replace("None", "null").replace("False", "false").replace("True", "true")
-
-                                ce = from_json(payload)
-                                topic = str(message.topic)
-                                ce["sourcepath"] = topic
-
-                                try:
-                                    await asyncio.wait_for(self.mqtt_buffer.put(ce), timeout=1.0)
-                                    
-                                    # THIS WILL FINALLY TRIGGER
-                                    L.debug("get_from_mqtt_loop success", extra={"cetype": ce["type"], "topic": topic})
-                                except asyncio.TimeoutError:
-                                    L.warning("MQTT buffer full! Dropping message.", extra={"topic": topic})
-
-                            except Exception as e:
-                                L.error("get_from_mqtt_loop inner", extra={"reason": str(e), "payload": str(message.payload)})
+                    # REVERTED: Correct aiomqtt 2.0+ syntax (No parentheses!)
+                    async for message in self.client.messages: 
+                        try:
+                            # Safely decode bytes
+                            payload = message.payload
+                            if isinstance(payload, bytes):
+                                payload = payload.decode('utf-8')
                                 
-            # FIX 4: Broaden exception to prevent ANY silent task death
+                            # Auto-repair the invalid single-quote JSON from your sensor
+                            if payload.startswith("{'"):
+                                payload = payload.replace("'", '"').replace("None", "null").replace("False", "false").replace("True", "true")
+
+                            ce = from_json(payload)
+                            
+                            # Safely extract topic string (message.topic.value is deprecated)
+                            topic_str = str(message.topic)
+                            ce["sourcepath"] = topic_str
+
+                            try:
+                                await asyncio.wait_for(self.mqtt_buffer.put(ce), timeout=1.0)
+                                L.debug("get_from_mqtt_loop success", extra={"cetype": ce["type"], "topic": topic_str})
+                            except asyncio.TimeoutError:
+                                L.warning("MQTT buffer full! Dropping message.", extra={"topic": topic_str})
+
+                        except Exception as e:
+                            # This will now safely catch and log JSON decode errors WITHOUT killing the connection
+                            L.error("get_from_mqtt_loop inner", extra={"reason": str(e), "payload": str(message.payload)})
+                                
+            # Broadened exception prevents the loop from ever dying silently again
             except Exception as error: 
-                L.error(f'MQTT Loop Error: {error}. Trying again in {reconnect} seconds')
+                L.error(f"MQTT Loop Error: {error}. Trying again in {reconnect} seconds")
                 await asyncio.sleep(reconnect)
             finally:
                 await asyncio.sleep(0.0001)
-
     async def handle_mqtt_buffer(self):
         while True:
             try:
