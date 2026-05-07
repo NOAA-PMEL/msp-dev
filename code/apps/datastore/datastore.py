@@ -688,16 +688,21 @@ class Datastore:
                 
                 # FIX: Use exact semantic version string
                 if "version" in device_def:
-                    version = str(device_def["version"])
+                    version = str(device_def["version"]).strip()
                 else:
-                    version = str(device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0"))
+                    version = str(device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")).strip()
                 
                 device_definition_id = device_def.get("device_definition_id")
                 if not device_definition_id:
                     device_definition_id = f"{make}::{model}::{version}"
                     
                 device_type = device_def.get("device_type") or device_def.get("attributes", {}).get("device_type", {}).get("data", "sensor")
-                valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
+                # valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
+                valid_time = (
+                    device_def.get("valid_time") or 
+                    device_def.get("attributes", {}).get("valid_time", {}).get("data") or 
+                    "2026-01-01T00:00:00Z"
+                )
                 attributes = device_def.get("attributes", {})
                 dimensions = device_def.get("dimensions", {})
                 variables = device_def.get("variables", {})
@@ -1204,15 +1209,20 @@ class Datastore:
                 
                 # FIX: Use exact semantic version string
                 if "version" in controller_def:
-                    version = str(controller_def["version"])
+                    version = str(controller_def["version"]).strip()
                 else:
-                    version = str(controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0"))
+                    version = str(controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")).strip()
                 
                 controller_definition_id = controller_def.get("controller_definition_id")
                 if not controller_definition_id:
                     controller_definition_id = f"{make}::{model}::{version}"
 
-                valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
+                # valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
+                valid_time = (
+                    controller_def.get("valid_time") or 
+                    controller_def.get("attributes", {}).get("valid_time", {}).get("data") or 
+                    "2026-01-01T00:00:00Z"
+                )
                 attributes = controller_def.get("attributes", {})
                 dimensions = controller_def.get("dimensions", {})
                 variables = controller_def.get("variables", {})
