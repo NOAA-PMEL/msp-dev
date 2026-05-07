@@ -250,48 +250,66 @@ class Datastore:
         reconnect = 10
         while True:
             try:
-                L.debug("listen", extra={"config": self.config})
+                self.logger.debug("listen", extra={"config": self.config})
                 client_id = str(ULID())
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as self.client:
+                async with Client(
+                    self.config.mqtt_broker,
+                    port=self.config.mqtt_port,
+                    identifier=client_id,
+                ) as self.client:
                     for topic in self.config.mqtt_topic_subscriptions.split(","):
                         if topic.strip():
-                            L.debug("subscribe", extra={"topic": topic.strip()})
-                            await self.client.subscribe(f"$share/datastore/{topic.strip()}")
+                            self.logger.debug("subscribe", extra={"topic": topic.strip()})
+                            await self.client.subscribe(
+                                f"$share/datastore/{topic.strip()}"
+                            )
 
-                    # REVERTED: Correct aiomqtt 2.0+ syntax (No parentheses!)
                     async for message in self.client.messages: 
                         try:
-                            # Safely decode bytes
-                            payload = message.payload
-                            if isinstance(payload, bytes):
-                                payload = payload.decode('utf-8')
-                                
-                            # Auto-repair the invalid single-quote JSON from your sensor
-                            if payload.startswith("{'"):
-                                payload = payload.replace("'", '"').replace("None", "null").replace("False", "false").replace("True", "true")
-
-                            ce = from_json(payload)
+                            ce = from_json(message.payload)
+                            topic = message.topic.value
+                            ce["sourcepath"] = topic
                             
-                            # Safely extract topic string (message.topic.value is deprecated)
-                            topic_str = str(message.topic)
-                            ce["sourcepath"] = topic_str
-
-                            try:
-                                await asyncio.wait_for(self.mqtt_buffer.put(ce), timeout=1.0)
-                                L.debug("get_from_mqtt_loop success", extra={"cetype": ce["type"], "topic": topic_str})
-                            except asyncio.TimeoutError:
-                                L.warning("MQTT buffer full! Dropping message.", extra={"topic": topic_str})
-
+                            await self.mqtt_buffer.put(ce)
+                            
+                            self.logger.debug(
+                                "get_from_mqtt_loop",
+                                extra={"cetype": ce["type"], "topic": topic},
+                            )
                         except Exception as e:
-                            # This will now safely catch and log JSON decode errors WITHOUT killing the connection
-                            L.error("get_from_mqtt_loop inner", extra={"reason": str(e), "payload": str(message.payload)})
-                                
-            # Broadened exception prevents the loop from ever dying silently again
-            except Exception as error: 
-                L.error(f"MQTT Loop Error: {error}. Trying again in {reconnect} seconds")
+                            self.logger.error("get_from_mqtt_loop inner", extra={"reason": e})
+                            
+            except MqttError as error:
+                self.logger.error(
+                    f"{error}. Trying again in {reconnect} seconds",
+                    extra={
+                        k: v
+                        for k, v in self.config.dict().items()
+                        if k.lower().startswith("mqtt_")
+                    },
+                )
                 await asyncio.sleep(reconnect)
             finally:
                 await asyncio.sleep(0.0001)
+
+    # async def handle_mqtt_buffer(self):
+    #     while True:
+    #         try:
+    #             ce = await self.mqtt_buffer.get()
+                
+    #             if "variable" in ce["type"]:
+    #                 self.logger.debug("handle_mqtt_buffer", extra={"ce-type": ce["type"]})
+    #             if ce["type"] == "envds.data.update":
+    #                 await self.device_data_update(ce) 
+    #             elif ce["type"] == "envds.controller.data.update":
+    #                 await self.controller_data_update(ce)
+    #             elif ce["type"] == sampet.variableset_data_update():
+    #                 self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
+    #                 await self.variableset_data_update(ce)           
+
+    #         except Exception as e:
+    #             L.error("handle_mqtt_buffer", extra={"reason": e})
+    
     async def handle_mqtt_buffer(self):
         while True:
             try:
@@ -299,6 +317,7 @@ class Datastore:
                 
                 if "variable" in ce["type"]:
                     self.logger.debug("handle_mqtt_buffer", extra={"ce-type": ce["type"]})
+                
                 if ce["type"] == "envds.data.update":
                     await self.device_data_update(ce) 
                 elif ce["type"] == "envds.controller.data.update":
@@ -307,9 +326,11 @@ class Datastore:
                     self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
                     await self.variableset_data_update(ce)           
 
+                # Crucial queue management matching sampling_system
+                self.mqtt_buffer.task_done()
+
             except Exception as e:
-                L.error("handle_mqtt_buffer", extra={"reason": e})
-            
+                self.logger.error("handle_mqtt_buffer", extra={"reason": e})
     def find_one(self):  
         return None
 
