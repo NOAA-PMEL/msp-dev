@@ -205,43 +205,90 @@ class Datastore:
             print("error", e)
         await asyncio.sleep(0.01)
 
+    # async def get_from_mqtt_loop(self):
+    #     reconnect = 10
+    #     while True:
+    #         try:
+    #             L.debug("listen", extra={"config": self.config})
+    #             client_id=str(ULID())
+    #             async with Client(self.config.mqtt_broker, port=self.config.mqtt_port,identifier=client_id) as self.client:
+    #                 for topic in self.config.mqtt_topic_subscriptions.split(","):
+    #                     if topic.strip():
+    #                         L.debug("subscribe", extra={"topic": topic.strip()})
+    #                         await self.client.subscribe(f"$share/datastore/{topic.strip()}")
+
+    #                 # async for message in self.client.messages: 
+    #                 # FIX 1: aiomqtt 2.0+ context manager syntax prevents the silent crash
+    #                 async with self.client.messages() as messages:
+    #                     async for message in messages:
+    #                         try:
+    #                             ce = from_json(message.payload)
+    #                             topic = message.topic.value
+    #                             ce["sourcepath"] = topic
+
+    #                             # FIX: Use wait_for to drop messages if the buffer is full, 
+    #                             # preventing the async for loop (and ping responses) from blocking indefinitely.
+    #                             try:
+    #                                 await asyncio.wait_for(self.mqtt_buffer.put(ce), timeout=1.0)
+    #                                 L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+    #                             except asyncio.TimeoutError:
+    #                                 L.warning("MQTT buffer full! Dropping message to prevent backpressure.", extra={"topic": topic})
+
+    #                             L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+    #                         except Exception as e:
+    #                             L.error("get_from_mqtt_loop", extra={"reason": e})
+    #         except MqttError as error:
+    #             L.error(
+    #                 f'{error}. Trying again in {reconnect} seconds',
+    #                 extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
+    #             )
+    #             await asyncio.sleep(reconnect)
+    #         finally:
+    #             await asyncio.sleep(0.0001)
+
     async def get_from_mqtt_loop(self):
         reconnect = 10
         while True:
             try:
                 L.debug("listen", extra={"config": self.config})
                 client_id=str(ULID())
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port,identifier=client_id) as self.client:
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as self.client:
                     for topic in self.config.mqtt_topic_subscriptions.split(","):
                         if topic.strip():
                             L.debug("subscribe", extra={"topic": topic.strip()})
                             await self.client.subscribe(f"$share/datastore/{topic.strip()}")
 
-                    # async for message in self.client.messages: 
-                    # FIX 1: aiomqtt 2.0+ context manager syntax prevents the silent crash
+                    # FIX 1: aiomqtt 2.0+ syntax to prevent the silent connection crash
                     async with self.client.messages() as messages:
-                        async for message in messages:
+                        async for message in messages: 
                             try:
-                                ce = from_json(message.payload)
-                                topic = message.topic.value
+                                # FIX 2: Safely decode bytes
+                                payload = message.payload
+                                if isinstance(payload, bytes):
+                                    payload = payload.decode('utf-8')
+                                    
+                                # FIX 3: Auto-repair the invalid single-quote JSON from your sensor
+                                if payload.startswith("{'"):
+                                    payload = payload.replace("'", '"').replace("None", "null").replace("False", "false").replace("True", "true")
+
+                                ce = from_json(payload)
+                                topic = str(message.topic)
                                 ce["sourcepath"] = topic
 
-                                # FIX: Use wait_for to drop messages if the buffer is full, 
-                                # preventing the async for loop (and ping responses) from blocking indefinitely.
                                 try:
                                     await asyncio.wait_for(self.mqtt_buffer.put(ce), timeout=1.0)
-                                    L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+                                    
+                                    # THIS WILL FINALLY TRIGGER
+                                    L.debug("get_from_mqtt_loop success", extra={"cetype": ce["type"], "topic": topic})
                                 except asyncio.TimeoutError:
-                                    L.warning("MQTT buffer full! Dropping message to prevent backpressure.", extra={"topic": topic})
+                                    L.warning("MQTT buffer full! Dropping message.", extra={"topic": topic})
 
-                                L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
                             except Exception as e:
-                                L.error("get_from_mqtt_loop", extra={"reason": e})
-            except MqttError as error:
-                L.error(
-                    f'{error}. Trying again in {reconnect} seconds',
-                    extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
-                )
+                                L.error("get_from_mqtt_loop inner", extra={"reason": str(e), "payload": str(message.payload)})
+                                
+            # FIX 4: Broaden exception to prevent ANY silent task death
+            except Exception as error: 
+                L.error(f'MQTT Loop Error: {error}. Trying again in {reconnect} seconds')
                 await asyncio.sleep(reconnect)
             finally:
                 await asyncio.sleep(0.0001)
