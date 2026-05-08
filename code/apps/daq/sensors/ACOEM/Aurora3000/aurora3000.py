@@ -21,9 +21,6 @@ class Aurora3000(Sensor):
         self.default_data_buffer = asyncio.Queue()
         self.sensor_definition_file = "ACOEM_Aurora3000_sensor_definition.json"
         
-        # State persistence location
-        self.state_file = "/app/data/aurora3000_state.json"
-        
         # State Tracking
         self.cal_active = False
         self.module_address = "0"
@@ -39,32 +36,6 @@ class Aurora3000(Sensor):
 
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
-
-    def load_local_state(self):
-        """Loads persistent valve state and other settings from disk."""
-        try:
-            with open(self.state_file, "r") as f:
-                state = json.load(f)
-                for key, value in state.items():
-                    if value is not None:
-                        self.settings.set_setting(key, value)
-            self.logger.info(f"Loaded local state from {self.state_file}")
-        except FileNotFoundError:
-            self.logger.info("No local state file found. Using JSON schema defaults.")
-        except Exception as e:
-            self.logger.error(f"Error loading local state: {e}")
-
-    def save_local_state(self):
-        """Saves current state values to disk."""
-        state = {
-            "ext_valve_state": self.settings.get_setting("ext_valve_state")
-        }
-        try:
-            os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
-            with open(self.state_file, "w") as f:
-                json.dump(state, f, indent=4)
-        except Exception as e:
-            self.logger.error(f"Failed to save local state: {e}")
 
     def configure(self):
         super(Aurora3000, self).configure()
@@ -98,9 +69,6 @@ class Aurora3000(Sensor):
             if "settings" in conf and name in conf["settings"]:
                 requested = conf["settings"][name]
             self.settings.set_setting(name, requested=requested)
-
-        # Overwrite defaults with any previously saved local state
-        self.load_local_state()
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
@@ -156,7 +124,6 @@ class Aurora3000(Sensor):
         await super().settings_check()
         
         if not self.settings.get_health():
-            state_changed = False
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
                     target_val = self.settings.get_setting(name)
@@ -164,7 +131,6 @@ class Aurora3000(Sensor):
                     if name == "ext_valve_state":
                         await self.set_ext_valve(target_val)
                         self.settings.set_setting(name, target_val) # Acknowledge health
-                        state_changed = True
                         
                     elif name == "sampling_state":
                         self.settings.set_setting(name, target_val)
@@ -172,15 +138,11 @@ class Aurora3000(Sensor):
                     elif name == "calibration_routine":
                         self.settings.set_setting(name, target_val)
 
-            # Persist to disk if the valve state was explicitly changed
-            if state_changed:
-                self.save_local_state()
-
     async def sampling_monitor(self):
         """State machine mapping envds settings to Aurora hardware routines."""
         self.polling_task = asyncio.create_task(self.polling_loop())
         
-        # Ensure the valve aligns with persistent state on boot
+        # Ensure the valve aligns with default schema state on boot
         startup_valve = self.settings.get_setting("ext_valve_state")
         if startup_valve:
             await self.set_ext_valve(startup_valve)
