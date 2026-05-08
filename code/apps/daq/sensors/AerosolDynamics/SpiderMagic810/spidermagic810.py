@@ -38,7 +38,7 @@ class SpiderMagic810(Sensor):
             with open("/app/config/sensor.conf", "r") as f:
                 conf = yaml.safe_load(f)
         except FileNotFoundError: 
-            conf = {"interfaces": {}}
+            conf = {"serial_number": "UNKNOWN", "interfaces": {}}
             
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"], 
@@ -47,16 +47,16 @@ class SpiderMagic810(Sensor):
             settings=dict()
         )
         
+        # FIX: Dynamically pull serial_number and daq_id from conf instead of hardcoding
         self.config = DeviceConfig(
-            make="AerosolDynamics", 
-            model="SPIDERMAGIC810", 
-            serial_number="UNKNOWN", 
+            make=self.metadata["attributes"]["make"]["data"], 
+            model=self.metadata["attributes"]["model"]["data"], 
+            serial_number=conf.get("serial_number", "UNKNOWN"), 
             metadata=meta, 
             interfaces=conf.get("interfaces", {}), 
-            daq_id="default"
+            daq_id=conf.get("daq_id", "default")
         )
 
-        # FIX 1: Set device format version properly
         try:
             self.device_format_version = self.config.metadata.attributes["format_version"].data
         except (KeyError, AttributeError):
@@ -67,7 +67,6 @@ class SpiderMagic810(Sensor):
                 self.add_interface(name, iface)
 
     async def settings_check(self):
-        """FIX 2: Uses set_actual to prevent recursion depth error"""
         await super().settings_check()
         if not self.settings.get_health():
             for name in self.settings.get_settings().keys():
@@ -78,7 +77,6 @@ class SpiderMagic810(Sensor):
                         self.settings.set_actual(name, target_val)
 
     async def sampling_monitor(self):
-        """FIX 3: Safely extract state dictionary payload"""
         cmds = ["v1,5\r", "v2,5000\r", "hvgo\r"]
         need_start = True
         await asyncio.sleep(2)
@@ -116,7 +114,6 @@ class SpiderMagic810(Sensor):
             await asyncio.sleep(0.1)
 
     def default_parse(self, data):
-        """FIX 4: variable_types filtering to reduce payload"""
         if not data: 
             return None
             
@@ -157,7 +154,16 @@ async def main(server_config: ServerConfig = None):
     if server_config is None:
         server_config = ServerConfig()
 
+    # FIX: Pull SN for the logger
+    sn = "9999"
+    try:
+        with open("/app/config/sensor.conf", "r") as f:
+            conf = yaml.safe_load(f)
+            sn = conf.get("serial_number", "9999")
+    except FileNotFoundError: pass
+
     envdsLogger(level=logging.DEBUG).init_logger()
+    logger = logging.getLogger(f"AerosolDynamics::SPIDERMAGIC810::{sn}")
     
     inst = SpiderMagic810()
     inst.run()
