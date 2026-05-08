@@ -34,46 +34,102 @@ class SpiderMagic810(Sensor):
 
     def configure(self):
         super(SpiderMagic810, self).configure()
-        
-        # 1. Load the local sensor configuration
+
+        # get config from file
         try:
             with open("/app/config/sensor.conf", "r") as f:
                 conf = yaml.safe_load(f)
-        except FileNotFoundError: 
+        except FileNotFoundError:
             conf = {"serial_number": "UNKNOWN", "interfaces": {}}
-            
-        # 2. Build Metadata from the JSON definition
-        meta = DeviceMetadata(
-            attributes=self.metadata["attributes"], 
-            dimensions=self.metadata["dimensions"], 
-            variables=self.metadata["variables"], 
-            settings=dict()
-        )
+
+        if "metadata_interval" in conf:
+            self.include_metadata_interval = conf["metadata_interval"]
+
+        sensor_iface_properties = {
+            "default": {
+                "device-interface-properties": {
+                    "connection-properties": {
+                        "baudrate": 115200,
+                        "bytesize": 8,
+                        "parity": "N",
+                        "stopbit": 1,
+                    },
+                    "read-properties": {
+                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
+                        # "read-terminator": "\r",  # only used for read_until
+                        "decode-errors": "strict",
+                        "send-method": "ascii",
+                    },
+                }
+            }
+        }
+
+        if "interfaces" in conf:
+            for name, iface in conf["interfaces"].items():
+                if name in sensor_iface_properties:
+                    for propname, prop in sensor_iface_properties[name].items():
+                        iface[propname] = prop
+
+            self.logger.debug(
+                "SpiderMagic810.configure", extra={"interfaces": conf["interfaces"]}
+            )
+
+        # TODO change settings for new sensor definition
+        '''
+        The new settings are part [variables] now so this is a bit of a hack to use the existing structure
+        with the new format.
+        '''
+        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+        # for name, setting in self.metadata["settings"].items():
+        for name, setting in settings_def["variables"].items():
         
-        # 3. Initialize DeviceConfig with dynamic values from sensor.conf
-        self.config = DeviceConfig(
-            make=self.metadata["attributes"]["make"]["data"], 
-            model=self.metadata["attributes"]["model"]["data"], 
-            serial_number=conf.get("serial_number", "UNKNOWN"), 
-            metadata=meta, 
-            interfaces=conf.get("interfaces", {}), 
-            daq_id=conf.get("daq_id", "default")
+            requested = setting["attributes"]["default_value"]["data"]
+            if "settings" in config and name in config["settings"]:
+                requested = config["settings"][name]
+
+            self.settings.set_setting(name, requested=requested)
+
+        meta = DeviceMetadata(
+            attributes=self.metadata["attributes"],
+            dimensions=self.metadata["dimensions"],
+            variables=self.metadata["variables"],
+            # settings=self.metadata["settings"],
+            settings=settings_def["variables"]
         )
 
-        # 4. Set format version using proper dictionary indexing
+        self.config = DeviceConfig(
+            make=self.metadata["attributes"]["make"]["data"],
+            model=self.metadata["attributes"]["model"]["data"],
+            serial_number=conf["serial_number"],
+            metadata=meta,
+            interfaces=conf["interfaces"],
+            daq_id=conf["daq_id"],
+        )
+
+        print(f"self.config: {self.config}")
+
         try:
-            self.device_format_version = self.metadata["attributes"]["format_version"]["data"]
-        except (KeyError, TypeError):
+            self.device_format_version = self.config.metadata.attributes[
+                "format_version"
+            ]["data"]
+        except KeyError:
             pass
 
-        # 5. CRITICAL: Restore the interface setup loop
-        if "interfaces" in conf:
-            for name, iface in conf["interfaces"].items(): 
-                try:
+        self.logger.debug(
+            "configure",
+            extra={"conf": conf, "self.config": self.config},
+        )
+
+        try:
+            if "interfaces" in conf:
+                for name, iface in conf["interfaces"].items():
+                    print(f"add: {name}, {iface}")
                     self.add_interface(name, iface)
-                    self.logger.info(f"Interface '{name}' added successfully")
-                except Exception as e:
-                    self.logger.error(f"Failed to add interface '{name}': {e}")
+                    # self.iface_map[name] = iface
+        except Exception as e:
+            print(e)
+
+        self.logger.debug("iface_map", extra={"map": self.iface_map})
 
     async def settings_check(self):
         await super().settings_check()
