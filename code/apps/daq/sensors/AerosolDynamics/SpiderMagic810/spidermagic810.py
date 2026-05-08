@@ -34,12 +34,15 @@ class SpiderMagic810(Sensor):
 
     def configure(self):
         super(SpiderMagic810, self).configure()
+        
+        # 1. Load the local sensor configuration
         try:
             with open("/app/config/sensor.conf", "r") as f:
                 conf = yaml.safe_load(f)
         except FileNotFoundError: 
             conf = {"serial_number": "UNKNOWN", "interfaces": {}}
             
+        # 2. Build Metadata from the JSON definition
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"], 
             dimensions=self.metadata["dimensions"], 
@@ -47,7 +50,7 @@ class SpiderMagic810(Sensor):
             settings=dict()
         )
         
-        # FIX: Dynamically pull serial_number and daq_id from conf instead of hardcoding
+        # 3. Initialize DeviceConfig with dynamic values from sensor.conf
         self.config = DeviceConfig(
             make=self.metadata["attributes"]["make"]["data"], 
             model=self.metadata["attributes"]["model"]["data"], 
@@ -57,14 +60,20 @@ class SpiderMagic810(Sensor):
             daq_id=conf.get("daq_id", "default")
         )
 
+        # 4. Set format version using proper dictionary indexing
         try:
-            self.device_format_version = self.config.metadata.attributes["format_version"].data
-        except (KeyError, AttributeError):
+            self.device_format_version = self.metadata["attributes"]["format_version"]["data"]
+        except (KeyError, TypeError):
             pass
 
+        # 5. CRITICAL: Restore the interface setup loop
         if "interfaces" in conf:
             for name, iface in conf["interfaces"].items(): 
-                self.add_interface(name, iface)
+                try:
+                    self.add_interface(name, iface)
+                    self.logger.info(f"Interface '{name}' added successfully")
+                except Exception as e:
+                    self.logger.error(f"Failed to add interface '{name}': {e}")
 
     async def settings_check(self):
         await super().settings_check()

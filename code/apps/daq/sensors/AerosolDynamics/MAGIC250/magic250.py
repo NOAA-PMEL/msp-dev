@@ -113,7 +113,7 @@ class MAGIC250(Sensor):
 
         # Restored block: Extract format_version to ensure build_data_record uses the JSON schema version
         try:
-            self.device_format_version = self.config.metadata.attributes["format_version"].data
+            self.device_format_version = self.metadata["attributes"]["format_version"]["data"]
         except (KeyError, AttributeError):
             pass
 

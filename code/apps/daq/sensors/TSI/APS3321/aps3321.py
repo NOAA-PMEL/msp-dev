@@ -97,7 +97,7 @@ class APS3321(Sensor):
         )
 
         try:
-            self.device_format_version = self.config.metadata.attributes["format_version"].data
+            self.device_format_version = self.metadata["attributes"]["format_version"]["data"]
         except (KeyError, AttributeError):
             pass
 
@@ -330,7 +330,15 @@ class APS3321(Sensor):
                     instvar = self.config.metadata.variables[name]
                     try:
                         val = compiled_record if len(self.var_name) == 1 else compiled_record[index]
-                        record["variables"][name]["data"] = int(val) if instvar.type == "int" else (float(val) if instvar.type == "float" else val)
+                        # record["variables"][name]["data"] = int(val) if instvar.type == "int" else (float(val) if instvar.type == "float" else val)
+
+                        # FIX: If the value is an array, it is already cast properly by our comprehensions.
+                        # Only apply int() or float() casting if it's a scalar string.
+                        if isinstance(val, list):
+                            record["variables"][name]["data"] = val
+                        else:
+                            record["variables"][name]["data"] = int(val) if instvar.type == "int" else (float(val) if instvar.type == "float" else val)
+
                     except ValueError:
                         record["variables"][name]["data"] = "" if instvar.type in ("str", "char") else None
             return record
