@@ -34,17 +34,13 @@ class SpiderMagic810(Sensor):
 
     def configure(self):
         super(SpiderMagic810, self).configure()
-
-        # get config from file
         try:
             with open("/app/config/sensor.conf", "r") as f:
                 conf = yaml.safe_load(f)
-        except FileNotFoundError:
+        except FileNotFoundError: 
             conf = {"serial_number": "UNKNOWN", "interfaces": {}}
 
-        if "metadata_interval" in conf:
-            self.include_metadata_interval = conf["metadata_interval"]
-
+        # Aerosol Dynamics Standard Serial Parameters
         sensor_iface_properties = {
             "default": {
                 "device-interface-properties": {
@@ -55,8 +51,7 @@ class SpiderMagic810(Sensor):
                         "stopbit": 1,
                     },
                     "read-properties": {
-                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
-                        # "read-terminator": "\r",  # only used for read_until
+                        "read-method": "readline",
                         "decode-errors": "strict",
                         "send-method": "ascii",
                     },
@@ -64,72 +59,39 @@ class SpiderMagic810(Sensor):
             }
         }
 
+        # Inject properties into conf interfaces before creating DeviceConfig
         if "interfaces" in conf:
             for name, iface in conf["interfaces"].items():
                 if name in sensor_iface_properties:
                     for propname, prop in sensor_iface_properties[name].items():
                         iface[propname] = prop
-
-            self.logger.debug(
-                "SpiderMagic810.configure", extra={"interfaces": conf["interfaces"]}
-            )
-
-        # TODO change settings for new sensor definition
-        '''
-        The new settings are part [variables] now so this is a bit of a hack to use the existing structure
-        with the new format.
-        '''
-        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
-        # for name, setting in self.metadata["settings"].items():
-        for name, setting in settings_def["variables"].items():
-        
-            requested = setting["attributes"]["default_value"]["data"]
-            if "settings" in conf and name in conf["settings"]:
-                requested = conf["settings"][name]
-
-            self.settings.set_setting(name, requested=requested)
-
+            
         meta = DeviceMetadata(
-            attributes=self.metadata["attributes"],
-            dimensions=self.metadata["dimensions"],
-            variables=self.metadata["variables"],
-            # settings=self.metadata["settings"],
-            settings=settings_def["variables"]
+            attributes=self.metadata["attributes"], 
+            dimensions=self.metadata["dimensions"], 
+            variables=self.metadata["variables"], 
+            settings=dict()
         )
-
+        
         self.config = DeviceConfig(
-            make=self.metadata["attributes"]["make"]["data"],
-            model=self.metadata["attributes"]["model"]["data"],
-            serial_number=conf["serial_number"],
-            metadata=meta,
-            interfaces=conf["interfaces"],
-            daq_id=conf["daq_id"],
+            make=self.metadata["attributes"]["make"]["data"], 
+            model=self.metadata["attributes"]["model"]["data"], 
+            serial_number=conf.get("serial_number", "UNKNOWN"), 
+            metadata=meta, 
+            interfaces=conf.get("interfaces", {}), 
+            daq_id=conf.get("daq_id", "default")
         )
 
-        print(f"self.config: {self.config}")
-
+        # Fix version indexing
         try:
-            self.device_format_version = self.config.metadata.attributes[
-                "format_version"
-            ]["data"]
-        except KeyError:
+            self.device_format_version = self.metadata["attributes"]["format_version"]["data"]
+        except (KeyError, TypeError):
             pass
 
-        self.logger.debug(
-            "configure",
-            extra={"conf": conf, "self.config": self.config},
-        )
-
-        try:
-            if "interfaces" in conf:
-                for name, iface in conf["interfaces"].items():
-                    print(f"add: {name}, {iface}")
-                    self.add_interface(name, iface)
-                    # self.iface_map[name] = iface
-        except Exception as e:
-            print(e)
-
-        self.logger.debug("iface_map", extra={"map": self.iface_map})
+        # CRITICAL: add_interface MUST be called for each interface in conf
+        if "interfaces" in conf:
+            for name, iface in conf["interfaces"].items(): 
+                self.add_interface(name, iface)
 
     async def settings_check(self):
         await super().settings_check()
