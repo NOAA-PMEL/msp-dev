@@ -1,522 +1,33 @@
 import asyncio
 import math
 import signal
-
-# import uvicorn
-# from uvicorn.config import LOGGING_CONFIG
 import sys
 import os
 import logging
 import traceback
-
-# from logfmter import Logfmter
 import logging.config
-
-# from pydantic import BaseSettings, Field
-# import json
 import yaml
 import random
-from envds.core import envdsLogger
-
-# from envds.daq.db import get_sensor_registration, register_sensor  # , envdsBase, envdsStatus
-from envds.util.util import (
-    # get_datetime_format,
-    time_to_next,
-    get_datetime,
-    get_datetime_string,
-)
-# from envds.daq.sensor import Sensor, SensorConfig, SensorVariable, SensorMetadata
-from envds.daq.sensor import Sensor
-from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
-
-# from envds.event.event import create_data_update, create_status_update
-from envds.daq.types import DAQEventType as det
-from envds.daq.event import DAQEvent
-# from envds.message.message import Message
-
-# from envds.exceptions import envdsRunTransitionException
-
-# from typing import Union
-from cloudevents.http import CloudEvent
-# from cloudevents.conversion import to_json, to_structured
-
-from pydantic import BaseModel
 import json
 import numpy as np
 
-from inversion import StandardInversion, AerosolDynamicsInversion
+from envds.core import envdsLogger
+from envds.util.util import time_to_next, get_datetime, get_datetime_string
+from envds.daq.sensor import Sensor
+from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
+from envds.daq.types import DAQEventType as det
+from envds.daq.event import DAQEvent
+from cloudevents.http import CloudEvent
+from pydantic import BaseModel
 
-# from envds.daq.db import init_sensor_type_registration, register_sensor_type
+from inversion import StandardInversion, AerosolDynamicsInversion
 
 task_list = []
 
-
 class SpiderMagic810(Sensor):
-    """docstring for SpiderMagic810."""
-
-    metadata = {
-        "attributes": {
-            # "name": {"type"mock1",
-            "make": {"type": "string", "data": "AerosolDynamics"},
-            "model": {"type": "string", "data": "Spider-MAGIC810"},
-            "description": {
-                "type": "string",
-                "data": "Aerosol particle mobility spectrometer (combines Spider DMA and MAGIC CPC) manufactured by Aerosol Dyanamics and distributed by Aerosol Devices/Handix",
-            },
-            "tags": {
-                "type": "char",
-                "data": "aerosol, cpc, dma, spectrometer, size distribution, particles, concentration, sensor",
-            },
-            "format_version": {"type": "char", "data": "1.0.0"},
-            "variable_types": {"type": "string", "data": "main, setting, calibration"},
-            "serial_number": {"type": "string", "data": ""},
-        },
-        "dimensions": {"time": 0, "diameter": 53},
-        "variables": {
-            "time": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Time"}
-                },
-            },
-            "tau": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Ratio of the exponential scan time constant to the gas mean residence time in the classifier"}
-                },
-            },
-            "HV_polarity": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "High Voltage Polarity"}
-                },
-            },
-            "scan_dir": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Scan Sequence Direction"}
-                },
-            },
-            "data_freq": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Data Frequency for Display"},
-                    "units": {"type": "char", "data": "Hz"},
-                },
-            },
-            "HV_status": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "High Voltage Status"}
-                },
-            },
-            "vp_rd": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Voltage Polarity and Ramp Direction"}
-                },
-            },
-            "spidermagic_timestamp": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Timestamp"}
-                },
-            },
-            "dew_point": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Dew Point"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "input_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Input T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "input_rh": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Input RH"},
-                    "units": {"type": "char", "data": "percent"},
-                },
-            },
-            "cond_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Conditioner T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "init_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Initiator T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "mod_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Moderator T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "opt_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Optics Head T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "heatsink_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Heat Sink T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "case_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Case T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "wick_sensor": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Wick Sensor"},
-                    "units": {"type": "char", "data": "percent"},
-                },
-            },
-            "mod_T_sp": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Moderator Set Point T"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "humid_exit_dew_point": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Humidifier Exit Dew Point (estimated)",
-                    },
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "wadc": {
-                "type": "int",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Wick Sensor Raw ADC Signal",
-                    }
-                },
-            },
-            "DMA_V": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Voltage (read) supplied to the Spider DMA electrode",
-                    },
-                    "units": {"type": "char", "data": "Volts"},
-                },
-            },
-            "Qsh": {
-                "type": "int",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Volumetric flowrate of the DMA sheath flow",
-                    },
-                    "units": {"type": "char", "data": "cm3 min-1"},
-                },
-            },
-            "abs_pressure": {
-                "type": "int",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Absolute Pressure"},
-                    "units": {"type": "char", "data": "mbar"},
-                },
-            },
-            "flow": {
-                "type": "int",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Volumetric Flow Rate"},
-                    "units": {"type": "char", "data": "cm3 min-1"},
-                    # "valid_min": {"type": "float", "data": 0.0},
-                    # "valid_max": {"type": "float", "data": 5.0},
-                },
-            },
-            "pHt2.%": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Upper Threshold.Percentile"},
-                    "description": {
-                        "type": "char",
-                        "data": "Two pieces of information. The number before the decimal is the upper threshold in mV. The number after the decimal represents the percentage of light-scattering pulses that were large enough to exceed the upper threshold. Under default settings dhtr2 represents the median pulse height.",
-                    },
-                },
-            },
-            "status_hex": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Compact display of status codes",
-                    },
-                },
-            },
-            "status_ascii": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Alphabetic list of all abnormal status codes",
-                    },
-                },
-            },
-            "spidermagic_serial_number": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {
-                        "type": "char",
-                        "data": "Serial Number",
-                    },
-                },
-            },
-            "Vi": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Starting Voltage"},
-                    "units": {"type": "char", "data": "volts"}
-                },
-            },
-            "Vf": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Ending Voltage"},
-                    "units": {"type": "char", "data": "volts"}
-                },
-            },
-            "Vmax": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Maximum Voltage"},
-                    "units": {"type": "char", "data": "volts"}
-                },
-            },
-            "Tc": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Time Constant"},
-                },
-            },
-            "elap_time": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Elapsed Time during Scan"},
-                    "units": {"type": "char", "data": "seconds"},
-                },
-            },
-            "scan_status": {
-                "type": "char",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Scan Status"},
-                },
-            },
-            "set_V": {
-                "type": "float",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Set Voltage"},
-                    "units": {"type": "char", "data": "volts"}
-                },
-            },
-            "read_V": {
-                "type": "float",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Read Voltage"},
-                    "units": {"type": "char", "data": "volts"}
-                },
-            },
-            "concentration": {
-                "type": "float",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Concentration"},
-                    "units": {"type": "char", "data": "cm-3"},
-                },
-            },
-            "raw_counts": {
-                "type": "int",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Raw Counts"},
-                    "units": {"type": "char", "data": "counts"},
-                },
-            },
-            "dead_counts": {
-                "type": "int",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Dead Counts"},
-                    "units": {"type": "char", "data": "counts"},
-                },
-            },
-            "sh_flow": {
-                "type": "int",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Sheath Flow"},
-                    "units": {"type": "char", "data": "cm3 min-1"},
-                },
-            },
-            "aer_flow": {
-                "type": "int",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Aerosol Flow"},
-                    "units": {"type": "char", "data": "cm3 min-1"},
-                },
-            },
-            "diameter": {
-                "type": "int",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Diameter"},
-                    "units": {"type": "char", "data": "nm"},
-                },
-            },
-            "dN": {
-                "type": "int",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Diameter"},
-                    "units": {"type": "char", "data": "cm-3"},
-                },
-            },
-            "dlogDp": {
-                "type": "int",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Diameter"},
-                },
-            },
-            "dNdlogDp": {
-                "type": "int",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Diameter"},
-                    "units": {"type": "char", "data": "cm-3"},
-                },
-            },
-            "intN": {
-                "type": "int",
-                "shape": ["time", "diameter"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Diameter"},
-                    "units": {"type": "char", "data": "counts"},
-                },
-            },
-        },
-    }
-
-
     def __init__(self, config=None, **kwargs):
         super(SpiderMagic810, self).__init__(config=config, **kwargs)
-        self.data_task = None
         self.data_rate = 1
-        # self.configure()
         self.first_record = 'HDT'
         self.last_record = 'CHANGE'
         self.array_buffer = []
@@ -542,34 +53,13 @@ class SpiderMagic810(Sensor):
             self.logger.error("sensor_definition not found. Exiting")            
             sys.exit(1)
 
-        # os.environ["REDIS_OM_URL"] = "redis://redis.default"
-
-        # self.data_loop_task = None
-
-        # all handled in run_setup ----
-        # self.configure()
-
-        # # self.logger = logging.getLogger(f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.logger = logging.getLogger(self.build_app_uid())
-
-        # # self.update_id("app_uid", f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.update_id("app_uid", self.build_app_uid())
-
-        # self.logger.debug("id", extra={"self.id": self.id})
-        # print(f"config: {self.config}")
-        # ----
-
-        # self.sampling_task_list.append(self.data_loop())
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
-        # self.enable_task_list.append(self.register_sensor())
-        # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
 
     def configure(self):
         super(SpiderMagic810, self).configure()
 
-        # get config from file
         try:
             with open("/app/config/sensor.conf", "r") as f:
                 conf = yaml.safe_load(f)
@@ -589,8 +79,7 @@ class SpiderMagic810(Sensor):
                         "stopbit": 1,
                     },
                     "read-properties": {
-                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
-                        # "read-terminator": "\r",  # only used for read_until
+                        "read-method": "readline",
                         "decode-errors": "strict",
                         "send-method": "ascii",
                     },
@@ -604,22 +93,13 @@ class SpiderMagic810(Sensor):
                     for propname, prop in sensor_iface_properties[name].items():
                         iface[propname] = prop
 
-            self.logger.debug(
-                "SpiderMagic810.configure", extra={"interfaces": conf["interfaces"]}
-            )
+            self.logger.debug("SpiderMagic810.configure", extra={"interfaces": conf["interfaces"]})
 
-        # TODO change settings for new sensor definition
-        '''
-        The new settings are part [variables] now so this is a bit of a hack to use the existing structure
-        with the new format.
-        '''
         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
-        # for name, setting in self.metadata["settings"].items():
         for name, setting in settings_def["variables"].items():
-        
             requested = setting["attributes"]["default_value"]["data"]
-            if "settings" in config and name in config["settings"]:
-                requested = config["settings"][name]
+            if "settings" in conf and name in conf["settings"]:
+                requested = conf["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
 
@@ -627,48 +107,31 @@ class SpiderMagic810(Sensor):
             attributes=self.metadata["attributes"],
             dimensions=self.metadata["dimensions"],
             variables=self.metadata["variables"],
-            # settings=self.metadata["settings"],
             settings=settings_def["variables"]
         )
 
         self.config = DeviceConfig(
             make=self.metadata["attributes"]["make"]["data"],
             model=self.metadata["attributes"]["model"]["data"],
-            serial_number=conf["serial_number"],
+            serial_number=conf.get("serial_number", "UNKNOWN"),
             metadata=meta,
-            interfaces=conf["interfaces"],
-            daq_id=conf["daq_id"],
+            interfaces=conf.get("interfaces", {}),
+            daq_id=conf.get("daq_id", "default"),
         )
 
-        print(f"self.config: {self.config}")
-
-        try:
-            self.device_format_version = self.config.metadata.attributes[
-                "format_version"
-            ].data
-        except KeyError:
-            pass
-
-        self.logger.debug(
-            "configure",
-            extra={"conf": conf, "self.config": self.config},
-        )
+        self.logger.debug("configure", extra={"conf": conf, "self.config": self.config})
 
         try:
             if "interfaces" in conf:
                 for name, iface in conf["interfaces"].items():
-                    print(f"add: {name}, {iface}")
                     self.add_interface(name, iface)
-                    # self.iface_map[name] = iface
         except Exception as e:
             print(e)
 
         self.logger.debug("iface_map", extra={"map": self.iface_map})
 
-        # 2. Set up the inversion strategy
-        # You can eventually pull this "method" string from your sensor.conf
+        # Set up the inversion strategy
         inversion_method = "standard" 
-        
         if inversion_method == "aerosol_dynamics":
             self.inversion_routine = AerosolDynamicsInversion(config=conf)
             self.logger.info("Initialized Aerosol Dynamics Inversion")
@@ -676,88 +139,57 @@ class SpiderMagic810(Sensor):
             self.inversion_routine = StandardInversion(config=conf)
             self.logger.info("Initialized Standard Inversion")
 
-    # async def handle_interface_message(self, message: Message):
     async def handle_interface_message(self, message: CloudEvent):
         pass
 
-    # async def handle_interface_data(self, message: Message):
     async def handle_interface_data(self, message: CloudEvent):
         await super(SpiderMagic810, self).handle_interface_data(message)
 
-        # self.logger.debug("interface_recv_data", extra={"data": message})
-        # if message.data["type"] == det.interface_data_recv():
         if message["type"] == det.interface_data_recv():
             try:
-                # path_id = message.data["path_id"]
                 path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
-                # if path_id == "default":
                 if path_id == iface_path:
-                    self.logger.debug(
-                        # "interface_recv_data", extra={"data": message.data.data}
-                        "interface_recv_data", extra={"data": message.data}
-                    )
-                    # await self.default_data_buffer.put(message.data)
+                    self.logger.debug("interface_recv_data", extra={"data": message.data})
                     await self.default_data_buffer.put(message)
             except KeyError:
                 pass
 
     async def settings_check(self):
+        """Intercepts MQTT settings requests and acknowledges them."""
         await super().settings_check()
 
-        if not self.settings.get_health():  # something has changed
+        if not self.settings.get_health():
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
-                    self.logger.debug(
-                        "settings_check - set setting",
-                        extra={
-                            "setting-name": name,
-                            "setting": self.settings.get_setting(name),
-                        },
-                    )
-
-    # async def register_sensor(self):
-    #     try:
-
-    #         make = self.config.make
-    #         model = self.config.model
-    #         serial_number = self.config.serial_number
-    #         if not await get_sensor_registration(make=make, model=model, serial_number=serial_number):
-
-    #             await register_sensor(
-    #                 make=make,
-    #                 model=model,
-    #                 serial_number=serial_number,
-    #                 source_id=self.get_id_as_source(),
-    #             )
-
-    #     except Exception as e:
-    #         self.logger.error("sensor_reg error", extra={"e": e})
+                    target_val = self.settings.get_setting(name)
+                    self.logger.info(f"MQTT Settings Request: changing {name} to {target_val}")
+                    
+                    if name == "sampling_state":
+                        self.settings.set_setting(name, target_val)
+                        
+                    elif name == "calibration_routine":
+                        self.settings.set_setting(name, target_val)
 
     async def sampling_monitor(self):
-
-        # start_command = f"Log,{self.sampling_interval}\n"
+        """State machine controller managing the Spider DMA hardware ramps."""
         start_command = "hvgo\r"
-        v1_setting = "v1,5\r" # these can be config values 
+        v1_setting = "v1,5\r" 
         v2_setting = "v2,5000\r"
         start_commands = [v1_setting, v2_setting, start_command]
         stop_command = "stop\r"
 
         need_start = True
         start_requested = False
-        # wait to see if data is already streaming
+        
         await asyncio.sleep(2)
-        # # if self.collecting:
-        # await self.interface_send_data(data={"data": stop_command})
-        # await asyncio.sleep(2)
-        # self.collecting = False
-        # init to stopped
-        # await self.stop_command()
 
         while True:
             try:
-
-                if self.sampling():
+                state = self.settings.get_setting("sampling_state") or "idle"
+                
+                # Check both framework sampling state AND user setting
+                if self.sampling() and state.lower() == "sampling":
 
                     if need_start:
                         if self.collecting:
@@ -770,12 +202,11 @@ class SpiderMagic810(Sensor):
                                 await self.interface_send_data(data={"data": cmd})
                                 await asyncio.sleep(.5)
 
-                            # await self.interface_send_data(data={"data": start_command})
-                            # await self.interface_send_data(data={"data": "\n"})
                             need_start = False
                             start_requested = True
                             await asyncio.sleep(2)
                             continue
+                            
                     elif start_requested:
                         if self.collecting:
                             start_requested = False
@@ -784,237 +215,26 @@ class SpiderMagic810(Sensor):
                                 await self.interface_send_data(data={"data": cmd})
                                 await asyncio.sleep(.5)
 
-                            # await self.interface_send_data(data={"data": start_command})
-                            # await self.interface_send_data(data={"data": "\n"})
                             await asyncio.sleep(2)
                             continue
-                else:
-                    if self.collecting:
+                            
+                elif state.lower() in ["idle", "maintenance", "error", "calibration"]:
+                    # If framework stops OR user sets state to non-sampling (e.g., maintenance)
+                    if self.collecting or not need_start:
                         await self.interface_send_data(data={"data": stop_command})
+                        self.logger.info(f"State transitioned to {state}. Halting Spider DMA scans.")
                         await asyncio.sleep(2)
+                        
                         self.collecting = False
+                        need_start = True  # Reset so it can start again if toggled back to sampling
+                        start_requested = False
 
                 await asyncio.sleep(0.1)
 
             except Exception as e:
-                print(f"sampling monitor error: {e}")
+                self.logger.error(f"sampling monitor error: {e}")
 
             await asyncio.sleep(0.1)
-
-
-    # async def default_data_loop(self):
-
-    #     while True:
-    #         try:
-    #             data = await self.default_data_buffer.get()
-    #             if data:
-    #                 self.collecting = True
-
-    #             # if "v1" in data.data['data']:
-    #             #     record_heading = self.default_parse(data)
-    #             #     continue
-
-    #             # elif self.sequence_end:
-    #             #     self.sequence_end = False
-    #             #     for var in record_heading["variables"]:
-    #             #         if record_heading["variables"][var]["data"]:
-    #             #             ongoing_record["variables"][var]["data"] = record_heading["variables"][var]["data"]
-                    
-    #             #     # THIS WILL CHANGE WHEN AN INVERSION ROUTINE IS IMPLEMENTED
-    #             #     ongoing_record["variables"]['diameter']["data"] = [None]*53
-    #             #     ongoing_record["variables"]['dN']["data"] = [None]*53
-    #             #     ongoing_record["variables"]['dlogDp']["data"] = [None]*53
-    #             #     ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
-    #             #     ongoing_record["variables"]['intN']["data"] = [None]*53
-                
-    #             # elif "STARTING" in data.data['data']:
-    #             #     ongoing_record = self.default_parse(data)
-    #             #     continue
-
-    #             # else:
-    #             #     record2 = self.default_parse(data)
-    #             #     if not record2:
-    #             #         continue
-    #             #     else:
-    #             #         for var in record2["variables"]:
-    #             #             if var != 'time':
-    #             #                 try:
-    #             #                     if record2["variables"][var]["data"].any():
-    #             #                         ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
-    #             #                 except Exception:
-    #             #                     if record2["variables"][var]["data"]:
-    #             #                         ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
-    #             #         continue
-    #             # record = ongoing_record
-    #             # print('FINAL RECORD', record)
-
-    #             record = self.default_parse(data)
-    #             if not record:
-    #                 continue
-
-    #             if record:
-    #                 self.collecting = True
-
-    #             if record and self.sampling():
-
-    #             #     ongoing_record["variables"]['diameter']["data"] = [None]*53
-    #             #     ongoing_record["variables"]['dN']["data"] = [None]*53
-    #             #     ongoing_record["variables"]['dlogDp']["data"] = [None]*53
-    #             #     ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
-    #             #     ongoing_record["variables"]['intN']["data"] = [None]*53
-
-    #                 # TODO make this (127) a config variable?
-    #                 if len(record["variables"]["read_V"]["data"]) != 127:
-    #                     self.logger.info("Incorrect number of scan readings", extra={"expected": 127, "actual": len(record["variables"]["read_V"]["data"])})
-    #                     continue
-
-    #                 #TODO do inversion when available
-
-    #                 # check if scanning in "down" direction and reverse data
-    #                 vp_rd = record["variables"]["vp_rd"]["data"].strip()
-    #                 self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
-    #                 if vp_rd == "pd" or vp_rd == "nd":
-    #                     for name,variable in self.metadata["variables"].items():
-    #                         if name in ["time", "diameter", "dN", "dlogDp", "dNdlogDp"]:
-    #                             continue
-    #                         self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
-    #                         if variable["shape"] == ["time", "diameter"]:
-    #                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": record["variables"][name]["data"]})
-    #                             record["variables"][name]["data"].reverse()
-    #                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": record["variables"][name]["data"]})
-
-    #                 # this is a temp calc for diameters based on table in manual
-    #                 # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
-    #                 voltages = record["variables"]["read_V"]["data"]
-    #                 diameters = []
-    #                 for v in voltages:
-    #                     v = abs(v)
-    #                     diameters.append(round(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4, 3))
-    #                 record["variables"]["diameter"]["data"] = diameters
-    #                 self.logger.debug("default_data_loop:diameter", extra={"scan_length": len(diameters), "volts": voltages, "diameter": diameters})
-
-    #                 record["variables"]['dN']["data"] = [None]*len(diameters)
-    #                 record["variables"]['dlogDp']["data"] = [None]*len(diameters)
-    #                 record["variables"]['dNdlogDp']["data"] = [None]*len(diameters)
-    #                 record["variables"]['intN']["data"] = None
-
-
-
-    #                 event = DAQEvent.create_data_update(
-    #                     # source="sensor.mockco-mock1-1234", data=record
-    #                     source=self.get_id_as_source(),
-    #                     data=record,
-    #                 )
-    #                 destpath = f"{self.get_id_as_topic()}/data/update"
-    #                 event["destpath"] = destpath
-    #                 self.logger.debug(
-    #                     "default_data_loop",
-    #                     extra={"data": event, "destpath": destpath},
-    #                 )
-    #                 # message = Message(data=event, destpath=destpath)
-    #                 message = event
-    #                 # self.logger.debug("default_data_loop", extra={"m": message})
-    #                 await self.send_message(message)
-
-    #             self.logger.debug("default_data_loop", extra={"record": record})
-    #         except Exception as e:
-    #             print(f"default_data_loop error: {e}")
-    #             print(traceback.format_exc())
-    #         await asyncio.sleep(0.001)
-
-    # async def default_data_loop_bak(self):
-
-    #     while True:
-    #         try:
-    #             data = await self.default_data_buffer.get()
-    #             if data:
-    #                 self.collecting = True
-
-    #             if "v1" in data.data['data']:
-    #                 record_heading = self.default_parse(data)
-    #                 continue
-
-    #             elif self.sequence_end:
-    #                 self.sequence_end = False
-    #                 for var in record_heading["variables"]:
-    #                     if record_heading["variables"][var]["data"]:
-    #                         ongoing_record["variables"][var]["data"] = record_heading["variables"][var]["data"]
-                    
-    #                 # THIS WILL CHANGE WHEN AN INVERSION ROUTINE IS IMPLEMENTED
-    #                 ongoing_record["variables"]['diameter']["data"] = [None]*53
-    #                 ongoing_record["variables"]['dN']["data"] = [None]*53
-    #                 ongoing_record["variables"]['dlogDp']["data"] = [None]*53
-    #                 ongoing_record["variables"]['dNdlogDp']["data"] = [None]*53
-    #                 ongoing_record["variables"]['intN']["data"] = [None]*53
-                
-    #             elif "STARTING" in data.data['data']:
-    #                 ongoing_record = self.default_parse(data)
-    #                 continue
-
-    #             else:
-    #                 record2 = self.default_parse(data)
-    #                 if not record2:
-    #                     continue
-    #                 else:
-    #                     for var in record2["variables"]:
-    #                         if var != 'time':
-    #                             try:
-    #                                 if record2["variables"][var]["data"].any():
-    #                                     ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
-    #                             except Exception:
-    #                                 if record2["variables"][var]["data"]:
-    #                                     ongoing_record["variables"][var]["data"] = record2["variables"][var]["data"]
-    #                     continue
-    #             record = ongoing_record
-    #             print('FINAL RECORD', record)
-    #             if record:
-    #                 self.collecting = True
-
-    #             if record and self.sampling():
-
-    #                 # check if scanning in "down" direction and reverse data
-    #                 vp_rd = record["variables"]["vp_rd"]["data"]
-    #                 self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
-    #                 if vp_rd == "pd" or vp_rd == "nd":
-    #                     for name,variable in self.metadata["variables"].items():
-    #                         if name == "time" or name == "diameter":
-    #                             continue
-    #                         self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vshape": variable["shape"]})
-    #                         if variable["shape"] == ["time", "diameter"]:
-    #                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
-    #                             variable["data"] = variable["data"].reverse()
-    #                             self.logger.debug("default_data_loop:reverse", extra={"vname": name, "vdata": variable["data"]})
-
-    #                 # this is a temp calc for diameters based on table in manual
-    #                 # 17 + 0.22x + -8.92E-05x^2 + 2.39E-08x^3 + -2.21E-12x^4
-    #                 voltages = record["variables"]["read_V"]["data"]
-    #                 diameters = []
-    #                 for v in voltages:
-    #                     v = abs(v)
-    #                     diameters.append(17 + 0.22*v + -8.92E-05*v**2 + 2.39E-08*v**3 + -2.21E-12*v**4)
-    #                 record["variables"]["diameter"]["data"] = diameters
-    #                 self.logger.debug("default_data_loop:diameter", extra={"volts": voltages, "diameter": diameters})
-    #                 event = DAQEvent.create_data_update(
-    #                     # source="sensor.mockco-mock1-1234", data=record
-    #                     source=self.get_id_as_source(),
-    #                     data=record,
-    #                 )
-    #                 destpath = f"{self.get_id_as_topic()}/data/update"
-    #                 event["destpath"] = destpath
-    #                 self.logger.debug(
-    #                     "default_data_loop",
-    #                     extra={"data": event, "destpath": destpath},
-    #                 )
-    #                 # message = Message(data=event, destpath=destpath)
-    #                 message = event
-    #                 # self.logger.debug("default_data_loop", extra={"m": message})
-    #                 await self.send_message(message)
-
-    #             self.logger.debug("default_data_loop", extra={"record": record})
-    #         except Exception as e:
-    #             print(f"default_data_loop error: {e}")
-    #             print(traceback.format_exc())
-    #         await asyncio.sleep(0.0001)
 
     async def default_data_loop(self):
         while True:
@@ -1031,10 +251,6 @@ class SpiderMagic810(Sensor):
                     self.collecting = True
 
                 if record and self.sampling():
-
-                    # Validate we actually have scan data before proceeding.
-                    # Since scan_bins is now dynamic, we check for a minimum threshold
-                    # (e.g., > 10 readings) to ensure we don't process empty/broken scans.
                     try:
                         scan_length = len(record["variables"]["read_V"]["data"])
                         if scan_length < 10:
@@ -1044,30 +260,22 @@ class SpiderMagic810(Sensor):
                         self.logger.warning("Missing or invalid 'read_V' in record, skipping scan.")
                         continue
 
-                    # Check if scanning in "down" direction and reverse raw data
-                    # so that the raw scan_bins always represent ascending voltages/sizes.
                     vp_rd = record["variables"]["vp_rd"]["data"].strip()
                     self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
                     
                     if vp_rd == "pd" or vp_rd == "nd":
                         for name, variable in self.metadata["variables"].items():
-                            # We only reverse the raw 2D variables mapped to the scan_bins dimension
                             if "shape" in variable and variable["shape"] == ["time", "scan_bins"]:
                                 if name in record["variables"] and record["variables"][name]["data"]:
                                     self.logger.debug("default_data_loop:reverse", extra={"vname": name})
                                     record["variables"][name]["data"].reverse()
 
-                    # --- RUN THE INVERSION ---
-                    # The strategy pattern seamlessly handles whatever inversion class was 
-                    # instantiated in self.configure(). It reads the dynamic scan_bins arrays 
-                    # and populates the fixed diameter arrays.
                     try:
                         record = self.inversion_routine.invert(record)
                     except Exception as inv_e:
                         self.logger.error("Inversion routine failed", extra={"error": str(inv_e)})
                         print(f"Inversion error details: {inv_e}")
 
-                    # --- SEND THE DATA ---
                     event = DAQEvent.create_data_update(
                         source=self.get_id_as_source(),
                         data=record,
@@ -1075,10 +283,7 @@ class SpiderMagic810(Sensor):
                     destpath = f"{self.get_id_as_topic()}/data/update"
                     event["destpath"] = destpath
                     
-                    self.logger.debug(
-                        "default_data_loop",
-                        extra={"destpath": destpath},
-                    )
+                    self.logger.debug("default_data_loop", extra={"destpath": destpath})
                     
                     await self.send_message(event)
 
@@ -1096,7 +301,6 @@ class SpiderMagic810(Sensor):
             return
 
     def add_to_record(self, record, names, data):
-        # for index, name in enumerate(self.var_name):
         for name, v in zip(names, data):
             if name in record["variables"]:
                 instvar = self.config.metadata.variables[name]
@@ -1122,257 +326,11 @@ class SpiderMagic810(Sensor):
                     else:
                         record["variables"][name]["data"] = None
         self.logger.debug("default_parse:add_to_record", extra={"record": record})
-        # return record
 
-
-    # def default_parse(self, data):
-    #     if data:
-    #         try:
-    #             variables = list(self.config.metadata.variables.keys())
-    #             variables.remove("time")
-
-    #             # record = self.build_data_record(meta=self.include_metadata)
-    #             self.include_metadata = False
-    #             try:
-    #                 self.logger.debug("default_parse", extra={"data.data": data.data["data"]})
-    #                 # record["timestamp"] = data.data["timestamp"]
-    #                 # record["variables"]["time"]["data"] = data.data["timestamp"]
-    #                 parts = data.data["data"].strip().split(",")
-    #                 # parts = [item.replace('\r\n', '').strip() for item in parts]
-
-    #                 if (datavar := 'v1') in data.data["data"]:
-    #                     parts = parts[2:3] + parts[4:8]
-    #                     parts = [item.replace('Hz', '').replace('tau=', '').strip() for item in parts]
-    #                     self.var_name = variables[0:5]
-    #                     self.extra_var_names = variables[0:5]
-    #                     self.extra_vars = parts
-    #                     self.logger.debug("default_parse:v1", extra={"var_name": self.var_name, "parts": parts})
-    #                     return None
-                    
-    #                 # starts scan
-    #                 elif (datavar := 'STARTING') in data.data["data"]:
-
-    #                     parts = parts[1:3] + parts[4:25]
-    #                     parts = [item.replace('V', '').strip() for item in parts]
-    #                     self.var_name = variables[5:28]
-    #                     self.extra_var_names += variables[5:28]
-    #                     self.extra_vars += parts
-    #                     self.logger.debug("default_parse:STARTING", extra={"var_name": self.var_name, "parts": parts})
-    #                     return None
-
-    #                 elif (datavar := 'Vi') in data.data["data"]:
-    #                     parts = parts[0:4]
-    #                     parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '').strip() for item in parts]
-    #                     elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
-    #                     parts.append(elapsed_time)
-    #                     self.var_name = variables[28:33]
-    #                     self.extra_var_names += variables[28:33]
-    #                     self.extra_vars += parts
-    #                     self.logger.debug("default_parse:vi", extra={"var_name": self.var_name, "parts": parts})
-    #                     return None
-                    
-    #                 # actual start of scan, use this for timestamp
-    #                 elif (datavar := 'START SEQ') in data.data["data"]:
-
-    #                     self.current_record = self.build_data_record(meta=self.include_metadata)
-    #                     self.current_record["timestamp"] = data.data["timestamp"]
-    #                     self.current_record["variables"]["time"]["data"] = data.data["timestamp"]
-
-    #                     # add extra_vars
-    #                     self.add_to_record(self.current_record, self.extra_var_names, self.extra_vars)
-    #                     self.sequence_start = True
-    #                     self.seq_counter = 0
-    #                     self.logger.debug("default_parse:START SEQ", extra={"vdata": data.data["data"]})
-    #                     return None
-                    
-    #                 # done with scan, complete record and return
-    #                 elif (datavar := 'END SEQ') in data.data["data"]:
-                        
-    #                     self.scan_var_names = variables[33:41]
-                        
-
-    #                     parts = np.array(list(self.array_buffer), dtype=object)
-    #                     transposed = np.transpose(parts)
-    #                     parts = transposed.tolist()
-    #                     self.array_buffer = []
-    #                     self.logger.debug("default_parse:check_array", extra={"parts": parts})
-
-    #                     self.add_to_record(self.current_record, self.scan_var_names, parts)
-
-    #                     self.sequence_end = True
-    #                     self.sequence_start = False
-    #                     self.logger.debug("default_parse:END SEQ", extra={"vdata": data.data["data"]})
-    #                     return self.current_record
-                    
-    #                 elif self.sequence_start:
-    #                     self.var_name = variables[33:41]
-    #                     if len(parts) != 8:
-    #                         return None
-    #                     self.check_array_buffer(parts, array_cond=False)
-
-
-    #                     # if self.seq_counter < 52:
-    #                     #     self.check_array_buffer(parts, array_cond=False)
-    #                     #     self.seq_counter += 1
-    #                     #     return
-                        
-    #                     # else:
-    #                     #     parts = self.check_array_buffer(parts, array_cond=True)
-    #                     #     self.logger.debug("default_parse:check_array", extra={"parts": parts})
-    #                     #     self.seq_counter = 0
-    #                     #     parts = np.array(list(parts), dtype=object)
-    #                     #     transposed = np.transpose(parts)
-    #                     #     parts = transposed.tolist()
-    #                     #     self.array_buffer = []
-    #                     #     self.logger.debug("default_parse:check_array", extra={"parts": parts})
-
-    #                     # pass
-
-    #                 else:
-    #                     return None
-
-    #                 # for index, name in enumerate(self.var_name):
-    #                 #     if name in record["variables"]:
-    #                 #         instvar = self.config.metadata.variables[name]
-    #                 #         try:
-    #                 #             if instvar.type == "int":
-    #                 #                 if isinstance(parts[index], list):
-    #                 #                     record["variables"][name]["data"] = [int(item) for item in parts[index]]
-    #                 #                 else:
-    #                 #                     record["variables"][name]["data"] = int(parts[index])
-
-    #                 #             elif instvar.type == "float":
-    #                 #                 if isinstance(parts[index], list):
-    #                 #                     record["variables"][name]["data"] = [float(item) for item in parts[index]]
-    #                 #                 else:
-    #                 #                     record["variables"][name]["data"] = float(parts[index])
-                                        
-    #                 #             else:
-    #                 #                 record["variables"][name]["data"] = parts[index]
-
-    #                 #         except ValueError:
-    #                 #             if instvar.type == "str" or instvar.type == "char":
-    #                 #                 record["variables"][name]["data"] = ""
-    #                 #             else:
-    #                 #                 record["variables"][name]["data"] = None
-    #                 # self.logger.debug("default_parse:record", extra={"record": record})
-    #                 # return record
-    #             except KeyError:
-    #                 pass
-    #         except Exception as e:
-    #             print(f"default_parse error: {e}")
-    #     # else:
-    #     return None
-
-    # def default_parse_bak(self, data):
-    #     if data:
-    #         try:
-    #             variables = list(self.config.metadata.variables.keys())
-    #             variables.remove("time")
-
-    #             record = self.build_data_record(meta=self.include_metadata)
-    #             self.include_metadata = False
-    #             try:
-    #                 self.logger.debug("default_parse", extra={"data.data": data.data["data"]})
-    #                 record["timestamp"] = data.data["timestamp"]
-    #                 record["variables"]["time"]["data"] = data.data["timestamp"]
-    #                 parts = data.data["data"].strip().split(",")
-    #                 # parts = [item.replace('\r\n', '').strip() for item in parts]
-
-    #                 if (datavar := 'v1') in data.data["data"]:
-    #                     parts = parts[2:3] + parts[4:8]
-    #                     parts = [item.replace('Hz', '').replace('tau=', '') for item in parts]
-    #                     self.var_name = variables[0:5]
-    #                     self.logger.debug("default_parse:v1", extra={"var_name": self.var_name, "parts": parts})
-
-    #                 elif (datavar := 'STARTING') in data.data["data"]:
-    #                     parts = parts[1:3] + parts[4:25]
-    #                     parts = [item.replace('V', '') for item in parts]
-    #                     self.var_name = variables[5:28]
-    #                     self.logger.debug("default_parse:STARTING", extra={"var_name": self.var_name, "parts": parts})
-
-
-    #                 elif (datavar := 'Vi') in data.data["data"]:
-    #                     parts = parts[0:4]
-    #                     parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '') for item in parts]
-    #                     elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
-    #                     parts.append(elapsed_time)
-    #                     self.var_name = variables[28:33]
-    #                     self.logger.debug("default_parse:vi", extra={"var_name": self.var_name, "parts": parts})
-
-    #                 elif (datavar := 'START SEQ') in data.data["data"]:
-    #                     self.sequence_start = True
-    #                     self.seq_counter = 0
-    #                     self.logger.debug("default_parse:START SEQ", extra={"vdata": data.data["data"]})
-    #                     return None
-                    
-    #                 elif (datavar := 'END SEQ') in data.data["data"]:
-    #                     self.sequence_end = True
-    #                     self.sequence_start = False
-    #                     self.logger.debug("default_parse:END SEQ", extra={"vdata": data.data["data"]})
-    #                     return None
-                    
-    #                 elif self.sequence_start:
-    #                     self.var_name = variables[33:41]
-
-    #                     if self.seq_counter < 52:
-    #                         self.check_array_buffer(parts, array_cond=False)
-    #                         self.seq_counter += 1
-    #                         return
-                        
-    #                     else:
-    #                         parts = self.check_array_buffer(parts, array_cond=True)
-    #                         self.logger.debug("default_parse:check_array", extra={"parts": parts})
-    #                         self.seq_counter = 0
-    #                         parts = np.array(list(parts), dtype=object)
-    #                         transposed = np.transpose(parts)
-    #                         parts = transposed.tolist()
-    #                         self.array_buffer = []
-    #                         self.logger.debug("default_parse:check_array", extra={"parts": parts})
-
-    #                     pass
-
-    #                 else:
-    #                     return None
-
-    #                 for index, name in enumerate(self.var_name):
-    #                     if name in record["variables"]:
-    #                         instvar = self.config.metadata.variables[name]
-    #                         try:
-    #                             if instvar.type == "int":
-    #                                 if isinstance(parts[index], list):
-    #                                     record["variables"][name]["data"] = [int(item) for item in parts[index]]
-    #                                 else:
-    #                                     record["variables"][name]["data"] = int(parts[index])
-
-    #                             elif instvar.type == "float":
-    #                                 if isinstance(parts[index], list):
-    #                                     record["variables"][name]["data"] = [float(item) for item in parts[index]]
-    #                                 else:
-    #                                     record["variables"][name]["data"] = float(parts[index])
-                                        
-    #                             else:
-    #                                 record["variables"][name]["data"] = parts[index]
-
-    #                         except ValueError:
-    #                             if instvar.type == "str" or instvar.type == "char":
-    #                                 record["variables"][name]["data"] = ""
-    #                             else:
-    #                                 record["variables"][name]["data"] = None
-    #                 self.logger.debug("default_parse:record", extra={"record": record})
-    #                 return record
-    #             except KeyError:
-    #                 pass
-    #         except Exception as e:
-    #             print(f"default_parse error: {e}")
-    #     # else:
-    #     return None
 
     def default_parse(self, data):
         if data:
             try:
-                # EXPLICIT VARIABLE MAPPING: 
-                # Prevents parser from breaking if JSON definition order changes.
                 V1_NAMES = ["tau", "HV_polarity", "scan_dir", "data_freq", "HV_status"]
                 STARTING_NAMES = ["vp_rd", "spidermagic_timestamp", "dew_point", "input_T", "input_rh", 
                                   "cond_T", "init_T", "mod_T", "opt_T", "heatsink_T", "case_T", 
@@ -1414,23 +372,24 @@ class SpiderMagic810(Sensor):
                         self.logger.debug("default_parse:vi", extra={"var_name": VI_NAMES, "parts": parts})
                         return None
                     
-                    # actual start of scan, use this for timestamp
                     elif (datavar := 'START SEQ') in data.data["data"]:
-                        self.current_record = self.build_data_record(meta=self.include_metadata)
+                        if self.include_metadata:
+                            variable_types = ["main", "raw_scan", "setting", "calibration"]
+                        else:
+                            variable_types = ["main", "raw_scan"]
+                        self.include_metadata = False
+                        self.current_record = self.build_data_record(meta=self.include_metadata, variable_types=variable_types)
                         self.current_record["timestamp"] = data.data["timestamp"]
                         self.current_record["variables"]["time"]["data"] = data.data["timestamp"]
 
-                        # add collected header variables (v1, STARTING, Vi) to record
                         self.add_to_record(self.current_record, self.extra_var_names, self.extra_vars)
                         
                         self.sequence_start = True
-                        self.array_buffer = []  # Ensure buffer is empty for new scan
+                        self.array_buffer = [] 
                         self.logger.debug("default_parse:START SEQ", extra={"vdata": data.data["data"]})
                         return None
                     
-                    # done with scan, transpose buffer, complete record, and return
                     elif (datavar := 'END SEQ') in data.data["data"]:
-                        
                         if len(self.array_buffer) > 0:
                             parts = np.array(list(self.array_buffer), dtype=object)
                             transposed = np.transpose(parts).tolist()
@@ -1443,7 +402,6 @@ class SpiderMagic810(Sensor):
                         
                         return self.current_record
                     
-                    # collecting the fast scan data at 4 Hz
                     elif self.sequence_start:
                         if len(parts) != 8:
                             return None
@@ -1460,13 +418,10 @@ class SpiderMagic810(Sensor):
                 
         return None
 
-
-
 class ServerConfig(BaseModel):
     host: str = "localhost"
     port: int = 9080
     log_level: str = "info"
-
 
 async def shutdown(sensor):
     print("shutting down")
@@ -1474,23 +429,14 @@ async def shutdown(sensor):
         await sensor.shutdown()
 
     for task in task_list:
-        print(f"cancel: {task}")
         if task:
             task.cancel()
 
-
 async def main(server_config: ServerConfig = None):
-    # uiconfig = UIConfig(**config)
     if server_config is None:
         server_config = ServerConfig()
     print(server_config)
 
-    # print("starting mock1 test task")
-
-    # test = envdsBase()
-    # task_list.append(asyncio.create_task(test_task()))
-
-    # get config from file
     sn = "9999"
     try:
         with open("/app/config/sensor.conf", "r") as f:
@@ -1507,35 +453,9 @@ async def main(server_config: ServerConfig = None):
 
     logger.debug("Starting SpiderMagic810")
     inst = SpiderMagic810()
-    # print(inst)
-    # await asyncio.sleep(2)
     inst.run()
-    # print("running")
-    # task_list.append(asyncio.create_task(inst.run()))
-    # await asyncio.sleep(2)
     await asyncio.sleep(2)
     inst.start()
-    # logger.debug("Starting Mock1")
-
-    # remove fastapi ----
-    # root_path = f"/envds/sensor/MockCo/Mock1/{sn}"
-    # # print(f"root_path: {root_path}")
-
-    # # TODO: get serial number from config file
-    # config = uvicorn.Config(
-    #     "main:app",
-    #     host=server_config.host,
-    #     port=server_config.port,
-    #     log_level=server_config.log_level,
-    #     root_path=f"/envds/sensor/MockCo/Mock1/{sn}",
-    #     # log_config=dict_config,
-    # )
-
-    # server = uvicorn.Server(config)
-    # # test = logging.getLogger()
-    # # test.info("test")
-    # await server.serve()
-    # ----
 
     event_loop = asyncio.get_event_loop()
     global do_run
@@ -1549,45 +469,31 @@ async def main(server_config: ServerConfig = None):
     event_loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
 
     while do_run:
-        logger.debug("mock1.run", extra={"do_run": do_run})
+        logger.debug("spidermagic.run", extra={"do_run": do_run})
         await asyncio.sleep(1)
 
     logger.info("starting shutdown...")
     await shutdown(inst)
     logger.info("done.")
 
-
 if __name__ == "__main__":
-
-    BASE_DIR = os.path.dirname(
-        # os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        os.path.dirname(os.path.abspath(__file__))
-    )
-    # insert BASE at beginning of paths
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sys.path.insert(0, BASE_DIR)
-    print(sys.path, BASE_DIR)
-
-    print(sys.argv)
+    
     config = ServerConfig()
     try:
         index = sys.argv.index("--host")
-        host = sys.argv[index + 1]
-        config.host = host
-    except (ValueError, IndexError):
-        pass
+        config.host = sys.argv[index + 1]
+    except (ValueError, IndexError): pass
 
     try:
         index = sys.argv.index("--port")
-        port = sys.argv[index + 1]
-        config.port = int(port)
-    except (ValueError, IndexError):
-        pass
+        config.port = int(sys.argv[index + 1])
+    except (ValueError, IndexError): pass
 
     try:
         index = sys.argv.index("--log_level")
-        ll = sys.argv[index + 1]
-        config.log_level = ll
-    except (ValueError, IndexError):
-        pass
+        config.log_level = sys.argv[index + 1]
+    except (ValueError, IndexError): pass
 
     asyncio.run(main(config))
