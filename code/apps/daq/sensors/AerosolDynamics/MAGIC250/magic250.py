@@ -164,7 +164,14 @@ class MAGIC250(Sensor):
             try:
                 state = self.settings.get_setting("sampling_state") or "idle"
 
-                if self.sampling() and state.lower() == "sampling":
+                # Safeguard: Extract string if the MQTT payload was stored as a dictionary
+                if isinstance(state, dict):
+                    state = state.get("data", "idle")
+                
+                # Safely cast to string to prevent any future attribute errors
+                state_str = str(state).lower()
+
+                if self.sampling() and state_str == "sampling":
 
                     if need_start:
                         if self.collecting:
@@ -185,10 +192,10 @@ class MAGIC250(Sensor):
                             await self.interface_send_data(data={"data": start_command})
                             await asyncio.sleep(2)
                             continue
-                elif state.lower() in ["idle", "maintenance", "error", "calibration"]:
+                elif state_str in ["idle", "maintenance", "error", "calibration"]:
                     if self.collecting or not need_start:
                         await self.interface_send_data(data={"data": stop_command})
-                        self.logger.info(f"State transitioned to {state}. Halting MAGIC250 sampling.")
+                        self.logger.info(f"State transitioned to {state_str}. Halting MAGIC250 sampling.")
                         await asyncio.sleep(2)
                         self.collecting = False
                         need_start = True
@@ -226,12 +233,18 @@ class MAGIC250(Sensor):
                 print(f"default_data_loop error: {e}")
             await asyncio.sleep(0.1)
 
-    def default_parse(self, data):
+    def def default_parse(self, data):
         if not data:
             return None
 
         try:
-            record = self.build_data_record(meta=self.include_metadata)
+            # Filter variables to reduce payload size on standard data updates
+            if self.include_metadata:
+                variable_types = ["main", "setting", "calibration"]
+            else:
+                variable_types = ["main"]
+                
+            record = self.build_data_record(meta=self.include_metadata, variable_types=variable_types)
             self.include_metadata = False
 
             raw_payload = data.data if isinstance(data.data, dict) else {}
