@@ -36,17 +36,14 @@ class SpiderMagic810(Sensor):
         self.seq_counter = 0
 
         self.default_data_buffer = asyncio.Queue()
-
         self.sensor_definition_file = "AerosolDynamics_SPIDERMAGIC810_sensor_definition.json"
+        
+        # State Tracking
+        self.cal_active = False
+        self.current_valve_state = None
+        self.collecting = False
 
         try:            
-            if os.path.exists(self.sensor_definition_file):
-                self.logger.debug(f"'{self.sensor_definition_file}' exists.")
-            if os.path.isfile(self.sensor_definition_file):
-                self.logger.debug(f"'{self.sensor_definition_file}' is a file.")
-            if os.path.isdir(self.sensor_definition_file):
-                self.logger.debug(f"'{self.sensor_definition_file}' is a directory.")
-
             with open(self.sensor_definition_file, "r") as f:
                 self.metadata = json.load(f)
         except FileNotFoundError:
@@ -55,9 +52,9 @@ class SpiderMagic810(Sensor):
 
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
-        self.collecting = False
 
     def configure(self):
+        """Restores explicit version tracking from JSON metadata."""
         super(SpiderMagic810, self).configure()
 
         try:
@@ -72,17 +69,8 @@ class SpiderMagic810(Sensor):
         sensor_iface_properties = {
             "default": {
                 "device-interface-properties": {
-                    "connection-properties": {
-                        "baudrate": 115200,
-                        "bytesize": 8,
-                        "parity": "N",
-                        "stopbit": 1,
-                    },
-                    "read-properties": {
-                        "read-method": "readline",
-                        "decode-errors": "strict",
-                        "send-method": "ascii",
-                    },
+                    "connection-properties": {"baudrate": 115200, "bytesize": 8, "parity": "N", "stopbit": 1},
+                    "read-properties": {"read-method": "readline", "decode-errors": "strict", "send-method": "ascii"},
                 }
             }
         }
@@ -93,14 +81,11 @@ class SpiderMagic810(Sensor):
                     for propname, prop in sensor_iface_properties[name].items():
                         iface[propname] = prop
 
-            self.logger.debug("SpiderMagic810.configure", extra={"interfaces": conf["interfaces"]})
-
         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
         for name, setting in settings_def["variables"].items():
-            requested = setting["attributes"]["default_value"]["data"]
+            requested = setting["attributes"].get("default_value", {}).get("data")
             if "settings" in conf and name in conf["settings"]:
                 requested = conf["settings"][name]
-
             self.settings.set_setting(name, requested=requested)
 
         meta = DeviceMetadata(
@@ -119,78 +104,68 @@ class SpiderMagic810(Sensor):
             daq_id=conf.get("daq_id", "default"),
         )
 
-        self.logger.debug("configure", extra={"conf": conf, "self.config": self.config})
+        # Restore format_version override
+        try:
+            self.device_format_version = self.config.metadata.attributes["format_version"].data
+        except (KeyError, AttributeError):
+            pass
 
         try:
             if "interfaces" in conf:
                 for name, iface in conf["interfaces"].items():
                     self.add_interface(name, iface)
         except Exception as e:
-            print(e)
+            self.logger.error(f"Interface config error: {e}")
 
-        self.logger.debug("iface_map", extra={"map": self.iface_map})
-
-        # Set up the inversion strategy
+        # Inversion strategy
         inversion_method = "standard" 
         if inversion_method == "aerosol_dynamics":
             self.inversion_routine = AerosolDynamicsInversion(config=conf)
-            self.logger.info("Initialized Aerosol Dynamics Inversion")
         else:
             self.inversion_routine = StandardInversion(config=conf)
-            self.logger.info("Initialized Standard Inversion")
 
-    async def handle_interface_message(self, message: CloudEvent):
-        pass
-
-    async def handle_interface_data(self, message: CloudEvent):
-        await super(SpiderMagic810, self).handle_interface_data(message)
-
-        if message["type"] == det.interface_data_recv():
-            try:
-                path_id = message["path_id"]
-                iface_path = self.config.interfaces["default"]["path"]
-                if path_id == iface_path:
-                    self.logger.debug("interface_recv_data", extra={"data": message.data})
-                    await self.default_data_buffer.put(message)
-            except KeyError:
-                pass
+    async def set_ext_valve(self, valve_state):
+        """Processes the external 3-way valve state change request."""
+        self.logger.info(f"External 3-way valve commanded to: {valve_state}")
+        self.current_valve_state = valve_state
 
     async def settings_check(self):
-        """Intercepts MQTT settings requests and acknowledges them."""
+        """Intercepts MQTT settings requests using set_actual to prevent infinite recursion."""
         await super().settings_check()
 
         if not self.settings.get_health():
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
-                    target_val = self.settings.get_setting(name)
+                    
+                    setting_obj = self.settings.get_setting(name)
+                    # Safely extract requested value from framework dictionary
+                    target_val = setting_obj.get("requested") if isinstance(setting_obj, dict) else setting_obj
+                    
                     self.logger.info(f"MQTT Settings Request: changing {name} to {target_val}")
                     
-                    if name == "sampling_state":
-                        self.settings.set_setting(name, target_val)
-                        
-                    elif name == "calibration_routine":
-                        self.settings.set_setting(name, target_val)
+                    if name == "ext_valve_state":
+                        await self.set_ext_valve(target_val)
+                        self.settings.set_actual(name, target_val)
+                    elif name in ["sampling_state", "calibration_routine"]:
+                        self.settings.set_actual(name, target_val)
 
     async def sampling_monitor(self):
         """State machine controller managing the Spider DMA hardware ramps."""
-        start_command = "hvgo\r"
-        v1_setting = "v1,5\r" 
-        v2_setting = "v2,5000\r"
-        start_commands = [v1_setting, v2_setting, start_command]
+        start_commands = ["v1,5\r", "v2,5000\r", "hvgo\r"]
         stop_command = "stop\r"
 
         need_start = True
         start_requested = False
-        
         await asyncio.sleep(2)
 
         while True:
             try:
-                state = self.settings.get_setting("sampling_state") or "idle"
+                # Safely extract sampling state string to prevent dictionary attribute errors
+                state_obj = self.settings.get_setting("sampling_state")
+                state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
+                state_str = str(state).lower()
                 
-                # Check both framework sampling state AND user setting
-                if self.sampling() and state.lower() == "sampling":
-
+                if self.sampling() and state_str == "sampling":
                     if need_start:
                         if self.collecting:
                             await self.interface_send_data(data={"data": stop_command})
@@ -201,12 +176,9 @@ class SpiderMagic810(Sensor):
                             for cmd in start_commands:
                                 await self.interface_send_data(data={"data": cmd})
                                 await asyncio.sleep(.5)
-
-                            need_start = False
-                            start_requested = True
+                            need_start, start_requested = False, True
                             await asyncio.sleep(2)
                             continue
-                            
                     elif start_requested:
                         if self.collecting:
                             start_requested = False
@@ -214,91 +186,81 @@ class SpiderMagic810(Sensor):
                             for cmd in start_commands:
                                 await self.interface_send_data(data={"data": cmd})
                                 await asyncio.sleep(.5)
-
                             await asyncio.sleep(2)
                             continue
                             
-                elif state.lower() in ["idle", "maintenance", "error", "calibration"]:
-                    # If framework stops OR user sets state to non-sampling (e.g., maintenance)
+                elif state_str in ["idle", "maintenance", "error", "calibration"]:
                     if self.collecting or not need_start:
                         await self.interface_send_data(data={"data": stop_command})
-                        self.logger.info(f"State transitioned to {state}. Halting Spider DMA scans.")
+                        self.logger.info(f"State transitioned to {state_str}. Halting Spider DMA scans.")
                         await asyncio.sleep(2)
-                        
-                        self.collecting = False
-                        need_start = True  # Reset so it can start again if toggled back to sampling
-                        start_requested = False
+                        self.collecting, need_start, start_requested = False, True, False
 
                 await asyncio.sleep(0.1)
-
             except Exception as e:
                 self.logger.error(f"sampling monitor error: {e}")
-
             await asyncio.sleep(0.1)
 
-    async def default_data_loop(self):
-        while True:
-            try:
-                data = await self.default_data_buffer.get()
-                if data:
-                    self.collecting = True
+    def default_parse(self, data):
+        """Optimized parser using variable_types to reduce payload size."""
+        if not data: return None
+        try:
+            V1_NAMES = ["tau", "HV_polarity", "scan_dir", "data_freq", "HV_status"]
+            STARTING_NAMES = ["vp_rd", "spidermagic_timestamp", "dew_point", "input_T", "input_rh", 
+                              "cond_T", "init_T", "mod_T", "opt_T", "heatsink_T", "case_T", 
+                              "wick_sensor", "mod_T_sp", "humid_exit_dew_point", "wadc", "DMA_V", 
+                              "Qsh", "abs_pressure", "flow", "pHt2.%", "status_hex", "status_ascii", 
+                              "spidermagic_serial_number"]
+            VI_NAMES = ["Vi", "Vf", "Vmax", "Tc", "elap_time"]
+            SCAN_NAMES = ["scan_status", "set_V", "read_V", "concentration", 
+                          "raw_counts", "dead_counts", "sh_flow", "aer_flow"]
 
-                record = self.default_parse(data)
-                if not record:
-                    continue
+            raw_data = data.data.get("data", "")
+            parts = raw_data.strip().split(",")
 
-                if record:
-                    self.collecting = True
-
-                if record and self.sampling():
-                    try:
-                        scan_length = len(record["variables"]["read_V"]["data"])
-                        if scan_length < 10:
-                            self.logger.info("Scan data too short, skipping", extra={"actual_length": scan_length})
-                            continue
-                    except (KeyError, TypeError):
-                        self.logger.warning("Missing or invalid 'read_V' in record, skipping scan.")
-                        continue
-
-                    vp_rd = record["variables"]["vp_rd"]["data"].strip()
-                    self.logger.debug("default_data_loop:reverse", extra={"vp_rd": vp_rd})
-                    
-                    if vp_rd == "pd" or vp_rd == "nd":
-                        for name, variable in self.metadata["variables"].items():
-                            if "shape" in variable and variable["shape"] == ["time", "scan_bins"]:
-                                if name in record["variables"] and record["variables"][name]["data"]:
-                                    self.logger.debug("default_data_loop:reverse", extra={"vname": name})
-                                    record["variables"][name]["data"].reverse()
-
-                    try:
-                        record = self.inversion_routine.invert(record)
-                    except Exception as inv_e:
-                        self.logger.error("Inversion routine failed", extra={"error": str(inv_e)})
-                        print(f"Inversion error details: {inv_e}")
-
-                    event = DAQEvent.create_data_update(
-                        source=self.get_id_as_source(),
-                        data=record,
-                    )
-                    destpath = f"{self.get_id_as_topic()}/data/update"
-                    event["destpath"] = destpath
-                    
-                    self.logger.debug("default_data_loop", extra={"destpath": destpath})
-                    
-                    await self.send_message(event)
-
-            except Exception as e:
-                print(f"default_data_loop error: {e}")
-                print(traceback.format_exc())
+            if 'v1' in raw_data:
+                parts = [item.replace('Hz', '').replace('tau=', '').strip() for item in (parts[2:3] + parts[4:8])]
+                self.extra_var_names, self.extra_vars = V1_NAMES, parts
+                return None
             
-            await asyncio.sleep(0.001)
+            elif 'STARTING' in raw_data:
+                parts = [item.replace('V', '').strip() for item in (parts[1:3] + parts[4:25])]
+                self.extra_var_names += STARTING_NAMES
+                self.extra_vars += parts
+                return None
 
-    def check_array_buffer(self, data, array_cond = False):
-        self.array_buffer.append(data)
-        if array_cond:
-            return self.array_buffer
-        else:
-            return
+            elif 'Vi' in raw_data:
+                p = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '').strip() for item in parts[0:4]]
+                elapsed_time = abs(round((math.log(float(p[1])/float(p[0])))*float(p[3]), 2))
+                p.append(elapsed_time)
+                self.extra_var_names += VI_NAMES
+                self.extra_vars += p
+                return None
+            
+            elif 'START SEQ' in raw_data:
+                # Restricted variable types for high-frequency updates
+                v_types = ["main", "raw_scan", "setting", "calibration"] if self.include_metadata else ["main", "raw_scan"]
+                self.current_record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+                self.include_metadata = False
+                self.current_record["timestamp"] = data.data["timestamp"]
+                self.current_record["variables"]["time"]["data"] = data.data["timestamp"]
+                self.add_to_record(self.current_record, self.extra_var_names, self.extra_vars)
+                self.sequence_start, self.array_buffer = True, [] 
+                return None
+            
+            elif 'END SEQ' in raw_data:
+                if len(self.array_buffer) > 0:
+                    transposed = np.transpose(np.array(list(self.array_buffer), dtype=object)).tolist()
+                    self.add_to_record(self.current_record, SCAN_NAMES, transposed)
+                self.array_buffer, self.sequence_end, self.sequence_start = [], True, False
+                return self.current_record
+            
+            elif self.sequence_start:
+                if len(parts) == 8: self.array_buffer.append(parts)
+
+        except Exception as e:
+            self.logger.error(f"default_parse error: {e}")
+        return None
 
     def add_to_record(self, record, names, data):
         for name, v in zip(names, data):
@@ -306,194 +268,38 @@ class SpiderMagic810(Sensor):
                 instvar = self.config.metadata.variables[name]
                 try:
                     if instvar.type == "int":
-                        if isinstance(v, list):
-                            record["variables"][name]["data"] = [int(item) for item in v]
-                        else:
-                            record["variables"][name]["data"] = int(v)
-
+                        record["variables"][name]["data"] = [int(item) for item in v] if isinstance(v, list) else int(v)
                     elif instvar.type == "float":
-                        if isinstance(v, list):
-                            record["variables"][name]["data"] = [float(item) for item in v]
-                        else:
-                            record["variables"][name]["data"] = float(v)
-                            
+                        record["variables"][name]["data"] = [float(item) for item in v] if isinstance(v, list) else float(v)
                     else:
                         record["variables"][name]["data"] = v
-
                 except ValueError:
-                    if instvar.type == "str" or instvar.type == "char":
-                        record["variables"][name]["data"] = ""
-                    else:
-                        record["variables"][name]["data"] = None
-        self.logger.debug("default_parse:add_to_record", extra={"record": record})
+                    record["variables"][name]["data"] = "" if instvar.type in ("str", "char") else None
 
-
-    def default_parse(self, data):
-        if data:
+    async def default_data_loop(self):
+        while True:
             try:
-                V1_NAMES = ["tau", "HV_polarity", "scan_dir", "data_freq", "HV_status"]
-                STARTING_NAMES = ["vp_rd", "spidermagic_timestamp", "dew_point", "input_T", "input_rh", 
-                                  "cond_T", "init_T", "mod_T", "opt_T", "heatsink_T", "case_T", 
-                                  "wick_sensor", "mod_T_sp", "humid_exit_dew_point", "wadc", "DMA_V", 
-                                  "Qsh", "abs_pressure", "flow", "pHt2.%", "status_hex", "status_ascii", 
-                                  "spidermagic_serial_number"]
-                VI_NAMES = ["Vi", "Vf", "Vmax", "Tc", "elap_time"]
-                SCAN_NAMES = ["scan_status", "set_V", "read_V", "concentration", 
-                              "raw_counts", "dead_counts", "sh_flow", "aer_flow"]
-
-                self.include_metadata = False
-                try:
-                    self.logger.debug("default_parse", extra={"data.data": data.data["data"]})
-                    parts = data.data["data"].strip().split(",")
-
-                    if (datavar := 'v1') in data.data["data"]:
-                        parts = parts[2:3] + parts[4:8]
-                        parts = [item.replace('Hz', '').replace('tau=', '').strip() for item in parts]
-                        self.extra_var_names = V1_NAMES
-                        self.extra_vars = parts
-                        self.logger.debug("default_parse:v1", extra={"var_name": V1_NAMES, "parts": parts})
-                        return None
-                    
-                    elif (datavar := 'STARTING') in data.data["data"]:
-                        parts = parts[1:3] + parts[4:25]
-                        parts = [item.replace('V', '').strip() for item in parts]
-                        self.extra_var_names += STARTING_NAMES
-                        self.extra_vars += parts
-                        self.logger.debug("default_parse:STARTING", extra={"var_name": STARTING_NAMES, "parts": parts})
-                        return None
-
-                    elif (datavar := 'Vi') in data.data["data"]:
-                        parts = parts[0:4]
-                        parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '').strip() for item in parts]
-                        elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
-                        parts.append(elapsed_time)
-                        self.extra_var_names += VI_NAMES
-                        self.extra_vars += parts
-                        self.logger.debug("default_parse:vi", extra={"var_name": VI_NAMES, "parts": parts})
-                        return None
-                    
-                    elif (datavar := 'START SEQ') in data.data["data"]:
-                        if self.include_metadata:
-                            variable_types = ["main", "raw_scan", "setting", "calibration"]
-                        else:
-                            variable_types = ["main", "raw_scan"]
-                        self.include_metadata = False
-                        self.current_record = self.build_data_record(meta=self.include_metadata, variable_types=variable_types)
-                        self.current_record["timestamp"] = data.data["timestamp"]
-                        self.current_record["variables"]["time"]["data"] = data.data["timestamp"]
-
-                        self.add_to_record(self.current_record, self.extra_var_names, self.extra_vars)
-                        
-                        self.sequence_start = True
-                        self.array_buffer = [] 
-                        self.logger.debug("default_parse:START SEQ", extra={"vdata": data.data["data"]})
-                        return None
-                    
-                    elif (datavar := 'END SEQ') in data.data["data"]:
-                        if len(self.array_buffer) > 0:
-                            parts = np.array(list(self.array_buffer), dtype=object)
-                            transposed = np.transpose(parts).tolist()
-                            self.add_to_record(self.current_record, SCAN_NAMES, transposed)
-                        
-                        self.array_buffer = []
-                        self.sequence_end = True
-                        self.sequence_start = False
-                        self.logger.debug("default_parse:END SEQ", extra={"vdata": data.data["data"]})
-                        
-                        return self.current_record
-                    
-                    elif self.sequence_start:
-                        if len(parts) != 8:
-                            return None
-                        
-                        self.array_buffer.append(parts)
-
-                    else:
-                        return None
-
-                except KeyError:
-                    pass
+                data = await self.default_data_buffer.get()
+                record = self.default_parse(data)
+                if record and self.sampling():
+                    if len(record["variables"].get("read_V", {}).get("data", [])) < 10: continue
+                    vp_rd = record["variables"].get("vp_rd", {}).get("data", "").strip()
+                    if vp_rd in ["pd", "nd"]:
+                        for name, var in self.metadata["variables"].items():
+                            if "shape" in var and var["shape"] == ["time", "scan_bins"]:
+                                if name in record["variables"] and record["variables"][name]["data"]:
+                                    record["variables"][name]["data"].reverse()
+                    record = self.inversion_routine.invert(record)
+                    event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record)
+                    event["destpath"] = f"{self.get_id_as_topic()}/data/update"
+                    await self.send_message(event)
             except Exception as e:
-                print(f"default_parse error: {e}")
-                
-        return None
-
-class ServerConfig(BaseModel):
-    host: str = "localhost"
-    port: int = 9080
-    log_level: str = "info"
-
-async def shutdown(sensor):
-    print("shutting down")
-    if sensor:
-        await sensor.shutdown()
-
-    for task in task_list:
-        if task:
-            task.cancel()
-
-async def main(server_config: ServerConfig = None):
-    if server_config is None:
-        server_config = ServerConfig()
-    print(server_config)
-
-    sn = "9999"
-    try:
-        with open("/app/config/sensor.conf", "r") as f:
-            conf = yaml.safe_load(f)
-            try:
-                sn = conf["serial_number"]
-            except KeyError:
-                pass
-    except FileNotFoundError:
-        pass
-
-    envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger(f"Aerosol Dynamics::SpiderMagic810::{sn}")
-
-    logger.debug("Starting SpiderMagic810")
-    inst = SpiderMagic810()
-    inst.run()
-    await asyncio.sleep(2)
-    inst.start()
-
-    event_loop = asyncio.get_event_loop()
-    global do_run
-    do_run = True
-
-    def shutdown_handler(*args):
-        global do_run
-        do_run = False
-
-    event_loop.add_signal_handler(signal.SIGINT, shutdown_handler)
-    event_loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
-
-    while do_run:
-        logger.debug("spidermagic.run", extra={"do_run": do_run})
-        await asyncio.sleep(1)
-
-    logger.info("starting shutdown...")
-    await shutdown(inst)
-    logger.info("done.")
+                self.logger.error(f"default_data_loop error: {e}")
+            await asyncio.sleep(0.001)
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.insert(0, BASE_DIR)
-    
-    config = ServerConfig()
-    try:
-        index = sys.argv.index("--host")
-        config.host = sys.argv[index + 1]
-    except (ValueError, IndexError): pass
-
-    try:
-        index = sys.argv.index("--port")
-        config.port = int(sys.argv[index + 1])
-    except (ValueError, IndexError): pass
-
-    try:
-        index = sys.argv.index("--log_level")
-        config.log_level = sys.argv[index + 1]
-    except (ValueError, IndexError): pass
-
-    asyncio.run(main(config))
+    envdsLogger(level=logging.DEBUG).init_logger()
+    inst = SpiderMagic810()
+    inst.run()
+    asyncio.run(asyncio.sleep(2))
+    inst.start()
