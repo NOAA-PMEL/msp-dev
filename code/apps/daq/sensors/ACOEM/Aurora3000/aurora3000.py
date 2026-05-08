@@ -1,309 +1,87 @@
 import asyncio
 import signal
-
-# import uvicorn
-# from uvicorn.config import LOGGING_CONFIG
 import sys
 import os
 import logging
-
-# from logfmter import Logfmter
-import logging.config
-
-# from pydantic import BaseSettings, Field
 import json
 import yaml
-import random
+
 from envds.core import envdsLogger
-
-# from envds.daq.db import get_sensor_registration, register_sensor  # , envdsBase, envdsStatus
-from envds.util.util import (
-    # get_datetime_format,
-    time_to_next,
-    get_datetime,
-    get_datetime_string,
-)
-# from envds.daq.sensor import Sensor, SensorConfig, SensorVariable, SensorMetadata
 from envds.daq.sensor import Sensor
-from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
-
-# from envds.event.event import create_data_update, create_status_update
+from envds.daq.device import DeviceConfig, DeviceMetadata
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
-# from envds.message.message import Message
-
-# from envds.exceptions import envdsRunTransitionException
-
-# from typing import Union
 from cloudevents.http import CloudEvent
-# from cloudevents.conversion import to_json, to_structured
-
 from pydantic import BaseModel
-from datetime import datetime
-
-
-# from envds.daq.db import init_sensor_type_registration, register_sensor_type
-
-task_list = []
-
-TYPE_MAP = {
-    "string": str,
-    "str": str,
-    "char": str,
-    "int": int,
-    "float": float,
-    # Add other expected types here
-}
-
 
 class Aurora3000(Sensor):
-    """docstring for Aurora3000."""
-
-    metadata = {
-        "attributes": {
-            # "name": {"type"mock1",
-            "make": {"type": "string", "data": "ACOEM"},
-            "model": {"type": "string", "data": "Aurora3000"},
-            "description": {
-                "type": "string",
-                "data": "Three wavelength interating nephelometer manufactured and distributed by ACOEM / Ecotech",
-            },
-            "tags": {
-                "type": "char",
-                "data": "aerosol, nephelometer, scattering, backscatter, sensor",
-            },
-            "format_version": {"type": "char", "data": "1.0.0"},
-            "variable_types": {"type": "string", "data": "main, setting, calibration"},
-            "serial_number": {"type": "string", "data": ""},
-        },
-        "dimensions": {"time": 0},
-        "variables": {
-            "time": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Time"}
-                },
-            },
-            "aurora_date_time": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Internal Date and Timestamp"}
-                },
-            },
-            "scat_coef_ch1_red": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 1 Scattering Coefficient (Red)"},
-                    "units": {"type": "char", "data": "Mm-1"},
-                    "wavelength": {"type": "int", "data": 635},
-                    "wavelength_units": {"type": "char", "data": "nm"}
-                },
-            },
-            "scat_coef_ch2_green": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 2 Scattering Coefficient (Green)"},
-                    "units": {"type": "char", "data": "Mm-1"},
-                    "wavelength": {"type": "int", "data": 525},
-                    "wavelength_units": {"type": "char", "data": "nm"}
-                },
-            },
-            "scat_coef_ch3_blue": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 3 Scattering Coefficient (Blue)"},
-                    "units": {"type": "char", "data": "Mm-1"},
-                    "wavelength": {"type": "int", "data": 450},
-                    "wavelength_units": {"type": "char", "data": "nm"}
-                },
-            },
-            "backscatter_ch1_red": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 1 Backscatter (Red)"},
-                    "units": {"type": "char", "data": "Mm-1"},
-                    "wavelength": {"type": "int", "data": 635},
-                    "wavelength_units": {"type": "char", "data": "nm"}
-                },
-            },
-            "backscatter_ch2_green": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 2 Backscatter (Green)"},
-                    "units": {"type": "char", "data": "Mm-1"},
-                    "wavelength": {"type": "int", "data": 525},
-                    "wavelength_units": {"type": "char", "data": "nm"}
-                },
-            },
-            "backscatter_ch3_blue": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Channel 3 Backscatter (Blue)"},
-                    "units": {"type": "char", "data": "Mm-1"},
-                    "wavelength": {"type": "int", "data": 450},
-                    "wavelength_units": {"type": "char", "data": "nm"}
-                },
-            },
-            "sample_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Sample Temperature"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "enclosure_T": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Enclosure Temperature"},
-                    "units": {"type": "char", "data": "degrees_C"},
-                },
-            },
-            "rh": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Relative Humidity"},
-                    "units": {"type": "char", "data": "%"},
-                },
-            },
-            "pressure": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Barometric Pressure"},
-                    "units": {"type": "char", "data": "%"},
-                },
-            },
-            "major_state": {
-                "type": "string",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Major State"},
-                },
-            },
-            "DIO_state": {
-                "type": "string",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "DIO State"},
-                },
-            },
-            "Dark_count_avg": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Dark Count (moving average)"},
-                },
-            },
-            "Dark_count_read": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Last Dark Count Reading"},
-                },
-            },
-        },
-    }
-
-
     def __init__(self, config=None, **kwargs):
         super(Aurora3000, self).__init__(config=config, **kwargs)
-        self.data_task = None
         self.data_rate = 1
-        # self.configure()
-
         self.default_data_buffer = asyncio.Queue()
-
         self.sensor_definition_file = "ACOEM_Aurora3000_sensor_definition.json"
+        
+        # State persistence location
+        self.state_file = "/app/data/aurora3000_state.json"
+        
+        # State Tracking
+        self.cal_active = False
+        self.module_address = "0"
+        self.polling_task = None
+        self.collecting = False
+        self.current_valve_state = None
 
         try:            
             with open(self.sensor_definition_file, "r") as f:
                 self.metadata = json.load(f)
         except FileNotFoundError:
-            self.logger.error("sensor_definition not found. Exiting")            
             sys.exit(1)
 
-        # self.command_list = ['VI099\r', 'VI004\r', 'VI005\r']
-        self.command_list = ['VI099\r']
-        self.command_counter = 0
-        self.aggregated_record = None
-
-        # os.environ["REDIS_OM_URL"] = "redis://redis.default"
-
-        # self.data_loop_task = None
-
-        # all handled in run_setup ----
-        # self.configure()
-
-        # # self.logger = logging.getLogger(f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.logger = logging.getLogger(self.build_app_uid())
-
-        # # self.update_id("app_uid", f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.update_id("app_uid", self.build_app_uid())
-
-        # self.logger.debug("id", extra={"self.id": self.id})
-        # print(f"config: {self.config}")
-        # ----
-
-        # self.sampling_task_list.append(self.data_loop())
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
-        # self.enable_task_list.append(self.register_sensor())
-        self.collecting = False
+
+    def load_local_state(self):
+        """Loads persistent valve state and other settings from disk."""
+        try:
+            with open(self.state_file, "r") as f:
+                state = json.load(f)
+                for key, value in state.items():
+                    if value is not None:
+                        self.settings.set_setting(key, value)
+            self.logger.info(f"Loaded local state from {self.state_file}")
+        except FileNotFoundError:
+            self.logger.info("No local state file found. Using JSON schema defaults.")
+        except Exception as e:
+            self.logger.error(f"Error loading local state: {e}")
+
+    def save_local_state(self):
+        """Saves current state values to disk."""
+        state = {
+            "ext_valve_state": self.settings.get_setting("ext_valve_state")
+        }
+        try:
+            os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
+            with open(self.state_file, "w") as f:
+                json.dump(state, f, indent=4)
+        except Exception as e:
+            self.logger.error(f"Failed to save local state: {e}")
 
     def configure(self):
         super(Aurora3000, self).configure()
-
-        # get config from file
         try:
             with open("/app/config/sensor.conf", "r") as f:
                 conf = yaml.safe_load(f)
         except FileNotFoundError:
             conf = {"serial_number": "UNKNOWN", "interfaces": {}}
 
-        if "metadata_interval" in conf:
-            self.include_metadata_interval = conf["metadata_interval"]
-
         sensor_iface_properties = {
             "default": {
                 "device-interface-properties": {
                     "connection-properties": {
-                        "baudrate": 38400,
-                        "bytesize": 8,
-                        "parity": "N",
-                        "stopbit": 1,
+                        "baudrate": 38400, "bytesize": 8, "parity": "N", "stopbit": 1,
                     },
                     "read-properties": {
-                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
-                        # "read-terminator": "\r",  # only used for read_until
-                        "decode-errors": "strict",
-                        "send-method": "ascii",
+                        "read-method": "readline", "decode-errors": "strict", "send-method": "ascii",
                     },
                 }
             }
@@ -312,482 +90,211 @@ class Aurora3000(Sensor):
         if "interfaces" in conf:
             for name, iface in conf["interfaces"].items():
                 if name in sensor_iface_properties:
-                    for propname, prop in sensor_iface_properties[name].items():
-                        iface[propname] = prop
+                    iface.update(sensor_iface_properties[name])
 
-            self.logger.debug(
-                "aurora3000.configure", extra={"interfaces": conf["interfaces"]}
-            )
-
-        # TODO change settings for new sensor definition
-        '''
-        The new settings are part [variables] now so this is a bit of a hack to use the existing structure
-        with the new format.
-        '''
         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
-        # for name, setting in MAGIC250.metadata["settings"].items():
-        for name, setting in settings_def["variables"].items():
-        
-            requested = setting["attributes"]["default_value"]["data"]
-            if "settings" in config and name in config["settings"]:
-                requested = config["settings"][name]
-
+        for name, setting in settings_def.get("variables", {}).items():
+            requested = setting["attributes"].get("default_value", {}).get("data")
+            if "settings" in conf and name in conf["settings"]:
+                requested = conf["settings"][name]
             self.settings.set_setting(name, requested=requested)
+
+        # Overwrite defaults with any previously saved local state
+        self.load_local_state()
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
             dimensions=self.metadata["dimensions"],
             variables=self.metadata["variables"],
-            settings=settings_def["variables"]
+            settings=settings_def.get("variables", {})
         )
 
         self.config = DeviceConfig(
             make=self.metadata["attributes"]["make"]["data"],
             model=self.metadata["attributes"]["model"]["data"],
-            serial_number=conf["serial_number"],
+            serial_number=conf.get("serial_number", "UNKNOWN"),
             metadata=meta,
-            interfaces=conf["interfaces"],
-            daq_id=conf["daq_id"],
+            interfaces=conf.get("interfaces", {}),
+            daq_id=conf.get("daq_id", "default"),
         )
 
-        print(f"self.config: {self.config}")
-
-        try:
-            self.device_format_version = self.config.metadata.attributes[
-                "format_version"
-            ].data
-        except KeyError:
-            pass
-
-        self.logger.debug(
-            "configure",
-            extra={"conf": conf, "self.config": self.config},
-        )
-
-        try:
-            if "interfaces" in conf:
-                for name, iface in conf["interfaces"].items():
-                    print(f"add: {name}, {iface}")
-                    self.add_interface(name, iface)
-                    # self.iface_map[name] = iface
-        except Exception as e:
-            print(e)
-
-        self.logger.debug("iface_map", extra={"map": self.iface_map})
-
-    async def handle_interface_message(self, message: CloudEvent):
-        pass
+        if "interfaces" in conf:
+            for name, iface in conf["interfaces"].items():
+                self.add_interface(name, iface)
 
     async def handle_interface_data(self, message: CloudEvent):
         await super(Aurora3000, self).handle_interface_data(message)
-
-        # self.logger.debug("interface_recv_data", extra={"data": message})
-        # if message.data["type"] == det.interface_data_recv():
         if message["type"] == det.interface_data_recv():
             try:
-                # path_id = message.data["path_id"]
                 path_id = message["path_id"]
-                iface_path = self.config.interfaces["default"]["path"]
-                # if path_id == "default":
-                if path_id == iface_path:
-                    self.logger.debug(
-                        # "interface_recv_data", extra={"data": message.data.data}
-                        "interface_recv_data", extra={"data": message.data}
-                    )
-                    # await self.default_data_buffer.put(message.data)
+                if path_id == self.config.interfaces["default"]["path"]:
                     await self.default_data_buffer.put(message)
-            except KeyError:
-                pass
-
-    async def settings_check(self):
-        await super().settings_check()
-
-        if not self.settings.get_health():  # something has changed
-            for name in self.settings.get_settings().keys():
-                if not self.settings.get_health_setting(name):
-                    self.logger.debug(
-                        "settings_check - set setting",
-                        extra={
-                            "setting-name": name,
-                            "setting": self.settings.get_setting(name),
-                        },
-                    )
-
-    async def sampling_monitor(self):
-
-        need_start = True
-        start_requested = False
-        # wait to see if data is already streaming
-        await asyncio.sleep(2)
-
-        while True:
-            try:
-
-                if self.sampling():
-
-                    if need_start:
-                        if self.collecting:
-                            if self.polling_task:
-                                self.polling_task.cancel()
-                            await asyncio.sleep(2)
-                            self.collecting = False
-                            continue
-                        else:
-
-                            self.polling_task = asyncio.create_task(self.polling_loop())
-                            need_start = False
-                            start_requested = True
-                            await asyncio.sleep(2)
-                            continue
-                    elif start_requested:
-                        if self.collecting:
-                            start_requested = False
-                        else:
-                            if not self.polling_task:
-                                self.polling_task = asyncio.create_task(self.polling_loop())
-                            await asyncio.sleep(2)
-                            continue
-                else:
-                    if self.collecting:
-                        if self.polling_task:
-                            self.polling_task.cancel()
-                        await asyncio.sleep(2)
-                        self.collecting = False
-
-                await asyncio.sleep(0.1)
-
-            except Exception as e:
-                print(f"sampling monitor error: {e}")
-
-            await asyncio.sleep(0.1)
-
+            except KeyError: pass
 
     async def polling_loop(self):
-
+        """Continuously requests the 14-parameter string via the VI099 command."""
         while True:
             try:
-                for poll_cmd in self.command_list:
-                # poll_cmd = 'VI099\r'
-                    self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
-                    await self.interface_send_data(data={"data": poll_cmd})
-                    await asyncio.sleep(0.001)
-                await asyncio.sleep(time_to_next(self.data_rate))
+                poll_cmd = f"VI0{self.module_address}99\r"
+                await self.interface_send_data(data={"data": poll_cmd})
+                await asyncio.sleep(self.data_rate)
             except Exception as e:
-                self.logger.error("polling_loop", extra={"e": e})
-    
+                self.logger.error(f"polling_loop error: {e}")
+                await asyncio.sleep(self.data_rate)
 
-    # async def default_data_loop(self):
+    async def set_ext_valve(self, valve_state):
+        """Commands the Digital Out Aux via DO command 04 to toggle the external 3-way valve."""
+        state_val = "1" if valve_state == "position_1" else "0" 
+        cmd = f"DO0{self.module_address}04{state_val}\r"
+        
+        await self.interface_send_data(data={"data": cmd})
+        self.logger.info(f"External 3-way valve commanded to: {valve_state} ({cmd.strip()})")
+        self.current_valve_state = valve_state
 
-    #     while True:
-    #         try:
-    #             print("command number", self.command_counter)
-    #             data = await self.default_data_buffer.get()
-    #             self.logger.debug("default_data_loop", extra={"data": data})
-    #             record = self.default_parse(data)
-    #             cmd_list_len = len(self.command_list)
-
-    #             # check to see if the current data stream is supposed to be output from the first command
-    #             if self.command_counter == 0:
-    #                 # if the first variable is the internal timestamp, this is the first record
-    #                 try:
-    #                     if bool(datetime.strptime(record["variables"]['aurora_date_time']["data"], "%d/%m/%Y %H:%M:%S")):
-    #                         record1 = record
-    #                         self.command_counter += 1
-    #                         continue
-    #                 except Exception as e:
-    #                     print(f"default_data_loop error: {e}")
-
-    #             # consecutive records after the first one are moved into the first one
-    #             else:
-    #                 record2 = record
-    #                 var_index = 13 + self.command_counter
-    #                 record1["variables"][list(self.config.metadata.variables.keys())[var_index]]["data"] = record2["variables"]['aurora_date_time']["data"]
-    #                 self.command_counter += 1
-
-    #                 # once the number of commands sent has surpassed the expected number, this function will finish and return the completed record
-    #                 if self.command_counter < (cmd_list_len - 1):
-    #                     continue
-    #                 else:
-    #                     self.command_counter = 0
-    #                     pass
-
-    #             record = record1
-    #             print("COMPLETE RECORD", record)
-
-    #             if record:
-    #                 self.collecting = True
-
-    #             if record and self.sampling():
-    #                 event = DAQEvent.create_data_update(
-    #                     # source="sensor.mockco-mock1-1234", data=record
-    #                     source=self.get_id_as_source(),
-    #                     data=record,
-    #                 )
-    #                 destpath = f"{self.get_id_as_topic()}/data/update"
-    #                 event["destpath"] = destpath
-    #                 self.logger.debug(
-    #                     "default_data_loop",
-    #                     extra={"data": event, "destpath": destpath},
-    #                 )
-    #                 # message = Message(data=event, destpath=destpath)
-    #                 message = event
-    #                 # self.logger.debug("default_data_loop", extra={"m": message})
-    #                 await self.send_message(message)
-
-    #             # self.logger.debug("default_data_loop", extra={"record": record})
-    #         except Exception as e:
-    #             print(f"default_data_loop error: {e}")
-    #         await asyncio.sleep(0.1)
-    
-    # def default_parse(self, data):
-    #     if data:
-    #         try:
-    #             variables = list(self.config.metadata.variables.keys())
-    #             variables.remove("time")
-    #             print(f"variables: \n{variables}")
-
-    #             print(f"include metadata: {self.include_metadata}")
-    #             record = self.build_data_record(meta=self.include_metadata)
-    #             print(f"default_parse: data: {data}, record: {record}")
-    #             self.include_metadata = False
-    #             try:
-    #                 record["timestamp"] = data.data["timestamp"]
-    #                 record["variables"]["time"]["data"] = data.data["timestamp"]
-    #                 parts = data.data["data"].split(",")
-    #                 print(f"parts: {parts}, {variables}")
-    #                 # if len(parts) < 13:
-    #                 #     return None
-    #                 # if len(parts) > 12:
-
-    #                 for index, name in enumerate(variables):
-    #                     if name in record["variables"]:
-    #                         # instvar = self.config.variables[name]
-    #                         instvar = self.config.metadata.variables[name]
-    #                         vartype = instvar.type
-    #                         if instvar.type == "string":
-    #                             vartype = "str"
-    #                         try:
-    #                             # print(f"default_parse: {record['variables'][name]} - {parts[index].strip()}")
-    #                             record["variables"][name]["data"] = eval(vartype)(
-    #                                 parts[index].strip()
-    #                             )
-    #                         # except ValueError:
-    #                         except Exception as e:
-    #                             if vartype == "str" or vartype == "char":
-    #                                 record["variables"][name]["data"] = ""
-    #                             else:
-    #                                 record["variables"][name]["data"] = None
+    async def settings_check(self):
+        """Intercepts MQTT settings requests and acknowledges them."""
+        await super().settings_check()
+        
+        if not self.settings.get_health():
+            state_changed = False
+            for name in self.settings.get_settings().keys():
+                if not self.settings.get_health_setting(name):
+                    target_val = self.settings.get_setting(name)
+                    
+                    if name == "ext_valve_state":
+                        await self.set_ext_valve(target_val)
+                        self.settings.set_setting(name, target_val) # Acknowledge health
+                        state_changed = True
                         
-    #                 return record
-    #             except KeyError:
-    #                 pass
-    #         except Exception as e:
-    #             print(f"default_parse error: {e}")
-    #     # else:
-    #     return None
+                    elif name == "sampling_state":
+                        self.settings.set_setting(name, target_val)
+                        
+                    elif name == "calibration_routine":
+                        self.settings.set_setting(name, target_val)
 
+            # Persist to disk if the valve state was explicitly changed
+            if state_changed:
+                self.save_local_state()
 
+    async def sampling_monitor(self):
+        """State machine mapping envds settings to Aurora hardware routines."""
+        self.polling_task = asyncio.create_task(self.polling_loop())
+        
+        # Ensure the valve aligns with persistent state on boot
+        startup_valve = self.settings.get_setting("ext_valve_state")
+        if startup_valve:
+            await self.set_ext_valve(startup_valve)
+            
+        while True:
+            try:
+                state = self.settings.get_setting("sampling_state") or "idle"
+                routine = self.settings.get_setting("calibration_routine") or "none"
+
+                if self.sampling() and state.lower() == "sampling":
+                    if not self.collecting:
+                        await self.interface_send_data(data={"data": f"DO0{self.module_address}051\r"})
+                        await self.interface_send_data(data={"data": f"**{self.module_address}J0\r"})
+                        self.collecting = True
+                
+                elif state.lower() in ["idle", "maintenance"]:
+                    if self.collecting:
+                        await self.interface_send_data(data={"data": f"DO0{self.module_address}050\r"})
+                        self.collecting = False
+                
+                elif state.lower() == "calibration":
+                    if routine == "zero_cal" and not self.cal_active:
+                        await self.interface_send_data(data={"data": f"**{self.module_address}J2\r"})
+                        self.cal_active = True
+                    elif routine == "span_cal_co2" and not self.cal_active:
+                        await self.interface_send_data(data={"data": f"**{self.module_address}J1\r"})
+                        self.cal_active = True
+                    elif routine == "zero_check" and not self.cal_active:
+                        await self.interface_send_data(data={"data": f"**{self.module_address}J4\r"})
+                        self.cal_active = True
+                    elif routine == "span_check" and not self.cal_active:
+                        await self.interface_send_data(data={"data": f"**{self.module_address}J3\r"})
+                        self.cal_active = True
+                
+                await asyncio.sleep(1)
+            except Exception as e:
+                self.logger.error(f"sampling_monitor error: {e}")
+                await asyncio.sleep(1)
+
+    def default_parse(self, data):
+        """Parses the 14-field comma-delimited VI099 string."""
+        if not data: return None
+        
+        record = self.build_data_record(meta=self.include_metadata)
+        self.include_metadata = False
+        record["timestamp"] = data.data["timestamp"]
+        record["variables"]["time"]["data"] = data.data["timestamp"]
+        
+        parts = [p.strip() for p in data.data["data"].split(",")]
+        
+        if len(parts) >= 14:
+            try:
+                record["variables"]["aurora_date"]["data"] = parts[0]
+                record["variables"]["aurora_time"]["data"] = parts[1]
+                record["variables"]["scat_coef_ch1_red"]["data"] = float(parts[2])
+                record["variables"]["scat_coef_ch2_green"]["data"] = float(parts[3])
+                record["variables"]["scat_coef_ch3_blue"]["data"] = float(parts[4])
+                record["variables"]["backscatter_ch1_red"]["data"] = float(parts[5])
+                record["variables"]["backscatter_ch2_green"]["data"] = float(parts[6])
+                record["variables"]["backscatter_ch3_blue"]["data"] = float(parts[7])
+                record["variables"]["sample_T"]["data"] = float(parts[8])
+                record["variables"]["enclosure_T"]["data"] = float(parts[9])
+                record["variables"]["rh"]["data"] = float(parts[10])
+                record["variables"]["pressure"]["data"] = float(parts[11])
+                
+                major_state = int(parts[12])
+                record["variables"]["major_state"]["data"] = major_state
+                record["variables"]["DIO_state"]["data"] = parts[13]
+
+                if self.current_valve_state is not None:
+                    record["variables"]["ext_valve_state"]["data"] = self.current_valve_state
+
+                # Hardware tells us when a calibration finishes (state returns to 0)
+                if self.cal_active and major_state == 0:
+                    self.logger.info("Calibration sequence completed by Aurora firmware.")
+                    self.settings.set_setting("calibration_routine", "none")
+                    self.settings.set_setting("sampling_state", "sampling" if self.sampling() else "idle")
+                    self.cal_active = False
+
+                return record
+            except (ValueError, TypeError) as e:
+                self.logger.warning(f"Error casting data payload: {e}")
+                return None
+        return None
 
     async def default_data_loop(self):
-
         while True:
             try:
                 data = await self.default_data_buffer.get()
-                self.logger.debug("default_data_loop", extra={"data": data})
-                current_record = self.default_parse(data)
-                self.logger.debug("default_data_loop", extra={"current_record": current_record})
-                # cmd_list_len = len(self.command_list)
-
-                if not current_record:
-                    continue
-
-                is_first_chunk = False
-
-                try:
-                    current_record["variables"]['aurora_date_time']["data"].count('/') == 3
-                    # datetime.strptime(current_record["variables"]['aurora_date_time']["data"], "%d/%m/%Y %H:%M:%S")
-                    # self.logger.debug("default_data_loop", extra={"datetime": current_record["variables"]['aurora_date_time']["data"]})
-                    is_first_chunk = True
-                except (ValueError, TypeError, KeyError):
-                    is_first_chunk = False
-                    self.logger.info("Not first chunk")
+                record = self.default_parse(data)
                 
-                if is_first_chunk:
-                    self.aggregated_record = current_record
-                    self.command_counter = 1
-                    # continue
-                
-                elif self.aggregated_record:
-                    try:
-                        var_keys = list(self.config.metadata.variables.keys())
-                        var_index = 13 + self.command_counter
-                        target_key = var_keys[var_index]
-                        self.aggregated_record["variables"][target_key]["data"] = current_record["variables"]['aurora_date_time']["data"]
-                        self.command_counter += 1
-                    
-                    except (IndexError, KeyError) as e:
-                        self.logger.error(f"Failed to aggregate record part: {e}", exc_info=True)
-                        # Reset state on aggregation error to avoid corruption
-                        self.aggregated_record = None
-                        self.command_counter = 0
-                        continue
-                
-                else:
-                    self.logger.info("Not first chunk and no active aggregation. Ignoring data.")
-                    continue
-                
-                cmd_list_len = len(self.command_list)
-                
-                if self.aggregated_record and self.command_counter >= cmd_list_len:
-                    record_to_send = self.aggregated_record
-                    self.logger.info("Record aggregation complete.", extra={"record": record_to_send})
-
-                    # Reset state for the next message
-                    self.aggregated_record = None
-                    self.command_counter = 0
-
-                    # Process and send the completed record
-                    self.collecting = True
-                    if self.sampling():
-                        event = DAQEvent.create_data_update(
-                            source=self.get_id_as_source(),
-                            data=record_to_send,
-                        )
-                        destpath = f"{self.get_id_as_topic()}/data/update"
-                        event["destpath"] = destpath
-                        
-                        self.logger.debug("Sending complete message", extra={"event": event})
-                        await self.send_message(event)
-                
-            except Exception as e:
-                self.logger.error(f"An unexpected error occurred in data loop: {e}", exc_info=True)
-                # Prevent fast-looping on continuous errors
-                await asyncio.sleep(0.5)
-
-
-    def default_parse(self, data):
-
-        if not data:
-            return None
-        
-        try:
-            record = self.build_data_record(meta=self.include_metadata)
-            self.include_metadata = False  # Ensure metadata is only included once
-
-            timestamp = data.data["timestamp"]
-            record["timestamp"] = timestamp
-            if "time" in record["variables"]:
-                record["variables"]["time"]["data"] = timestamp
-
-            variable_names = [v for v in self.config.metadata.variables if v != "time"]
-            parts = data.data["data"].split(",")
-            
-            # Pair variable names with data parts and populate the record
-            for name, value_str in zip(variable_names, parts):
-                if name not in record["variables"]:
-                    continue
-
-                variable_config = self.config.metadata.variables[name]
-                target_type = TYPE_MAP.get(variable_config.type, str)
-
-                try:
-                    cleaned_value = value_str.strip()
-                    record["variables"][name]["data"] = target_type(cleaned_value)
-                except (ValueError, TypeError):
-                    self.logger.warning(
-                        f"Could not cast '{cleaned_value}' to type '{variable_config.type}' for '{name}'."
+                if record and self.sampling():
+                    event = DAQEvent.create_data_update(
+                        source=self.get_id_as_source(),
+                        data=record,
                     )
-                    record["variables"][name]["data"] = None if target_type is not str else ""
-            
-            return record
-
-        except (KeyError, IndexError) as e:
-            self.logger.error(f"Error parsing data due to missing key or index: {e}", exc_info=True)
-            return None
-        except Exception as e:
-            self.logger.error(f"An unexpected error occurred in default_parse: {e}", exc_info=True)
-            return None
-
-
-
-
-
-
-
-class ServerConfig(BaseModel):
-    host: str = "localhost"
-    port: int = 9080
-    log_level: str = "info"
-
+                    event["destpath"] = f"{self.get_id_as_topic()}/data/update"
+                    await self.send_message(event)
+            except Exception as e:
+                self.logger.error(f"default_data_loop error: {e}")
+            await asyncio.sleep(0.1)
 
 async def shutdown(sensor):
-    print("shutting down")
     if sensor:
         await sensor.shutdown()
 
-    for task in task_list:
-        print(f"cancel: {task}")
-        if task:
-            task.cancel()
-
-
 async def main(server_config: ServerConfig = None):
-    # uiconfig = UIConfig(**config)
-    if server_config is None:
-        server_config = ServerConfig()
-    print(server_config)
-
-    # print("starting mock1 test task")
-
-    # test = envdsBase()
-    # task_list.append(asyncio.create_task(test_task()))
-
-    # get config from file
-    sn = "9999"
-    try:
-        with open("/app/config/sensor.conf", "r") as f:
-            conf = yaml.safe_load(f)
-            try:
-                sn = conf["serial_number"]
-            except KeyError:
-                pass
-    except FileNotFoundError:
-        pass
-
+    if server_config is None: server_config = ServerConfig()
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger(f"ACOEM::Aurora3000::{sn}")
-
-    logger.debug("Starting Aurora3000")
+    logger = logging.getLogger("ACOEM::Aurora3000")
     inst = Aurora3000()
-    # print(inst)
-    # await asyncio.sleep(2)
     inst.run()
-    # print("running")
-    # task_list.append(asyncio.create_task(inst.run()))
-    # await asyncio.sleep(2)
     await asyncio.sleep(2)
     inst.start()
-    # logger.debug("Starting Mock1")
-
-    # remove fastapi ----
-    # root_path = f"/envds/sensor/MockCo/Mock1/{sn}"
-    # # print(f"root_path: {root_path}")
-
-    # # TODO: get serial number from config file
-    # config = uvicorn.Config(
-    #     "main:app",
-    #     host=server_config.host,
-    #     port=server_config.port,
-    #     log_level=server_config.log_level,
-    #     root_path=f"/envds/sensor/MockCo/Mock1/{sn}",
-    #     # log_config=dict_config,
-    # )
-
-    # server = uvicorn.Server(config)
-    # # test = logging.getLogger()
-    # # test.info("test")
-    # await server.serve()
-    # ----
 
     event_loop = asyncio.get_event_loop()
     global do_run
@@ -801,48 +308,12 @@ async def main(server_config: ServerConfig = None):
     event_loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
 
     while do_run:
-        logger.debug("mock1.run", extra={"do_run": do_run})
         await asyncio.sleep(1)
 
-    logger.info("starting shutdown...")
     await shutdown(inst)
-    logger.info("done.")
-
 
 if __name__ == "__main__":
-
-    BASE_DIR = os.path.dirname(
-        # os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        os.path.dirname(os.path.abspath(__file__))
-    )
-    # insert BASE at beginning of paths
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, BASE_DIR)
-    print(sys.path, BASE_DIR)
-
-    print(sys.argv)
     config = ServerConfig()
-    try:
-        index = sys.argv.index("--host")
-        host = sys.argv[index + 1]
-        config.host = host
-    except (ValueError, IndexError):
-        pass
-
-    try:
-        index = sys.argv.index("--port")
-        port = sys.argv[index + 1]
-        config.port = int(port)
-    except (ValueError, IndexError):
-        pass
-
-    try:
-        index = sys.argv.index("--log_level")
-        ll = sys.argv[index + 1]
-        config.log_level = ll
-    except (ValueError, IndexError):
-        pass
-
     asyncio.run(main(config))
-
-
-
