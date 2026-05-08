@@ -236,7 +236,7 @@ class MAGIC250(Sensor):
                 print(f"default_data_loop error: {e}")
             await asyncio.sleep(0.1)
 
-    def def default_parse(self, data):
+    def default_parse(self, data):
         if not data:
             return None
 
