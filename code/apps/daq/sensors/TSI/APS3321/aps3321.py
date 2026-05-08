@@ -183,22 +183,27 @@ class APS3321(Sensor):
                 await asyncio.sleep(1)
 
     async def default_data_loop(self):
-        """Restores original multi-line buffering loop."""
         record_buffer = None  
         while True:
             try:
                 data = await self.default_data_buffer.get()
                 self.collecting = True
+                
+                # Safely extract raw data string
                 raw_data = data.data if isinstance(data.data, dict) else {}
                 raw_str = raw_data.get('data', '')
 
+                # 1. Start of a new Correlated Sequence
                 if self.first_record in raw_str:
                     record_buffer = self.default_parse(data)
                     self.record_counter += 1
                     continue
 
-                if record_buffer is None: continue
+                # Ignore fragments if we haven't seen a header yet
+                if record_buffer is None: 
+                    continue
 
+                # 2. End of the Sequence (Auxiliary Record)
                 if self.last_record in raw_str:
                     record2 = self.default_parse(data)
                     if record2:
@@ -206,42 +211,61 @@ class APS3321(Sensor):
                             if var != 'time' and record2["variables"][var]["data"]:
                                 record_buffer["variables"][var]["data"] = record2["variables"][var]["data"]
                     
-                    record_buffer["variables"]["diameter"]["data"] = self.diams
-                    record_buffer["variables"]["channel"]["data"] = list(range(1, 65))
-                    record_buffer["variables"]["dN"]["data"] = [None]*52
-                    record_buffer["variables"]["dlogDp"]["data"] = [self.dlogDp]*52
-                    record_buffer["variables"]["dNdlogDp"]["data"] = [None]*52
-                    record_buffer["variables"]["intN"]["data"] = None
+                    # Safely assigning to ["data"] because variables are now in the JSON schema
+                    if "diameter" in record_buffer["variables"]:
+                        record_buffer["variables"]["diameter"]["data"] = self.diams
+                    if "channel" in record_buffer["variables"]:
+                        record_buffer["variables"]["channel"]["data"] = list(range(1, 65))
+                    if "dN" in record_buffer["variables"]:
+                        record_buffer["variables"]["dN"]["data"] = [None]*52
+                    if "dlogDp" in record_buffer["variables"]:
+                        record_buffer["variables"]["dlogDp"]["data"] = [self.dlogDp]*52
+                    if "dNdlogDp" in record_buffer["variables"]:
+                        record_buffer["variables"]["dNdlogDp"]["data"] = [None]*52
+                    if "intN" in record_buffer["variables"]:
+                        record_buffer["variables"]["intN"]["data"] = None
 
                     if self.sampling():
                         dN, dNdlogDp, intN = [], [], 0
                         flow_lpm = record_buffer["variables"].get("sflow", {}).get("data") or 1.0
                         flow_ccs = flow_lpm * (1000./60.)
                         counts = record_buffer["variables"].get("particle_counts", {}).get("data")
+                        
                         if counts:
                             for cnt in counts:
                                 conc = cnt / (flow_ccs * self.sampling_frequency)
                                 intN += conc
                                 dN.append(round(conc, 3))
                                 dNdlogDp.append(round(conc / self.dlogDp, 3))
-                        record_buffer["variables"]["intN"]["data"] = intN
-                        record_buffer["variables"]["dN"]["data"] = dN
-                        record_buffer["variables"]["dNdlogDp"]["data"] = dNdlogDp
+                        
+                        if "intN" in record_buffer["variables"]:
+                            record_buffer["variables"]["intN"]["data"] = intN
+                        if "dN" in record_buffer["variables"]:
+                            record_buffer["variables"]["dN"]["data"] = dN
+                        if "dNdlogDp" in record_buffer["variables"]:
+                            record_buffer["variables"]["dNdlogDp"]["data"] = dNdlogDp
 
                         event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record_buffer)
                         event["destpath"] = f"{self.get_id_as_topic()}/data/update"
+                        
+                        self.logger.debug("Publishing DAQ data event", extra={"destpath": str(event["destpath"])})
                         await self.send_message(event)
+                        
                     record_buffer = None 
                     continue
 
+                # 3. Intermediate Records (Aerodynamic or Side-Scatter)
                 record2 = self.default_parse(data)
                 if record2:
                     for var in record2["variables"]:
                         if var != 'time' and record2["variables"][var]["data"]:
                             record_buffer["variables"][var]["data"] = record2["variables"][var]["data"]
+            
             except Exception as e:
-                self.logger.error(f"default_data_loop error: {e}")
+                self.logger.error("default_data_loop error", extra={"error": str(e)})
                 record_buffer = None 
+            
+            await asyncio.sleep(0.01)
 
     def check_array_buffer(self, data, array_cond = False):
         self.array_buffer.append(data)
