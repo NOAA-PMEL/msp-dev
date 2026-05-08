@@ -32,12 +32,14 @@ class Aurora3000(Sensor):
             with open(self.sensor_definition_file, "r") as f:
                 self.metadata = json.load(f)
         except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
             sys.exit(1)
 
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
 
     def configure(self):
+        """Restores explicit version tracking from JSON metadata."""
         super(Aurora3000, self).configure()
         try:
             with open("/app/config/sensor.conf", "r") as f:
@@ -48,12 +50,8 @@ class Aurora3000(Sensor):
         sensor_iface_properties = {
             "default": {
                 "device-interface-properties": {
-                    "connection-properties": {
-                        "baudrate": 38400, "bytesize": 8, "parity": "N", "stopbit": 1,
-                    },
-                    "read-properties": {
-                        "read-method": "readline", "decode-errors": "strict", "send-method": "ascii",
-                    },
+                    "connection-properties": {"baudrate": 38400, "bytesize": 8, "parity": "N", "stopbit": 1},
+                    "read-properties": {"read-method": "readline", "decode-errors": "strict", "send-method": "ascii"},
                 }
             }
         }
@@ -85,6 +83,12 @@ class Aurora3000(Sensor):
             interfaces=conf.get("interfaces", {}),
             daq_id=conf.get("daq_id", "default"),
         )
+
+        # Restore format_version override
+        try:
+            self.device_format_version = self.config.metadata.attributes["format_version"].data
+        except (KeyError, AttributeError):
+            pass
 
         if "interfaces" in conf:
             for name, iface in conf["interfaces"].items():
@@ -120,23 +124,25 @@ class Aurora3000(Sensor):
         self.current_valve_state = valve_state
 
     async def settings_check(self):
-        """Intercepts MQTT settings requests and acknowledges them."""
+        """Fix: Uses set_actual to prevent infinite recursion loop."""
         await super().settings_check()
         
         if not self.settings.get_health():
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
-                    target_val = self.settings.get_setting(name)
+                    
+                    setting_obj = self.settings.get_setting(name)
+                    # Safely extract requested value from framework dictionary
+                    target_val = setting_obj.get("requested") if isinstance(setting_obj, dict) else setting_obj
+                    
+                    self.logger.info(f"MQTT Settings Request: changing {name} to {target_val}")
                     
                     if name == "ext_valve_state":
                         await self.set_ext_valve(target_val)
-                        self.settings.set_setting(name, target_val) # Acknowledge health
+                        self.settings.set_actual(name, target_val) # Acknowledge health
                         
-                    elif name == "sampling_state":
-                        self.settings.set_setting(name, target_val)
-                        
-                    elif name == "calibration_routine":
-                        self.settings.set_setting(name, target_val)
+                    elif name in ["sampling_state", "calibration_routine"]:
+                        self.settings.set_actual(name, target_val)
 
     async def sampling_monitor(self):
         """State machine mapping envds settings to Aurora hardware routines."""
@@ -144,26 +150,34 @@ class Aurora3000(Sensor):
         
         # Ensure the valve aligns with default schema state on boot
         startup_valve = self.settings.get_setting("ext_valve_state")
+        if isinstance(startup_valve, dict):
+            startup_valve = startup_valve.get("requested")
+            
         if startup_valve:
             await self.set_ext_valve(startup_valve)
             
         while True:
             try:
-                state = self.settings.get_setting("sampling_state") or "idle"
-                routine = self.settings.get_setting("calibration_routine") or "none"
+                # Fix: Safely handle dictionary payloads from MQTT
+                state_obj = self.settings.get_setting("sampling_state")
+                state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
+                state_str = str(state).lower()
 
-                if self.sampling() and state.lower() == "sampling":
+                routine_obj = self.settings.get_setting("calibration_routine")
+                routine = routine_obj.get("requested", "none") if isinstance(routine_obj, dict) else "none"
+
+                if self.sampling() and state_str == "sampling":
                     if not self.collecting:
                         await self.interface_send_data(data={"data": f"DO0{self.module_address}051\r"})
                         await self.interface_send_data(data={"data": f"**{self.module_address}J0\r"})
                         self.collecting = True
                 
-                elif state.lower() in ["idle", "maintenance"]:
+                elif state_str in ["idle", "maintenance"]:
                     if self.collecting:
                         await self.interface_send_data(data={"data": f"DO0{self.module_address}050\r"})
                         self.collecting = False
                 
-                elif state.lower() == "calibration":
+                elif state_str == "calibration":
                     if routine == "zero_cal" and not self.cal_active:
                         await self.interface_send_data(data={"data": f"**{self.module_address}J2\r"})
                         self.cal_active = True
@@ -183,18 +197,22 @@ class Aurora3000(Sensor):
                 await asyncio.sleep(1)
 
     def default_parse(self, data):
-        """Parses the 14-field comma-delimited VI099 string."""
+        """Fix: Uses variable_types to optimize payload size."""
         if not data: return None
         
-        record = self.build_data_record(meta=self.include_metadata)
-        self.include_metadata = False
-        record["timestamp"] = data.data["timestamp"]
-        record["variables"]["time"]["data"] = data.data["timestamp"]
-        
-        parts = [p.strip() for p in data.data["data"].split(",")]
-        
-        if len(parts) >= 14:
-            try:
+        try:
+            # Metadata filtering logic to reduce MQTT record size
+            v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
+            record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+            self.include_metadata = False
+
+            raw_payload = data.data if isinstance(data.data, dict) else {}
+            record["timestamp"] = raw_payload.get("timestamp")
+            record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+            
+            parts = [p.strip() for p in raw_payload.get("data", "").split(",")]
+            
+            if len(parts) >= 14:
                 record["variables"]["aurora_date"]["data"] = parts[0]
                 record["variables"]["aurora_time"]["data"] = parts[1]
                 record["variables"]["scat_coef_ch1_red"]["data"] = float(parts[2])
@@ -215,7 +233,7 @@ class Aurora3000(Sensor):
                 if self.current_valve_state is not None:
                     record["variables"]["ext_valve_state"]["data"] = self.current_valve_state
 
-                # Hardware tells us when a calibration finishes (state returns to 0)
+                # Check if instrument has organically finished its routine
                 if self.cal_active and major_state == 0:
                     self.logger.info("Calibration sequence completed by Aurora firmware.")
                     self.settings.set_setting("calibration_routine", "none")
@@ -223,10 +241,10 @@ class Aurora3000(Sensor):
                     self.cal_active = False
 
                 return record
-            except (ValueError, TypeError) as e:
-                self.logger.warning(f"Error casting data payload: {e}")
-                return None
-        return None
+            return None
+        except (ValueError, TypeError, Exception) as e:
+            self.logger.warning(f"Error parsing data payload: {e}")
+            return None
 
     async def default_data_loop(self):
         while True:
@@ -235,24 +253,26 @@ class Aurora3000(Sensor):
                 record = self.default_parse(data)
                 
                 if record and self.sampling():
-                    event = DAQEvent.create_data_update(
-                        source=self.get_id_as_source(),
-                        data=record,
-                    )
+                    event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record)
                     event["destpath"] = f"{self.get_id_as_topic()}/data/update"
                     await self.send_message(event)
             except Exception as e:
                 self.logger.error(f"default_data_loop error: {e}")
             await asyncio.sleep(0.1)
 
+class ServerConfig(BaseModel):
+    host: str = "localhost"
+    port: int = 9080
+    log_level: str = "info"
+
 async def shutdown(sensor):
-    if sensor:
-        await sensor.shutdown()
+    if sensor: await sensor.shutdown()
 
 async def main(server_config: ServerConfig = None):
+    """Matches MAGIC 250 main entry logic."""
     if server_config is None: server_config = ServerConfig()
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger("ACOEM::Aurora3000")
+    
     inst = Aurora3000()
     inst.run()
     await asyncio.sleep(2)
@@ -271,11 +291,9 @@ async def main(server_config: ServerConfig = None):
 
     while do_run:
         await asyncio.sleep(1)
-
     await shutdown(inst)
 
 if __name__ == "__main__":
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, BASE_DIR)
-    config = ServerConfig()
-    asyncio.run(main(config))
+    asyncio.run(main(ServerConfig()))
