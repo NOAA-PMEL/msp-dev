@@ -145,11 +145,18 @@ class MAGIC250(Sensor):
         if not self.settings.get_health():
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
-                    target_val = self.settings.get_setting(name)
+                    
+                    # 1. Fetch the full setting dictionary
+                    setting_obj = self.settings.get_setting(name)
+                    
+                    # 2. Extract ONLY the requested string/value
+                    target_val = setting_obj.get("requested") if isinstance(setting_obj, dict) else setting_obj
+                    
                     self.logger.info(f"MQTT Settings Request: changing {name} to {target_val}")
                     
                     if name in ["sampling_state", "calibration_routine", "pump_state", "q_target"]:
-                        self.settings.set_setting(name, target_val)
+                        # 3. Acknowledge health by setting the ACTUAL state to match the REQUESTED state
+                        self.settings.set_actual(name, target_val)
 
     async def sampling_monitor(self):
         start_command = "Log,1\n"
@@ -162,13 +169,9 @@ class MAGIC250(Sensor):
 
         while True:
             try:
-                state = self.settings.get_setting("sampling_state") or "idle"
-
-                # Safeguard: Extract string if the MQTT payload was stored as a dictionary
-                if isinstance(state, dict):
-                    state = state.get("data", "idle")
-                
-                # Safely cast to string to prevent any future attribute errors
+                # Fetch the dictionary and extract the requested target state safely
+                state_obj = self.settings.get_setting("sampling_state")
+                state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
                 state_str = str(state).lower()
 
                 if self.sampling() and state_str == "sampling":
