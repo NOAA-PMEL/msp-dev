@@ -111,6 +111,12 @@ class MAGIC250(Sensor):
             daq_id=conf.get("daq_id", "default"),
         )
 
+        # Restored block: Extract format_version to ensure build_data_record uses the JSON schema version
+        try:
+            self.device_format_version = self.config.metadata.attributes["format_version"].data
+        except (KeyError, AttributeError):
+            pass
+
         self.logger.debug("configure", extra={"conf": conf, "self.config": self.config})
 
         try:
