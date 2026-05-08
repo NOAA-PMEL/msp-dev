@@ -66,6 +66,16 @@ class SpiderMagic810(Sensor):
                     for propname, prop in sensor_iface_properties[name].items():
                         iface[propname] = prop
             
+        # 2. NEW: Initialize settings from definition file
+        # This extracts 'sampling_state' and 'calibration_routine' defaults
+        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+        for name, setting in settings_def.get("variables", {}).items():
+            requested = setting["attributes"].get("default_value", {}).get("data")
+            # Allow overrides from sensor.conf if present
+            if "settings" in conf and name in conf["settings"]:
+                requested = conf["settings"][name]
+            self.settings.set_setting(name, requested=requested)
+            
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"], 
             dimensions=self.metadata["dimensions"], 
