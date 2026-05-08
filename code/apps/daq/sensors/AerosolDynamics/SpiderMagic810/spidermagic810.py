@@ -75,7 +75,7 @@ class SpiderMagic810(Sensor):
             if "settings" in conf and name in conf["settings"]:
                 requested = conf["settings"][name]
             self.settings.set_setting(name, requested=requested)
-            
+
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"], 
             dimensions=self.metadata["dimensions"], 
@@ -113,8 +113,43 @@ class SpiderMagic810(Sensor):
                     if name in ["sampling_state", "calibration_routine"]:
                         self.settings.set_actual(name, target_val)
 
+    # async def sampling_monitor(self):
+    #     cmds = ["v1,5\r", "v2,5000\r", "hvgo\r"]
+    #     need_start = True
+    #     await asyncio.sleep(2)
+        
+    #     while True:
+    #         try:
+    #             state_obj = self.settings.get_setting("sampling_state")
+    #             state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
+    #             state_str = str(state).lower()
+
+    #             if self.sampling() and state_str == "sampling":
+    #                 if need_start:
+    #                     for c in cmds: 
+    #                         await self.interface_send_data(data={"data": c})
+    #                         await asyncio.sleep(0.5)
+    #                     need_start = False
+    #             else:
+    #                 if not need_start:
+    #                     await self.interface_send_data(data={"data": "stop\r"})
+    #                     need_start = True
+    #         except Exception:
+    #             pass
+    #         await asyncio.sleep(1)
+
     async def sampling_monitor(self):
-        cmds = ["v1,5\r", "v2,5000\r", "hvgo\r"]
+        # Added \n to flush network buffers, msg,1 for verbose output, and st for scan time
+        scan_time = self.sampling_frequency if hasattr(self, 'sampling_frequency') else 30
+        cmds = [
+            "stop\r\n", 
+            "sm,1\r\n", 
+            "msg,1\r\n", 
+            f"st,{scan_time}\r\n", 
+            "v1,5\r\n", 
+            "v2,5000\r\n", 
+            "hvgo\r\n"
+        ]
         need_start = True
         await asyncio.sleep(2)
         
@@ -128,14 +163,15 @@ class SpiderMagic810(Sensor):
                     if need_start:
                         for c in cmds: 
                             await self.interface_send_data(data={"data": c})
-                            await asyncio.sleep(0.5)
+                            # Increased delay to 1.0s to prevent overwhelming the ADI board
+                            await asyncio.sleep(1.0)
                         need_start = False
                 else:
                     if not need_start:
-                        await self.interface_send_data(data={"data": "stop\r"})
+                        await self.interface_send_data(data={"data": "stop\r\n"})
                         need_start = True
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.error("sampling_monitor error", extra={"error": str(e)})
             await asyncio.sleep(1)
 
     async def default_data_loop(self):
