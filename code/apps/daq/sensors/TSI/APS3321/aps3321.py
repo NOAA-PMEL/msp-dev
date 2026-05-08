@@ -3,135 +3,84 @@ import signal
 import sys
 import os
 import logging
-import json
 import yaml
+import json
 from envds.core import envdsLogger
 from envds.daq.sensor import Sensor
-from envds.daq.device import DeviceConfig, DeviceMetadata
+from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
 from cloudevents.http import CloudEvent
 from pydantic import BaseModel
 
+task_list = []
+
 class APS3321(Sensor):
     def __init__(self, config=None, **kwargs):
         super(APS3321, self).__init__(config=config, **kwargs)
-        self.default_data_buffer = asyncio.Queue(maxsize=1000)
-        
-        # Identification for record tracking
-        self.first_record = 'C,0,C'
-        self.last_record = ',Y,'
-        
-        # Sensor definition
+        self.data_task = None
+        self.data_rate = 1
+        self.default_data_buffer = asyncio.Queue(maxsize=100)
         self.sensor_definition_file = "TSI_APS3321_sensor_definition.json"
+
         try:            
             with open(self.sensor_definition_file, "r") as f:
                 self.metadata = json.load(f)
         except FileNotFoundError:
-            self.logger.error("sensor_definition not found. Exiting")            
+            self.logger.error("sensor_definition not found. Exiting.")
             sys.exit(1)
-
-        # State and configuration
-        self.diams = [
-            0.50468, 0.54215, 0.58166, 0.62506, 0.67305, 0.72353, 0.7775,
-            0.83546, 0.89791, 0.96488, 1.0368, 1.1143, 1.1972, 1.2867, 1.3826, 
-            1.4855, 1.5965, 1.7154, 1.8433, 1.9812, 2.1291, 2.2875, 2.4579, 
-            2.6413, 2.8387, 3.0505, 3.2779, 3.5227, 3.7856, 4.0679, 4.3717, 
-            4.698, 5.0482, 5.4245, 5.8292, 6.2644, 6.7317, 7.2338, 7.7735, 
-            8.3536, 8.9772, 9.6468, 10.366, 11.14, 11.971, 12.864, 13.824,
-            14.855, 15.963, 17.154, 18.435, 19.81
-        ]
-        self.dlogDp = 0.0337
-        self.sampling_frequency = 30
-        self.collecting = False
-        self.last_data_time = 0
 
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
+        self.collecting = False
 
     def configure(self):
-        """Matches MAGIC250 interface configuration pattern exactly."""
         super(APS3321, self).configure()
-
+        self.logger.info("Configuring TSI APS 3321")
+        
         try:
             with open("/app/config/sensor.conf", "r") as f:
                 conf = yaml.safe_load(f)
         except FileNotFoundError:
-            conf = {"serial_number": "UNKNOWN", "interfaces": {}, "daq_id": "default"}
+            self.logger.warning("sensor.conf not found, using default configuration")
+            conf = {"serial_number": "UNKNOWN", "interfaces": {}}
 
-        if "metadata_interval" in conf:
-            self.include_metadata_interval = conf["metadata_interval"]
-
-        # APS requires 7-E-1 and 38,400 for correlated mode [cite: 742, 1294, 1297]
         sensor_iface_properties = {
             "default": {
                 "device-interface-properties": {
-                    "connection-properties": {
-                        "baudrate": 38400, 
-                        "bytesize": 7, 
-                        "parity": "E", 
-                        "stopbit": 1
-                    },
-                    "read-properties": {
-                        "read-method": "readuntil",
-                        "read-terminator": "\r",
-                        "decode-errors": "strict",
-                        "send-method": "ascii",
-                    },
+                    "connection-properties": {"baudrate": 38400, "bytesize": 7, "parity": "E", "stopbit": 1},
+                    "read-properties": {"read-method": "readuntil", "read-terminator": "\r", "decode-errors": "strict", "send-method": "ascii"},
                 }
             }
         }
-
+        
         if "interfaces" in conf:
             for name, iface in conf["interfaces"].items():
                 if name in sensor_iface_properties:
                     for propname, prop in sensor_iface_properties[name].items():
                         iface[propname] = prop
 
-        settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
-        for name, setting in settings_def.get("variables", {}).items():
-            requested = setting["attributes"].get("default_value", {}).get("data")
-            if "settings" in conf and name in conf["settings"]:
-                requested = conf["settings"][name]
-            self.settings.set_setting(name, requested=requested)
-
-        meta = DeviceMetadata(
-            attributes=self.metadata["attributes"],
-            dimensions=self.metadata["dimensions"],
-            variables=self.metadata["variables"],
-            settings=settings_def.get("variables", {})
-        )
-
-        self.config = DeviceConfig(
-            make=self.metadata["attributes"]["make"]["data"],
-            model=self.metadata["attributes"]["model"]["data"],
-            serial_number=conf.get("serial_number", "UNKNOWN"),
-            metadata=meta,
-            interfaces=conf.get("interfaces", {}),
-            daq=conf.get("daq_id", "default"), # Use 'daq' to match DeviceConfig model
-        )
-
+        meta = DeviceMetadata(attributes=self.metadata["attributes"], dimensions=self.metadata["dimensions"], variables=self.metadata["variables"], settings=dict())
+        self.config = DeviceConfig(make="TSI", model="APS3321", serial_number=conf.get("serial_number", "UNKNOWN"), metadata=meta, interfaces=conf.get("interfaces", {}), daq_id="default")
+        
         try:
             self.device_format_version = self.config.metadata.attributes["format_version"].data
-        except (KeyError, AttributeError): pass
+        except (KeyError, AttributeError): 
+            self.logger.debug("No format_version found in metadata attributes")
 
-        self.sampling_frequency = conf.get("sampling_frequency_sec", 30)
-
-        # Explicitly add interfaces like MAGIC250 to ensure USCDR301 setup
         if "interfaces" in conf:
             for name, iface in conf["interfaces"].items():
                 self.add_interface(name, iface)
+                self.logger.debug("Interface added", extra={"interface_name": str(name)})
 
     async def handle_interface_data(self, message: CloudEvent):
         await super(APS3321, self).handle_interface_data(message)
         if message["type"] == det.interface_data_recv():
             try:
-                path_id = message["path_id"]
-                iface_path = self.config.interfaces["default"]["path"]
-                if path_id == iface_path:
-                    self.last_data_time = asyncio.get_event_loop().time()
+                if message["path_id"] == self.config.interfaces["default"]["path"]:
                     await self.default_data_buffer.put(message)
-            except KeyError: pass
+            except KeyError: 
+                self.logger.warning("Received data with missing or mismatched path_id", extra={"path_id": str(message.get("path_id"))})
 
     async def settings_check(self):
         await super().settings_check()
@@ -140,25 +89,18 @@ class APS3321(Sensor):
                 if not self.settings.get_health_setting(name):
                     setting_obj = self.settings.get_setting(name)
                     target_val = setting_obj.get("requested") if isinstance(setting_obj, dict) else setting_obj
+                    
+                    self.logger.info("MQTT Settings Request", extra={"setting": str(name), "target_val": str(target_val)})
+                    
                     if name in ["sampling_state", "calibration_routine"]:
                         self.settings.set_actual(name, target_val)
 
     async def sampling_monitor(self):
-        """Implements the mandatory startup sequence and retry logic[cite: 1313, 1729, 1851]."""
-        # Command sequence must be UPPERCASE [cite: 1313]
-        stop_cmd = 'S0\r' # Stop sampling [cite: 1734]
-        start_seq = [
-            'S0\r',
-            f'SMT2,{self.sampling_frequency}\r', # Mode 2 = Correlated [cite: 1626, 1629]
-            'U1\r',   # Begin unpolled [cite: 1860]
-            'UD1\r',  # Enable Aero Record [cite: 1901]
-            'UY1\r',  # Enable Aux Record [cite: 1917]
-            'S1\r'    # Start continuous sampling [cite: 1735]
-        ]
-
+        start_commands = ["S0\r", "U1\r", "UD1\r", "UY1\r", "S1\r"]
         need_start = True
-        await asyncio.sleep(5) # Wait for interface connection
-
+        self.logger.info("Sampling monitor initialized")
+        await asyncio.sleep(2)
+        
         while True:
             try:
                 state_obj = self.settings.get_setting("sampling_state")
@@ -166,112 +108,85 @@ class APS3321(Sensor):
                 state_str = str(state).lower()
 
                 if self.sampling() and state_str == "sampling":
-                    current_time = asyncio.get_event_loop().time()
-                    
-                    # Retry if sampling never started or data stopped flowing for 2.5x the frequency
-                    if need_start or (current_time - self.last_data_time > (self.sampling_frequency * 2.5)):
-                        self.logger.info("Starting/Retrying APS sampling sequence.")
-                        for cmd in start_seq:
+                    if need_start:
+                        self.logger.info("Initiating APS continuous sampling sequence")
+                        for cmd in start_commands:
                             await self.interface_send_data(data={"data": cmd})
+                            self.logger.debug("Sent hardware command", extra={"command": str(cmd).strip()})
                             await asyncio.sleep(0.5)
                         need_start = False
-                        self.last_data_time = current_time # Reset timer for retry
-                
-                elif state_str in ["idle", "maintenance", "error"]:
+                        self.collecting = True
+                else:
                     if not need_start:
-                        await self.interface_send_data(data={"data": stop_cmd})
-                        self.logger.info("APS Sampling halted.")
-                        need_start = True
+                        self.logger.info("Halting APS sampling", extra={"requested_state": state_str})
+                        await self.interface_send_data(data={"data": "S0\r"})
                         self.collecting = False
-
-                await asyncio.sleep(10) # Check status every 10 seconds
+                        need_start = True
             except Exception as e:
-                self.logger.error(f"sampling_monitor error: {e}")
-                await asyncio.sleep(5)
+                self.logger.error("Error in sampling_monitor", extra={"error": str(e)})
+            await asyncio.sleep(1)
 
     async def default_data_loop(self):
-        """Processes incoming unpolled records A, B, C, D, S, or Y[cite: 1820]."""
-        record_buffer = None
+        self.logger.info("Default data loop initialized")
         while True:
             try:
                 data = await self.default_data_buffer.get()
-                self.collecting = True
-                raw_str = data.data.get('data', '')
-
-                # Start of correlated sequence [cite: 2004]
-                if self.first_record in raw_str:
-                    record_buffer = self.default_parse(data)
-                    continue
-
-                if record_buffer is None: continue
-
-                # End of auxiliary record sequence [cite: 2137]
-                if self.last_record in raw_str:
-                    record2 = self.default_parse(data)
-                    if record2:
-                        for var, val in record2["variables"].items():
-                            if var != 'time': record_buffer["variables"][var] = val
+                record = self.default_parse(data)
+                
+                if record and self.sampling():
+                    event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record)
+                    destpath = f"{self.get_id_as_topic()}/data/update"
+                    event["destpath"] = destpath
                     
-                    # Inject coordinates and calculated concentrations
-                    record_buffer["variables"]["diameter"] = {"data": self.diams}
-                    record_buffer["variables"]["channel"] = {"data": list(range(1, 65))}
+                    self.logger.debug("Publishing DAQ data event", extra={
+                        "destpath": str(destpath), 
+                        "record_timestamp": str(record.get("timestamp"))
+                    })
+                    await self.send_message(event)
                     
-                    if self.sampling():
-                        # ... (Concentration calculation logic remains same) ...
-                        event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record_buffer)
-                        event["destpath"] = f"{self.get_id_as_topic()}/data/update"
-                        await self.send_message(event)
-                    record_buffer = None 
-                    continue
-
-                # Merge intermediate records (D, S, etc.)
-                record2 = self.default_parse(data)
-                if record2:
-                    for var, val in record2["variables"].items():
-                        if var != 'time': record_buffer["variables"][var] = val
-                        
-            except Exception as e:
-                self.logger.error(f"default_data_loop error: {e}")
-                record_buffer = None
-            await asyncio.sleep(0.01)
+                elif not record:
+                    self.logger.warning("Parsed record returned empty")
+                    
+            except Exception as e: 
+                self.logger.error("Error in default_data_loop", extra={"error": str(e)})
+            await asyncio.sleep(0.1)
 
     def default_parse(self, data):
-        """Parses records into the format specified in Appendix C[cite: 1923]."""
-        if not data: return None
+        if not data: 
+            self.logger.debug("default_parse received empty data object")
+            return None
+            
         try:
             v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
             record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
             self.include_metadata = False
             
-            raw_payload = data.data
+            raw_payload = data.data if isinstance(data.data, dict) else {}
             record["timestamp"] = raw_payload.get("timestamp")
             record["variables"]["time"]["data"] = raw_payload.get("timestamp")
             raw_str = raw_payload.get("data", "")
             
-            # Map parser to specific unpolled record formats [cite: 1925, 2003, 2057, 2137]
-            self.var_name, compiled_record = None, None
-            if ',C,' in raw_str: # Correlated Header [cite: 2006]
-                if ',C,0' in raw_str:
-                    compiled_record = raw_str.strip().split(",")[5:]
-                    self.var_name = ['ffff', 'stime', 'dtime', 'evt1', 'evt3', 'evt4', 'total']
-            elif ',D,' in raw_str: # Aerodynamic Record [cite: 2058]
-                compiled_record = [int(x) if x else 0 for x in raw_str.strip().split(",")[11:]]
-                self.var_name = ['particle_counts']
-            elif ',Y,' in raw_str: # Auxiliary Record [cite: 2138]
-                parts = raw_str.strip().split(",")[2:]
-                del parts[3:8] # Remove unused analog/digital IO fields
-                compiled_record = parts
-                self.var_name = ['bpress', 'tflow', 'sflow', 'lpower', 'lcur', 'spumpv', 'tpumpv', 'itemp', 'btemp', 'dtemp', 'Vop']
-
-            if not self.var_name: return None
-
-            for index, name in enumerate(self.var_name):
-                if name in record["variables"]:
-                    val = compiled_record if len(self.var_name) == 1 else compiled_record[index]
-                    record["variables"][name]["data"] = val
+            self.logger.debug("Parsing raw serial string", extra={"raw_string_head": repr(raw_str)[:50]})
+            parts = raw_str.strip().split(",")
+            
+            if ',D,' in raw_str:
+                if "particle_counts" in record["variables"]:
+                    record["variables"]["particle_counts"]["data"] = [int(x) if x else 0 for x in parts[11:]]
+            elif ',Y,' in raw_str:
+                if len(parts) >= 18:
+                    if "bpress" in record["variables"]: record["variables"]["bpress"]["data"] = float(parts[2])
+                    if "tflow" in record["variables"]: record["variables"]["tflow"]["data"] = float(parts[3])
+                    if "sflow" in record["variables"]: record["variables"]["sflow"]["data"] = float(parts[4])
+                    if "itemp" in record["variables"]: record["variables"]["itemp"]["data"] = float(parts[14])
+                else:
+                    self.logger.warning("Auxiliary (Y) record too short to parse", extra={"length": str(len(parts))})
+            else:
+                self.logger.debug("Ignoring unmapped or incomplete record type")
+                return None
+                
             return record
-        except Exception as e:
-            self.logger.error(f"default_parse error: {e}")
+        except Exception as e: 
+            self.logger.error("Error in default_parse", extra={"error": str(e)})
             return None
 
 class ServerConfig(BaseModel):
@@ -282,22 +197,15 @@ class ServerConfig(BaseModel):
 async def main(server_config: ServerConfig = None):
     if server_config is None: server_config = ServerConfig()
     envdsLogger(level=logging.DEBUG).init_logger()
+    
     inst = APS3321()
     inst.run()
     await asyncio.sleep(2)
     inst.start()
     
-    global do_run
     do_run = True
-    loop = asyncio.get_event_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: globals().update(do_run=False))
-
-    while do_run:
+    while do_run: 
         await asyncio.sleep(1)
-    await inst.shutdown()
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, BASE_DIR)
     asyncio.run(main(ServerConfig()))
