@@ -84,8 +84,8 @@ class SpiderMagic810(Sensor):
         for name, setting in settings_def["variables"].items():
         
             requested = setting["attributes"]["default_value"]["data"]
-            if "settings" in config and name in config["settings"]:
-                requested = config["settings"][name]
+            if "settings" in conf and name in conf["settings"]:
+                requested = conf["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
 
