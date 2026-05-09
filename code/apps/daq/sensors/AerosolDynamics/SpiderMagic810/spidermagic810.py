@@ -141,13 +141,19 @@ class SpiderMagic810(Sensor):
     async def sampling_monitor(self):
         # Added \n to flush network buffers, msg,1 for verbose output, and st for scan time
         scan_time = self.sampling_frequency if hasattr(self, 'sampling_frequency') else 30
+        # cmds = [
+        #     # "stop\r", 
+        #     # "sm,1\r", 
+        #     # "msg,1\r\n", 
+        #     # f"st,{scan_time}\r\n", 
+        #     "v1,5\r", 
+        #     "v2,5000\r", 
+        #     "hvgo\r"
+        # ]
+        # Added \n to flush network buffers...
         cmds = [
             "stop\r\n", 
-            "sm,1\r\n", 
-            "msg,1\r\n", 
-            f"st,{scan_time}\r\n", 
-            "v1,5\r\n", 
-            "v2,5000\r\n", 
+            "scan, 5, 5000, 4, 0\r\n", 
             "hvgo\r\n"
         ]
         need_start = True
