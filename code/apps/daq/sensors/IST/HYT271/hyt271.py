@@ -98,15 +98,13 @@ class HYT271(Sensor):
 
     def __init__(self, config=None, **kwargs):
         super(HYT271, self).__init__(config=config, **kwargs)
-        self.data_task = None
-        self.data_rate = 1
+        self.default_data_buffer = asyncio.Queue(maxsize=100)
+        self.polling_task = None
         self.sampling_interval = 1
-        # self.configure()
-
-        self.default_data_buffer = asyncio.Queue()
+        
+        self.i2c_address = "28" # Default, will be overridden by config
 
         self.sensor_definition_file = "IST_HYT271_sensor_definition.json"
-
 
         try:            
             with open(self.sensor_definition_file, "r") as f:
@@ -115,36 +113,12 @@ class HYT271(Sensor):
             self.logger.error("sensor_definition not found. Exiting")            
             sys.exit(1)
 
-        # os.environ["REDIS_OM_URL"] = "redis://redis.default"
-
-        # self.data_loop_task = None
-
-        # all handled in run_setup ----
-        # self.configure()
-
-        # # self.logger = logging.getLogger(f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.logger = logging.getLogger(self.build_app_uid())
-
-        # # self.update_id("app_uid", f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.update_id("app_uid", self.build_app_uid())
-
-        # self.logger.debug("id", extra={"self.id": self.id})
-        # print(f"config: {self.config}")
-        # ----
-
-        # self.sampling_task_list.append(self.data_loop())
         self.enable_task_list.append(self.default_data_loop())
-        # self.enable_task_list.append(self.sampling_monitor())
-        self.enable_task_list.append(self.polling_loop())
-        # asyncio.create_task(self.sampling_monitor())
+        self.enable_task_list.append(self.sampling_monitor())
         self.collecting = False
-
-        # self.i2c_address = "28"
 
     def configure(self):
         super(HYT271, self).configure()
-
-        # get config from file
         try:
             with open("/app/config/sensor.conf", "r") as f:
                 conf = yaml.safe_load(f)
@@ -157,11 +131,9 @@ class HYT271(Sensor):
         sensor_iface_properties = {
             "default": {
                 "sensor-interface-properties": {
-                    "connection-properties": {
-                    },
+                    "connection-properties": {},
                     "read-properties": {
-                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
-                        # "read-terminator": "\r",  # only used for read_until
+                        "read-method": "readline",
                         "decode-errors": "strict",
                         "send-method": "ascii"
                     },
@@ -175,94 +147,90 @@ class HYT271(Sensor):
                     for propname, prop in sensor_iface_properties[name].items():
                         iface[propname] = prop
 
-            self.logger.debug(
-                "hyt271.configure", extra={"interfaces": conf["interfaces"]}
-            )
-
         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
-        # for name, setting in self.metadata["settings"].items():
-        for name, setting in settings_def["variables"].items():
-        
-            requested = setting["attributes"]["default_value"]["data"]
-            if "settings" in config and name in config["settings"]:
-                requested = config["settings"][name]
-
+        for name, setting in settings_def.get("variables", {}).items():
+            requested = setting["attributes"].get("default_value", {}).get("data")
+            if "settings" in conf and name in conf["settings"]:
+                requested = conf["settings"][name]
             self.settings.set_setting(name, requested=requested)
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
             dimensions=self.metadata["dimensions"],
             variables=self.metadata["variables"],
-            settings=settings_def["variables"],
+            settings=settings_def.get("variables", {})
         )
 
         self.config = DeviceConfig(
             make=self.metadata["attributes"]["make"]["data"],
             model=self.metadata["attributes"]["model"]["data"],
-            serial_number=conf["serial_number"],
+            serial_number=conf.get("serial_number", "UNKNOWN"),
             metadata=meta,
-            interfaces=conf["interfaces"],
-            daq_id=conf["daq_id"],
+            interfaces=conf.get("interfaces", {}),
+            daq_id=conf.get("daq_id", "default"),
         )
 
-        self.i2c_address = conf["i2c_address"]
-
-        print(f"self.config: {self.config}")
+        # Pull I2C address from config if it exists
+        if "i2c_address" in conf:
+            self.i2c_address = str(conf["i2c_address"])
 
         try:
-            self.device_format_version = self.config.metadata.attributes[
-                "format_version"
-            ].data
-        except KeyError:
+            self.device_format_version = self.metadata["attributes"]["format_version"]["data"]
+        except (KeyError, TypeError):
             pass
 
-        self.logger.debug(
-            "configure",
-            extra={"conf": conf, "self.config": self.config},
-        )
-
-        try:
-            if "interfaces" in conf:
-                for name, iface in conf["interfaces"].items():
-                    print(f"add: {name}, {iface}")
-                    self.add_interface(name, iface)
-                    # self.iface_map[name] = iface
-        except Exception as e:
-            print(e)
-
-        self.logger.debug("iface_map", extra={"map": self.iface_map})
+        if "interfaces" in conf:
+            for name, iface in conf["interfaces"].items():
+                self.add_interface(name, iface)
 
     # async def handle_interface_message(self, message: Message):
     async def handle_interface_message(self, message: CloudEvent):
         pass
 
-    # async def handle_interface_data(self, message: Message):
     async def handle_interface_data(self, message: CloudEvent):
         await super(HYT271, self).handle_interface_data(message)
-
-        self.logger.debug("interface_recv_data", extra={"data": message})
         if message["type"] == det.interface_data_recv():
             try:
-                self.logger.debug(
-                    "interface_recv_data", extra={"data": message}
-                )
                 path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
-                self.logger.debug("interface_recv_data", extra={"path_id": path_id, "iface_path": iface_path})
-                # if path_id == "default":
                 if path_id == iface_path:
-                    self.logger.debug(
-                        "interface_recv_data", extra={"data": message.data}
-                    )
                     await self.default_data_buffer.put(message)
             except KeyError:
                 pass
 
-    async def polling_loop(self):
-        
-        # TODO add sensor address to config
+    async def settings_check(self):
+        await super().settings_check()
+        if not self.settings.get_health():
+            for name in self.settings.get_settings().keys():
+                if not self.settings.get_health_setting(name):
+                    setting_obj = self.settings.get_setting(name)
+                    target_val = setting_obj.get("requested") if isinstance(setting_obj, dict) else setting_obj
+                    if name in ["sampling_state"]:
+                        self.settings.set_actual(name, target_val)
 
-        # redo format to be more generic (based on new labjack code)
+    async def sampling_monitor(self):
+        await asyncio.sleep(2)
+        while True:
+            try:
+                state_obj = self.settings.get_setting("sampling_state")
+                state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
+                state_str = str(state).lower()
+
+                if self.sampling() and state_str == "sampling":
+                    if self.polling_task is None or self.polling_task.done():
+                        self.logger.info("Starting HYT271 I2C polling loop.")
+                        self.polling_task = asyncio.create_task(self.polling_loop())
+                else:
+                    if self.polling_task and not self.polling_task.done():
+                        self.logger.info("Stopping HYT271 I2C polling loop.")
+                        self.polling_task.cancel()
+                        self.polling_task = None
+                        
+            except Exception as e:
+                self.logger.error("sampling_monitor error", extra={"error": str(e)})
+            await asyncio.sleep(1)
+
+    async def polling_loop(self):
         i2c_write = {
             "address": self.i2c_address,
             "data": "00"
@@ -270,7 +238,7 @@ class HYT271(Sensor):
         i2c_read = {
             "address": self.i2c_address,
             "read-length": 4,
-            "delay-ms": 50 # timeout in ms to wait for ACK
+            "delay-ms": 50 
         }
         data = {
             "data": {
@@ -279,228 +247,99 @@ class HYT271(Sensor):
             }
         }
 
-        # write_command = {
-        #     "i2c-command": "write-byte",
-        #     "address": "28",
-        #     "data": "00",
-        #     # "delay-ms": 50 # 50ms in seconds
-        # }
-        # read_command = {
-        #     "i2c-command": "read-buffer",
-        #     "address": "28",
-        #     "read-length": 4,
-        #     "delay-ms": 50 # timeout in ms to wait for ACK
-        # }
-        # i2c_commands = [write_command, read_command]
-        # data = {
-        #     "data": {"i2c-commands": i2c_commands}
-        # }
-
         while True:
-            if self.sampling():
+            try:
                 await self.interface_send_data(data=data)
-                await asyncio.sleep(time_to_next(self.sampling_interval))
-
-
-    # async def sampling_monitor(self):
-
-    #     # start_command = f"Log,{self.sampling_interval}\n"
-    #     start_command = "Log,1\n"
-    #     stop_command = "Log,0\n"
-    #     need_start = True
-    #     start_requested = False
-    #     # wait to see if data is already streaming
-    #     await asyncio.sleep(2)
-    #     # # if self.collecting:
-    #     # await self.interface_send_data(data={"data": stop_command})
-    #     # await asyncio.sleep(2)
-    #     # self.collecting = False
-    #     # init to stopped
-    #     # await self.stop_command()
-
-    #     while True:
-    #         try:
-    #             # self.logger.debug("sampling_monitor", extra={"self.collecting": self.collecting})
-    #             # while self.sampling():
-    #             #     # self.logger.debug("sampling_monitor:1", extra={"self.collecting": self.collecting})
-    #             #     if not self.collecting:
-    #             #         # await self.start_command()
-    #             #         self.logger.debug("sampling_monitor:2", extra={"self.collecting": self.collecting})
-    #             #         await self.interface_send_data(data={"data": start_command})
-    #             #         await asyncio.sleep(1)
-    #             #         # self.logger.debug("sampling_monitor:3", extra={"self.collecting": self.collecting})
-    #             #         self.collecting = True
-    #             #         # self.logger.debug("sampling_monitor:4", extra={"self.collecting": self.collecting})
-
-    #             if self.sampling():
-
-    #                 if need_start:
-    #                     if self.collecting:
-    #                         await self.interface_send_data(data={"data": stop_command})
-    #                         await asyncio.sleep(2)
-    #                         self.collecting = False
-    #                         continue
-    #                     else:
-    #                         await self.interface_send_data(data={"data": start_command})
-    #                         # await self.interface_send_data(data={"data": "\n"})
-    #                         need_start = False
-    #                         start_requested = True
-    #                         await asyncio.sleep(1)
-    #                         continue
-    #                 elif start_requested:
-    #                     if self.collecting:
-    #                         start_requested = False
-    #                     else:
-    #                         await self.interface_send_data(data={"data": start_command})
-    #                         # await self.interface_send_data(data={"data": "\n"})
-    #                         await asyncio.sleep(1)
-    #                         continue
-    #             else:
-    #                 if self.collecting:
-    #                     await self.interface_send_data(data={"data": stop_command})
-    #                     await asyncio.sleep(2)
-    #                     self.collecting = False
-                            
-    #             await asyncio.sleep(.1)
-
-    #             # if self.collecting:
-    #             #     # await self.stop_command()
-    #             #     self.logger.debug("sampling_monitor:5", extra={"self.collecting": self.collecting})
-    #             #     await self.interface_send_data(data={"data": stop_command})
-    #             #     # self.logger.debug("sampling_monitor:6", extra={"self.collecting": self.collecting})
-    #             #     self.collecting = False
-    #             #     # self.logger.debug("sampling_monitor:7", extra={"self.collecting": self.collecting})
-    #         except Exception as e:
-    #             print(f"sampling monitor error: {e}")
-                
-    #         await asyncio.sleep(.1)
-
-
-    # async def start_command(self):
-    #     pass # Log,{sampling interval}
-
-    # async def stop_command(self):
-    #     pass # Log,0
-
-    # def stop(self):
-    #     asyncio.create_task(self.stop_sampling())
-    #     super().start()
+            except Exception as e:
+                self.logger.error("polling_loop error", extra={"error": str(e)})
+            await asyncio.sleep(time_to_next(self.sampling_interval))
 
     async def default_data_loop(self):
-
         while True:
             try:
                 data = await self.default_data_buffer.get()
-                # self.collecting = True
-                self.logger.debug("default_data_loop", extra={"data": data})
-                # continue
+                self.logger.debug("default_data_loop - incoming data", extra={"data": data})
+                
                 record = self.default_parse(data)
-                self.logger.debug("default_data_loop", extra={"record": record})
+                self.logger.debug("default_data_loop - parsed record", extra={"record": record})
+                
                 if record:
                     self.collecting = True
 
-                # print(record)
-                # print(self.sampling())
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(
-                        # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
                         data=record,
                     )
-                    destpath = f"{self.get_id_as_topic()}/data/update"
-                    event["destpath"] = destpath
-                    self.logger.debug(
-                        "default_data_loop", extra={"data": event, "destpath": destpath}
-                    )
-                    message = event
-                    # message = Message(data=event, destpath=destpath)
-                    # self.logger.debug("default_data_loop", extra={"m": message})
-                    await self.send_message(message)
+                    event["destpath"] = f"{self.get_id_as_topic()}/data/update"
+                    self.logger.debug("default_data_loop - publishing event", extra={"destpath": event["destpath"]})
+                    await self.send_message(event)
 
-                # self.logger.debug("default_data_loop", extra={"record": record})
             except Exception as e:
-                print(f"default_data_loop error: {e}")
-            await asyncio.sleep(0.1)
+                self.logger.error("default_data_loop error", extra={"error": str(e)})
+            await asyncio.sleep(0.01)
 
     def default_parse(self, data):
-        if data:
-            try:
-                timestamp = data.data["timestamp"]
-                iface_data = data.data["data"]
-                address = iface_data["address"]
-                self.logger.debug("default_parse", extra={"iface_data": iface_data, "address": address, "i2c-address": self.i2c_address})
-                if address == "" or address != self.i2c_address:
-                    return None
+        if not data: return None
+        try:
+            v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
+            record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+            self.include_metadata = False
+
+            raw_payload = data.data if isinstance(data.data, dict) else {}
+            record["timestamp"] = raw_payload.get("timestamp")
+            if "time" in record.get("variables", {}):
+                record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+
+            iface_data = raw_payload.get("data", {})
+            self.logger.debug("default_parse - raw iface_data received", extra={"iface_data": iface_data})
+            
+            address = str(iface_data.get("address", ""))
+            
+            # Reject data if it's from a different I2C address
+            if not address or address != str(self.i2c_address):
+                self.logger.debug(
+                    "default_parse - I2C address mismatch or missing", 
+                    extra={"received_address": address, "expected_address": self.i2c_address}
+                )
+                return None
                 
-                variables = list(self.config.metadata.variables.keys())
-                # print(f"variables: \n{variables}\n{variables2}")
-                variables.remove("time")
-                record = self.build_data_record(meta=self.include_metadata)
-                # print(f"default_parse: data: {data}, record: {record}")
-                self.include_metadata = False
-                try:
-                    # record["timestamp"] = data.data["timestamp"]
-                    record["timestamp"] = timestamp
-                    record["variables"]["time"]["data"] = timestamp
-                    # parts = data.data["data"].split(",")
+            dataRead = iface_data.get("data", [])
+            
+            # Ensure we have the 4 bytes required for decoding
+            if not isinstance(dataRead, list) or len(dataRead) < 4:
+                self.logger.warning(
+                    "default_parse - incomplete I2C data frame", 
+                    extra={
+                        "dataRead_length": len(dataRead) if isinstance(dataRead, list) else "not_a_list", 
+                        "expected": 4
+                    }
+                )
+                return None
 
-                    # change for new format
+            try:
+                # IST specific hex-to-float decoding logic
+                rh = ((((dataRead[0] & 0x3F) * 256) + dataRead[1]) * 100.0) / 16383.0
+                temp = ((dataRead[2] * 256) + (dataRead[3] & 0xFC)) / 4
+                cTemp = (temp / 16384.0) * 165.0 - 40.0
 
-                    dataRead = iface_data["data"] # should return as bytearray
-                    if len(dataRead) != 4:
-                        return None
-                    rh = ((((dataRead[0] & 0x3F) * 256) + dataRead[1]) * 100.0) / 16383.0
-                    print(f"rh: {rh}")
-                    temp = ((dataRead[2] * 256) + (dataRead[3] & 0xFC)) / 4
-                    print(f"temp: {temp}")
-                    cTemp = (temp / 16384.0) * 165.0 - 40.0
-                    print(f"cTemp: {cTemp}")
-
-                    # achieves the same and seems much cleaner...
-
-                    # raw_RH = (dataRead[0] << 8) | dataRead[1]
-                    # raw_RH = raw_RH & 0x3FFF
-                    # raw_temp = ((dataRead[2] << 8) | dataRead[3]) >> 2
-                    # RH = (raw_RH/16383)*100
-                    # temp = (raw_temp*165/16383)-40
-
-                    record["variables"]["temperature"]["data"] = round(cTemp,3)
-                    record["variables"]["rh"]["data"] = round(rh,3)
-                    return record
+                if "temperature" in record["variables"]:
+                    record["variables"]["temperature"]["data"] = round(cTemp, 3)
+                if "rh" in record["variables"]:
+                    record["variables"]["rh"]["data"] = round(rh, 3)
                     
-
-                    # hexdata = data.data["data"].strip()
-                    print(f"hexdata: {hexdata}")
-                    if hexdata and "0x"in hexdata:
-                        bindata = binascii.unhexlify(
-                            hexdata[2:]
-                        )
-                        print(f"bindata: {bindata}")
-                        fmt = f'<4B'
-                        print(f"fmt: {fmt}")
-                        data = unpack(fmt, bindata)
-                        print(f"data: {data}")
-
-                        rh = ((((data[0] & 0x3F) * 256) + data[1]) * 100.0) / 16383.0
-                        print(f"rh: {rh}")
-                        temp = ((data[2] * 256) + (data[3] & 0xFC)) / 4
-                        print(f"temp: {temp}")
-                        cTemp = (temp / 16384.0) * 165.0 - 40.0
-                        print(f"cTemp: {cTemp}")
-
-                        record["variables"]["temperature"]["data"] = round(cTemp,3)
-                        record["variables"]["rh"]["data"] = round(rh,3)
-                        return record
-                        # self.logger.debug("default_parse", extra={"record": record})
-                    else:
-                        return None
-                    
-                except KeyError:
-                    pass
             except Exception as e:
-                print(f"default_parse error: {e}")
-        # else:
-        return None
+                self.logger.warning(
+                    "default_parse - failed to decode I2C bytes", 
+                    extra={"error": str(e), "dataRead": dataRead}
+                )
+                return None
+
+            return record
+            
+        except Exception as e:
+            self.logger.error("default_parse - critical error", extra={"error": str(e), "data": data})
+            return None
 
 class ServerConfig(BaseModel):
     host: str = "localhost"
