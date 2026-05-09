@@ -59,6 +59,9 @@ class APS3321(Sensor):
         except FileNotFoundError:
             conf = {"serial_number": "UNKNOWN", "interfaces": {}}
 
+        if "metadata_interval" in conf:
+            self.include_metadata_interval = conf["metadata_interval"]
+
         sensor_iface_properties = {
             "default": {
                 "device-interface-properties": {

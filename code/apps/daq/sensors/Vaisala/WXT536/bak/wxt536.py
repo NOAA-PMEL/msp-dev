@@ -271,11 +271,12 @@ class WXT536(Sensor):
 
     def __init__(self, config=None, **kwargs):
         super(WXT536, self).__init__(config=config, **kwargs)
-        super(WXT536, self).__init__(config=config, **kwargs)
-        self.default_data_buffer = asyncio.Queue(maxsize=100)
+        self.data_task = None
         self.data_rate = 1
-        self.polling_task = None
-        
+        # self.configure()
+
+        self.default_data_buffer = asyncio.Queue()
+
         self.sensor_definition_file = "Vaisala_WXT536_sensor_definition.json"
 
         try:            
@@ -285,111 +286,34 @@ class WXT536(Sensor):
             self.logger.error("sensor_definition not found. Exiting")            
             sys.exit(1)
 
+        # os.environ["REDIS_OM_URL"] = "redis://redis.default"
+
+        # self.data_loop_task = None
+
+        # all handled in run_setup ----
+        # self.configure()
+
+        # # self.logger = logging.getLogger(f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
+        # self.logger = logging.getLogger(self.build_app_uid())
+
+        # # self.update_id("app_uid", f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
+        # self.update_id("app_uid", self.build_app_uid())
+
+        # self.logger.debug("id", extra={"self.id": self.id})
+        # print(f"config: {self.config}")
+        # ----
+
+        # self.sampling_task_list.append(self.data_loop())
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
+        # self.enable_task_list.append(self.register_sensor())
+        # asyncio.create_task(self.sampling_monitor())
         self.collecting = False
-
-    # def configure(self):
-    #     super(WXT536, self).configure()
-
-    #     # get config from file
-    #     try:
-    #         with open("/app/config/sensor.conf", "r") as f:
-    #             conf = yaml.safe_load(f)
-    #     except FileNotFoundError:
-    #         conf = {"serial_number": "UNKNOWN", "interfaces": {}}
-
-    #     if "metadata_interval" in conf:
-    #         self.include_metadata_interval = conf["metadata_interval"]
-
-    #     sensor_iface_properties = {
-    #         "default": {
-    #             "device-interface-properties": {
-    #                 "connection-properties": {
-    #                     "baudrate": 19200,
-    #                     "bytesize": 8,
-    #                     "parity": "N",
-    #                     "stopbit": 1,
-    #                 },
-    #                 "read-properties": {
-    #                     "read-method": "readuntil",  # readline, read-until, readbytes, readbinary
-    #                     "read-terminator": "V\r",  # only used for read_until
-    #                     "decode-errors": "strict",
-    #                     "send-method": "ascii",
-    #                 },
-    #             }
-    #         }
-    #     }
-
-    #     if "interfaces" in conf:
-    #         for name, iface in conf["interfaces"].items():
-    #             if name in sensor_iface_properties:
-    #                 for propname, prop in sensor_iface_properties[name].items():
-    #                     iface[propname] = prop
-
-    #         self.logger.debug(
-    #             "WXT536.configure", extra={"interfaces": conf["interfaces"]}
-    #         )
-
-    #     # TODO change settings for new sensor definition
-    #     '''
-    #     The new settings are part [variables] now so this is a bit of a hack to use the existing structure
-    #     with the new format.
-    #     '''
-    #     settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
-    #     # for name, setting in MAGIC250.metadata["settings"].items():
-    #     for name, setting in settings_def["variables"].items():
-        
-    #         requested = setting["attributes"]["default_value"]["data"]
-    #         if "settings" in config and name in config["settings"]:
-    #             requested = config["settings"][name]
-
-    #         self.settings.set_setting(name, requested=requested)
-
-    #     meta = DeviceMetadata(
-    #         attributes=self.metadata["attributes"],
-    #         dimensions=self.metadata["dimensions"],
-    #         variables=self.metadata["variables"],
-    #         # settings=WXT536.metadata["settings"],
-    #         settings=settings_def["variables"]
-    #     )
-
-    #     self.config = DeviceConfig(
-    #         make=self.metadata["attributes"]["make"]["data"],
-    #         model=self.metadata["attributes"]["model"]["data"],
-    #         serial_number=conf["serial_number"],
-    #         metadata=meta,
-    #         interfaces=conf["interfaces"],
-    #         daq_id=conf["daq_id"],
-    #     )
-
-    #     print(f"self.config: {self.config}")
-
-    #     try:
-    #         self.device_format_version = self.config.metadata.attributes[
-    #             "format_version"
-    #         ].data
-    #     except KeyError:
-    #         pass
-
-    #     self.logger.debug(
-    #         "configure",
-    #         extra={"conf": conf, "self.config": self.config},
-    #     )
-
-    #     try:
-    #         if "interfaces" in conf:
-    #             for name, iface in conf["interfaces"].items():
-    #                 print(f"add: {name}, {iface}")
-    #                 self.add_interface(name, iface)
-    #                 # self.iface_map[name] = iface
-    #     except Exception as e:
-    #         print(e)
-
-    #     self.logger.debug("iface_map", extra={"map": self.iface_map})
 
     def configure(self):
         super(WXT536, self).configure()
+
+        # get config from file
         try:
             with open("/app/config/sensor.conf", "r") as f:
                 conf = yaml.safe_load(f)
@@ -409,8 +333,8 @@ class WXT536(Sensor):
                         "stopbit": 1,
                     },
                     "read-properties": {
-                        "read-method": "readuntil",
-                        "read-terminator": "V\r",
+                        "read-method": "readuntil",  # readline, read-until, readbytes, readbinary
+                        "read-terminator": "V\r",  # only used for read_until
                         "decode-errors": "strict",
                         "send-method": "ascii",
                     },
@@ -424,267 +348,260 @@ class WXT536(Sensor):
                     for propname, prop in sensor_iface_properties[name].items():
                         iface[propname] = prop
 
+            self.logger.debug(
+                "WXT536.configure", extra={"interfaces": conf["interfaces"]}
+            )
+
+        # TODO change settings for new sensor definition
+        '''
+        The new settings are part [variables] now so this is a bit of a hack to use the existing structure
+        with the new format.
+        '''
         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
-        for name, setting in settings_def.get("variables", {}).items():
-            requested = setting["attributes"].get("default_value", {}).get("data")
-            if "settings" in conf and name in conf["settings"]:
-                requested = conf["settings"][name]
+        # for name, setting in MAGIC250.metadata["settings"].items():
+        for name, setting in settings_def["variables"].items():
+        
+            requested = setting["attributes"]["default_value"]["data"]
+            if "settings" in config and name in config["settings"]:
+                requested = config["settings"][name]
+
             self.settings.set_setting(name, requested=requested)
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
             dimensions=self.metadata["dimensions"],
             variables=self.metadata["variables"],
-            settings=settings_def.get("variables", {})
+            # settings=WXT536.metadata["settings"],
+            settings=settings_def["variables"]
         )
 
         self.config = DeviceConfig(
             make=self.metadata["attributes"]["make"]["data"],
             model=self.metadata["attributes"]["model"]["data"],
-            serial_number=conf.get("serial_number", "UNKNOWN"),
+            serial_number=conf["serial_number"],
             metadata=meta,
-            interfaces=conf.get("interfaces", {}),
-            daq_id=conf.get("daq_id", "default"),
+            interfaces=conf["interfaces"],
+            daq_id=conf["daq_id"],
+        )
+
+        print(f"self.config: {self.config}")
+
+        try:
+            self.device_format_version = self.config.metadata.attributes[
+                "format_version"
+            ].data
+        except KeyError:
+            pass
+
+        self.logger.debug(
+            "configure",
+            extra={"conf": conf, "self.config": self.config},
         )
 
         try:
-            self.device_format_version = self.metadata["attributes"]["format_version"]["data"]
-        except (KeyError, TypeError):
-            pass
+            if "interfaces" in conf:
+                for name, iface in conf["interfaces"].items():
+                    print(f"add: {name}, {iface}")
+                    self.add_interface(name, iface)
+                    # self.iface_map[name] = iface
+        except Exception as e:
+            print(e)
 
-        if "interfaces" in conf:
-            for name, iface in conf["interfaces"].items():
-                self.add_interface(name, iface)
+        self.logger.debug("iface_map", extra={"map": self.iface_map})
 
     async def handle_interface_message(self, message: CloudEvent):
         pass
 
     async def handle_interface_data(self, message: CloudEvent):
         await super(WXT536, self).handle_interface_data(message)
+
+        # self.logger.debug("interface_recv_data", extra={"data": message})
+        # if message.data["type"] == det.interface_data_recv():
         if message["type"] == det.interface_data_recv():
             try:
+                # path_id = message.data["path_id"]
                 path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
+                # if path_id == "default":
                 if path_id == iface_path:
+                    self.logger.debug(
+                        # "interface_recv_data", extra={"data": message.data.data}
+                        "interface_recv_data", extra={"data": message.data}
+                    )
+                    # await self.default_data_buffer.put(message.data)
                     await self.default_data_buffer.put(message)
             except KeyError:
                 pass
 
     async def settings_check(self):
         await super().settings_check()
-        if not self.settings.get_health():
+
+        if not self.settings.get_health():  # something has changed
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
-                    setting_obj = self.settings.get_setting(name)
-                    target_val = setting_obj.get("requested") if isinstance(setting_obj, dict) else setting_obj
-                    if name in ["sampling_state"]:
-                        self.settings.set_actual(name, target_val)
+                    self.logger.debug(
+                        "settings_check - set setting",
+                        extra={
+                            "setting-name": name,
+                            "setting": self.settings.get_setting(name),
+                        },
+                    )
 
     async def sampling_monitor(self):
+
+        need_start = True
+        start_requested = False
+        # wait to see if data is already streaming
         await asyncio.sleep(2)
+
         while True:
             try:
-                state_obj = self.settings.get_setting("sampling_state")
-                state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
-                state_str = str(state).lower()
 
-                if self.sampling() and state_str == "sampling":
-                    if self.polling_task is None or self.polling_task.done():
-                        self.logger.info("Starting WXT536 polling loop.")
-                        self.polling_task = asyncio.create_task(self.polling_loop())
+                if self.sampling():
+
+                    if need_start:
+                        if self.collecting:
+                            # await self.interface_send_data(data={"data": stop_command})
+                            if self.polling_task:
+                                self.polling_task.cancel()
+                            await asyncio.sleep(2)
+                            self.collecting = False
+                            continue
+                        else:
+                            # await self.interface_send_data(data={"data": start_command})
+                            # await self.interface_send_data(data={"data": "\n"})
+                            self.polling_task = asyncio.create_task(self.polling_loop())
+                            need_start = False
+                            start_requested = True
+                            await asyncio.sleep(2)
+                            continue
+                    elif start_requested:
+                        if self.collecting:
+                            start_requested = False
+                        else:
+                            if not self.polling_task:
+                                self.polling_task = asyncio.create_task(self.polling_loop())
+                            # await self.interface_send_data(data={"data": start_command})
+                            # await self.interface_send_data(data={"data": "\n"})
+                            await asyncio.sleep(2)
+                            continue
                 else:
-                    if self.polling_task and not self.polling_task.done():
-                        self.logger.info("Stopping WXT536 polling loop.")
-                        self.polling_task.cancel()
-                        self.polling_task = None
+                    if self.collecting:
+                        # await self.interface_send_data(data={"data": stop_command})
+                        if self.polling_task:
+                            self.polling_task.cancel()
+                        await asyncio.sleep(2)
+                        self.collecting = False
 
+                await asyncio.sleep(0.1)
+
+                # if self.collecting:
+                #     # await self.stop_command()
+                #     self.logger.debug("sampling_monitor:5", extra={"self.collecting": self.collecting})
+                #     await self.interface_send_data(data={"data": stop_command})
+                #     # self.logger.debug("sampling_monitor:6", extra={"self.collecting": self.collecting})
+                #     self.collecting = False
+                #     # self.logger.debug("sampling_monitor:7", extra={"self.collecting": self.collecting})
             except Exception as e:
-                self.logger.error("sampling_monitor error", extra={"error": str(e)})
+                print(f"sampling monitor error: {e}")
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)
 
 
     async def polling_loop(self):
+
         poll_cmd = '0R\r\n'
         while True:
             try:
+                self.logger.debug("polling_loop", extra={"poll_cmd": poll_cmd})
                 await self.interface_send_data(data={"data": poll_cmd})
+                await asyncio.sleep(time_to_next(self.data_rate))
             except Exception as e:
-                self.logger.error("polling_loop error", extra={"error": str(e)})
-            await asyncio.sleep(time_to_next(self.data_rate))
-    
-    # async def default_data_loop(self):
-
-    #     while True:
-    #         try:
-    #             data = await self.default_data_buffer.get()
-    #             # self.collecting = True
-    #             self.logger.debug("default_data_loop", extra={"data": data})
-    #             # continue
-    #             record = self.default_parse(data)
-    #             if record:
-    #                 self.collecting = True
-
-    #             # print(record)
-    #             # print(self.sampling())
-    #             if record and self.sampling():
-    #                 event = DAQEvent.create_data_update(
-    #                     # source="sensor.mockco-mock1-1234", data=record
-    #                     source=self.get_id_as_source(),
-    #                     data=record,
-    #                 )
-    #                 destpath = f"{self.get_id_as_topic()}/data/update"
-    #                 event["destpath"] = destpath
-    #                 self.logger.debug(
-    #                     "default_data_loop",
-    #                     extra={"data": event, "destpath": destpath},
-    #                 )
-    #                 message = event
-    #                 # self.logger.debug("default_data_loop", extra={"m": message})
-    #                 await self.send_message(message)
-
-    #         except Exception as e:
-    #             print(f"default_data_loop error: {e}")
-    #         await asyncio.sleep(0.1)
+                self.logger.error("polling_loop", extra={"e": e})
     
     async def default_data_loop(self):
+
         while True:
             try:
                 data = await self.default_data_buffer.get()
-                self.logger.debug("default_data_loop - incoming data", extra={"data": data})
-                
+                # self.collecting = True
+                self.logger.debug("default_data_loop", extra={"data": data})
+                # continue
                 record = self.default_parse(data)
-                self.logger.debug("default_data_loop - parsed record", extra={"record": record})
-                
                 if record:
                     self.collecting = True
 
+                # print(record)
+                # print(self.sampling())
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(
+                        # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
                         data=record,
                     )
-                    event["destpath"] = f"{self.get_id_as_topic()}/data/update"
-                    self.logger.debug("default_data_loop - publishing event", extra={"destpath": event["destpath"]})
-                    await self.send_message(event)
+                    destpath = f"{self.get_id_as_topic()}/data/update"
+                    event["destpath"] = destpath
+                    self.logger.debug(
+                        "default_data_loop",
+                        extra={"data": event, "destpath": destpath},
+                    )
+                    message = event
+                    # self.logger.debug("default_data_loop", extra={"m": message})
+                    await self.send_message(message)
 
             except Exception as e:
-                self.logger.error("default_data_loop error", extra={"error": str(e)})
-            await asyncio.sleep(0.01)
-
-    # def default_parse(self, data):
-    #     if data:
-    #         try:
-    #             variables = list(self.config.metadata.variables.keys())
-    #             variables.remove("time")
-    #             print(f"variables: \n{variables}")
-
-    #             print(f"include metadata: {self.include_metadata}")
-    #             record = self.build_data_record(meta=self.include_metadata)
-    #             print(f"default_parse: data: {data}, record: {record}")
-    #             self.include_metadata = False
-    #             try:
-    #                 record["timestamp"] = data.data["timestamp"]
-    #                 record["variables"]["time"]["data"] = data.data["timestamp"]
-    #                 parts = data.data["data"].split(",")
-    #                 # print(f"parts: {parts}, {variables}")
-    #                 if len(parts) < 19:
-    #                     return None
-    #                 for index, name in enumerate(variables):
-    #                     if name in record["variables"]:
-    #                         # instvar = self.config.variables[name]
-    #                         instvar = self.config.metadata.variables[name]
-    #                         vartype = instvar.type
-    #                         if instvar.type == "string":
-    #                             vartype = "str"
-    #                         try:
-    #                             # find corresponding variable
-    #                             measurement = [item for item in parts if name in item]
-    #                             # split the string to remove the variable name 
-    #                             measurement = measurement[0].split("=")
-    #                             # remove anything after carriage return chars - must be done because data is spit out on 4 separate lines
-    #                             measurement = measurement[1].split('\r', 1)[0]
-    #                             # remove the last character (the units)
-    #                             measurement = measurement[:-1]
-    #                             record["variables"][name]["data"] = eval(vartype)(measurement)
-    #                         # except ValueError:
-    #                         except Exception as e:
-    #                             if vartype == "str" or vartype == "char":
-    #                                 record["variables"][name]["data"] = ""
-    #                             else:
-    #                                 record["variables"][name]["data"] = None
-    #                 return record
-    #             except KeyError:
-    #                 pass
-    #         except Exception as e:
-    #             print(f"default_parse error: {e}")
-    #     # else:
-    #     return None
-
+                print(f"default_data_loop error: {e}")
+            await asyncio.sleep(0.1)
+    
     def default_parse(self, data):
-        if not data: return None
-        try:
-            v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
-            record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
-            self.include_metadata = False
-            
-            # Safely handle the CloudEvent dictionary
-            raw_payload = data.data if isinstance(data.data, dict) else {}
-            record["timestamp"] = raw_payload.get("timestamp")
-            if "time" in record.get("variables", {}):
-                record["variables"]["time"]["data"] = raw_payload.get("timestamp")
-                
-            raw_str = raw_payload.get("data", "")
-            self.logger.debug("default_parse - raw string received", extra={"raw_str": raw_str})
-            
-            parts = raw_str.split(",")
-            
-            if len(parts) < 19:
-                self.logger.warning(
-                    "default_parse - incomplete data frame", 
-                    extra={"parts_length": len(parts), "expected": 19, "raw_str": raw_str}
-                )
-                return None
-                
-            for name in record["variables"]:
-                if name == "time": continue
-                instvar = self.config.metadata.variables[name]
-                vartype = "str" if instvar.type == "string" else instvar.type
-                val_str = None
-                
+        if data:
+            try:
+                variables = list(self.config.metadata.variables.keys())
+                variables.remove("time")
+                print(f"variables: \n{variables}")
+
+                print(f"include metadata: {self.include_metadata}")
+                record = self.build_data_record(meta=self.include_metadata)
+                print(f"default_parse: data: {data}, record: {record}")
+                self.include_metadata = False
                 try:
-                    # Find corresponding variable string (e.g. "Ta=23.4C")
-                    measurement = next((item for item in parts if f"{name}=" in item), None)
-                    if measurement:
-                        # Split by '='
-                        val_str = measurement.split("=")[1]
-                        # Remove anything after CR
-                        val_str = val_str.split('\r')[0]
-                        # Remove the last character which is the unit (e.g., 'C' in '23.4C')
-                        val_str = val_str[:-1]
-                        
-                        # Apply safe explicit type casting
-                        if vartype == "int":
-                            record["variables"][name]["data"] = int(float(val_str))
-                        elif vartype == "float":
-                            record["variables"][name]["data"] = float(val_str)
-                        else:
-                            record["variables"][name]["data"] = val_str
-                            
-                except (ValueError, IndexError, TypeError) as e:
-                    self.logger.debug(
-                        f"default_parse - type conversion failed for {name}", 
-                        extra={"error": str(e), "attempted_value": val_str, "target_type": vartype}
-                    )
-                    if vartype in ["str", "char"]:
-                        record["variables"][name]["data"] = ""
-                    else:
-                        record["variables"][name]["data"] = None
-                        
-            return record
-        except Exception as e:
-            self.logger.error("default_parse - critical error", extra={"error": str(e), "data": data})
-            return None
+                    record["timestamp"] = data.data["timestamp"]
+                    record["variables"]["time"]["data"] = data.data["timestamp"]
+                    parts = data.data["data"].split(",")
+                    # print(f"parts: {parts}, {variables}")
+                    if len(parts) < 19:
+                        return None
+                    for index, name in enumerate(variables):
+                        if name in record["variables"]:
+                            # instvar = self.config.variables[name]
+                            instvar = self.config.metadata.variables[name]
+                            vartype = instvar.type
+                            if instvar.type == "string":
+                                vartype = "str"
+                            try:
+                                # find corresponding variable
+                                measurement = [item for item in parts if name in item]
+                                # split the string to remove the variable name 
+                                measurement = measurement[0].split("=")
+                                # remove anything after carriage return chars - must be done because data is spit out on 4 separate lines
+                                measurement = measurement[1].split('\r', 1)[0]
+                                # remove the last character (the units)
+                                measurement = measurement[:-1]
+                                record["variables"][name]["data"] = eval(vartype)(measurement)
+                            # except ValueError:
+                            except Exception as e:
+                                if vartype == "str" or vartype == "char":
+                                    record["variables"][name]["data"] = ""
+                                else:
+                                    record["variables"][name]["data"] = None
+                    return record
+                except KeyError:
+                    pass
+            except Exception as e:
+                print(f"default_parse error: {e}")
+        # else:
+        return None
+
 
 class ServerConfig(BaseModel):
     host: str = "localhost"

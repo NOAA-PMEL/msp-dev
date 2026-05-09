@@ -41,6 +41,37 @@ class TAP(Sensor):
         except FileNotFoundError:
             conf = {"serial_number": "UNKNOWN", "interfaces": {}}
 
+        # --- ADD THIS ENTIRE BLOCK ---
+        if "metadata_interval" in conf:
+            self.include_metadata_interval = conf["metadata_interval"]
+
+        # Inject default serial parameters if not specified in conf
+        sensor_iface_properties = {
+            "default": {
+                "device-interface-properties": {
+                    "connection-properties": {
+                        "baudrate": 115200, # Update this if your TAP uses 57600 or 19200
+                        "bytesize": 8,
+                        "parity": "N",
+                        "stopbit": 1,
+                    },
+                    "read-properties": {
+                        "read-method": "readuntil",
+                        "read-terminator": "\r",
+                        "decode-errors": "strict",
+                        "send-method": "ascii",
+                    },
+                }
+            }
+        }
+
+        if "interfaces" in conf:
+            for name, iface in conf["interfaces"].items():
+                if name in sensor_iface_properties:
+                    for propname, prop in sensor_iface_properties[name].items():
+                        iface[propname] = prop
+        # -----------------------------
+        
         # Extract defaults for settings
         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
         for name, setting in settings_def.get("variables", {}).items():

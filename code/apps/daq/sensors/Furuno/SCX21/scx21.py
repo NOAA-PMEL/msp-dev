@@ -248,47 +248,25 @@ class SCX21(Sensor):
 
     def __init__(self, config=None, **kwargs):
         super(SCX21, self).__init__(config=config, **kwargs)
-        self.data_task = None
-        self.data_rate = 1
-        # self.configure()
+        super(SCX21, self).__init__(config=config, **kwargs)
+        self.default_data_buffer = asyncio.Queue(maxsize=100)
+        
         self.first_record = 'ZDA'
         self.last_record = 'GPhve'
         self.array_buffer = []
 
-        # self.default_data_buffer = asyncio.Queue()
-        # FIX: Constrain queue to prevent infinite memory growth
-        self.default_data_buffer = asyncio.Queue(maxsize=100)
-        # self.sensor_definition_file = "Furuno_SCX21_sensor_definition.json"
+        self.sensor_definition_file = "Furuno_SCX21_sensor_definition.json"
 
-        # try:            
-        #     with open(self.sensor_definition_file, "r") as f:
-        #         self.metadata = json.load(f)
-        # except FileNotFoundError:
-        #     self.logger.error("sensor_definition not found. Exiting")            
-        #     sys.exit(1)
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
 
-        # os.environ["REDIS_OM_URL"] = "redis://redis.default"
-
-        # self.data_loop_task = None
-
-        # all handled in run_setup ----
-        # self.configure()
-
-        # # self.logger = logging.getLogger(f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.logger = logging.getLogger(self.build_app_uid())
-
-        # # self.update_id("app_uid", f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.update_id("app_uid", self.build_app_uid())
-
-        # self.logger.debug("id", extra={"self.id": self.id})
-        # print(f"config: {self.config}")
-        # ----
-
-        # self.sampling_task_list.append(self.data_loop())
         self.enable_task_list.append(self.default_data_loop())
-        # self.enable_task_list.append(self.sampling_monitor())
-        # self.enable_task_list.append(self.register_sensor())
-        # asyncio.create_task(self.sampling_monitor())
+        self.enable_task_list.append(self.sampling_monitor())
+        
         self.nmea_map = {
             'HDT': ['heading'],
             'GPatt': ['yaw', 'pitch', 'roll'],
@@ -406,38 +384,24 @@ class SCX21(Sensor):
     # async def handle_interface_data(self, message: Message):
     async def handle_interface_data(self, message: CloudEvent):
         await super(SCX21, self).handle_interface_data(message)
-
-        # self.logger.debug("interface_recv_data", extra={"data": message})
-        # if message.data["type"] == det.interface_data_recv():
         if message["type"] == det.interface_data_recv():
             try:
-                # path_id = message.data["path_id"]
                 path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
-                # if path_id == "default":
                 if path_id == iface_path:
-                    self.logger.debug(
-                        # "interface_recv_data", extra={"data": message.data.data}
-                        "interface_recv_data", extra={"data": message.data}
-                    )
-                    # await self.default_data_buffer.put(message.data)
                     await self.default_data_buffer.put(message)
             except KeyError:
                 pass
 
     async def settings_check(self):
         await super().settings_check()
-
-        if not self.settings.get_health():  # something has changed
+        if not self.settings.get_health(): 
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
-                    self.logger.debug(
-                        "settings_check - set setting",
-                        extra={
-                            "setting-name": name,
-                            "setting": self.settings.get_setting(name),
-                        },
-                    )
+                    setting_obj = self.settings.get_setting(name)
+                    target_val = setting_obj.get("requested") if isinstance(setting_obj, dict) else setting_obj
+                    if name in ["sampling_state"]:
+                        self.settings.set_actual(name, target_val)
 
     # async def register_sensor(self):
     #     try:
@@ -458,61 +422,23 @@ class SCX21(Sensor):
     #         self.logger.error("sensor_reg error", extra={"e": e})
 
     async def sampling_monitor(self):
-
-        # start_command = f"Log,{self.sampling_interval}\n"
-        start_command = "Log,1\n"
-        stop_command = "Log,0\n"
-
-        need_start = True
-        start_requested = False
-        # wait to see if data is already streaming
+        """SCX21 streams continuously. This monitor just updates the UI state."""
         await asyncio.sleep(2)
-        # # if self.collecting:
-        # await self.interface_send_data(data={"data": stop_command})
-        # await asyncio.sleep(2)
-        # self.collecting = False
-        # init to stopped
-        # await self.stop_command()
-
         while True:
             try:
+                state_obj = self.settings.get_setting("sampling_state")
+                state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
+                state_str = str(state).lower()
 
-                if self.sampling():
-
-                    if need_start:
-                        if self.collecting:
-                            await self.interface_send_data(data={"data": stop_command})
-                            await asyncio.sleep(2)
-                            self.collecting = False
-                            continue
-                        else:
-                            await self.interface_send_data(data={"data": start_command})
-                            # await self.interface_send_data(data={"data": "\n"})
-                            need_start = False
-                            start_requested = True
-                            await asyncio.sleep(2)
-                            continue
-                    elif start_requested:
-                        if self.collecting:
-                            start_requested = False
-                        else:
-                            await self.interface_send_data(data={"data": start_command})
-                            # await self.interface_send_data(data={"data": "\n"})
-                            await asyncio.sleep(2)
-                            continue
+                if self.sampling() and state_str == "sampling":
+                    pass # Hardware streams on its own, do nothing
                 else:
-                    if self.collecting:
-                        await self.interface_send_data(data={"data": stop_command})
-                        await asyncio.sleep(2)
-                        self.collecting = False
-
-                await asyncio.sleep(0.1)
-
+                    pass # We just drop packets in default_data_loop, no hardware stop command
+                    
             except Exception as e:
-                print(f"sampling monitor error: {e}")
+                self.logger.error("sampling monitor error", extra={"error": str(e)})
 
-            await asyncio.sleep(0.1)
-
+            await asyncio.sleep(1)
 
     # async def default_data_loop(self):
 

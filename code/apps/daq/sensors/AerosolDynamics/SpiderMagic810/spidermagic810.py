@@ -40,6 +40,9 @@ class SpiderMagic810(Sensor):
         except FileNotFoundError: 
             conf = {"serial_number": "UNKNOWN", "interfaces": {}}
 
+        if "metadata_interval" in conf:
+            self.include_metadata_interval = conf["metadata_interval"]
+
         # Aerosol Dynamics Standard Serial Parameters
         sensor_iface_properties = {
             "default": {
