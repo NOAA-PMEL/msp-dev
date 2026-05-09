@@ -79,7 +79,8 @@ class ShellyPro4PM(Controller):
                 requested = setting["attributes"].get("default_value", {}).get("data")
                 if "settings" in conf and name in conf["settings"]:
                     requested = conf["settings"][name]
-                self.settings.set_setting(name, requested=requested)
+                # self.settings.set_setting(name, requested=requested)
+                self.settings.add_setting(name, requested=requested)
 
             meta = ControllerMetadata(
                 attributes=self.metadata["attributes"],
