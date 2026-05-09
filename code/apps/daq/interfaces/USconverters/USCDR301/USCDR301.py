@@ -175,7 +175,8 @@ class USCDR301(Interface):
                     data = await client.recv()
                     
                     # FIX: Only process if data exists. Prevent tight CPU spin on None.
-                    if data is not None:
+                    # if data is not None:
+                    if data:
                         self.logger.debug("recv_data", extra={"client_id": client_id, "data": data})
                         await self.update_recv_data(client_id=client_id, data=data)
                     else:

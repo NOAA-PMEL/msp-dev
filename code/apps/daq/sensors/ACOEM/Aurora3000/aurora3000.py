@@ -3,43 +3,37 @@ import signal
 import sys
 import os
 import logging
-import json
 import yaml
-
+import json
 from envds.core import envdsLogger
 from envds.daq.sensor import Sensor
 from envds.daq.device import DeviceConfig, DeviceMetadata
-from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
+from envds.daq.types import DAQEventType as det
 from cloudevents.http import CloudEvent
 from pydantic import BaseModel
 
 class Aurora3000(Sensor):
     def __init__(self, config=None, **kwargs):
         super(Aurora3000, self).__init__(config=config, **kwargs)
-        self.data_rate = 1
-        self.default_data_buffer = asyncio.Queue()
+        self.default_data_buffer = asyncio.Queue(maxsize=100)
         self.sensor_definition_file = "ACOEM_Aurora3000_sensor_definition.json"
         
-        # State Tracking
-        self.cal_active = False
-        self.module_address = "0"
-        self.polling_task = None
-        self.collecting = False
-        self.current_valve_state = None
+        # Hardware state tracking to prevent command spamming
+        self.current_valve_state = "position_0"
+        self.current_cal_routine = "none"
 
         try:            
             with open(self.sensor_definition_file, "r") as f:
                 self.metadata = json.load(f)
         except FileNotFoundError:
-            self.logger.error("sensor_definition not found. Exiting")            
             sys.exit(1)
 
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
+        self.enable_task_list.append(self.polling_loop())
 
     def configure(self):
-        """Restores explicit version tracking from JSON metadata."""
         super(Aurora3000, self).configure()
         try:
             with open("/app/config/sensor.conf", "r") as f:
@@ -47,20 +41,7 @@ class Aurora3000(Sensor):
         except FileNotFoundError:
             conf = {"serial_number": "UNKNOWN", "interfaces": {}}
 
-        sensor_iface_properties = {
-            "default": {
-                "device-interface-properties": {
-                    "connection-properties": {"baudrate": 38400, "bytesize": 8, "parity": "N", "stopbit": 1},
-                    "read-properties": {"read-method": "readline", "decode-errors": "strict", "send-method": "ascii"},
-                }
-            }
-        }
-
-        if "interfaces" in conf:
-            for name, iface in conf["interfaces"].items():
-                if name in sensor_iface_properties:
-                    iface.update(sensor_iface_properties[name])
-
+        # Extract defaults for settings
         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
         for name, setting in settings_def.get("variables", {}).items():
             requested = setting["attributes"].get("default_value", {}).get("data")
@@ -81,13 +62,12 @@ class Aurora3000(Sensor):
             serial_number=conf.get("serial_number", "UNKNOWN"),
             metadata=meta,
             interfaces=conf.get("interfaces", {}),
-            daq_id=conf.get("daq_id", "default"),
+            daq_id=conf.get("daq_id", "default")
         )
 
-        # Restore format_version override
         try:
-            self.device_format_version = self.config.metadata.attributes["format_version"].data
-        except (KeyError, AttributeError):
+            self.device_format_version = self.metadata["attributes"]["format_version"]["data"]
+        except (KeyError, TypeError):
             pass
 
         if "interfaces" in conf:
@@ -98,200 +78,224 @@ class Aurora3000(Sensor):
         await super(Aurora3000, self).handle_interface_data(message)
         if message["type"] == det.interface_data_recv():
             try:
-                path_id = message["path_id"]
+                path_id = message.get("path_id") or message.data.get("path_id")
                 if path_id == self.config.interfaces["default"]["path"]:
-                    await self.default_data_buffer.put(message)
-            except KeyError: pass
-
-    async def polling_loop(self):
-        """Continuously requests the 14-parameter string via the VI099 command."""
-        while True:
-            try:
-                poll_cmd = f"VI0{self.module_address}99\r"
-                await self.interface_send_data(data={"data": poll_cmd})
-                await asyncio.sleep(self.data_rate)
-            except Exception as e:
-                self.logger.error(f"polling_loop error: {e}")
-                await asyncio.sleep(self.data_rate)
-
-    async def set_ext_valve(self, valve_state):
-        """Commands the Digital Out Aux via DO command 04 to toggle the external 3-way valve."""
-        state_val = "1" if valve_state == "position_1" else "0" 
-        cmd = f"DO0{self.module_address}04{state_val}\r"
-        
-        await self.interface_send_data(data={"data": cmd})
-        self.logger.info(f"External 3-way valve commanded to: {valve_state} ({cmd.strip()})")
-        self.current_valve_state = valve_state
+                    if message.data: 
+                        await self.default_data_buffer.put(message)
+            except (KeyError, AttributeError):
+                pass
 
     async def settings_check(self):
-        """Fix: Uses set_actual to prevent infinite recursion loop."""
         await super().settings_check()
-        
         if not self.settings.get_health():
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
-                    
                     setting_obj = self.settings.get_setting(name)
-                    # Safely extract requested value from framework dictionary
                     target_val = setting_obj.get("requested") if isinstance(setting_obj, dict) else setting_obj
-                    
-                    self.logger.info(f"MQTT Settings Request: changing {name} to {target_val}")
-                    
-                    if name == "ext_valve_state":
-                        await self.set_ext_valve(target_val)
-                        self.settings.set_actual(name, target_val) # Acknowledge health
-                        
-                    elif name in ["sampling_state", "calibration_routine"]:
+                    if name in ["sampling_state", "calibration_routine", "ext_valve_state"]:
                         self.settings.set_actual(name, target_val)
 
+    async def manage_valve(self):
+        """Handle 3-way valve state transitions using Digital Aux Out."""
+        try:
+            valve_obj = self.settings.get_setting("ext_valve_state")
+            valve_req = str(valve_obj.get("requested", "position_0")).lower() if isinstance(valve_obj, dict) else "position_0"
+
+            if valve_req != self.current_valve_state:
+                self.logger.info(f"Switching 3-way valve to {valve_req}")
+                
+                if valve_req == "position_1":
+                    await self.interface_send_data(data={"data": "DO0041\r"})
+                else:
+                    await self.interface_send_data(data={"data": "DO0040\r"})
+                
+                self.current_valve_state = valve_req
+
+        except Exception as e:
+            self.logger.error("manage_valve error", extra={"error": str(e)})
+
+    async def manage_calibration(self):
+        """Handle Aurora 3000 calibration triggers using **J commands."""
+        try:
+            cal_obj = self.settings.get_setting("calibration_routine")
+            cal_req = str(cal_obj.get("requested", "none")).lower() if isinstance(cal_obj, dict) else "none"
+
+            if cal_req != self.current_cal_routine:
+                self.logger.info(f"Initiating Aurora 3000 calibration routine: {cal_req}")
+                
+                if cal_req == "span_cal_co2":
+                    await self.interface_send_data(data={"data": "**0J1\r"})  # Span calibration
+                elif cal_req == "zero_cal":
+                    await self.interface_send_data(data={"data": "**0J2\r"})  # Zero calibration
+                elif cal_req == "span_check":
+                    await self.interface_send_data(data={"data": "**0J3\r"})  # Span check
+                elif cal_req == "zero_check":
+                    await self.interface_send_data(data={"data": "**0J4\r"})  # Zero check
+                elif cal_req == "none":
+                    await self.interface_send_data(data={"data": "**0J0\r"})  # Normal Monitoring
+                
+                self.current_cal_routine = cal_req
+
+        except Exception as e:
+            self.logger.error("manage_calibration error", extra={"error": str(e)})
+
     async def sampling_monitor(self):
-        """State machine mapping envds settings to Aurora hardware routines."""
-        self.polling_task = asyncio.create_task(self.polling_loop())
-        
-        # Ensure the valve aligns with default schema state on boot
-        startup_valve = self.settings.get_setting("ext_valve_state")
-        if isinstance(startup_valve, dict):
-            startup_valve = startup_valve.get("requested")
-            
-        if startup_valve:
-            await self.set_ext_valve(startup_valve)
-            
+        need_start = True
+        await asyncio.sleep(2)
         while True:
             try:
-                # Fix: Safely handle dictionary payloads from MQTT
+                # 1. Update peripheral hardware and calibration states
+                await self.manage_valve()
+                await self.manage_calibration()
+
+                # 2. Check main instrument sampling state
                 state_obj = self.settings.get_setting("sampling_state")
                 state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
                 state_str = str(state).lower()
 
-                routine_obj = self.settings.get_setting("calibration_routine")
-                routine = routine_obj.get("requested", "none") if isinstance(routine_obj, dict) else "none"
-
                 if self.sampling() and state_str == "sampling":
-                    if not self.collecting:
-                        await self.interface_send_data(data={"data": f"DO0{self.module_address}051\r"})
-                        await self.interface_send_data(data={"data": f"**{self.module_address}J0\r"})
-                        self.collecting = True
-                
-                elif state_str in ["idle", "maintenance"]:
-                    if self.collecting:
-                        await self.interface_send_data(data={"data": f"DO0{self.module_address}050\r"})
-                        self.collecting = False
-                
-                elif state_str == "calibration":
-                    if routine == "zero_cal" and not self.cal_active:
-                        await self.interface_send_data(data={"data": f"**{self.module_address}J2\r"})
-                        self.cal_active = True
-                    elif routine == "span_cal_co2" and not self.cal_active:
-                        await self.interface_send_data(data={"data": f"**{self.module_address}J1\r"})
-                        self.cal_active = True
-                    elif routine == "zero_check" and not self.cal_active:
-                        await self.interface_send_data(data={"data": f"**{self.module_address}J4\r"})
-                        self.cal_active = True
-                    elif routine == "span_check" and not self.cal_active:
-                        await self.interface_send_data(data={"data": f"**{self.module_address}J3\r"})
-                        self.cal_active = True
-                
-                await asyncio.sleep(1)
+                    if need_start:
+                        self.logger.info("Entering active sampling state.")
+                        need_start = False
+                else:
+                    if not need_start:
+                        self.logger.info("Entering idle state.")
+                        need_start = True
+
             except Exception as e:
-                self.logger.error(f"sampling_monitor error: {e}")
-                await asyncio.sleep(1)
+                self.logger.error("sampling_monitor error", extra={"error": str(e)})
+            await asyncio.sleep(1)
 
-    def default_parse(self, data):
-        """Fix: Uses variable_types to optimize payload size."""
-        if not data: return None
-        
-        try:
-            # Metadata filtering logic to reduce MQTT record size
-            v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
-            record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
-            self.include_metadata = False
+    async def polling_loop(self):
+        """Strictly timed loop to request data without being delayed by control logic."""
+        await asyncio.sleep(2)
+        while True:
+            try:
+                state_obj = self.settings.get_setting("sampling_state")
+                state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
+                state_str = str(state).lower()
 
-            raw_payload = data.data if isinstance(data.data, dict) else {}
-            record["timestamp"] = raw_payload.get("timestamp")
-            record["variables"]["time"]["data"] = raw_payload.get("timestamp")
-            
-            parts = [p.strip() for p in raw_payload.get("data", "").split(",")]
-            
-            if len(parts) >= 14:
-                record["variables"]["aurora_date"]["data"] = parts[0]
-                record["variables"]["aurora_time"]["data"] = parts[1]
-                record["variables"]["scat_coef_ch1_red"]["data"] = float(parts[2])
-                record["variables"]["scat_coef_ch2_green"]["data"] = float(parts[3])
-                record["variables"]["scat_coef_ch3_blue"]["data"] = float(parts[4])
-                record["variables"]["backscatter_ch1_red"]["data"] = float(parts[5])
-                record["variables"]["backscatter_ch2_green"]["data"] = float(parts[6])
-                record["variables"]["backscatter_ch3_blue"]["data"] = float(parts[7])
-                record["variables"]["sample_T"]["data"] = float(parts[8])
-                record["variables"]["enclosure_T"]["data"] = float(parts[9])
-                record["variables"]["rh"]["data"] = float(parts[10])
-                record["variables"]["pressure"]["data"] = float(parts[11])
+                # If we are actively sampling, fire the data request
+                if self.sampling() and state_str == "sampling":
+                    await self.interface_send_data(data={"data": "VI099\r"})
+                    
+            except Exception as e:
+                self.logger.error("polling_loop error", extra={"error": str(e)})
                 
-                major_state = int(parts[12])
-                record["variables"]["major_state"]["data"] = major_state
-                record["variables"]["DIO_state"]["data"] = parts[13]
-
-                if self.current_valve_state is not None:
-                    record["variables"]["ext_valve_state"]["data"] = self.current_valve_state
-
-                # Check if instrument has organically finished its routine
-                if self.cal_active and major_state == 0:
-                    self.logger.info("Calibration sequence completed by Aurora firmware.")
-                    self.settings.set_setting("calibration_routine", "none")
-                    self.settings.set_setting("sampling_state", "sampling" if self.sampling() else "idle")
-                    self.cal_active = False
-
-                return record
-            return None
-        except (ValueError, TypeError, Exception) as e:
-            self.logger.warning(f"Error parsing data payload: {e}")
-            return None
-
+            # Maintain a strict 1-second polling cadence
+            await asyncio.sleep(1)
+            
     async def default_data_loop(self):
         while True:
             try:
                 data = await self.default_data_buffer.get()
                 record = self.default_parse(data)
-                
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record)
                     event["destpath"] = f"{self.get_id_as_topic()}/data/update"
                     await self.send_message(event)
             except Exception as e:
-                self.logger.error(f"default_data_loop error: {e}")
-            await asyncio.sleep(0.1)
+                self.logger.error("default_data_loop error", extra={"error": str(e)})
+            await asyncio.sleep(0.01)
+
+    def default_parse(self, data):
+        if not data: return None
+        try:
+            v_types = ["main", "setting", "coordinate", "calibration"] if self.include_metadata else ["main"]
+            record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+            self.include_metadata = False
+            
+            raw_payload = data.data if isinstance(data.data, dict) else {}
+            record["timestamp"] = raw_payload.get("timestamp")
+            if "time" in record["variables"]:
+                record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+            
+            raw_str = raw_payload.get("data", "").strip()
+            
+            if not raw_str or len(raw_str) < 5:
+                return None
+                
+            parts = [x.strip() for x in raw_str.split(",")]
+            
+            # --- VI099 MAPPING LIST ---
+            variable_map = [
+                "aurora_date",
+                "aurora_time",
+                "scat_coef_ch1_red",
+                "scat_coef_ch2_green",
+                "scat_coef_ch3_blue",
+                "backscatter_ch1_red",
+                "backscatter_ch2_green",
+                "backscatter_ch3_blue",
+                "sample_T",
+                "enclosure_T",
+                "rh",
+                "pressure",
+                "major_state",
+                "DIO_state"
+            ]
+
+            for i, var_name in enumerate(variable_map):
+                if i < len(parts) and var_name in record["variables"]:
+                    val = parts[i]
+                    instvar = self.config.metadata.variables[var_name]
+                    try:
+                        record["variables"][var_name]["data"] = int(val) if instvar.type == "int" else (float(val) if instvar.type == "float" else val)
+                    except ValueError:
+                        record["variables"][var_name]["data"] = "" if instvar.type in ("str", "char") else None
+
+            # --- CONTINUOUS TRACKING: Auto-reset calibration state ---
+            try:
+                major_state = record["variables"].get("major_state", {}).get("data")
+                # If Aurora returns to Normal Monitoring (0) but framework thinks we are calibrating
+                if major_state == 0 and self.current_cal_routine != "none":
+                    self.logger.info("Calibration sequence finished. Resetting UI to 'none'.")
+                    self.settings.set_setting("calibration_routine", requested="none")
+                    self.settings.set_actual("calibration_routine", "none")
+                    self.current_cal_routine = "none"
+            except (KeyError, TypeError):
+                pass
+
+            return record
+            
+        except Exception as e:
+            self.logger.error("default_parse error", extra={"error": str(e)})
+            return None
 
 class ServerConfig(BaseModel):
     host: str = "localhost"
     port: int = 9080
-    log_level: str = "info"
-
-async def shutdown(sensor):
-    if sensor: await sensor.shutdown()
 
 async def main(server_config: ServerConfig = None):
-    """Matches MAGIC 250 main entry logic."""
     if server_config is None: server_config = ServerConfig()
+    
+    sn = "9999"
+    try:
+        with open("/app/config/sensor.conf", "r") as f:
+            conf = yaml.safe_load(f)
+            sn = conf.get("serial_number", "9999")
+    except FileNotFoundError: pass
+
     envdsLogger(level=logging.DEBUG).init_logger()
+    logger = logging.getLogger(f"ACOEM::Aurora3000::{sn}")
     
     inst = Aurora3000()
     inst.run()
     await asyncio.sleep(2)
     inst.start()
 
-    event_loop = asyncio.get_event_loop()
     global do_run
     do_run = True
-
     def shutdown_handler(*args):
         global do_run
         do_run = False
 
-    event_loop.add_signal_handler(signal.SIGINT, shutdown_handler)
-    event_loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
+    loop = asyncio.get_event_loop()
+    loop.add_signal_handler(signal.SIGINT, shutdown_handler)
+    loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
 
-    while do_run:
-        await asyncio.sleep(1)
-    await shutdown(inst)
+    while do_run: await asyncio.sleep(1)
+    await inst.shutdown()
 
 if __name__ == "__main__":
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
