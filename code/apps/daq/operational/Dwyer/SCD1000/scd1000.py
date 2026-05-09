@@ -16,18 +16,18 @@ from pydantic import BaseModel
 
 task_list = []
 
-class BTXConnect(Operational):
+class DwyerSCD(Operational):
     def __init__(self, config=None, **kwargs):
-        super(BTXConnect, self).__init__(config=config, **kwargs)
+        super(DwyerSCD, self).__init__(config=config, **kwargs)
         self.default_data_buffer = asyncio.Queue(maxsize=100)
         self.polling_task = None
         self.sampling_interval = 1
-        self.polling_mode = "unpolled" # Default, overridden by config
+        self.polling_mode = "polled" 
+        
+        # Modbus Configuration
+        self.modbus_address = 1
 
-        self.last_read_timestamp = None
-        self.last_read_count = None
-
-        self.operational_definition_file = "ParkerHannifin_BTXConnect_operational_definition.json"
+        self.operational_definition_file = "Dwyer_SCD_operational_definition.json"
 
         try:
             with open(self.operational_definition_file, "r") as f:
@@ -41,7 +41,7 @@ class BTXConnect(Operational):
         self.collecting = False
 
     def configure(self):
-        super(BTXConnect, self).configure()
+        super(DwyerSCD, self).configure()
 
         try:
             with open("/app/config/operational.conf", "r") as f:
@@ -54,9 +54,36 @@ class BTXConnect(Operational):
             self.polling_mode = env_polling_mode.lower()
         elif "polling_mode" in conf:
             self.polling_mode = str(conf["polling_mode"]).lower()
+            
+        if "modbus_address" in conf:
+            self.modbus_address = int(conf["modbus_address"])
 
         if "metadata_interval" in conf:
             self.include_metadata_interval = conf["metadata_interval"]
+
+        sensor_iface_properties = {
+            "default": {
+                "device-interface-properties": {
+                    "connection-properties": {
+                        "baudrate": 9600,
+                        "bytesize": 7,
+                        "parity": "E",
+                        "stopbit": 1,
+                    },
+                    "read-properties": {
+                        "read-method": "readline",
+                        "decode-errors": "strict",
+                        "send-method": "ascii",
+                    },
+                }
+            }
+        }
+
+        if "interfaces" in conf:
+            for name, iface in conf["interfaces"].items():
+                if name in sensor_iface_properties:
+                    for propname, prop in sensor_iface_properties[name].items():
+                        iface[propname] = prop
 
         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
         for name, setting in settings_def.get("variables", {}).items():
@@ -90,23 +117,22 @@ class BTXConnect(Operational):
             for name, iface in conf["interfaces"].items():
                 self.add_interface(name, iface)
 
-    def check_pump_speed_sp(self, data):
-        try:
-            setting_obj = self.settings.get_setting("pump_speed_sp")
-            requested_sp = setting_obj.get("requested", 0.0)
-            
-            raw_payload = data if isinstance(data, dict) else getattr(data, "data", {})
-            duty_cycle = raw_payload.get("data", {}).get("duty_cycle")
-            
-            if duty_cycle is not None:
-                # Unidirectional pump: direct 1:1 mapping (0-100% SP = 0-100% DC)
-                sp = float(duty_cycle)
-                
-                # If within +/- 5% of target, mark as achieved
-                if (requested_sp - 5.0) < sp < (requested_sp + 5.0):
-                    self.settings.set_actual("pump_speed_sp", actual=requested_sp)
-        except Exception as e:
-            self.logger.error("check_pump_speed_sp error", extra={"error": str(e)})
+    def build_modbus_ascii(self, address, function, register, data):
+        """Constructs a raw Modbus ASCII string with LRC checksum."""
+        payload = [
+            address,
+            function,
+            (register >> 8) & 0xFF,
+            register & 0xFF,
+            (data >> 8) & 0xFF,
+            data & 0xFF
+        ]
+        # Calculate Longitudinal Redundancy Check (LRC)
+        lrc = (~sum(payload) + 1) & 0xFF
+        
+        # Format as : + payload + LRC + CR + LF
+        cmd = ":" + "".join([f"{x:02X}" for x in payload]) + f"{lrc:02X}\r\n"
+        return cmd
 
     async def settings_check(self):
         await super().settings_check()
@@ -118,27 +144,32 @@ class BTXConnect(Operational):
                     
                     if name == "sampling_state":
                         self.settings.set_actual(name, target_val)
-                    elif name == "pump_speed_sp":
+                        
+                    elif name == "set_value":
                         try:
-                            sp = float(target_val)
-                            # Unidirectional pump: direct 1:1 mapping
-                            pwm_data = sp
-                            await self.interface_send_data(data={"data": {"pwm-data": pwm_data}}, path_id="pump_speed_sp")
+                            # SCD1000/2000 Modbus write: Set Point is at 1001H, resolution 0.1 degree
+                            sv_scaled = int(float(target_val) * 10.0)
+                            
+                            # Handle negative values for 16-bit registers (if target_val < 0)
+                            if sv_scaled < 0:
+                                sv_scaled = (abs(sv_scaled) ^ 0xFFFF) + 1 
+                            
+                            # Function 6 = Write Single Register
+                            cmd = self.build_modbus_ascii(self.modbus_address, 6, 0x1001, sv_scaled)
+                            await self.interface_send_data(data={"data": cmd}, path_id="default")
                         except Exception as e:
-                            self.logger.error("settings_check pwm error", extra={"error": str(e)})
+                            self.logger.error("settings_check SV error", extra={"error": str(e)})
 
     async def handle_interface_data(self, message: CloudEvent):
-        await super(BTXConnect, self).handle_interface_data(message)
+        await super(DwyerSCD, self).handle_interface_data(message)
         if message["type"] == det.interface_data_recv():
             try:
                 path_id = message["path_id"]
                 default_path = self.config.interfaces.get("default", {}).get("path")
-                pwm_path = self.config.interfaces.get("pump_speed_sp", {}).get("path")
                 
+                # Both read and write responses come through the default serial path
                 if path_id == default_path:
                     await self.default_data_buffer.put(message)
-                elif path_id == pwm_path:
-                    self.check_pump_speed_sp(message.data)
             except KeyError:
                 pass
 
@@ -153,16 +184,16 @@ class BTXConnect(Operational):
                 if self.sampling() and state_str == "sampling":
                     if self.polling_mode == "polled":
                         if self.polling_task is None or self.polling_task.done():
-                            self.logger.info("Starting BTXConnect polling loop.")
+                            self.logger.info("Starting DwyerSCD polling loop.")
                             self.polling_task = asyncio.create_task(self.polling_loop())
                     elif self.polling_mode == "unpolled":
                         if self.polling_task and not self.polling_task.done():
-                            self.logger.info("Stopping BTXConnect polling loop (Unpolled mode active).")
+                            self.logger.info("Stopping DwyerSCD polling loop (Unpolled mode active).")
                             self.polling_task.cancel()
                             self.polling_task = None
                 else:
                     if self.polling_task and not self.polling_task.done():
-                        self.logger.info("Stopping BTXConnect polling loop.")
+                        self.logger.info("Stopping DwyerSCD polling loop.")
                         self.polling_task.cancel()
                         self.polling_task = None
                         
@@ -171,9 +202,13 @@ class BTXConnect(Operational):
             await asyncio.sleep(1)
 
     async def polling_loop(self):
+        # SCD1000/2000 Modbus Read: 1000H (PV), 1001H (SV)
+        # Function 3 = Read Holding Registers, Count = 2
+        cmd = self.build_modbus_ascii(self.modbus_address, 3, 0x1000, 2)
+
         while True:
             try:
-                await self.interface_send_data(data={}, path_id="default")
+                await self.interface_send_data(data={"data": cmd}, path_id="default")
             except Exception as e:
                 self.logger.error("polling_loop error", extra={"error": str(e)})
             await asyncio.sleep(self.sampling_interval)
@@ -185,11 +220,11 @@ class BTXConnect(Operational):
                 self.logger.debug("default_data_loop - incoming data", extra={"data": data})
                 
                 record = self.default_parse(data)
-                self.logger.debug("default_data_loop - parsed record", extra={"record": record})
                 
                 if record:
                     self.collecting = True
 
+                # Only emit the event if the parse returned a valid record (i.e., a Read response)
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(
                         source=self.get_id_as_source(),
@@ -206,68 +241,71 @@ class BTXConnect(Operational):
     def default_parse(self, data):
         if not data: return None
         try:
-            v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
-            record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
-            self.include_metadata = False
-
             raw_payload = data.data if isinstance(data.data, dict) else {}
             timestamp = raw_payload.get("timestamp")
-            iface_data = raw_payload.get("data", {})
+            iface_data = raw_payload.get("data", "")
             
-            self.logger.debug(
-                "default_parse - raw iface_data received", 
-                extra={"iface_data": iface_data, "timestamp": timestamp}
-            )
+            raw_str = iface_data.strip()
+            self.logger.debug("default_parse - raw string received", extra={"raw_str": raw_str})
             
-            if not timestamp or "data" not in iface_data:
-                self.logger.warning(
-                    "default_parse - missing timestamp or data key", 
-                    extra={"raw_payload": raw_payload}
-                )
+            # Modbus ASCII responses must start with a colon
+            if not raw_str or not raw_str.startswith(":"):
                 return None
-
-            current_read_timestamp = string_to_datetime(timestamp)
-            
-            try:
-                dataRead = float(iface_data["data"])  # Raw pulse count
-            except (ValueError, TypeError) as e:
-                self.logger.warning(
-                    "default_parse - failed to cast pulse count to float", 
-                    extra={"error": str(e), "data_value": iface_data.get("data")}
-                )
+                
+            addr = int(raw_str[1:3], 16)
+            if addr != self.modbus_address:
+                self.logger.debug("default_parse - ignoring message for different Modbus address", extra={"addr": addr})
                 return None
-
-            # Require two points to calculate RPM over time
-            if not self.last_read_timestamp or self.last_read_count is None:
-                self.logger.debug("default_parse - initializing first data point, skipping RPM calculation")
-                self.last_read_timestamp = current_read_timestamp
-                self.last_read_count = dataRead
-                return None
-
-            elapsed_time = (current_read_timestamp - self.last_read_timestamp).total_seconds()
+                
+            func = int(raw_str[3:5], 16)
             
-            if elapsed_time > 0:
-                # Assuming 2 pulses per revolution for standard tachometer
-                revs = (dataRead - self.last_read_count) / 2.0
-                speed = 60.0 * revs / elapsed_time
+            # Function 03: Read Response
+            if func == 3:
+                if len(raw_str) < 15: # Needs to be long enough to contain PV and SV
+                    return None
+                    
+                v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
+                record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+                self.include_metadata = False
                 
                 record["timestamp"] = timestamp
                 if "time" in record["variables"]:
                     record["variables"]["time"]["data"] = timestamp
-                if "pump_speed" in record["variables"]:
-                    record["variables"]["pump_speed"]["data"] = round(speed, 3)
-            else:
-                self.logger.warning(
-                    "default_parse - zero or negative elapsed time", 
-                    extra={"elapsed_time": elapsed_time, "current_ts": current_read_timestamp, "last_ts": self.last_read_timestamp}
-                )
-                # Drop out early to prevent updating last_read_timestamp if time went backwards
+
+                # Extract the 4 hex characters representing the PV
+                pv_raw = int(raw_str[7:11], 16)
+                
+                # Filter out SCD1000 documented hardware error codes (8002H, 8003H, etc.)
+                if pv_raw >= 0x8000:
+                    self.logger.warning("default_parse - SCD hardware error code detected", extra={"error_code": hex(pv_raw)})
+                    record["variables"]["process_value"]["data"] = None
+                else:
+                    # Handle signed 16-bit integer conversion for negative temperatures
+                    if pv_raw > 32767:
+                        pv_raw -= 65536
+                    record["variables"]["process_value"]["data"] = round(pv_raw / 10.0, 1)
+
+                return record
+                
+            # Function 06: Write Response (Acknowledge)
+            elif func == 6:
+                if len(raw_str) < 13:
+                    return None
+                    
+                reg = int(raw_str[5:9], 16)
+                val_raw = int(raw_str[9:13], 16)
+                
+                # If the controller echoes back our write to the SV register (1001H)
+                if reg == 0x1001:
+                    if val_raw > 32767:
+                        val_raw -= 65536
+                        
+                    sv_actual = round(val_raw / 10.0, 1)
+                    self.settings.set_actual("set_value", actual=sv_actual)
+                    self.logger.info("default_parse - SV Write Confirmed", extra={"sv_actual": sv_actual})
+                
+                # We do not return a data record for write acknowledgements
                 return None
-
-            self.last_read_timestamp = current_read_timestamp
-            self.last_read_count = dataRead
-
-            return record
 
         except Exception as e:
             self.logger.error("default_parse - critical error", extra={"error": str(e), "data": data})
@@ -301,10 +339,10 @@ async def main(server_config: ServerConfig = None):
         pass
 
     envdsLogger(level=logging.DEBUG).init_logger()
-    logger = logging.getLogger(f"ParkerHannifin::BTXConnect::{sn}")
+    logger = logging.getLogger(f"Dwyer::SCD1000_2000::{sn}")
 
-    logger.debug("Starting BTXConnect")
-    inst = BTXConnect()
+    logger.debug("Starting Dwyer SCD Controller")
+    inst = DwyerSCD()
     inst.run()
     await asyncio.sleep(2)
     inst.start()
@@ -321,7 +359,7 @@ async def main(server_config: ServerConfig = None):
     event_loop.add_signal_handler(signal.SIGTERM, shutdown_handler)
 
     while do_run:
-        logger.debug("BTXConnect.run", extra={"do_run": do_run})
+        logger.debug("DwyerSCD.run", extra={"do_run": do_run})
         await asyncio.sleep(1)
 
     logger.info("starting shutdown...")
