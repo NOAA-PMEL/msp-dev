@@ -527,15 +527,17 @@ def create_sampling_routes(resource: str):
     @app.post(f"/{resource}-definition/registry/update/")
     async def update_def(request: Request):
         try:
-            L.debug("-definition_update")
-            ce = from_http(request.headers, await request.body())
-            L.debug("-definition_update", extra={"cevent": ce})
+            L.debug(f"{resource}-definition_update: RECEIVED REQUEST")
+            body = await request.body()
+            ce = from_http(request.headers, body)
+            L.debug(f"{resource}-definition_update: PARSED EVENT", extra={"cevent_type": ce.get("type")})
             await datastore.sampling_definition_registry_update(resource=resource, ce=ce)
             return Response(status_code=status.HTTP_204_NO_CONTENT)
-        except Exception:
+        except Exception as e:
+            # ACTUALLY LOG THE ERROR!
+            L.error(f"{resource}-definition_update: CRITICAL FAILURE", extra={"reason": str(e), "traceback": traceback.format_exc()})
             return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-# Initialize routes for each resource type
 for res in SAMPLING_RESOURCE_TYPES:
     create_sampling_routes(res)
 
