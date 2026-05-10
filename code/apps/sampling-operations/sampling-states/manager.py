@@ -297,7 +297,7 @@ class SamplingState:
                 if is_changed or is_heartbeat:
                     self.logger.info(
                         "state evaluation trigger", 
-                        extra={"name": self.config["metadata"]["name"], "change": is_changed, "hb": is_heartbeat}
+                        extra={"state_name": self.config["metadata"]["name"], "change": is_changed, "hb": is_heartbeat}
                     )
                     
                     # Update internal state and reset heartbeat timer

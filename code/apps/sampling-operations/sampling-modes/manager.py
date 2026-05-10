@@ -127,7 +127,7 @@ class SamplingMode:
         if is_changed or is_heartbeat:
             self.logger.info(
                 "mode evaluation trigger", 
-                extra={"name": self.config["metadata"]["name"], "change": is_changed, "hb": is_heartbeat}
+                extra={"mode_name": self.config["metadata"]["name"], "change": is_changed, "hb": is_heartbeat}
             )
             
             # Update internal state and reset heartbeat timer
@@ -456,7 +456,7 @@ class SamplingModesManager:
                 self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
             finally:
                 self.status_buffer.task_done()
-                
+
     async def action_execution_monitor(self):
         while True:
             req = await self.actions_buffer.get()
