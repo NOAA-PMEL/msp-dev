@@ -1093,45 +1093,93 @@ class SamplingConditionsManager:
             
             await asyncio.sleep(60)
 
+    # async def condition_status_monitor(self):
+    #     while True:
+    #         try:
+    #             status = await self.status_buffer.get()
+
+    #             cond_name = status["status"]["name"]
+    #             cond_ns = status["status"]["sampling_namespace"]
+    #             cond_valid_time = status["status"]["valid_config_time"]
+
+    #             source_id = (
+    #                 # f"envds.{self.config.daq_id}.sampling-condition.{cond_name}"
+    #                 f"envds.{self.config.daq_id}.sampling-conditions"
+    #             )
+    #             self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
+                
+    #             source_topic = source_id.replace(".", "/")
+
+    #             event = SamplingEvent.create_sampling_condition_status_update(
+    #                 # source="sensor.mockco-mock1-1234", data=record
+    #                 source=source_id,
+    #                 data=status,
+    #             )
+    #             self.logger.debug("condition_status_monitor", extra={"event-type": event["type"]})
+    #             destpath = f"{source_topic}/status/update"
+    #             event["destpath"] = destpath
+    #             event["samplingnamespace"] = cond_ns
+    #             event["validconfigtime"] = cond_valid_time
+    #             self.logger.debug(
+    #                 "evaluate_criteria",
+    #                 extra={"data": event, "destpath": destpath},
+    #             )
+
+    #             await self.send_event(event)
+
+    #         except Exception as e:
+    #             self.logger.error("condition_event_monitor", extra={"reason": e})
+            
+    #         await asyncio.sleep(0.001)
+    #         self.status_buffer.task_done()
+
     async def condition_status_monitor(self):
         while True:
             try:
-                status = await self.status_buffer.get()
+                # 1. Pull the new envdsStatus format payload from the buffer
+                status_data = await self.status_buffer.get()
 
-                cond_name = status["status"]["name"]
-                cond_ns = status["status"]["sampling_namespace"]
-                cond_valid_time = status["status"]["valid_config_time"]
+                # Extract the metadata to build the CloudEvent topics
+                cond_name = status_data["id"]["app_uid"]
+                cond_ns = status_data["id"]["sampling_namespace"]
+                cond_valid_time = status_data["id"]["valid_config_time"]
 
-                source_id = (
-                    # f"envds.{self.config.daq_id}.sampling-condition.{cond_name}"
-                    f"envds.{self.config.daq_id}.sampling-conditions"
-                )
+                source_id = f"envds.{self.config.daq_id}.sampling-conditions"
                 self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
                 
-                source_topic = source_id.replace(".", "/")
-
-                event = SamplingEvent.create_sampling_condition_status_update(
-                    # source="sensor.mockco-mock1-1234", data=record
-                    source=source_id,
-                    data=status,
+                # 2. Build standard CloudEvent wrapper
+                event = CloudEvent(
+                    attributes={
+                        "type": "envds.samplingcondition.status.update", 
+                        "source": source_id
+                    },
+                    data=status_data
                 )
+                
                 self.logger.debug("condition_status_monitor", extra={"event-type": event["type"]})
-                destpath = f"{source_topic}/status/update"
+                
+                # 3. Add custom routing headers
+                destpath = f"envds/{self.config.daq_id}/sampling-conditions/status/update"
                 event["destpath"] = destpath
                 event["samplingnamespace"] = cond_ns
                 event["validconfigtime"] = cond_valid_time
+                
                 self.logger.debug(
                     "evaluate_criteria",
                     extra={"data": event, "destpath": destpath},
                 )
 
+                # 4. Dispatch!
                 await self.send_event(event)
 
             except Exception as e:
                 self.logger.error("condition_event_monitor", extra={"reason": e})
             
+            finally:
+                if 'status_data' in locals():
+                    self.status_buffer.task_done()
+            
             await asyncio.sleep(0.001)
-            self.status_buffer.task_done()
 
     async def get_from_mqtt_loop(self):
         reconnect = 10
