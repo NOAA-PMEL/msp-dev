@@ -974,28 +974,41 @@ class SamplingConditionsManager:
     #         print("error", e)
 
     async def send_event(self, ce):
-        """Converts CloudEvents to JSON and drops them onto the persistent MQTT publish queue."""
+        """Routes registry definitions to the Datastore via Knative HTTP Broker."""
         try:
-            self.logger.debug(ce)
-            
-            # Extract the topic from the event
-            topic = ce.get("destpath", "")
-            if not topic:
-                self.logger.warning("send_event called with no 'destpath' defined in the CloudEvent. Cannot route to MQTT.")
-                return
-
-            # Consistently match sampling-system.py MQTT logic
-            payload = to_json(ce)
-            
-            self.logger.debug("send_event (Routing to MQTT)", extra={"topic": topic, "payload": payload})
-            
-            # Drop the tuple onto the publisher queue
-            await self.publish_queue.put((topic, payload))
-
+            self.logger.debug("send_event (HTTP)", extra={"ce": ce})
+            if not getattr(self, 'http_client', None):
+                self.open_http_client()
+            try:
+                timeout = httpx.Timeout(5.0, read=10.0)
+                
+                # Generates HTTP headers and JSON body for the Knative broker
+                headers, body = to_structured(ce)
+                
+                r = await self.http_client.post(
+                    self.config.knative_broker,
+                    headers=headers,
+                    data=body,
+                    timeout=timeout,
+                )
+                r.raise_for_status()
+            except InvalidStructuredJSON:
+                self.logger.error(f"INVALID MSG: {ce}")
+            except httpx.TimeoutException:
+                pass
+            except httpx.HTTPError as e:
+                self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
         except Exception as e:
             self.logger.error("send_event failed", extra={"reason": str(e)})
-            
-        await asyncio.sleep(0.01)
+
+    async def send_to_mqtt(self, topic: str, ce):
+        """Routes high-volume telemetry and status updates to the MQTT broker."""
+        try:
+            self.logger.debug("send_to_mqtt (MQTT)", extra={"topic": topic})
+            payload = to_json(ce)
+            await self.publish_queue.put((topic, payload))
+        except Exception as e:
+            self.logger.error("send_to_mqtt failed", extra={"reason": str(e)})
 
     async def submit_get(self, path: str):
         try:
@@ -1165,7 +1178,7 @@ class SamplingConditionsManager:
                 )
 
                 # 4. Dispatch!
-                await self.send_event(event)
+                await self.send_to_mqtt(destpath, event)
 
             except Exception as e:
                 self.logger.error("condition_event_monitor", extra={"reason": e})
