@@ -103,6 +103,10 @@ class SystemMode:
 
 class SystemModesManager:
     def __init__(self):
+        # ---> ADD THESE TWO LINES <---
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
+        
         self.config = SystemModesConfig()
         self.modes = {}
         self.active_mode = None
