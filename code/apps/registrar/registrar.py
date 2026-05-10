@@ -457,42 +457,95 @@ class Registrar:
             # Anyone is allowed to ask us for definitions we have
             await self.registry_send_update(message)
 
+    # async def registry_do_update(self, message: CloudEvent):
+    #     try:
+
+    #         data = message.data
+    #         for update_type, update in data.items():
+    #             if update_type == "device-definition-update":
+
+    #                 event = DAQEvent.create_device_definition_registry_update(
+    #                     # source="device.mockco-mock1-1234", data=record
+    #                     source=f"envds.{self.config.daq_id}.registrar",
+    #                     data={"device-definition": update},
+    #                 )
+    #                 destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+    #                 self.logger.debug(
+    #                     "register_device_definition", extra={"data": event, "destpath": destpath}
+    #                 )
+    #                 event["destpath"] = destpath
+    #                 await self.send_event(event)
+    #             elif update_type == "controller-definition-update":
+
+    #                 event = DAQEvent.create_controller_definition_registry_update(
+    #                     # source="device.mockco-mock1-1234", data=record
+    #                     source=f"envds.{self.config.daq_id}.registrar",
+    #                     data={"controller-definition": update},
+    #                 )
+    #                 destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+                    
+    #                 self.logger.debug(
+    #                     "register_device_definition", extra={"data": event, "destpath": destpath}
+    #                 )
+    #                 event["destpath"] = destpath
+    #                 await self.send_event(event)
+
+    #             # Dynamic catch-all utilizing the SamplingEvent factory
+    #             elif update_type.endswith("-definition-update"):
+    #                 resource_type = update_type.replace("-update", "") # Leaves "-definition"
+                    
+    #                 event = SamplingEvent.create_definition_registry_update(
+    #                     resource=resource_type,
+    #                     source=f"envds.{self.config.daq_id}.registrar",
+    #                     data={resource_type: update}
+    #                 )
+                    
+    #                 # destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+    #                 destpath = f"envds/{self.config.daq_id}/{resource_type}/registry/update"
+    #                 event["destpath"] = destpath
+    #                 await self.send_event(event)
+
+    #     except Exception as e:
+    #         self.logger.error("register_device_definition", extra={"reason": e})
+
     async def registry_do_update(self, message: CloudEvent):
         try:
-
             data = message.data
             for update_type, update in data.items():
+                
+                # 1. Fix Device Routing
                 if update_type == "device-definition-update":
-
                     event = DAQEvent.create_device_definition_registry_update(
-                        # source="device.mockco-mock1-1234", data=record
                         source=f"envds.{self.config.daq_id}.registrar",
                         data={"device-definition": update},
                     )
-                    destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
-                    self.logger.debug(
-                        "register_device_definition", extra={"data": event, "destpath": destpath}
-                    )
-                    event["destpath"] = destpath
-                    await self.send_event(event)
-                elif update_type == "controller-definition-update":
-
-                    event = DAQEvent.create_controller_definition_registry_update(
-                        # source="device.mockco-mock1-1234", data=record
-                        source=f"envds.{self.config.daq_id}.registrar",
-                        data={"controller-definition": update},
-                    )
-                    destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+                    # Route directly to the device-definition datastore topic
+                    destpath = f"envds/{self.config.daq_id}/device-definition/registry/update"
                     
                     self.logger.debug(
                         "register_device_definition", extra={"data": event, "destpath": destpath}
                     )
                     event["destpath"] = destpath
                     await self.send_event(event)
+                    
+                # 2. Fix Controller Routing
+                elif update_type == "controller-definition-update":
+                    event = DAQEvent.create_controller_definition_registry_update(
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={"controller-definition": update},
+                    )
+                    # Route directly to the controller-definition datastore topic
+                    destpath = f"envds/{self.config.daq_id}/controller-definition/registry/update"
+                    
+                    self.logger.debug(
+                        "register_controller_definition", extra={"data": event, "destpath": destpath}
+                    )
+                    event["destpath"] = destpath
+                    await self.send_event(event)
 
-                # Dynamic catch-all utilizing the SamplingEvent factory
+                # 3. Dynamic catch-all for Sampling (Already fixed in last step)
                 elif update_type.endswith("-definition-update"):
-                    resource_type = update_type.replace("-update", "") # Leaves "-definition"
+                    resource_type = update_type.replace("-update", "") # e.g. 'samplingcondition-definition'
                     
                     event = SamplingEvent.create_definition_registry_update(
                         resource=resource_type,
@@ -500,14 +553,17 @@ class Registrar:
                         data={resource_type: update}
                     )
                     
-                    # destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+                    # Route to the standard datastore topic format
                     destpath = f"envds/{self.config.daq_id}/{resource_type}/registry/update"
                     event["destpath"] = destpath
+                    
+                    self.logger.debug(
+                        "register_sampling_definition", extra={"resource": resource_type, "destpath": destpath}
+                    )
                     await self.send_event(event)
 
         except Exception as e:
-            self.logger.error("register_device_definition", extra={"reason": e})
-
+            self.logger.error("registry_do_update", extra={"reason": str(e)})
 
     async def registry_send_update(self, message: CloudEvent):
 
