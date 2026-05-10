@@ -10,7 +10,7 @@ from datetime import timezone
 from pydantic import BaseSettings, Field
 from logfmter import Logfmter 
 from cloudevents.http import CloudEvent, from_json
-from cloudevents.conversion import to_json
+from cloudevents.conversion import to_json, to_structured
 from aiomqtt import Client, MqttError
 import uvicorn
 from envds.util.util import (
@@ -52,6 +52,7 @@ class SystemMode:
         self.transitions = {"true": [], "false": []}
         self.current_state = False
         self.active = False 
+        self.last_status_time = 0
         self._configure_logic()
 
     def _configure_logic(self):
@@ -90,12 +91,40 @@ class SystemMode:
             self.requirements[kind][name]["status"] = is_met
 
     async def evaluate(self):
-        """Determines if the current mode logic triggers a state transition."""
-        if not self.active: return
+        """Determines if the current mode logic triggers a state transition and sends heartbeats."""
+        # 1. Calculate status of underlying requirements
         mode_status = [req["status"] for kind in self.requirements.values() for req in kind.values()]
         latest_status = all(mode_status) if mode_status else False
         
-        # Trigger transitions if defined in the logic
+        # 2. Check for Heartbeat or Change in Active status
+        now = get_datetime().timestamp()
+        is_changed = (self.active != self.current_state)
+        is_heartbeat = (now - self.last_status_time >= 30)
+
+        if is_changed or is_heartbeat:
+            self.current_state = self.active
+            self.last_status_time = now
+
+            status_str = "true" if self.active else "false"
+            status_update = {
+                "id": {
+                    "app_group": "system",
+                    "app_uid": self.config["metadata"]["name"]
+                },
+                "state": {
+                    "system_active": {
+                        "requested": "true",
+                        "actual": status_str
+                    }
+                },
+                "timestamp": get_datetime_string()
+            }
+            # Push directly to the status buffer for MQTT broadcast
+            await self.status_buffer.put({"status": status_update})
+
+        # 3. Only evaluate transitions if this is the currently active mode
+        if not self.active: return 
+        
         run_type = str(latest_status).lower()
         if self.transitions.get(run_type):
             for trans in self.transitions[run_type]:
@@ -112,10 +141,12 @@ class SystemModesManager:
         self.active_mode = None
         self.requirement_status_map = {}
         
-        self.status_buffer = None
-        self.transitions_buffer = None
-        self.publish_queue = None
         self.http_client = None
+
+        # 1. CRITICAL: Initialize buffers BEFORE configure()
+        self.status_buffer = asyncio.Queue(maxsize=2000)
+        self.transitions_buffer = asyncio.Queue(maxsize=2000)
+        self.publish_queue = asyncio.Queue(maxsize=2000)
         
         # Load local definitions following consistent pattern
         self.configure()
@@ -139,9 +170,9 @@ class SystemModesManager:
 
     async def setup(self):
         """Starts background task orchestration."""
-        if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)
-        if self.transitions_buffer is None: self.transitions_buffer = asyncio.Queue(maxsize=2000)
-        if self.publish_queue is None: self.publish_queue = asyncio.Queue(maxsize=2000)
+        # if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)
+        # if self.transitions_buffer is None: self.transitions_buffer = asyncio.Queue(maxsize=2000)
+        # if self.publish_queue is None: self.publish_queue = asyncio.Queue(maxsize=2000)
         
         self.http_client = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=50))
         
@@ -159,9 +190,11 @@ class SystemModesManager:
             if self.config.is_primary_controller:
                 if not self.active_mode and self.modes:
                     self.activate_system_mode(self.config.system_init_mode)
+            
+            # Evaluate ALL modes so they all broadcast their heartbeat
+            for mode in self.modes.values():
+                await mode.evaluate()
                 
-                if self.active_mode and self.active_mode in self.modes:
-                    await self.modes[self.active_mode].evaluate()
             await asyncio.sleep(time_to_next(1))
 
     def activate_system_mode(self, name):
@@ -245,15 +278,11 @@ class SystemModesManager:
             except MqttError: await asyncio.sleep(5)
 
     async def send_event(self, ce):
-        """Routes registry definitions to the Datastore via Knative HTTP Broker."""
+        """Routes registry definitions to the Knative HTTP Broker."""
         try:
             self.logger.debug("send_event (HTTP)", extra={"ce": ce})
-            if not getattr(self, 'http_client', None):
-                self.open_http_client()
             try:
                 timeout = httpx.Timeout(5.0, read=10.0)
-                
-                # Generates HTTP headers and JSON body for the Knative broker
                 headers, body = to_structured(ce)
                 
                 r = await self.http_client.post(
@@ -342,32 +371,15 @@ class SystemModesManager:
         """Standardized monitor: Immediate update on change, reliable 30s heartbeat."""
         while True:
             try:
-                # Wait for evaluate() to trigger an update
                 data = await self.status_buffer.get()
-                
-                status_obj = data.get("status", {})
-                res_name = status_obj.get("name", "unknown")
-                is_active = status_obj.get("status", False)
-                status_str = "true" if is_active else "false"
+                status_data = data.get("status", {})
 
-                # Standard envds status block
-                status_data = {
-                    "id": {
-                        "app_group": "mode" if "SamplingMode" in status_obj.get("kind", "") else "system-mode",
-                        "app_uid": res_name
-                    },
-                    "state": {
-                        "mode_active": {"requested": "true", "actual": status_str}
-                    },
-                    "timestamp": get_datetime_string()
-                }
-
+                # FIX: Hardcode the valid source string instead of self.config_prefix
                 event = SamplingEvent.create_sampling_mode_status_update(
-                    source=f"envds.{self.config.daq_id}.{self.config_prefix.lower()}",
+                    source=f"envds.{self.config.daq_id}.system-modes", 
                     data=status_data
                 )
 
-                # destpath = f"envds/{self.config.daq_id}/{self.config_prefix.lower()}/status/update"
                 destpath = f"envds/{self.config.daq_id}/system-modes/status/update"
                 event["destpath"] = destpath
                 await self.send_to_mqtt(destpath, event)

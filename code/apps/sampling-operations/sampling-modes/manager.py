@@ -441,30 +441,13 @@ class SamplingModesManager:
             try:
                 # Wait for evaluate() to trigger an update
                 data = await self.status_buffer.get()
-                
-                status_obj = data.get("status", {})
-                res_name = status_obj.get("name", "unknown")
-                is_active = status_obj.get("status", False)
-                status_str = "true" if is_active else "false"
-
-                # Standard envds status block
-                status_data = {
-                    "id": {
-                        "app_group": "mode" if "SamplingMode" in status_obj.get("kind", "") else "system-mode",
-                        "app_uid": res_name
-                    },
-                    "state": {
-                        "mode_active": {"requested": "true", "actual": status_str}
-                    },
-                    "timestamp": get_datetime_string()
-                }
+                status_data = data.get("status", {})
 
                 event = SamplingEvent.create_sampling_mode_status_update(
-                    source=f"envds.{self.config.daq_id}.{self.config_prefix.lower()}",
+                    source=f"envds.{self.config.daq_id}.sampling-modes",
                     data=status_data
                 )
 
-                # destpath = f"envds/{self.config.daq_id}/{self.config_prefix.lower()}/status/update"
                 destpath = f"envds/{self.config.daq_id}/sampling-modes/status/update"
                 event["destpath"] = destpath
                 await self.send_to_mqtt(destpath, event)
@@ -473,7 +456,7 @@ class SamplingModesManager:
                 self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
             finally:
                 self.status_buffer.task_done()
-
+                
     async def action_execution_monitor(self):
         while True:
             req = await self.actions_buffer.get()

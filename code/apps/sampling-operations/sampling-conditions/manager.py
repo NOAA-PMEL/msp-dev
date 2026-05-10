@@ -104,6 +104,7 @@ class SamplingCondition:
         self.default_criterion_module: str = "criteria.default"
 
         self.current_state = False
+        self.last_status_time = 0
 
         self.criterion_tasks = []
         
@@ -506,6 +507,10 @@ class SamplingCondition:
     #             self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
 
     async def evaluate_criteria(self, timestamp):
+        """
+        Evaluates sensor data against the condition's criteria logic.
+        Pushes an immediate status update ONLY if the resulting state changes.
+        """
         try:
             crit_states = []
             for group_type, group in self.criteria_map.items():
@@ -559,46 +564,52 @@ class SamplingCondition:
                 elif group_type == "none":
                     crit_states.append(not any(group_states))
             
-            # Final state determination
-            state = all(crit_states)
+            # 4. Final state determination
+            state = all(crit_states) if crit_states else False
             self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
             
-            # Update internal state and broadcast the new status
-            self.logger.debug("evaluate_criteria - send update with new state")
-    
-            cond_name = self.config["metadata"]["name"]
-            cond_ns = self.config["metadata"]["sampling_namespace"]
-            cond_valid_time = self.config["metadata"]["valid_config_time"]
+            now = get_datetime().timestamp()
+            is_changed = (self.current_state != state)
 
-            self.current_state = state
+            # 5. ONLY push immediately if the state actually flipped
+            if is_changed:
+                self.logger.info("condition state change", extra={"new_state": state})
+                
+                # Update internal tracking
+                self.current_state = state
+                self.last_status_time = now # Reset heartbeat timer
 
-            # --- NEW envds-COMPLIANT STATUS BLOCK ---
-            status_str = "true" if state else "false"
-            
-            status = {
-                "id": {
-                    "app_group": "condition",
-                    "app_uid": cond_name,
-                    "sampling_namespace": cond_ns,
-                    "valid_config_time": cond_valid_time
-                },
-                "state": {
-                    "condition_met": {
-                        "requested": "true", 
-                        "actual": status_str
-                    }
-                },
-                "timestamp": timestamp
-            }
-            # ----------------------------------------
-            
-            await self.status_buffer.put(status)
+                cond_name = self.config["metadata"]["name"]
+                cond_ns = self.config["metadata"].get("sampling_namespace", "")
+                cond_valid_time = self.config["metadata"].get("valid_config_time", "")
+
+                status_str = "true" if state else "false"
+                
+                # --- envds-COMPLIANT STATUS BLOCK ---
+                status = {
+                    "id": {
+                        "app_group": "condition",
+                        "app_uid": cond_name,
+                        "sampling_namespace": cond_ns,
+                        "valid_config_time": cond_valid_time
+                    },
+                    "state": {
+                        "condition_met": {
+                            "requested": "true", 
+                            "actual": status_str
+                        }
+                    },
+                    "timestamp": get_datetime_string()
+                }
+                # ------------------------------------
+                
+                await self.status_buffer.put(status)
 
         except Exception as e:
             self.logger.error("evaluate_criteria", extra={"reason": e})
 
         finally:
-            # Memory cleanup for stale data > 60 seconds old
+            # 6. Memory cleanup for stale data > 60 seconds old
             try:
                 current_dt_raw = string_to_datetime(timestamp)
                 if not current_dt_raw:
@@ -618,7 +629,7 @@ class SamplingCondition:
                         src_dict.pop(ts, None)
             except Exception as clean_e:
                 self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
-
+                
     # async def update_status_loop(self):
     #     while True:
     #         self.logger.debug("update_state_loop - send update")
@@ -680,42 +691,18 @@ class SamplingConditionsManager:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.DEBUG)
-        self.logger.debug("SamplingConditionsManager instantiated")
 
-        # self.sampling_mode_control = True
-        # self.sampling_modes = dict()
-        # self.sampling_states = dict()
         self.sampling_conditions = {"conditions": dict(), "sources": {}}
-
-        # self.status_buffer = asyncio.Queue(maxsize=60)
-        # self.sampling_actions = dict()
-
-        # # current mode
-        # self.platform_sampling_mode = None
-
-        # self.platforms = dict()
-        # self.platform_layouts = dict()
-        # self.variablemaps = dict()
-
-        # this is cache for variable mapping
-        # self.variablesets = {
-        #     "sources": dict(),
-        #     "variablesets": dict(),
-        #     "indices": dict(),
-        # }
-        # print("here:6")
-
-        # self.index_ready_buffer = asyncio.Queue()
-        # self.index_monitor_tasks = dict()
-
         self.config = SamplingConditionsManagerConfig()
-
         self.http_client = None
         self._background_tasks = set()
-        self.mqtt_buffer = None
-        self.status_buffer = None
-        self.publish_queue = None
 
+        # 1. CRITICAL: Initialize ALL buffers BEFORE configure()
+        self.status_buffer = asyncio.Queue(maxsize=2000)
+        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        self.publish_queue = asyncio.Queue(maxsize=2000)
+
+        # 2. Safely load the definitions and pass the real queue
         self.configure()
         # print("here:7")
 
@@ -732,17 +719,9 @@ class SamplingConditionsManager:
         # print("SamplingConditionsManager: init: here:8")
 
     async def setup(self):
-        """Asynchronously initialize buffers, clients, and loops."""
+        """Asynchronously initialize clients and loops."""
         self.logger.info("Running SamplingConditionsManager async setup...")
         
-        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
-        self.publish_queue = asyncio.Queue(maxsize=2000)
-
-        # FIX: Only create if it wasn't already created during configure()
-        if not getattr(self, "status_buffer", None):
-            self.status_buffer = asyncio.Queue(maxsize=2000)
-        
-        # Initialize connection pool
         self.http_client = httpx.AsyncClient(
             limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
         )
@@ -754,10 +733,7 @@ class SamplingConditionsManager:
         task5 = asyncio.create_task(self.sync_sampling_definitions_loop())
         task6 = asyncio.create_task(self.mqtt_publish_loop())
         
-        # Save references to prevent garbage collection
         self._background_tasks.update({task1, task2, task3, task4, task5, task6})
-
-        self.logger.info("SamplingConditionsManager background tasks started successfully.")
 
     def open_http_client(self):
         self.logger.debug("open_http_client")

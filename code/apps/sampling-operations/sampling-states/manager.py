@@ -518,10 +518,15 @@ class SamplingStatesManager:
 
         self._background_tasks = set()
 
-        # Initialize as None, will be set in setup()
-        self.status_buffer = None
-        self.mqtt_buffer = None
-        self.publish_queue = None
+        # # Initialize as None, will be set in setup()
+        # self.status_buffer = None
+        # self.mqtt_buffer = None
+        # self.publish_queue = None
+
+        # 1. CRITICAL FIX: Initialize buffers BEFORE configure() is called
+        self.status_buffer = asyncio.Queue(maxsize=2000)
+        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        self.publish_queue = asyncio.Queue(maxsize=2000)
 
         self.configure()
         # print("here:7")
@@ -538,9 +543,9 @@ class SamplingStatesManager:
         """Asynchronously initialize buffers, clients, and loops."""
         self.logger.info("Running SamplingStatesManager async setup...")
         
-        self.status_buffer = asyncio.Queue(maxsize=2000)
-        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
-        self.publish_queue = asyncio.Queue(maxsize=2000) # Added outbound queue
+        # self.status_buffer = asyncio.Queue(maxsize=2000)
+        # self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        # self.publish_queue = asyncio.Queue(maxsize=2000) # Added outbound queue
         
         self.http_client = httpx.AsyncClient(
             limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
