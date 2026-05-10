@@ -1054,12 +1054,15 @@ class SamplingConditionsManager:
         await asyncio.sleep(5)
         while True:
             try:
-                self.logger.debug("publish_local_definitions", extra={"here": 1})
+                condition_count = len(self.sampling_conditions["conditions"])
+                self.logger.debug("publish_local_definitions: STARTING LOOP", extra={"total_conditions": condition_count})
+                
                 for cond_name, cond_data in self.sampling_conditions["conditions"].items():
-                    self.logger.debug("publish_local_definitions", extra={"cond_name": cond_name})
                     config = cond_data["config"]
-                    self.logger.debug("publish_local_definitions", extra={"cond_config": config})
+                    self.logger.debug(f"publish_local_definitions: processing condition '{cond_name}'", extra={"has_config": bool(config)})
+                    
                     if not config:
+                        self.logger.warning(f"publish_local_definitions: Condition '{cond_name}' has no config. Skipping.")
                         continue
                     
                     event = SamplingEvent.create_definition_registry_update(
@@ -1067,41 +1070,66 @@ class SamplingConditionsManager:
                         source=f"envds.{self.config.daq_id}.sampling-conditions",
                         data={"samplingcondition": config}
                     )
-                    event["destpath"] = f"envds/{self.config.daq_id}/samplingcondition-definition/registry/update"
-                    self.logger.debug("publish_local_definitions", extra={"event": event})
+                    
+                    destpath = f"envds/{self.config.daq_id}/samplingcondition-definition/registry/update"
+                    event["destpath"] = destpath
+                    
+                    self.logger.debug(f"publish_local_definitions: routing event for '{cond_name}' via HTTP", extra={"destpath": destpath, "event_type": event.get("type")})
+                    
                     await self.send_event(event)
+                    self.logger.debug(f"publish_local_definitions: successfully sent event for '{cond_name}'")
 
             except Exception as e:
-                self.logger.error("publish_local_definitions", extra={"reason": e})
+                self.logger.error("publish_local_definitions error", extra={"reason": str(e)})
             
+            self.logger.debug("publish_local_definitions: LOOP COMPLETE. Sleeping for 60s.")
             await asyncio.sleep(60)
 
     async def sync_sampling_definitions_loop(self):
         """Concurrently fetches remote definitions to keep local memory updated."""
         while True:
             try:
+                self.logger.debug("sync_sampling_definitions_loop: STARTING LOOP. Requesting IDs.")
+                
                 # 1. Fetch Condition IDs
                 ids_resp = await self.submit_get(path="samplingcondition-definition/registry/ids/get")
+                self.logger.debug("sync_sampling_definitions_loop: received IDs response", extra={"response": ids_resp})
+                
                 if ids_resp and "results" in ids_resp:
+                    fetched_ids = ids_resp["results"]
+                    self.logger.debug("sync_sampling_definitions_loop: parsed IDs", extra={"id_count": len(fetched_ids), "ids": fetched_ids})
                     
-                    # 2. Concurrently fetch all bodies
-                    async def fetch_cond(cond_id):
-                        return await self.submit_request(
-                            path="samplingcondition-definition/registry/get", 
-                            query={"name": cond_id}
-                        )
+                    if fetched_ids:
+                        # 2. Concurrently fetch all bodies
+                        async def fetch_cond(cond_id):
+                            self.logger.debug(f"sync_sampling_definitions_loop: fetching definition body for '{cond_id}'")
+                            return await self.submit_request(
+                                path="samplingcondition-definition/registry/get", 
+                                query={"name": cond_id}
+                            )
 
-                    responses = await asyncio.gather(*(fetch_cond(cid) for cid in ids_resp["results"]))
+                        self.logger.debug("sync_sampling_definitions_loop: gathering definitions...")
+                        responses = await asyncio.gather(*(fetch_cond(cid) for cid in fetched_ids))
+                        self.logger.debug("sync_sampling_definitions_loop: gather complete", extra={"responses_count": len(responses)})
 
-                    # 3. Load them into memory
-                    for resp in responses:
-                        if resp and "results" in resp and resp["results"]:
-                            cond_db = resp["results"][0]
-                            self.load_condition(cond_db)
+                        # 3. Load them into memory
+                        for idx, resp in enumerate(responses):
+                            if resp and "results" in resp and resp["results"]:
+                                cond_db = resp["results"][0]
+                                cond_name = cond_db.get("metadata", {}).get("name", "unknown")
+                                self.logger.debug(f"sync_sampling_definitions_loop: loading condition '{cond_name}' into memory")
+                                self.load_condition(cond_db)
+                            else:
+                                self.logger.warning(f"sync_sampling_definitions_loop: empty or invalid response at index {idx}", extra={"resp": resp})
+                    else:
+                        self.logger.debug("sync_sampling_definitions_loop: no IDs found to fetch.")
+                else:
+                    self.logger.warning("sync_sampling_definitions_loop: invalid or missing 'results' in IDs response.")
 
             except Exception as e:
-                self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+                self.logger.error("sync_sampling_definitions_loop error", extra={"reason": str(e)})
             
+            self.logger.debug("sync_sampling_definitions_loop: LOOP COMPLETE. Sleeping for 60s.")
             await asyncio.sleep(60)
 
     # async def condition_status_monitor(self):
