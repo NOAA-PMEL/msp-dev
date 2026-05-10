@@ -976,7 +976,7 @@ class SamplingConditionsManager:
     async def send_event(self, ce):
         """Routes registry definitions to the Datastore via Knative HTTP Broker."""
         try:
-            self.logger.debug("send_event (HTTP)", extra={"ce": ce})
+            self.logger.debug("send_event (HTTP)", extra={"ce": ce, "kn-broker": self.config.knative_broker})
             if not getattr(self, 'http_client', None):
                 self.open_http_client()
             try:
