@@ -661,16 +661,14 @@ class SamplingStatesManager:
                 self.logger.warning("send_event called with no 'destpath' defined in the CloudEvent. Cannot route to MQTT.")
                 return
 
-            # Convert to structured JSON payload
-            headers, body = to_structured(ce)
+            # Consistently match sampling-system.py MQTT logic
+            payload = to_json(ce)
             
-            self.logger.debug("send_event (Routing to MQTT)", extra={"topic": topic, "body": body})
+            self.logger.debug("send_event (Routing to MQTT)", extra={"topic": topic, "payload": payload})
             
             # Drop the tuple onto the publisher queue
-            await self.publish_queue.put((topic, body))
+            await self.publish_queue.put((topic, payload))
 
-        except InvalidStructuredJSON:
-            self.logger.error(f"INVALID MSG JSON: {ce}")
         except Exception as e:
             self.logger.error("send_event failed", extra={"reason": str(e)})
             
@@ -778,40 +776,77 @@ class SamplingStatesManager:
     #         await asyncio.sleep(0.001)
     #         self.status_buffer.task_done()
 
+    # async def state_status_monitor(self):
+    #     while True:
+    #         try:
+    #             status = await self.status_buffer.get()
+
+    #             # Parse from the new envdsStatus format
+    #             id_block = status.get("id", {})
+    #             state_name = id_block.get("app_uid")
+    #             state_ns = id_block.get("sampling_namespace")
+    #             state_valid_time = id_block.get("valid_config_time")
+
+    #             source_id = f"envds.{self.config.daq_id}.sampling-states"
+    #             self.logger.debug("state_status_monitor", extra={"source_id": source_id})
+                
+    #             source_topic = source_id.replace(".", "/")
+
+    #             event = SamplingEvent.create_sampling_state_status_update(
+    #                 source=source_id,
+    #                 data=status,
+    #             )
+    #             destpath = f"{source_topic}/status/update"
+    #             event["destpath"] = destpath
+    #             event["samplingnamespace"] = state_ns
+    #             event["validconfigtime"] = state_valid_time
+                
+    #             self.logger.debug("state_status_monitor", extra={"data": event, "destpath": destpath})
+
+    #             await self.send_event(event)
+
+    #         except Exception as e:
+    #             self.logger.error("state_status_monitor", extra={"reason": str(e)})
+            
+    #         await asyncio.sleep(0.001)
+    #         self.status_buffer.task_done()
+
     async def state_status_monitor(self):
         while True:
             try:
-                status = await self.status_buffer.get()
+                status_data = await self.status_buffer.get()
 
                 # Parse from the new envdsStatus format
-                id_block = status.get("id", {})
+                id_block = status_data.get("id", {})
                 state_name = id_block.get("app_uid")
                 state_ns = id_block.get("sampling_namespace")
                 state_valid_time = id_block.get("valid_config_time")
 
                 source_id = f"envds.{self.config.daq_id}.sampling-states"
-                self.logger.debug("state_status_monitor", extra={"source_id": source_id})
                 
-                source_topic = source_id.replace(".", "/")
-
+                # Build standard CloudEvent wrapper using your existing factory method
                 event = SamplingEvent.create_sampling_state_status_update(
                     source=source_id,
-                    data=status,
+                    data=status_data,
                 )
-                destpath = f"{source_topic}/status/update"
+                
+                destpath = f"envds/{self.config.daq_id}/sampling-states/status/update"
                 event["destpath"] = destpath
                 event["samplingnamespace"] = state_ns
                 event["validconfigtime"] = state_valid_time
-                
-                self.logger.debug("state_status_monitor", extra={"data": event, "destpath": destpath})
+
+                self.logger.debug("state_status_monitor", extra={"event-type": event["type"], "destpath": destpath})
 
                 await self.send_event(event)
 
             except Exception as e:
                 self.logger.error("state_status_monitor", extra={"reason": str(e)})
             
+            finally:
+                if 'status_data' in locals():
+                    self.status_buffer.task_done()
+                    
             await asyncio.sleep(0.001)
-            self.status_buffer.task_done()
 
     # async def get_from_mqtt_loop(self):
     #     reconnect = 10
@@ -959,9 +994,15 @@ class SamplingStatesManager:
             req_kind = "SamplingCondition" if app_group == "condition" else "SamplingState" if app_group == "state" else app_group
             req_name = id_block.get("app_uid")
             
-            # Extract boolean actual status (defaults to false if missing)
-            condition_state = state_block.get("condition_met", {}).get("actual", "false")
-            is_met = (str(condition_state).lower() == "true")
+            # DYNAMICALLY grab the actual status depending on the app_group!
+            if app_group == "condition":
+                actual_status = state_block.get("condition_met", {}).get("actual", "false")
+            elif app_group == "state":
+                actual_status = state_block.get("state_active", {}).get("actual", "false")
+            else:
+                actual_status = "false"
+                
+            is_met = (str(actual_status).lower() == "true")
             
             timestamp = payload.get("timestamp", get_datetime_string())
 

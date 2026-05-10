@@ -10,7 +10,7 @@ from datetime import timezone
 from pydantic import BaseSettings, Field
 from logfmter import Logfmter 
 from cloudevents.http import CloudEvent, from_json
-from cloudevents.conversion import to_structured
+from cloudevents.conversion import to_json
 from aiomqtt import Client, MqttError
 import uvicorn
 from envds.util.util import (
@@ -241,8 +241,26 @@ class SystemModesManager:
             except MqttError: await asyncio.sleep(5)
 
     async def send_event(self, ce):
-        topic = ce.get("destpath", "")
-        if topic: await self.publish_queue.put((topic, to_structured(ce)[1]))
+        """Converts CloudEvents to JSON and drops them onto the persistent MQTT publish queue."""
+        try:
+            # Extract the topic from the event (works safely with dicts)
+            topic = ce.get("destpath", "")
+            if not topic:
+                L.warning("send_event called with no 'destpath' defined in the event. Cannot route to MQTT.")
+                return
+
+            # Consistently match sampling-system.py MQTT logic
+            payload = to_json(ce)
+            
+            L.debug("send_event (Routing to MQTT)", extra={"topic": topic, "payload": payload})
+            
+            # Drop the tuple onto the publisher queue
+            await self.publish_queue.put((topic, payload))
+
+        except Exception as e:
+            L.error("send_event failed", extra={"reason": str(e)})
+            
+        await asyncio.sleep(0.01)
 
     # async def status_publish_monitor(self):
     #     while True:
@@ -257,20 +275,15 @@ class SystemModesManager:
     async def status_publish_monitor(self):
         while True:
             try:
-                # 1. Pull the raw update from the System evaluation
-                data = await self.status_buffer.get()
-                
-                # 2. Extract the flat payload
-                status_obj = data.get("status", {})
-                sys_name = status_obj.get("name", "unknown")
-                is_active = status_obj.get("status", False)
-                status_str = "true" if is_active else "false"
+                # 1. Safely check if a mode is active
+                active = self.active_mode if self.active_mode else "none"
+                status_str = "true" if self.active_mode else "false"
 
-                # 3. Translate to the NEW envds-COMPLIANT STATUS BLOCK
+                # 2. Build the NEW envds-COMPLIANT STATUS BLOCK
                 status_data = {
                     "id": {
                         "app_group": "system",
-                        "app_uid": sys_name
+                        "app_uid": active
                     },
                     "state": {
                         "system_active": {
@@ -281,12 +294,10 @@ class SystemModesManager:
                     "timestamp": get_datetime_string()
                 }
 
-                # 4. Publish via standard CloudEvent
-                event = CloudEvent(
-                    attributes={
-                        "type": "envds.systemmode.status.update", 
-                        "source": f"envds.{self.config.daq_id}.system-modes"
-                    },
+                # 3. Publish via standard SamplingEvent factory (Base create method)
+                event = SamplingEvent.create(
+                    type="envds.systemmode.status.update",
+                    source=f"envds.{self.config.daq_id}.system-modes",
                     data=status_data
                 )
                 
@@ -294,12 +305,11 @@ class SystemModesManager:
                 await self.send_event(event)
 
             except Exception as e:
-                self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
+                # Use L.error since self.logger isn't defined in this manager
+                L.error("status_publish_monitor error", extra={"reason": str(e)})
 
-            finally:
-                # Mark task done so the queue doesn't lock up
-                if 'data' in locals():
-                    self.status_buffer.task_done()
+            # 4. Wait 30 seconds before sending the next heartbeat
+            await asyncio.sleep(30)
 
 async def shutdown():
     print("shutting down")

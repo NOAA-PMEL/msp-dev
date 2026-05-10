@@ -109,7 +109,7 @@ class SamplingCondition:
         
         self.configure()
         asyncio.create_task(self.condition_monitor())
-        # asyncio.create_task(self.update_status_loop())
+        asyncio.create_task(self.update_status_loop())
 
     # def configure(self):
 
@@ -984,16 +984,14 @@ class SamplingConditionsManager:
                 self.logger.warning("send_event called with no 'destpath' defined in the CloudEvent. Cannot route to MQTT.")
                 return
 
-            # Convert to structured JSON payload
-            headers, body = to_structured(ce)
+            # Consistently match sampling-system.py MQTT logic
+            payload = to_json(ce)
             
-            self.logger.debug("send_event (Routing to MQTT)", extra={"topic": topic, "body": body})
+            self.logger.debug("send_event (Routing to MQTT)", extra={"topic": topic, "payload": payload})
             
             # Drop the tuple onto the publisher queue
-            await self.publish_queue.put((topic, body))
+            await self.publish_queue.put((topic, payload))
 
-        except InvalidStructuredJSON:
-            self.logger.error(f"INVALID MSG JSON: {ce}")
         except Exception as e:
             self.logger.error("send_event failed", extra={"reason": str(e)})
             
@@ -1147,13 +1145,10 @@ class SamplingConditionsManager:
                 source_id = f"envds.{self.config.daq_id}.sampling-conditions"
                 self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
                 
-                # 2. Build standard CloudEvent wrapper
-                event = CloudEvent(
-                    attributes={
-                        "type": "envds.samplingcondition.status.update", 
-                        "source": source_id
-                    },
-                    data=status_data
+                # 2. Build standard wrapper using your existing factory method
+                event = SamplingEvent.create_sampling_condition_status_update(
+                    source=source_id,
+                    data=status_data,
                 )
                 
                 self.logger.debug("condition_status_monitor", extra={"event-type": event["type"]})

@@ -10,7 +10,7 @@ from datetime import timezone
 from pydantic import BaseSettings, Field
 from logfmter import Logfmter 
 from cloudevents.http import CloudEvent, from_json
-from cloudevents.conversion import to_structured
+from cloudevents.conversion import to_json
 from aiomqtt import Client, MqttError
 import uvicorn
 from envds.util.util import (
@@ -73,21 +73,30 @@ class SamplingMode:
     #         self.requirements[kind][name]["status"] = status
 
     async def update(self, payload: dict):
-        """Updates the status of requirements (e.g., SamplingStates)."""
+        """Updates the status of requirements (e.g., SamplingStates or SamplingConditions)."""
         id_block = payload.get("id", {})
         state_block = payload.get("state", {})
         
-        # Map app_group back to kind for internal routing
         app_group = id_block.get("app_group", "")
-        kind = "SamplingState" if app_group == "state" else app_group
+        
+        # Map app_group to the strict CamelCase kind used in your requirements JSON
+        req_kind = "SamplingCondition" if app_group == "condition" else "SamplingState" if app_group == "state" else "SamplingMode" if app_group == "mode" else app_group
         name = id_block.get("app_uid")
         
-        # Extract boolean actual status
-        state_status = state_block.get("state_active", {}).get("actual", "false")
-        is_met = (str(state_status).lower() == "true")
+        # DYNAMICALLY grab the actual status depending on the app_group!
+        if app_group == "condition":
+            actual_status = state_block.get("condition_met", {}).get("actual", "false")
+        elif app_group == "state":
+            actual_status = state_block.get("state_active", {}).get("actual", "false")
+        elif app_group == "mode":
+            actual_status = state_block.get("mode_active", {}).get("actual", "false")
+        else:
+            actual_status = "false"
+            
+        is_met = (str(actual_status).lower() == "true")
         
-        if kind in self.requirements and name in self.requirements[kind]:
-            self.requirements[kind][name]["status"] = is_met
+        if req_kind in self.requirements and name in self.requirements[req_kind]:
+            self.requirements[req_kind][name]["status"] = is_met
 
     async def evaluate(self):
         """Checks requirements and dispatches actions on state changes."""
@@ -238,9 +247,24 @@ class SamplingModesManager:
             await asyncio.sleep(60)
 
     async def send_event(self, ce):
-        topic = ce.get("destpath", "")
-        if topic:
-            await self.publish_queue.put((topic, to_structured(ce)[1]))
+        """Converts CloudEvents to JSON and drops them onto the persistent MQTT publish queue."""
+        try:
+            # Extract the topic from the event
+            topic = ce.get("destpath", "")
+            if not topic:
+                L.warning("send_event called with no 'destpath' defined in the CloudEvent. Cannot route to MQTT.")
+                return
+
+            # Consistently match sampling-system.py MQTT logic
+            payload = to_json(ce)
+            
+            # Drop the tuple onto the publisher queue
+            await self.publish_queue.put((topic, payload))
+
+        except Exception as e:
+            L.error("send_event failed", extra={"reason": str(e)})
+            
+        await asyncio.sleep(0.01)
 
     async def mqtt_listen_loop(self):
         my_id = f"envds.{self.config.daq_id}.sampling-modes"
@@ -330,12 +354,9 @@ class SamplingModesManager:
                     "timestamp": get_datetime_string()
                 }
 
-                # 4. Publish via standard CloudEvent
-                event = CloudEvent(
-                    attributes={
-                        "type": "envds.samplingmode.status.update", 
-                        "source": f"envds.{self.config.daq_id}.sampling-modes"
-                    },
+                # 4. Publish via standard SamplingEvent factory
+                event = SamplingEvent.create_sampling_mode_status_update(
+                    source=f"envds.{self.config.daq_id}.sampling-modes",
                     data=status_data
                 )
                 
@@ -343,13 +364,13 @@ class SamplingModesManager:
                 await self.send_event(event)
 
             except Exception as e:
-                self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
+                L.error("status_publish_monitor error", extra={"reason": str(e)})
 
             finally:
                 # Mark task done so the queue doesn't lock up
                 if 'data' in locals():
                     self.status_buffer.task_done()
-                    
+
     async def action_execution_monitor(self):
         while True:
             req = await self.actions_buffer.get()
@@ -365,41 +386,37 @@ class SamplingModesManager:
             
     async def action_target_monitor(self):
         while True:
-            targets = await self.actions_target_buffer.get()
-            for name, data in targets.items():
-                val, meta = data["data"], data["metadata"]
-                t_type = meta.get("target_type", "controller").lower()
-                # t_id = meta.get("target_id", meta.get("variablemap_name", "unknown"))
-                # event = CloudEvent(
-                #     attributes={"type": f"envds.{t_type}.settings.update", "source": f"envds.{self.config.daq_id}.sampling-modes"},
-                #     data={"variables": {meta.get("variable", name): {"data": val}}}
-                # )
-                # event["destpath"] = f"envds/{self.config.daq_id}/{t_type}/{t_id}/settings/update"
-                # await self.send_event(event)
+            try:
+                targets = await self.actions_target_buffer.get()
+                for name, data in targets.items():
+                    val, meta = data["data"], data["metadata"]
+                    t_type = meta.get("target_type", "controller").lower()
 
-                # Get the target ID from the target's metadata block
-                t_id = meta.get("target_id", meta.get("variablemap_name", "unknown"))
-                target_var_name = meta.get("variable", name)
+                    # Get the target ID from the target's metadata block
+                    t_id = meta.get("target_id", meta.get("variablemap_name", "unknown"))
+                    target_var_name = meta.get("variable", name)
 
-                # Send a formatted settings request that the Device/Controller base class expects
-                event = CloudEvent(
-                    attributes={
-                        "type": f"envds.{t_type}.settings.request", 
-                        "source": f"envds.{self.config.daq_id}.sampling-modes",
-                        # Inject the deviceid header so the hardware knows this command is for it
-                        "deviceid": t_id 
-                    },
-                    data={
-                        "settings": target_var_name,
-                        "requested": val
-                    }
-                )
-                
-                # Devices listen to the generic settings/request topic for incoming commands
-                event["destpath"] = f"envds/sensor/settings/request"
-                await self.send_event(event)
+                    # Send a formatted settings request using the base factory
+                    event = SamplingEvent.create(
+                        type=f"envds.{t_type}.settings.request", 
+                        source=f"envds.{self.config.daq_id}.sampling-modes",
+                        data={
+                            "settings": target_var_name,
+                            "requested": val
+                        },
+                        extra_header={"deviceid": t_id}
+                    )
+                    
+                    # Devices listen to the generic settings/request topic for incoming commands
+                    event["destpath"] = f"envds/sensor/settings/request"
+                    await self.send_event(event)
 
-            self.actions_target_buffer.task_done()
+            except Exception as e:
+                L.error("action_target_monitor error", extra={"reason": str(e)})
+
+            finally:
+                if 'targets' in locals():
+                    self.actions_target_buffer.task_done()
 
 # Consistent entry point logic from sampling-states
 async def shutdown():
