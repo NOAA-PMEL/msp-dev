@@ -317,6 +317,13 @@ class SystemModesManager:
                     data=status_data
                 )
                 
+                destpath = f"envds/{self.config.daq_id}/sampling-states/status/update"
+                event["destpath"] = destpath
+                event["samplingnamespace"] = state_ns
+                event["validconfigtime"] = state_valid_time
+
+                self.logger.debug("state_status_monitor", extra={"event-type": event["type"], "destpath": destpath})
+                
                 event["destpath"] = f"envds/{self.config.daq_id}/system-modes/status/update"
                 await self.send_to_mqtt(destpath, event)
 

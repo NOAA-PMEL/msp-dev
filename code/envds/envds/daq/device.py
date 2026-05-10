@@ -180,7 +180,7 @@ class Device(envdsBase):
         self.settings = RuntimeSettings()
 
         self.device_definition_registered = False
-        self.device_definition_send_time = 5 # start with every 5 seconds and change once ack
+        self.device_definition_send_time = 60 # start with every 5 seconds and change once ack
         self.device_registered = False
 
         # list of sampling tasks to start/stop in do_start
