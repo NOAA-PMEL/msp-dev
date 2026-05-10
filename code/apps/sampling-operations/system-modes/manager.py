@@ -275,18 +275,16 @@ class SystemModesManager:
                 }
                 # ----------------------------------------
                 
-                source_id = f"envds.{self.config.daq_id}.system-modes"
-                source_topic = source_id.replace(".", "/")
-
-                # Use the exact same standard wrapper we used in sampling-states
-                event = SamplingEvent.create_system_mode_status_update(
-                    source=source_id,
+                # Use standard CloudEvent instead of SamplingEvent helper
+                event = CloudEvent(
+                    attributes={
+                        "type": "envds.systemmode.status.update", 
+                        "source": f"envds.{self.config.daq_id}.system-modes"
+                    },
                     data=status_data
                 )
                 
-                destpath = f"{source_topic}/status/update"
-                event["destpath"] = destpath
-                
+                event["destpath"] = f"envds/{self.config.daq_id}/system-modes/status/update"
                 await self.send_event(event)
 
             except Exception as e:

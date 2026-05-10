@@ -324,25 +324,22 @@ class SamplingModesManager:
                 }
                 # ----------------------------------------
                 
-                source_id = f"envds.{self.config.daq_id}.sampling-modes"
-                source_topic = source_id.replace(".", "/")
-
-                # Use the exact same standard wrapper we used in sampling-states
-                event = SamplingEvent.create_sampling_mode_status_update(
-                    source=source_id,
+                # Use standard CloudEvent instead of SamplingEvent helper
+                event = CloudEvent(
+                    attributes={
+                        "type": "envds.samplingmode.status.update", 
+                        "source": f"envds.{self.config.daq_id}.sampling-modes"
+                    },
                     data=status_data
                 )
                 
-                destpath = f"{source_topic}/status/update"
-                event["destpath"] = destpath
-                
+                event["destpath"] = f"envds/{self.config.daq_id}/sampling-modes/status/update"
                 await self.send_event(event)
 
             except Exception as e:
                 self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
 
             await asyncio.sleep(30)
-
     async def action_execution_monitor(self):
         while True:
             req = await self.actions_buffer.get()
