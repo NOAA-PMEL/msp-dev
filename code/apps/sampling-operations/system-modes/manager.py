@@ -257,13 +257,20 @@ class SystemModesManager:
     async def status_publish_monitor(self):
         while True:
             try:
-                # --- NEW envds-COMPLIANT STATUS BLOCK ---
-                status_str = "true" if self.active_mode else "false"
+                # 1. Pull the raw update from the System evaluation
+                data = await self.status_buffer.get()
                 
+                # 2. Extract the flat payload
+                status_obj = data.get("status", {})
+                sys_name = status_obj.get("name", "unknown")
+                is_active = status_obj.get("status", False)
+                status_str = "true" if is_active else "false"
+
+                # 3. Translate to the NEW envds-COMPLIANT STATUS BLOCK
                 status_data = {
                     "id": {
                         "app_group": "system",
-                        "app_uid": self.active_mode if self.active_mode else "none"
+                        "app_uid": sys_name
                     },
                     "state": {
                         "system_active": {
@@ -273,9 +280,8 @@ class SystemModesManager:
                     },
                     "timestamp": get_datetime_string()
                 }
-                # ----------------------------------------
-                
-                # Use standard CloudEvent instead of SamplingEvent helper
+
+                # 4. Publish via standard CloudEvent
                 event = CloudEvent(
                     attributes={
                         "type": "envds.systemmode.status.update", 
@@ -290,7 +296,10 @@ class SystemModesManager:
             except Exception as e:
                 self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
 
-            await asyncio.sleep(30)
+            finally:
+                # Mark task done so the queue doesn't lock up
+                if 'data' in locals():
+                    self.status_buffer.task_done()
 
 async def shutdown():
     print("shutting down")
