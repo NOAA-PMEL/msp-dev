@@ -128,27 +128,60 @@ layout = get_layout()
     Input("ws-system-ops", "message"),
     State("system-ops-state", "data")
 )
+@callback(
+    Output("system-ops-state", "data"),
+    Input("ws-system-ops", "message"),
+    State("system-ops-state", "data")
+)
 def update_state_store(msg, current_state):
     if not msg or "data" not in msg:
         raise PreventUpdate
 
     try:
         payload = json.loads(msg["data"])
-        event_data = payload.get("data", {})
-        status_obj = event_data.get("status", {})
         
-        kind = status_obj.get("kind")
-        name = status_obj.get("name")
+        # Extract underlying data payload sent by handle_mqtt_buffer
+        event_data = payload.get("data", {})
+        
+        # Parse the NEW envds-compliant status format
+        id_block = event_data.get("id", {})
+        state_block = event_data.get("state", {})
+        
+        app_group = id_block.get("app_group", "")
+        name = id_block.get("app_uid")
+        
+        # Map the new app_group ontology back to the UI's store keys
+        kind_map = {
+            "condition": "SamplingCondition",
+            "state": "SamplingState",
+            "mode": "SamplingMode",
+            "system": "SystemMode"
+        }
+        kind = kind_map.get(app_group)
         
         if kind and name and kind in current_state:
+            # Map the app_group to the specific state parameter name
+            state_key = {
+                "condition": "condition_met",
+                "state": "state_active",
+                "mode": "mode_active",
+                "system": "system_active"
+            }.get(app_group, "")
+            
+            # Extract boolean actual status (defaults to false if missing)
+            actual_str = state_block.get(state_key, {}).get("actual", "false")
+            is_active = (str(actual_str).lower() == "true")
+            
             current_state[kind][name] = {
-                "status": status_obj.get("status", False),
-                "time": status_obj.get("time", "N/A")
+                "status": is_active,
+                "time": event_data.get("timestamp", "N/A")
             }
             return current_state
             
     except Exception as e:
         L.error(f"Store update error: {e}")
+        L.error(traceback.format_exc())
+        
     return no_update
 
 @callback(

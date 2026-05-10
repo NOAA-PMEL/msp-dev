@@ -482,7 +482,8 @@ class Registrar:
                         source=f"envds.{self.config.daq_id}.registrar",
                         data={"controller-definition": update},
                     )
-                    destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+                    # destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+                    destpath = f"envds/{self.config.daq_id}/{resource_type}/registry/update"
                     self.logger.debug(
                         "register_device_definition", extra={"data": event, "destpath": destpath}
                     )
