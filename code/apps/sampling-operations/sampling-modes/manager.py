@@ -10,7 +10,8 @@ from datetime import timezone
 from pydantic import BaseSettings, Field
 from logfmter import Logfmter 
 from cloudevents.http import CloudEvent, from_json
-from cloudevents.conversion import to_json
+from cloudevents.conversion import to_structured, to_json
+from cloudevents.exceptions import InvalidStructuredJSON
 from aiomqtt import Client, MqttError
 import uvicorn
 from envds.util.util import (
@@ -149,6 +150,11 @@ class SamplingAction:
 
 class SamplingModesManager:
     def __init__(self):
+        # ---> ADD THESE TWO LINES <---
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
+        
+        self.logger.debug("SamplingModesManager instantiated")
         self.config = SamplingModesConfig()
         self.modes, self.actions = {}, {}
         self.status_buffer = None
@@ -377,8 +383,10 @@ class SamplingModesManager:
                     source=f"envds.{self.config.daq_id}.sampling-modes",
                     data=status_data
                 )
-                
-                event["destpath"] = f"envds/{self.config.daq_id}/sampling-modes/status/update"
+
+                # ---> ADD THESE TWO LINES <---
+                destpath = f"envds/{self.config.daq_id}/sampling-modes/status/update"
+                event["destpath"] = destpath
                 await self.send_to_mqtt(destpath, event)
 
             except Exception as e:
