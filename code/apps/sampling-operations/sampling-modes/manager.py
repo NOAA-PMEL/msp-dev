@@ -51,7 +51,9 @@ class SamplingMode:
         self.requirements = {}
         self.actions = {"true": [], "false": []}
         self.current_state = False
+        self.last_status_time = 0 # Track last heartbeat
         self.active = True 
+        
         self._configure_requirements()
 
     def _configure_requirements(self):
@@ -100,27 +102,63 @@ class SamplingMode:
             self.requirements[req_kind][name]["status"] = is_met
 
     async def evaluate(self):
-        """Checks requirements and dispatches actions on state changes."""
-        if not self.active: return
-        mode_status = [req["status"] for kind in self.requirements.values() for req in kind.values()]
-        latest_status = all(mode_status) if mode_status else False
-        is_changed = (latest_status != self.current_state)
+        """
+        Evaluates the mode status based on requirements.
+        Triggers an update immediately on change or every 30s as a heartbeat.
+        """
+        if not self.active:
+            return
 
-        # Heartbeat every 30s or broadcast immediately on state change
-        if is_changed or (get_datetime().replace(tzinfo=timezone.utc).second % 30 == 0):
+        # 1. Calculate current status based on requirements
+        # A mode is typically True if ALL underlying requirements are met
+        mode_status = [
+            req["status"] 
+            for kind in self.requirements.values() 
+            for req in kind.values()
+        ]
+        
+        latest_status = all(mode_status) if mode_status else False
+        
+        # 2. Check for triggers: State Change OR 30s Heartbeat
+        now = get_datetime().timestamp()
+        is_changed = (latest_status != self.current_state)
+        is_heartbeat = (now - self.last_status_time >= 30)
+
+        if is_changed or is_heartbeat:
+            self.logger.info(
+                "mode evaluation trigger", 
+                extra={"name": self.config["metadata"]["name"], "change": is_changed, "hb": is_heartbeat}
+            )
+            
+            # Update internal state and reset heartbeat timer
             self.current_state = latest_status
-            await self.status_buffer.put({
-                "status": {
-                    "kind": "SamplingMode",
-                    "name": self.config["metadata"]["name"],
-                    "status": self.current_state,
-                    "time": get_datetime_string()
-                }
-            })
+            self.last_status_time = now
+
+            # 3. Build the envds-compliant status block
+            status_str = "true" if self.current_state else "false"
+            
+            status_update = {
+                "id": {
+                    "app_group": "mode",
+                    "app_uid": self.config["metadata"]["name"],
+                    "sampling_namespace": self.config["metadata"].get("sampling_namespace"),
+                    "valid_config_time": self.config["metadata"].get("valid_config_time")
+                },
+                "state": {
+                    "mode_active": {
+                        "requested": "true", 
+                        "actual": status_str
+                    }
+                },
+                "timestamp": get_datetime_string()
+            }
+
+            # 4. Push to the buffer for the status_publish_monitor to broadcast via MQTT
+            await self.status_buffer.put({"status": status_update})
+
+            # 5. Handle transitions/actions if the state actually changed
             if is_changed:
-                run_type = str(self.current_state).lower()
-                for act in self.actions.get(run_type, []):
-                    await self.actions_buffer.put({"action": act})
+                await self.execute_actions(self.current_state)
 
 class SamplingAction:
     """Executes python modules to compute physical system settings."""
@@ -351,51 +389,90 @@ class SamplingModesManager:
     #         await self.send_event(event)
     #         self.status_buffer.task_done()
 
+    # async def status_publish_monitor(self):
+    #     while True:
+    #         try:
+    #             # 1. Pull the raw update from the Mode evaluation
+    #             data = await self.status_buffer.get()
+                
+    #             # 2. Extract the flat payload
+    #             status_obj = data.get("status", {})
+    #             mode_name = status_obj.get("name", "unknown")
+    #             is_active = status_obj.get("status", False)
+    #             status_str = "true" if is_active else "false"
+
+    #             # 3. Translate to the NEW envds-COMPLIANT STATUS BLOCK
+    #             status_data = {
+    #                 "id": {
+    #                     "app_group": "mode",
+    #                     "app_uid": mode_name
+    #                 },
+    #                 "state": {
+    #                     "mode_active": {
+    #                         "requested": "true", 
+    #                         "actual": status_str
+    #                     }
+    #                 },
+    #                 "timestamp": get_datetime_string()
+    #             }
+
+    #             # 4. Publish via standard SamplingEvent factory
+    #             event = SamplingEvent.create_sampling_mode_status_update(
+    #                 source=f"envds.{self.config.daq_id}.sampling-modes",
+    #                 data=status_data
+    #             )
+
+    #             # ---> ADD THESE TWO LINES <---
+    #             destpath = f"envds/{self.config.daq_id}/sampling-modes/status/update"
+    #             event["destpath"] = destpath
+    #             await self.send_to_mqtt(destpath, event)
+
+    #         except Exception as e:
+    #             L.error("status_publish_monitor error", extra={"reason": str(e)})
+
+    #         finally:
+    #             # Mark task done so the queue doesn't lock up
+    #             if 'data' in locals():
+    #                 self.status_buffer.task_done()
+
     async def status_publish_monitor(self):
+        """Standardized monitor: Immediate update on change, reliable 30s heartbeat."""
         while True:
             try:
-                # 1. Pull the raw update from the Mode evaluation
+                # Wait for evaluate() to trigger an update
                 data = await self.status_buffer.get()
                 
-                # 2. Extract the flat payload
                 status_obj = data.get("status", {})
-                mode_name = status_obj.get("name", "unknown")
+                res_name = status_obj.get("name", "unknown")
                 is_active = status_obj.get("status", False)
                 status_str = "true" if is_active else "false"
 
-                # 3. Translate to the NEW envds-COMPLIANT STATUS BLOCK
+                # Standard envds status block
                 status_data = {
                     "id": {
-                        "app_group": "mode",
-                        "app_uid": mode_name
+                        "app_group": "mode" if "SamplingMode" in status_obj.get("kind", "") else "system-mode",
+                        "app_uid": res_name
                     },
                     "state": {
-                        "mode_active": {
-                            "requested": "true", 
-                            "actual": status_str
-                        }
+                        "mode_active": {"requested": "true", "actual": status_str}
                     },
                     "timestamp": get_datetime_string()
                 }
 
-                # 4. Publish via standard SamplingEvent factory
                 event = SamplingEvent.create_sampling_mode_status_update(
-                    source=f"envds.{self.config.daq_id}.sampling-modes",
+                    source=f"envds.{self.config.daq_id}.{self.config_prefix.lower()}",
                     data=status_data
                 )
 
-                # ---> ADD THESE TWO LINES <---
+                # destpath = f"envds/{self.config.daq_id}/{self.config_prefix.lower()}/status/update"
                 destpath = f"envds/{self.config.daq_id}/sampling-modes/status/update"
                 event["destpath"] = destpath
                 await self.send_to_mqtt(destpath, event)
 
             except Exception as e:
-                L.error("status_publish_monitor error", extra={"reason": str(e)})
-
+                self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
             finally:
-                # Mark task done so the queue doesn't lock up
-                if 'data' in locals():
-                    self.status_buffer.task_done()
+                self.status_buffer.task_done()
 
     async def action_execution_monitor(self):
         while True:

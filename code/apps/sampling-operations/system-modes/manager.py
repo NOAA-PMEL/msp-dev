@@ -292,51 +292,90 @@ class SystemModesManager:
     #         await self.send_event(event)
     #         await asyncio.sleep(30)
     
+    # async def status_publish_monitor(self):
+    #     while True:
+    #         try:
+    #             # 1. Safely check if a mode is active
+    #             active = self.active_mode if self.active_mode else "none"
+    #             status_str = "true" if self.active_mode else "false"
+
+    #             # 2. Build the NEW envds-COMPLIANT STATUS BLOCK
+    #             status_data = {
+    #                 "id": {
+    #                     "app_group": "system",
+    #                     "app_uid": active
+    #                 },
+    #                 "state": {
+    #                     "system_active": {
+    #                         "requested": "true", 
+    #                         "actual": status_str
+    #                     }
+    #                 },
+    #                 "timestamp": get_datetime_string()
+    #             }
+
+    #             # 3. Publish via standard SamplingEvent factory (Base create method)
+    #             event = SamplingEvent.create(
+    #                 type="envds.systemmode.status.update",
+    #                 source=f"envds.{self.config.daq_id}.system-modes",
+    #                 data=status_data
+    #             )
+                
+    #             destpath = f"envds/{self.config.daq_id}/system-modes/status/update"
+    #             event["destpath"] = destpath
+    #             # event["samplingnamespace"] = state_ns
+    #             # event["validconfigtime"] = state_valid_time
+
+    #             self.logger.debug("state_status_monitor", extra={"event-type": event["type"], "destpath": destpath})
+
+    #             # event["destpath"] = f"envds/{self.config.daq_id}/system-modes/status/update"
+    #             await self.send_to_mqtt(destpath, event)
+
+    #         except Exception as e:
+    #             # Use L.error since self.logger isn't defined in this manager
+    #             L.error("status_publish_monitor error", extra={"reason": str(e)})
+
+    #         # 4. Wait 30 seconds before sending the next heartbeat
+    #         await asyncio.sleep(30)
+
     async def status_publish_monitor(self):
+        """Standardized monitor: Immediate update on change, reliable 30s heartbeat."""
         while True:
             try:
-                # 1. Safely check if a mode is active
-                active = self.active_mode if self.active_mode else "none"
-                status_str = "true" if self.active_mode else "false"
+                # Wait for evaluate() to trigger an update
+                data = await self.status_buffer.get()
+                
+                status_obj = data.get("status", {})
+                res_name = status_obj.get("name", "unknown")
+                is_active = status_obj.get("status", False)
+                status_str = "true" if is_active else "false"
 
-                # 2. Build the NEW envds-COMPLIANT STATUS BLOCK
+                # Standard envds status block
                 status_data = {
                     "id": {
-                        "app_group": "system",
-                        "app_uid": active
+                        "app_group": "mode" if "SamplingMode" in status_obj.get("kind", "") else "system-mode",
+                        "app_uid": res_name
                     },
                     "state": {
-                        "system_active": {
-                            "requested": "true", 
-                            "actual": status_str
-                        }
+                        "mode_active": {"requested": "true", "actual": status_str}
                     },
                     "timestamp": get_datetime_string()
                 }
 
-                # 3. Publish via standard SamplingEvent factory (Base create method)
-                event = SamplingEvent.create(
-                    type="envds.systemmode.status.update",
-                    source=f"envds.{self.config.daq_id}.system-modes",
+                event = SamplingEvent.create_sampling_mode_status_update(
+                    source=f"envds.{self.config.daq_id}.{self.config_prefix.lower()}",
                     data=status_data
                 )
-                
+
+                # destpath = f"envds/{self.config.daq_id}/{self.config_prefix.lower()}/status/update"
                 destpath = f"envds/{self.config.daq_id}/system-modes/status/update"
                 event["destpath"] = destpath
-                # event["samplingnamespace"] = state_ns
-                # event["validconfigtime"] = state_valid_time
-
-                self.logger.debug("state_status_monitor", extra={"event-type": event["type"], "destpath": destpath})
-
-                # event["destpath"] = f"envds/{self.config.daq_id}/system-modes/status/update"
                 await self.send_to_mqtt(destpath, event)
 
             except Exception as e:
-                # Use L.error since self.logger isn't defined in this manager
-                L.error("status_publish_monitor error", extra={"reason": str(e)})
-
-            # 4. Wait 30 seconds before sending the next heartbeat
-            await asyncio.sleep(30)
+                self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
+            finally:
+                self.status_buffer.task_done()
 
 async def shutdown():
     print("shutting down")

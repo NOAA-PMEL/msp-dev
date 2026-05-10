@@ -110,6 +110,7 @@ class SamplingState:
         )
 
         self.current_status = False
+        self.last_status_time = 0
         self._tasks = [] # ADD THIS to track tasks
         self.criterion_tasks = []
         
@@ -167,28 +168,115 @@ class SamplingState:
             await asyncio.sleep(0.001)
             self.update_buffer.task_done()
 
-    async def requirement_monitor(self):
+    # async def requirement_monitor(self):
 
+    #     while True:
+    #         try:
+    #             state_status = []
+    #             current_dt = get_datetime().replace(tzinfo=timezone.utc)
+    #             for req_type, req_kind in self.requirements.items():
+    #                 for req_name, req in req_kind.items():
+    #                     current_status = req["status"]
+    #                     transition_time = req["transition_time"]["to_become_false"]
+    #                     if current_status is False:
+    #                         transition_time = req["transition_time"]["to_become_true"]
+    #                     # delta = timedelta(seconds=(transition_time * -1))
+    #                     transition_dt = get_datetime_with_delta(delta=(-(transition_time)), dt=current_dt)
+
+    #                     req_status = []
+    #                     self.logger.debug("requirement_monitor", extra={"reqs": self.requirements})
+    #                     for ts, st in req["data"].items():
+    #                         if string_to_datetime(ts).replace(tzinfo=timezone.utc) > transition_dt:
+    #                             req_status.append(st)
+
+    #                     # req["status"] = all(req_status)
+
+    #                     # FIX: Prevent the all([]) == True bug
+    #                     if not req_status:
+    #                         req["status"] = False
+    #                     else:
+    #                         req["status"] = all(req_status)
+
+    #                     state_status.append(req["status"])
+    #                     self.logger.debug("requirement_monitor", extra={"state_status": state_status, "req_status": req_status})
+    #             # current_dt = get_datetime()
+    #             current_secs = current_dt.second
+    #             # if self.current_status:
+    #             #     latest_status = any(state_status)
+    #             # else:
+    #             #     latest_status = all(state_status)
+    #             latest_status = all(state_status)
+    #             # latest_status = all(state_status)
+    #             if self.current_status != latest_status or (current_secs % 30) == 0:
+    #                 self.logger.info("status change", extra={"old_status": self.current_status, "new_status": latest_status})
+    #                 self.current_status = latest_status
+
+    #                 state_name = self.config["metadata"]["name"]
+    #                 state_ns = self.config["metadata"]["sampling_namespace"]
+    #                 state_valid_time = self.config["metadata"]["valid_config_time"]
+
+    #                 # status = {
+    #                 #     "status": {
+    #                 #         "kind": "SamplingState",
+    #                 #         "time": get_datetime_string(),
+    #                 #         "name": state_name,
+    #                 #         "sampling_namespace": state_ns,
+    #                 #         "valid_config_time": state_valid_time,
+    #                 #         "status": self.current_status
+    #                 #     }
+    #                 # }
+
+    #                 # --- NEW envds-COMPLIANT STATUS BLOCK ---
+    #                 status_str = "true" if self.current_status else "false"
+
+    #                 status = {
+    #                     "id": {
+    #                         "app_group": "state",
+    #                         "app_uid": state_name,
+    #                         "sampling_namespace": state_ns,
+    #                         "valid_config_time": state_valid_time
+    #                     },
+    #                     "state": {
+    #                         "state_active": {
+    #                             "requested": "true", 
+    #                             "actual": status_str
+    #                         }
+    #                     },
+    #                     "timestamp": get_datetime_string()
+    #                 }
+    #                 # ----------------------------------------
+    #                 await self.status_buffer.put(status)
+    #         except Exception as e:
+    #             self.logger.error("requirement_monitor", extra={"reason": e})
+
+    #         await asyncio.sleep(time_to_next(1))
+
+    async def requirement_monitor(self):
+        """
+        Monitors requirements for state transitions. 
+        Triggers update immediately on change or every 30s as a heartbeat.
+        """
         while True:
             try:
                 state_status = []
                 current_dt = get_datetime().replace(tzinfo=timezone.utc)
+                
+                # 1. Evaluate each requirement kind/name
                 for req_type, req_kind in self.requirements.items():
                     for req_name, req in req_kind.items():
                         current_status = req["status"]
+                        
+                        # Determine transition window
                         transition_time = req["transition_time"]["to_become_false"]
                         if current_status is False:
                             transition_time = req["transition_time"]["to_become_true"]
-                        # delta = timedelta(seconds=(transition_time * -1))
+                        
                         transition_dt = get_datetime_with_delta(delta=(-(transition_time)), dt=current_dt)
 
                         req_status = []
-                        self.logger.debug("requirement_monitor", extra={"reqs": self.requirements})
                         for ts, st in req["data"].items():
                             if string_to_datetime(ts).replace(tzinfo=timezone.utc) > transition_dt:
                                 req_status.append(st)
-
-                        # req["status"] = all(req_status)
 
                         # FIX: Prevent the all([]) == True bug
                         if not req_status:
@@ -197,35 +285,30 @@ class SamplingState:
                             req["status"] = all(req_status)
 
                         state_status.append(req["status"])
-                        self.logger.debug("requirement_monitor", extra={"state_status": state_status, "req_status": req_status})
-                # current_dt = get_datetime()
-                current_secs = current_dt.second
-                # if self.current_status:
-                #     latest_status = any(state_status)
-                # else:
-                #     latest_status = all(state_status)
-                latest_status = all(state_status)
-                # latest_status = all(state_status)
-                if self.current_status != latest_status or (current_secs % 30) == 0:
-                    self.logger.info("status change", extra={"old_status": self.current_status, "new_status": latest_status})
+
+                # 2. Determine aggregate state
+                latest_status = all(state_status) if state_status else False
+                
+                # 3. Check for triggers: State Change OR 30s Heartbeat
+                now = current_dt.timestamp()
+                is_changed = (latest_status != self.current_status)
+                is_heartbeat = (now - self.last_status_time >= 30)
+
+                if is_changed or is_heartbeat:
+                    self.logger.info(
+                        "state evaluation trigger", 
+                        extra={"name": self.config["metadata"]["name"], "change": is_changed, "hb": is_heartbeat}
+                    )
+                    
+                    # Update internal state and reset heartbeat timer
                     self.current_status = latest_status
+                    self.last_status_time = now
 
                     state_name = self.config["metadata"]["name"]
                     state_ns = self.config["metadata"]["sampling_namespace"]
                     state_valid_time = self.config["metadata"]["valid_config_time"]
 
-                    # status = {
-                    #     "status": {
-                    #         "kind": "SamplingState",
-                    #         "time": get_datetime_string(),
-                    #         "name": state_name,
-                    #         "sampling_namespace": state_ns,
-                    #         "valid_config_time": state_valid_time,
-                    #         "status": self.current_status
-                    #     }
-                    # }
-
-                    # --- NEW envds-COMPLIANT STATUS BLOCK ---
+                    # 4. Build the envds-compliant status block
                     status_str = "true" if self.current_status else "false"
 
                     status = {
@@ -243,11 +326,14 @@ class SamplingState:
                         },
                         "timestamp": get_datetime_string()
                     }
-                    # ----------------------------------------
+                    
+                    # 5. Push to buffer for status_status_monitor to broadcast
                     await self.status_buffer.put(status)
-            except Exception as e:
-                self.logger.error("requirement_monitor", extra={"reason": e})
 
+            except Exception as e:
+                self.logger.error("requirement_monitor error", extra={"reason": str(e)})
+
+            # Sleep until the next integer second
             await asyncio.sleep(time_to_next(1))
 
     async def data_gc(self):
