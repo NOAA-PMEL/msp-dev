@@ -305,30 +305,42 @@ class SamplingModesManager:
 
     async def status_publish_monitor(self):
         while True:
-            # --- NEW envds-COMPLIANT STATUS BLOCK ---
-            status_str = "true" if self.active_mode else "false"
-            
-            status_data = {
-                "id": {
-                    "app_group": "mode",
-                    "app_uid": self.active_mode if self.active_mode else "none"
-                },
-                "state": {
-                    "mode_active": {
-                        "requested": "true", 
-                        "actual": status_str
-                    }
-                },
-                "timestamp": get_datetime_string()
-            }
-            # ----------------------------------------
-            
-            event = CloudEvent(
-                attributes={"type": "envds.samplingmode.status.update", "source": f"envds.{self.config.daq_id}.sampling-modes"},
-                data=status_data
-            )
-            event["destpath"] = f"envds/{self.config.daq_id}/sampling-modes/status/update"
-            await self.send_event(event)
+            try:
+                # --- NEW envds-COMPLIANT STATUS BLOCK ---
+                status_str = "true" if self.active_mode else "false"
+                
+                status_data = {
+                    "id": {
+                        "app_group": "mode",
+                        "app_uid": self.active_mode if self.active_mode else "none"
+                    },
+                    "state": {
+                        "mode_active": {
+                            "requested": "true", 
+                            "actual": status_str
+                        }
+                    },
+                    "timestamp": get_datetime_string()
+                }
+                # ----------------------------------------
+                
+                source_id = f"envds.{self.config.daq_id}.sampling-modes"
+                source_topic = source_id.replace(".", "/")
+
+                # Use the exact same standard wrapper we used in sampling-states
+                event = SamplingEvent.create_sampling_mode_status_update(
+                    source=source_id,
+                    data=status_data
+                )
+                
+                destpath = f"{source_topic}/status/update"
+                event["destpath"] = destpath
+                
+                await self.send_event(event)
+
+            except Exception as e:
+                self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
+
             await asyncio.sleep(30)
 
     async def action_execution_monitor(self):
