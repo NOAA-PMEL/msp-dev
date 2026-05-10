@@ -214,16 +214,36 @@ class SamplingState:
                     state_ns = self.config["metadata"]["sampling_namespace"]
                     state_valid_time = self.config["metadata"]["valid_config_time"]
 
+                    # status = {
+                    #     "status": {
+                    #         "kind": "SamplingState",
+                    #         "time": get_datetime_string(),
+                    #         "name": state_name,
+                    #         "sampling_namespace": state_ns,
+                    #         "valid_config_time": state_valid_time,
+                    #         "status": self.current_status
+                    #     }
+                    # }
+
+                    # --- NEW envds-COMPLIANT STATUS BLOCK ---
+                    status_str = "true" if self.current_status else "false"
+
                     status = {
-                        "status": {
-                            "kind": "SamplingState",
-                            "time": get_datetime_string(),
-                            "name": state_name,
+                        "id": {
+                            "app_group": "state",
+                            "app_uid": state_name,
                             "sampling_namespace": state_ns,
-                            "valid_config_time": state_valid_time,
-                            "status": self.current_status
-                        }
+                            "valid_config_time": state_valid_time
+                        },
+                        "state": {
+                            "state_active": {
+                                "requested": "true", 
+                                "actual": status_str
+                            }
+                        },
+                        "timestamp": get_datetime_string()
                     }
+                    # ----------------------------------------
                     await self.status_buffer.put(status)
             except Exception as e:
                 self.logger.error("requirement_monitor", extra={"reason": e})
@@ -719,25 +739,62 @@ class SamplingStatesManager:
             except MqttError as error:
                 await asyncio.sleep(reconnect)
 
+    # async def state_status_monitor(self):
+    #     while True:
+    #         try:
+    #             status = await self.status_buffer.get()
+
+    #             state_name = status["status"]["name"]
+    #             state_ns = status["status"]["sampling_namespace"]
+    #             state_valid_time = status["status"]["valid_config_time"]
+
+    #             source_id = (
+    #                 # f"envds.{self.config.daq_id}.sampling-state.{state_name}"
+    #                 f"envds.{self.config.daq_id}.sampling-states"
+    #             )
+    #             self.logger.debug("state_status_monitor", extra={"source_id": source_id})
+                
+    #             source_topic = source_id.replace(".", "/")
+
+    #             event = SamplingEvent.create_sampling_state_status_update(
+    #                 # source="sensor.mockco-mock1-1234", data=record
+    #                 source=source_id,
+    #                 data=status,
+    #             )
+    #             destpath = f"{source_topic}/status/update"
+    #             event["destpath"] = destpath
+    #             event["samplingnamespace"] = state_ns
+    #             event["validconfigtime"] = state_valid_time
+    #             self.logger.debug(
+    #                 "state_status_monitor",
+    #                 extra={"data": event, "destpath": destpath},
+    #             )
+
+    #             await self.send_event(event)
+
+    #         except Exception as e:
+    #             self.logger.error("state_status_monitor", extra={"reason": e})
+            
+    #         await asyncio.sleep(0.001)
+    #         self.status_buffer.task_done()
+
     async def state_status_monitor(self):
         while True:
             try:
                 status = await self.status_buffer.get()
 
-                state_name = status["status"]["name"]
-                state_ns = status["status"]["sampling_namespace"]
-                state_valid_time = status["status"]["valid_config_time"]
+                # Parse from the new envdsStatus format
+                id_block = status.get("id", {})
+                state_name = id_block.get("app_uid")
+                state_ns = id_block.get("sampling_namespace")
+                state_valid_time = id_block.get("valid_config_time")
 
-                source_id = (
-                    # f"envds.{self.config.daq_id}.sampling-state.{state_name}"
-                    f"envds.{self.config.daq_id}.sampling-states"
-                )
+                source_id = f"envds.{self.config.daq_id}.sampling-states"
                 self.logger.debug("state_status_monitor", extra={"source_id": source_id})
                 
                 source_topic = source_id.replace(".", "/")
 
                 event = SamplingEvent.create_sampling_state_status_update(
-                    # source="sensor.mockco-mock1-1234", data=record
                     source=source_id,
                     data=status,
                 )
@@ -745,15 +802,13 @@ class SamplingStatesManager:
                 event["destpath"] = destpath
                 event["samplingnamespace"] = state_ns
                 event["validconfigtime"] = state_valid_time
-                self.logger.debug(
-                    "state_status_monitor",
-                    extra={"data": event, "destpath": destpath},
-                )
+                
+                self.logger.debug("state_status_monitor", extra={"data": event, "destpath": destpath})
 
                 await self.send_event(event)
 
             except Exception as e:
-                self.logger.error("state_status_monitor", extra={"reason": e})
+                self.logger.error("state_status_monitor", extra={"reason": str(e)})
             
             await asyncio.sleep(0.001)
             self.status_buffer.task_done()
@@ -867,29 +922,69 @@ class SamplingStatesManager:
                 self.logger.error("mqtt_publish_loop unexpected error", extra={"reason": str(e)})
                 await asyncio.sleep(reconnect)
     
-    async def requirement_status_update(self, ce: CloudEvent):
+    # async def requirement_status_update(self, ce: CloudEvent):
 
-        try:
+    #     try:
             
-            self.logger.debug("requirement_status_update", extra={"ce": ce})
+    #         self.logger.debug("requirement_status_update", extra={"ce": ce})
 
-            # for req_type, status in ce.data.items():
-            try:
-                status = ce.data["status"]
-                req_kind = status["kind"]
-                req_name = status["name"]
-                self.logger.debug("requirement_status_update", extra={"sampling_states": self.sampling_states})
-                for state_name in self.sampling_states["requirement_map"][req_kind][req_name]:
-                    state = self.sampling_states["states"][state_name]["state"]
-                    await state.update(status)
-            except KeyError:
-                self.logger.error("requirement_status_update", extra={"reason": e})
+    #         # for req_type, status in ce.data.items():
+    #         try:
+    #             status = ce.data["status"]
+    #             req_kind = status["kind"]
+    #             req_name = status["name"]
+    #             self.logger.debug("requirement_status_update", extra={"sampling_states": self.sampling_states})
+    #             for state_name in self.sampling_states["requirement_map"][req_kind][req_name]:
+    #                 state = self.sampling_states["states"][state_name]["state"]
+    #                 await state.update(status)
+    #         except KeyError:
+    #             self.logger.error("requirement_status_update", extra={"reason": e})
                     
 
-        except Exception as e:
-            self.logger.error("requirement_status_update", extra={"reason": e})
-        pass            
+    #     except Exception as e:
+    #         self.logger.error("requirement_status_update", extra={"reason": e})
+    #     pass            
 
+    async def requirement_status_update(self, ce: CloudEvent):
+        try:
+            self.logger.debug("requirement_status_update", extra={"ce": ce})
+
+            # Consume the envds-compliant status format
+            payload = ce.data
+            id_block = payload.get("id", {})
+            state_block = payload.get("state", {})
+            
+            # Map app_group back to kind for internal routing
+            app_group = id_block.get("app_group", "")
+            req_kind = "SamplingCondition" if app_group == "condition" else "SamplingState" if app_group == "state" else app_group
+            req_name = id_block.get("app_uid")
+            
+            # Extract boolean actual status (defaults to false if missing)
+            condition_state = state_block.get("condition_met", {}).get("actual", "false")
+            is_met = (str(condition_state).lower() == "true")
+            
+            timestamp = payload.get("timestamp", get_datetime_string())
+
+            # Translate back to the internal flat format for the state requirement monitor
+            mapped_status = {
+                "kind": req_kind,
+                "name": req_name,
+                "time": timestamp,
+                "status": is_met
+            }
+
+            self.logger.debug("requirement_status_update mapped", extra={"mapped_status": mapped_status})
+            
+            # Route to the appropriate states that rely on this requirement
+            if req_kind in self.sampling_states.get("requirement_map", {}) and req_name in self.sampling_states["requirement_map"][req_kind]:
+                for state_name in self.sampling_states["requirement_map"][req_kind][req_name]:
+                    state = self.sampling_states["states"][state_name]["state"]
+                    await state.update(mapped_status)
+            else:
+                self.logger.debug("Requirement not tracked by any active state", extra={"req_name": req_name})
+
+        except Exception as e:
+            self.logger.error("requirement_status_update", extra={"reason": str(e)})
 
 async def shutdown():
     print("shutting down")

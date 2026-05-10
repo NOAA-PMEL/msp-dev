@@ -66,11 +66,28 @@ class SamplingMode:
                 if act not in self.actions[act_test]:
                     self.actions[act_test].append(act)
 
-    async def update(self, status_update: dict):
-        """Updates internal requirement cache from external status updates."""
-        kind, name, status = status_update.get("kind"), status_update.get("name"), status_update.get("status")
+    # async def update(self, status_update: dict):
+    #     """Updates internal requirement cache from external status updates."""
+    #     kind, name, status = status_update.get("kind"), status_update.get("name"), status_update.get("status")
+    #     if kind in self.requirements and name in self.requirements[kind]:
+    #         self.requirements[kind][name]["status"] = status
+
+    async def update(self, payload: dict):
+        """Updates the status of requirements (e.g., SamplingStates)."""
+        id_block = payload.get("id", {})
+        state_block = payload.get("state", {})
+        
+        # Map app_group back to kind for internal routing
+        app_group = id_block.get("app_group", "")
+        kind = "SamplingState" if app_group == "state" else app_group
+        name = id_block.get("app_uid")
+        
+        # Extract boolean actual status
+        state_status = state_block.get("state_active", {}).get("actual", "false")
+        is_met = (str(state_status).lower() == "true")
+        
         if kind in self.requirements and name in self.requirements[kind]:
-            self.requirements[kind][name]["status"] = status
+            self.requirements[kind][name]["status"] = is_met
 
     async def evaluate(self):
         """Checks requirements and dispatches actions on state changes."""
@@ -249,8 +266,11 @@ class SamplingModesManager:
                                                 action_obj.sources["data"][rid][k] = {"data": v.get("data"), "last_update": ts}
                             
                             elif "status.update" in ce.get("type", ""):
+                                # for mode in self.modes.values(): 
+                                #     await mode.update(ce.data.get("status", {}))
+                                # Update evaluation map for current active mode
                                 for mode in self.modes.values(): 
-                                    await mode.update(ce.data.get("status", {}))
+                                    await mode.update(ce.data)
                         except Exception: pass
             except MqttError:
                 await asyncio.sleep(5)
@@ -272,16 +292,44 @@ class SamplingModesManager:
                 await mode.evaluate()
             await asyncio.sleep(time_to_next(1))
 
+    # async def status_publish_monitor(self):
+    #     while True:
+    #         data = await self.status_buffer.get()
+    #         event = CloudEvent(
+    #             attributes={"type": "envds.samplingmode.status.update", "source": f"envds.{self.config.daq_id}.sampling-modes"},
+    #             data=data
+    #         )
+    #         event["destpath"] = f"envds/{self.config.daq_id}/sampling-modes/status/update"
+    #         await self.send_event(event)
+    #         self.status_buffer.task_done()
+
     async def status_publish_monitor(self):
         while True:
-            data = await self.status_buffer.get()
+            # --- NEW envds-COMPLIANT STATUS BLOCK ---
+            status_str = "true" if self.active_mode else "false"
+            
+            status_data = {
+                "id": {
+                    "app_group": "mode",
+                    "app_uid": self.active_mode if self.active_mode else "none"
+                },
+                "state": {
+                    "mode_active": {
+                        "requested": "true", 
+                        "actual": status_str
+                    }
+                },
+                "timestamp": get_datetime_string()
+            }
+            # ----------------------------------------
+            
             event = CloudEvent(
                 attributes={"type": "envds.samplingmode.status.update", "source": f"envds.{self.config.daq_id}.sampling-modes"},
-                data=data
+                data=status_data
             )
             event["destpath"] = f"envds/{self.config.daq_id}/sampling-modes/status/update"
             await self.send_event(event)
-            self.status_buffer.task_done()
+            await asyncio.sleep(30)
 
     async def action_execution_monitor(self):
         while True:
@@ -302,13 +350,36 @@ class SamplingModesManager:
             for name, data in targets.items():
                 val, meta = data["data"], data["metadata"]
                 t_type = meta.get("target_type", "controller").lower()
+                # t_id = meta.get("target_id", meta.get("variablemap_name", "unknown"))
+                # event = CloudEvent(
+                #     attributes={"type": f"envds.{t_type}.settings.update", "source": f"envds.{self.config.daq_id}.sampling-modes"},
+                #     data={"variables": {meta.get("variable", name): {"data": val}}}
+                # )
+                # event["destpath"] = f"envds/{self.config.daq_id}/{t_type}/{t_id}/settings/update"
+                # await self.send_event(event)
+
+                # Get the target ID from the target's metadata block
                 t_id = meta.get("target_id", meta.get("variablemap_name", "unknown"))
+                target_var_name = meta.get("variable", name)
+
+                # Send a formatted settings request that the Device/Controller base class expects
                 event = CloudEvent(
-                    attributes={"type": f"envds.{t_type}.settings.update", "source": f"envds.{self.config.daq_id}.sampling-modes"},
-                    data={"variables": {meta.get("variable", name): {"data": val}}}
+                    attributes={
+                        "type": f"envds.{t_type}.settings.request", 
+                        "source": f"envds.{self.config.daq_id}.sampling-modes",
+                        # Inject the deviceid header so the hardware knows this command is for it
+                        "deviceid": t_id 
+                    },
+                    data={
+                        "settings": target_var_name,
+                        "requested": val
+                    }
                 )
-                event["destpath"] = f"envds/{self.config.daq_id}/{t_type}/{t_id}/settings/update"
+                
+                # Devices listen to the generic settings/request topic for incoming commands
+                event["destpath"] = f"envds/sensor/settings/request"
                 await self.send_event(event)
+
             self.actions_target_buffer.task_done()
 
 # Consistent entry point logic from sampling-states

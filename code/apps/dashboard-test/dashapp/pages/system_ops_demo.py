@@ -103,9 +103,13 @@ def get_layout():
         ], className="shadow-sm"),
 
         # Standardized WebSocket with msp/dashboardtest prefix
+        # WebSocket(
+        #     id="ws-system-ops",
+        #     url=f"{ws_url_base}/msp/dashboardtest/ws/system-ops"
+        # ),
         WebSocket(
             id="ws-system-ops",
-            url=f"{ws_url_base}/msp/dashboardtest/ws/system-ops"
+            url=f"{ws_url_base}/msp/dashboardtest/ws/system-ops/main" # <--- Added /main
         ),
         ws_send_buffer,
         

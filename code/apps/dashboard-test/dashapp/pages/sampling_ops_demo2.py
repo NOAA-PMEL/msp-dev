@@ -93,9 +93,13 @@ def get_layout():
         ], className="shadow-sm"),
 
         # Connection and State Management
+        # WebSocket(
+        #     id="ws-sampling-ops2",
+        #     url=f"{ws_url_base}/msp/dashboardtest/ws/system-ops"
+        # ),
         WebSocket(
-            id="ws-sampling-ops2",
-            url=f"{ws_url_base}/msp/dashboardtest/ws/system-ops"
+            id="ws-system-ops2",
+            url=f"{ws_url_base}/msp/dashboardtest/ws/system-ops/main" # <--- Added /main
         ),
         
         dcc.Store(id="ops-state-store2", data={
@@ -109,9 +113,9 @@ def get_layout():
 layout = get_layout()
 
 @callback(
-    Output("ops-state-store2", "data"),
-    Input("ws-sampling-ops2", "message"),
-    State("ops-state-store2", "data")
+    Output("ops-state-store2", "data"), # NOTE: Use "system-ops-state" for system_ops_demo.py
+    Input("ws-sampling-ops2", "message"), # NOTE: Use "ws-system-ops" for system_ops_demo.py
+    State("ops-state-store2", "data") # NOTE: Use "system-ops-state" for system_ops_demo.py
 )
 def update_state_store(msg, current_state):
     if not msg or "data" not in msg:
@@ -122,24 +126,47 @@ def update_state_store(msg, current_state):
         
         # Extract underlying data payload sent by handle_mqtt_buffer in main.py
         event_data = payload.get("data", {})
-        status_obj = event_data.get("status", {})
         
-        kind = status_obj.get("kind")
-        name = status_obj.get("name")
+        # Parse the envds-compliant status format
+        id_block = event_data.get("id", {})
+        state_block = event_data.get("state", {})
+        
+        app_group = id_block.get("app_group", "")
+        name = id_block.get("app_uid")
+        
+        # Map the new app_group ontology back to the UI's store keys
+        kind_map = {
+            "condition": "SamplingCondition",
+            "state": "SamplingState",
+            "mode": "SamplingMode",
+            "system": "SystemMode"
+        }
+        kind = kind_map.get(app_group)
         
         if kind and name and kind in current_state:
+            # Map the app_group to the specific state parameter name we set in the managers
+            state_key = {
+                "condition": "condition_met",
+                "state": "state_active",
+                "mode": "mode_active",
+                "system": "system_active"
+            }.get(app_group, "")
+            
+            # Extract boolean actual status (defaults to false if missing)
+            actual_str = state_block.get(state_key, {}).get("actual", "false")
+            is_active = (str(actual_str).lower() == "true")
+            
             current_state[kind][name] = {
-                "status": status_obj.get("status", False),
-                "time": status_obj.get("time", "N/A")
+                "status": is_active,
+                "time": event_data.get("timestamp", "N/A")
             }
             return current_state
             
     except Exception as e:
-        L.error(f"Sampling Ops Demo 2 - Store update error: {e}")
+        L.error(f"Store update error: {e}")
         L.error(traceback.format_exc())
         
     return no_update
-
 @callback(
     Output("system-health-display", "children"),
     Output("sampling-modes-display", "children"),

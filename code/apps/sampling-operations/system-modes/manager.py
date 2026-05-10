@@ -65,11 +65,29 @@ class SystemMode:
         for test, trans_list in self.config.get("transitions", {}).items():
             self.transitions[test] = trans_list
 
-    async def update(self, status_update: dict):
+    # async def update(self, status_update: dict):
+    #     """Updates the status of requirements (e.g., SamplingModes)."""
+    #     kind, name, status = status_update.get("kind"), status_update.get("name"), status_update.get("status")
+    #     if kind in self.requirements and name in self.requirements[kind]:
+    #         self.requirements[kind][name]["status"] = status
+
+    async def update(self, payload: dict):
         """Updates the status of requirements (e.g., SamplingModes)."""
-        kind, name, status = status_update.get("kind"), status_update.get("name"), status_update.get("status")
+        # Consume the envds-compliant status format
+        id_block = payload.get("id", {})
+        state_block = payload.get("state", {})
+        
+        # Map app_group back to kind for internal routing
+        app_group = id_block.get("app_group", "")
+        kind = "SamplingMode" if app_group == "mode" else app_group
+        name = id_block.get("app_uid")
+        
+        # Extract boolean actual status (defaults to false if missing)
+        mode_state = state_block.get("mode_active", {}).get("actual", "false")
+        is_met = (str(mode_state).lower() == "true")
+        
         if kind in self.requirements and name in self.requirements[kind]:
-            self.requirements[kind][name]["status"] = status
+            self.requirements[kind][name]["status"] = is_met
 
     async def evaluate(self):
         """Determines if the current mode logic triggers a state transition."""
@@ -202,8 +220,11 @@ class SystemModesManager:
                             
                             if "status.update" in ce.get("type", ""):
                                 # Update evaluation map for current active mode
+                                # for mode in self.modes.values(): 
+                                #     await mode.update(ce.data.get("status", {}))
+                                # Update evaluation map for current active mode
                                 for mode in self.modes.values(): 
-                                    await mode.update(ce.data.get("status", {}))
+                                    await mode.update(ce.data)
                             elif "transition.request" in ce.get("type", ""):
                                 await self.transitions_buffer.put({"transition": ce.data, "is_remote_command": True})
                         except Exception: pass
@@ -223,11 +244,39 @@ class SystemModesManager:
         topic = ce.get("destpath", "")
         if topic: await self.publish_queue.put((topic, to_structured(ce)[1]))
 
+    # async def status_publish_monitor(self):
+    #     while True:
+    #         event = CloudEvent(
+    #             attributes={"type": "envds.systemmode.status.update", "source": f"envds.{self.config.daq_id}.system-modes"},
+    #             data={"status": {"kind": "SystemMode", "name": self.active_mode, "status": True, "time": get_datetime_string()}}
+    #         )
+    #         event["destpath"] = f"envds/{self.config.daq_id}/system-modes/status/update"
+    #         await self.send_event(event)
+    #         await asyncio.sleep(30)
+    
     async def status_publish_monitor(self):
         while True:
+            # --- NEW envds-COMPLIANT STATUS BLOCK ---
+            status_str = "true" if self.active_mode else "false"
+            
+            status_data = {
+                "id": {
+                    "app_group": "system",
+                    "app_uid": self.active_mode if self.active_mode else "none"
+                },
+                "state": {
+                    "system_active": {
+                        "requested": "true", 
+                        "actual": status_str
+                    }
+                },
+                "timestamp": get_datetime_string()
+            }
+            # ----------------------------------------
+            
             event = CloudEvent(
                 attributes={"type": "envds.systemmode.status.update", "source": f"envds.{self.config.daq_id}.system-modes"},
-                data={"status": {"kind": "SystemMode", "name": self.active_mode, "status": True, "time": get_datetime_string()}}
+                data=status_data
             )
             event["destpath"] = f"envds/{self.config.daq_id}/system-modes/status/update"
             await self.send_event(event)
