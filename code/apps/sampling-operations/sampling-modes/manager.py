@@ -223,22 +223,39 @@ class SamplingModesManager:
             L.error("configure_failed", extra={"reason": str(e)})
 
     def load_mode(self, cfg):
+        """Processes a definition and instantiates a SamplingMode object."""
         if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)
         if self.actions_buffer is None: self.actions_buffer = asyncio.Queue(maxsize=2000)
-        name = cfg["metadata"]["name"]
-        self.modes[name] = SamplingMode(cfg, self.status_buffer, self.actions_buffer)
-        # Rename "name" to "res_name"
-        L.info("loaded_mode", extra={"res_name": name})
-
-    def load_action(self, cfg):
-        if self.actions_target_buffer is None: self.actions_target_buffer = asyncio.Queue(maxsize=2000)
-        name = cfg["metadata"]["name"]
+        
         try:
+            name = cfg["metadata"]["name"]
+            self.modes[name] = SamplingMode(cfg, self.status_buffer, self.actions_buffer)
+            self.logger.info("mode_instance_created", extra={"res_name": name, "req_count": len(cfg.get("requirements", []))})
+        except KeyError as e:
+            self.logger.error("mode_load_failed_metadata", extra={"reason": f"Missing key: {str(e)}", "config": cfg})
+            
+    def load_action(self, cfg):
+        """Processes a definition and instantiates a SamplingAction object."""
+        if self.actions_target_buffer is None: 
+            self.actions_target_buffer = asyncio.Queue(maxsize=2000)
+        
+        name = cfg["metadata"]["name"]
+        
+        # 1. PREVENT TASK LEAKS: Stop the old action if it already exists 
+        # (matching the pattern used in other services)
+        if name in self.actions:
+            old_action = self.actions[name]
+            if hasattr(old_action, 'stop'):
+                old_action.stop()
+
+        try:
+            # 2. Instantiate and Cache
             self.actions[name] = SamplingAction(cfg, self.actions_target_buffer)
-            # Rename "name" to "res_name"
-            L.info("loaded_action", extra={"res_name": name})
+            
+            # 3. VERIFICATION LOG: Use 'res_name' for consistency with load_mode
+            L.info("loaded_action", extra={"res_name": name, "module": cfg["metadata"].get("action_module")})
+            
         except Exception as e:
-            # Rename "name" to "res_name"
             L.error("action_load_failed", extra={"res_name": name, "reason": str(e)})
 
     async def setup(self):
@@ -259,6 +276,42 @@ class SamplingModesManager:
         asyncio.create_task(self.action_target_monitor())
         asyncio.create_task(self.status_publish_monitor())
 
+    async def submit_get(self, path: str):
+        """Helper to fetch from local datastore with logging."""
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            url = f"http://{datastore_url}/{path}/"
+            
+            resp = await self.http_client.get(url, timeout=timeout)
+            
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                self.logger.warning("datastore_get_failed", extra={"path": path, "status": resp.status_code})
+                return {}
+        except Exception as e:
+            self.logger.error("datastore_get_error", extra={"path": path, "reason": str(e)})
+            return {}
+
+    async def submit_request(self, path: str, query: dict):
+        """Helper to fetch specific definitions with logging."""
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            url = f"http://{datastore_url}/{path}/"
+            
+            resp = await self.http_client.get(url, params=query, timeout=timeout)
+            
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                self.logger.warning("datastore_request_failed", extra={"path": path, "status": resp.status_code})
+                return {}
+        except Exception as e:
+            self.logger.error("datastore_request_error", extra={"path": path, "reason": str(e)})
+            return {}
+
     async def publish_local_definitions(self):
         await asyncio.sleep(5)
         while True:
@@ -277,20 +330,40 @@ class SamplingModesManager:
             await asyncio.sleep(60)
 
     async def sync_sampling_definitions_loop(self):
+        """Syncs Actions and SamplingModes dynamically from the local Datastore."""
+        resources_to_sync = ["action", "samplingmode"]
+        
         while True:
             try:
-                ds_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
-                for res in ["action", "samplingmode"]:
-                    resp = await self.http_client.get(f"http://{ds_url}/{res}-definition/registry/ids/get/")
-                    if resp.status_code == 200:
-                        for did in resp.json().get("results", []):
-                            d_resp = await self.http_client.get(f"http://{ds_url}/{res}-definition/registry/get/", params={"name": did})
-                            if d_resp.status_code == 200 and d_resp.json().get("results"):
-                                cfg = d_resp.json()["results"][0]
-                                if res == "action": self.load_action(cfg)
-                                else: self.load_mode(cfg)
+                for res in resources_to_sync:
+                    # 1. Fetch available IDs for the resource type
+                    ids_resp = await self.submit_get(path=f"{res}-definition/registry/ids/get")
+                    
+                    if ids_resp and "results" in ids_resp:
+                        ids = ids_resp["results"]
+                        self.logger.debug("definitions_ids_received", extra={"resource": res, "count": len(ids), "ids": ids})
+                        
+                        for did in ids:
+                            # 2. Fetch the actual definition body
+                            d_resp = await self.submit_request(path=f"{res}-definition/registry/get", query={"name": did})
+                            
+                            if d_resp and "results" in d_resp and d_resp["results"]:
+                                config = d_resp["results"][0]
+                                self.logger.info("definition_received", extra={"resource": res, "res_name": did})
+                                
+                                # 3. Route to the appropriate loader
+                                if res == "action":
+                                    self.load_action(config)
+                                else:
+                                    self.load_mode(config)
+                            else:
+                                self.logger.warning("definition_body_missing", extra={"resource": res, "res_name": did})
+                    else:
+                        self.logger.debug("no_definitions_found", extra={"resource": res})
+
             except Exception as e:
-                L.error("sync_failed", extra={"reason": str(e)})
+                self.logger.error("sync_loop_failed", extra={"reason": str(e)})
+                
             await asyncio.sleep(60)
 
     async def send_event(self, ce):
