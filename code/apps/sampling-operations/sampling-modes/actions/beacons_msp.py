@@ -46,6 +46,16 @@ from envds.util.util import (
 from envds.sampling.event import SamplingEvent
 from envds.sampling.types import SamplingEventType as sampet
 
+import logging
+from logfmter import Logfmter
+
+# Configure structured logging
+handler = logging.StreamHandler()
+handler.setFormatter(Logfmter())
+logging.basicConfig(handlers=[handler])
+L = logging.getLogger(__name__)
+L.setLevel(logging.INFO)
+
 ## this is the model for the deterministic data approach.
 def calculate_heater_setpoint(temp, humidity):
     # DEAD-MAN SWITCH: If either sensor is offline, turn off the heater!
@@ -56,24 +66,21 @@ def calculate_heater_setpoint(temp, humidity):
     setpoint = temp * 1.5 + humidity
     return {"heater_setpoint": setpoint}
 
-async def set_nominal_inlet_flow(self, nominal_flow_rate):
-    # since this is in beacons_msp
-    nozzle_diam = .019 # m
-    flow_sensor_diam = .1016 # m
-
-    result = {"inlet_flow_sp": 10}
-    return result
-
-async def set_isokinetic_inlet_flow(self, relative_wind_speed):
-    # since this is in beacons_msp
-    nozzle_diam = .019 # m
-    flow_sensor_diam = .1016 # m
-
-    # ws (m/s) * xsect sfc area (m2) -> m3/s -> lpm
-    flow = relative_wind_speed * (nozzle_diam/2)^2 * math.pi * (60. / 1000.) # lpm
+async def set_isokinetic_inlet_flow(**kwargs):
+    """
+    Stubbed to return 50% flow for isokinetic sampling.
+    Will map the return dict key ("fan_speed_sp") directly to the targets config.
+    """
+    # Later, calculate real flow using kwargs.get("relative_wind_speed")
+    L.info("action_triggered", extra={"action": "set_isokinetic_inlet_flow", "target_val": 50.0})
     
-    # as a check, velocity at flow_sensor
-    inlet_velocity = flow *(1000./60.) / math.pi / (flow_sensor_diam/2)^2 # m/s
+    return {"fan_speed_sp": 50.0}
+
+
+async def set_reverse_inlet_flow(**kwargs):
+    """
+    Stubbed to return -80% flow to clear the inlet.
+    """
+    L.info("action_triggered", extra={"action": "set_reverse_inlet_flow", "target_val": -80.0})
     
-    result = {"inlet_flow_sp": flow}
-    return result
+    return {"fan_speed_sp": -80.0}

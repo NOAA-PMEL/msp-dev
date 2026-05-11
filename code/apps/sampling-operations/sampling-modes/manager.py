@@ -586,36 +586,105 @@ class SamplingModesManager:
                 await self.actions[name].run()
             self.actions_buffer.task_done()
             
+    # async def action_target_monitor(self):
+    #     while True:
+    #         try:
+    #             targets = await self.actions_target_buffer.get()
+    #             for name, data in targets.items():
+    #                 val, meta = data["data"], data["metadata"]
+    #                 t_type = meta.get("target_type", "controller").lower()
+
+    #                 # Get the target ID from the target's metadata block
+    #                 t_id = meta.get("target_id", meta.get("variablemap_name", "unknown"))
+    #                 target_var_name = meta.get("variable", name)
+
+    #                 # Send a formatted settings request using the base factory
+    #                 event = SamplingEvent.create(
+    #                     type=f"envds.{t_type}.settings.request", 
+    #                     source=f"envds.{self.config.daq_id}.sampling-modes",
+    #                     data={
+    #                         "settings": target_var_name,
+    #                         "requested": val
+    #                     },
+    #                     extra_header={"deviceid": t_id}
+    #                 )
+                    
+    #                 # Devices listen to the generic settings/request topic for incoming commands
+    #                 event["destpath"] = f"envds/sensor/settings/request"
+    #                 await self.send_event(event)
+
+    #         except Exception as e:
+    #             L.error("action_target_monitor error", extra={"reason": str(e)})
+
+    #         finally:
+    #             if 'targets' in locals():
+    #                 self.actions_target_buffer.task_done()
+
     async def action_target_monitor(self):
+        """Consumes evaluated action targets and broadcasts them as setting updates."""
         while True:
             try:
                 targets = await self.actions_target_buffer.get()
-                for name, data in targets.items():
-                    val, meta = data["data"], data["metadata"]
-                    t_type = meta.get("target_type", "controller").lower()
-
-                    # Get the target ID from the target's metadata block
-                    t_id = meta.get("target_id", meta.get("variablemap_name", "unknown"))
-                    target_var_name = meta.get("variable", name)
-
-                    # Send a formatted settings request using the base factory
+                
+                for trg_name, trg_data in targets.items():
+                    val = trg_data["data"]
+                    meta = trg_data["metadata"]
+                    
+                    v_name = meta.get("variable", trg_name)
+                    v_map_name = meta.get("variablemap_name")
+                    
+                    t_type = meta.get("target_type")
+                    t_id = meta.get("target_id")
+                    
+                    # --- DYNAMIC TARGET RESOLUTION ---
+                    if not t_id or not t_type:
+                        if v_map_name:
+                            # Fetch the VariableMap from the local Datastore
+                            resp = await self.submit_request(
+                                path="variablemap-definition/registry/get", 
+                                query={"name": v_map_name}
+                            )
+                            if resp and "results" in resp and resp["results"]:
+                                vmap_def = resp["results"][0]
+                                var_def = vmap_def.get("data", {}).get("variables", {}).get(v_name, {})
+                                
+                                # Extract source hardware mapping
+                                if var_def.get("map_type") == "direct":
+                                    direct_var = var_def.get("direct_value", {}).get("source_variable", v_name)
+                                    source_info = var_def.get("source", {}).get(direct_var, {})
+                                    
+                                    # Use the hardware ID mapped in the VariableMap
+                                    t_id = t_id or source_info.get("source_id")
+                                    t_type = t_type or source_info.get("source_type")
+                        
+                        # Ultimate fallbacks if resolution fails
+                        t_id = t_id or v_map_name or "unknown"
+                        t_type = t_type or "controller"
+                    # ---------------------------------
+                    
+                    t_type = t_type.lower()
+                    source_id = f"envds.{self.config.daq_id}.sampling-modes"
+                    
+                    topic = f"envds/{self.config.daq_id}/{t_type}/{t_id}/settings/request"
+                    ce_type = f"envds.{t_type}.settings.request"
+                    
+                    # USE THE ENVDS HELPER INSTEAD OF RAW CLOUDEVENT
                     event = SamplingEvent.create(
-                        type=f"envds.{t_type}.settings.request", 
-                        source=f"envds.{self.config.daq_id}.sampling-modes",
+                        type=ce_type, 
+                        source=source_id,
                         data={
-                            "settings": target_var_name,
+                            "settings": v_name,
                             "requested": val
                         },
                         extra_header={"deviceid": t_id}
                     )
+                    event["destpath"] = topic
                     
-                    # Devices listen to the generic settings/request topic for incoming commands
-                    event["destpath"] = f"envds/sensor/settings/request"
+                    self.logger.info(f"Broadcasting Action Command -> [{t_type.upper()}] {t_id}: {v_name} = {val}")
                     await self.send_event(event)
 
             except Exception as e:
-                L.error("action_target_monitor error", extra={"reason": str(e)})
-
+                self.logger.error("action_target_monitor", extra={"reason": str(e)})
             finally:
                 if 'targets' in locals():
                     self.actions_target_buffer.task_done()
