@@ -58,7 +58,7 @@ class SamplingMode:
         self.actions = {"true": [], "false": []}
         self.current_state = False
         self.last_status_time = 0 # Track last heartbeat
-        self.active = True 
+        self.active = False 
         
         self._configure_requirements()
 
@@ -433,19 +433,55 @@ class SamplingModesManager:
         except Exception as e:
             self.logger.error("send_to_mqtt failed", extra={"reason": str(e)})
 
+    # async def mqtt_listen_loop(self):
+    #     my_id = f"envds.{self.config.daq_id}.sampling-modes"
+    #     while True:
+    #         try:
+    #             async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
+    #                 for topic in self.config.mqtt_topic_subscriptions.split(","):
+    #                     await client.subscribe(topic.strip())
+    #                 async for msg in client.messages:
+    #                     try:
+    #                         ce = from_json(msg.payload)
+    #                         if ce.get("source") == my_id: continue
+                            
+    #                         if "data.update" in ce.get("type", ""):
+    #                             src_id = ce.get("source", "").split(".")[-1]
+    #                             ts = ce.data.get("variables", {}).get("time", {}).get("data")
+    #                             for action_obj in self.actions.values():
+    #                                 for req_src in action_obj.config.get("sources", {}).values():
+    #                                     rid = f"{req_src['variablemap_name']}::{req_src['variableset_name']}"
+    #                                     if rid == src_id:
+    #                                         if rid not in action_obj.sources["data"]: action_obj.sources["data"][rid] = {}
+    #                                         for k, v in ce.data.get("variables", {}).items():
+    #                                             action_obj.sources["data"][rid][k] = {"data": v.get("data"), "last_update": ts}
+                            
+    #                         elif "status.update" in ce.get("type", ""):
+    #                             # for mode in self.modes.values(): 
+    #                             #     await mode.update(ce.data.get("status", {}))
+    #                             # Update evaluation map for current active mode
+    #                             for mode in self.modes.values(): 
+    #                                 await mode.update(ce.data)
+    #                     except Exception: pass
+    #         except MqttError:
+    #             await asyncio.sleep(5)
+
     async def mqtt_listen_loop(self):
         my_id = f"envds.{self.config.daq_id}.sampling-modes"
         while True:
             try:
                 async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
                     for topic in self.config.mqtt_topic_subscriptions.split(","):
-                        await client.subscribe(topic.strip())
+                        if topic.strip():
+                            await client.subscribe(topic.strip())
                     async for msg in client.messages:
                         try:
                             ce = from_json(msg.payload)
+                            ce_type = ce.get("type", "")
+                            
                             if ce.get("source") == my_id: continue
                             
-                            if "data.update" in ce.get("type", ""):
+                            if "data.update" in ce_type:
                                 src_id = ce.get("source", "").split(".")[-1]
                                 ts = ce.data.get("variables", {}).get("time", {}).get("data")
                                 for action_obj in self.actions.values():
@@ -456,13 +492,30 @@ class SamplingModesManager:
                                             for k, v in ce.data.get("variables", {}).items():
                                                 action_obj.sources["data"][rid][k] = {"data": v.get("data"), "last_update": ts}
                             
-                            elif "status.update" in ce.get("type", ""):
-                                # for mode in self.modes.values(): 
-                                #     await mode.update(ce.data.get("status", {}))
-                                # Update evaluation map for current active mode
+                            elif "status.update" in ce_type:
                                 for mode in self.modes.values(): 
                                     await mode.update(ce.data)
-                        except Exception: pass
+                                    
+                            # --- NEW: Listen for activation requests from SystemModes ---
+                            elif ce_type == "envds.samplingmode.activation.request":
+                                mode_name = ce.data.get("mode_name")
+                                active_flag = ce.data.get("active", False)
+                                
+                                if mode_name in self.modes:
+                                    self.modes[mode_name].active = active_flag
+                                    self.logger.info(f"Received Command: Set SamplingMode '{mode_name}' active = {active_flag}")
+                                    # Force an immediate evaluation so it updates its heartbeat and executes actions if ready
+                                    await self.modes[mode_name].evaluate()
+                            # ----------------------------------------------------------
+                            
+                            # --- NEW: Listen for incoming remote transition overrides ---
+                            elif ce_type == "envds.sampling-operations.transition.request":
+                                self.logger.info(f"Received remote transition command: {ce.data}")
+                                await self.transitions_buffer.put(ce.data)
+                            # ----------------------------------------------------------
+                                    
+                        except Exception as inner_e: 
+                            self.logger.error("Error processing MQTT message", extra={"reason": str(inner_e)})
             except MqttError:
                 await asyncio.sleep(5)
 

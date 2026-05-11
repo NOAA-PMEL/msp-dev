@@ -266,7 +266,7 @@ class SystemModesManager:
             try:
                 if self.config.is_primary_controller:
                     if not self.active_mode and self.modes:
-                        self.activate_system_mode(self.config.system_init_mode)
+                        await self.activate_system_mode(self.config.system_init_mode)
                 
                 # Evaluate ALL modes so they all broadcast their heartbeat
                 for mode in list(self.modes.values()):
@@ -277,14 +277,56 @@ class SystemModesManager:
                 
             await asyncio.sleep(time_to_next(1))
 
-    def activate_system_mode(self, name):
+    # def activate_system_mode(self, name):
+    #     if name not in self.modes or name == self.active_mode: return
+        
+    #     if self.active_mode: self.modes[self.active_mode].active = False
+    #     self.active_mode = name
+    #     self.modes[name].active = True
+    #     L.info("system_mode_activated", extra={"mode": name})
+
+    async def activate_system_mode(self, name):
+        """Switches the active macro-mode and commands subordinate SamplingModes."""
         if name not in self.modes or name == self.active_mode: return
         
-        if self.active_mode: self.modes[self.active_mode].active = False
+        # 1. Deactivate current mode and command its SamplingModes to stop
+        if self.active_mode: 
+            self.modes[self.active_mode].active = False
+            for req in self.modes[self.active_mode].config.get("requirements", []):
+                if req.get("kind") == "SamplingMode":
+                    await self.send_activation_request(req.get("name"), False)
+                    
+        # 2. Activate new mode
         self.active_mode = name
         self.modes[name].active = True
-        L.info("system_mode_activated", extra={"mode": name})
+        self.logger.info("system_mode_activated", extra={"mode": name})
+        
+        # 3. Command new subordinate SamplingModes to start
+        for req in self.modes[name].config.get("requirements", []):
+            if req.get("kind") == "SamplingMode":
+                await self.send_activation_request(req.get("name"), True)
 
+    async def send_activation_request(self, mode_name: str, active: bool):
+        """Broadcasts an explicit command for a SamplingMode to toggle its active state."""
+        source_id = f"envds.{self.config.daq_id}.system-modes"
+        topic = f"envds/{self.config.daq_id}/sampling-modes/{mode_name}/activation/request"
+        ce_type = "envds.samplingmode.activation.request"
+        
+        event = CloudEvent(
+            attributes={
+                "type": ce_type,
+                "source": source_id,
+                "datacontenttype": "application/json"
+            },
+            data={
+                "mode_name": mode_name,
+                "active": active
+            }
+        )
+        event["destpath"] = topic
+        self.logger.info(f"Commanding SamplingMode '{mode_name}' -> Active: {active}")
+        await self.send_to_mqtt(topic, event)
+        
     async def transition_monitor(self):
         """Listens for state changes from the evaluation loop or remote nodes."""
         while True:
@@ -293,7 +335,7 @@ class SystemModesManager:
             is_remote = data.get("is_remote_command", False)
             if self.config.is_primary_controller or is_remote:
                 name = data.get("transition", {}).get("name")
-                self.activate_system_mode(name)
+                await self.activate_system_mode(name)
             self.transitions_buffer.task_done()
 
     async def publish_local_definitions(self):

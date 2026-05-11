@@ -84,3 +84,19 @@ async def set_reverse_inlet_flow(**kwargs):
     L.info("action_triggered", extra={"action": "set_reverse_inlet_flow", "target_val": -80.0})
     
     return {"fan_speed_sp": -80.0}
+
+async def turn_on_main_power(**kwargs):
+    L.info("action_triggered", extra={"action": "turn_on_main_power", "target_val": 1})
+    return {"main_power_state": 1}
+
+async def turn_on_physics_power(**kwargs):
+    L.info("action_triggered", extra={"action": "turn_on_physics_power", "target_val": 1})
+    return {"physics_power_state": 1}
+
+async def turn_on_optics_power(**kwargs):
+    L.info("action_triggered", extra={"action": "turn_on_optics_power", "target_val": 1})
+    return {"optics_power_state": 1}
+
+async def turn_on_spare_power(**kwargs):
+    L.info("action_triggered", extra={"action": "turn_on_spare_power", "target_val": 1})
+    return {"spare_power_state": 1}
