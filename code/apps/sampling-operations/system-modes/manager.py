@@ -11,6 +11,7 @@ from pydantic import BaseSettings, Field
 from logfmter import Logfmter 
 from cloudevents.http import CloudEvent, from_json
 from cloudevents.conversion import to_json, to_structured
+from cloudevents.exceptions import InvalidStructuredJSON
 from aiomqtt import Client, MqttError
 import uvicorn
 from envds.util.util import (
@@ -42,7 +43,7 @@ class SystemModesConfig(BaseSettings):
 
     # FIX: Allow this to be parsed correctly from the environment or default to None
     knative_broker: str | None = None
-    
+
     system_init_mode: str = "startup"
     is_primary_controller: bool = True
     
