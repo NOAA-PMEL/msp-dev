@@ -67,6 +67,39 @@ class GenericRecordFile:
     async def write(self, record: dict, ymd: str, hour: str = "00"):
         await self.data_buffer.put((record, ymd, hour))
 
+    # async def __write(self):
+    #     while True:
+    #         record, ymd, hour = await self.data_buffer.get()
+    #         try:
+    #             self.__open(ymd, hour)
+    #             if not self.file:
+    #                 self.data_buffer.task_done()
+    #                 continue
+
+    #             json.dump(record, self.file)
+    #             self.file.write("\n")
+
+    #             if self.save_now:
+    #                 self.file.flush()
+    #                 if self.save_interval > 0:
+    #                     self.save_now = False
+
+    #         except Exception as e:
+    #             self.logger.error("__write loop error", extra={"reason": str(e)})
+
+    #         self.data_buffer.task_done()
+
+    # 1. Create a synchronous helper for the blocking I/O
+    def _sync_write(self, record):
+        json.dump(record, self.file)
+        self.file.write("\n")
+
+        if self.save_now:
+            self.file.flush()
+            if self.save_interval > 0:
+                self.save_now = False
+
+    # 2. Call it in your async loop using to_thread
     async def __write(self):
         while True:
             record, ymd, hour = await self.data_buffer.get()
@@ -76,28 +109,53 @@ class GenericRecordFile:
                     self.data_buffer.task_done()
                     continue
 
-                json.dump(record, self.file)
-                self.file.write("\n")
-
-                if self.save_now:
-                    self.file.flush()
-                    if self.save_interval > 0:
-                        self.save_now = False
+                # Offload the blocking disk write to a background thread
+                await asyncio.to_thread(self._sync_write, record)
 
             except Exception as e:
                 self.logger.error("__write loop error", extra={"reason": str(e)})
 
             self.data_buffer.task_done()
 
+    # def __open(self, ymd: str, hour: str = "00"):
+    #     fname = ymd
+    #     if self.file_interval == "hour":
+    #         fname += f"_{hour}"
+    #     fname += ".jsonl"
+
+    #     if self.file is not None and not self.file.closed and os.path.basename(self.file.name) == fname:
+    #         return
+
+    #     try:
+    #         if not os.path.exists(self.base_path):
+    #             os.makedirs(self.base_path, exist_ok=True)
+    #         self.file = open(os.path.join(self.base_path, fname), mode="a")
+    #     except OSError as e:
+    #         self.logger.error("OSError creating path", extra={"error": str(e), "path": self.base_path})
+    #         self.file = None
+
     def __open(self, ymd: str, hour: str = "00"):
+        # 1. Construct the target filename
         fname = ymd
         if self.file_interval == "hour":
             fname += f"_{hour}"
         fname += ".jsonl"
 
-        if self.file is not None and not self.file.closed and os.path.basename(self.file.name) == fname:
-            return
+        # 2. Check if we already have a file open
+        if self.file is not None and not self.file.closed:
+            # If the currently open file is the one we want, do nothing and return
+            if os.path.basename(self.file.name) == fname:
+                return
+            # If the name doesn't match (e.g., the day or hour rolled over), 
+            # safely flush and close the old file descriptor to prevent leaks!
+            else:
+                try:
+                    self.file.flush()
+                    self.file.close()
+                except Exception as e:
+                    self.logger.error("error closing old file during rollover", extra={"reason": str(e)})
 
+        # 3. Open the new file
         try:
             if not os.path.exists(self.base_path):
                 os.makedirs(self.base_path, exist_ok=True)
