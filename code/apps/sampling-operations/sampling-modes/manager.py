@@ -160,6 +160,15 @@ class SamplingMode:
             if is_changed:
                 await self.execute_actions(self.current_state)
 
+    async def execute_actions(self, state: bool):
+        """Pushes configured actions to the buffer when the mode state changes."""
+        run_type = str(state).lower()
+        if self.actions.get(run_type):
+            for act in self.actions[run_type]:
+                await self.actions_buffer.put({
+                    "action": {"name": act}, 
+                    "state": state
+                })
 class SamplingAction:
     """Executes python modules to compute physical system settings."""
     def __init__(self, config, actions_target_buffer):
@@ -373,9 +382,14 @@ class SamplingModesManager:
                 await asyncio.sleep(5)
 
     async def mode_evaluation_loop(self):
+        """Drives evaluation and catches errors to prevent silent task death."""
         while True:
-            for mode in list(self.modes.values()): 
-                await mode.evaluate()
+            try:
+                for mode in list(self.modes.values()): 
+                    await mode.evaluate()
+            except Exception as e:
+                self.logger.error("mode_evaluation_loop error", extra={"reason": str(e)})
+                
             await asyncio.sleep(time_to_next(1))
 
     # async def status_publish_monitor(self):
@@ -439,10 +453,10 @@ class SamplingModesManager:
         """Standardized monitor: Immediate update on change, reliable 30s heartbeat."""
         while True:
             try:
-                # Wait for evaluate() to trigger an update
                 data = await self.status_buffer.get()
                 status_data = data.get("status", {})
 
+                # STRICT envds STANDARD
                 event = SamplingEvent.create_sampling_mode_status_update(
                     source=f"envds.{self.config.daq_id}.sampling-modes",
                     data=status_data
@@ -456,7 +470,7 @@ class SamplingModesManager:
                 self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
             finally:
                 self.status_buffer.task_done()
-
+                
     async def action_execution_monitor(self):
         while True:
             req = await self.actions_buffer.get()

@@ -187,16 +187,20 @@ class SystemModesManager:
     async def evaluation_loop(self):
         """Primary controller logic for driving the state machine."""
         while True:
-            if self.config.is_primary_controller:
-                if not self.active_mode and self.modes:
-                    self.activate_system_mode(self.config.system_init_mode)
-            
-            # Evaluate ALL modes so they all broadcast their heartbeat
-            for mode in self.modes.values():
-                await mode.evaluate()
+            try:
+                if self.config.is_primary_controller:
+                    if not self.active_mode and self.modes:
+                        self.activate_system_mode(self.config.system_init_mode)
+                
+                # Evaluate ALL modes so they all broadcast their heartbeat
+                for mode in list(self.modes.values()):
+                    await mode.evaluate()
+                    
+            except Exception as e:
+                self.logger.error("evaluation_loop error", extra={"reason": str(e)})
                 
             await asyncio.sleep(time_to_next(1))
-
+            
     def activate_system_mode(self, name):
         if name not in self.modes or name == self.active_mode: return
         
@@ -374,8 +378,8 @@ class SystemModesManager:
                 data = await self.status_buffer.get()
                 status_data = data.get("status", {})
 
-                # FIX: Hardcode the valid source string instead of self.config_prefix
-                event = SamplingEvent.create_sampling_mode_status_update(
+                # STRICT envds STANDARD: Use the new System Mode factory
+                event = SamplingEvent.create_system_mode_status_update(
                     source=f"envds.{self.config.daq_id}.system-modes", 
                     data=status_data
                 )
