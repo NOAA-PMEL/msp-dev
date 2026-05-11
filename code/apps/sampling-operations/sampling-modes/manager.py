@@ -259,7 +259,7 @@ class SamplingModesManager:
             self.actions[name] = SamplingAction(cfg, self.actions_target_buffer)
             
             # 3. VERIFICATION LOG: Use 'res_name' for consistency with load_mode
-            L.info("loaded_action", extra={"res_name": name, "module": cfg["metadata"].get("action_module")})
+            L.info("loaded_action", extra={"res_name": name, "res_module": cfg["metadata"].get("action_module")})
             
         except Exception as e:
             L.error("action_load_failed", extra={"res_name": name, "reason": str(e)})
