@@ -251,6 +251,91 @@ class SamplingState:
 
     #         await asyncio.sleep(time_to_next(1))
 
+    # async def requirement_monitor(self):
+    #     """
+    #     Monitors requirements for state transitions. 
+    #     Triggers update immediately on change or every 30s as a heartbeat.
+    #     """
+    #     while True:
+    #         try:
+    #             state_status = []
+    #             current_dt = get_datetime().replace(tzinfo=timezone.utc)
+                
+    #             # 1. Evaluate each requirement kind/name
+    #             for req_type, req_kind in self.requirements.items():
+    #                 for req_name, req in req_kind.items():
+    #                     current_status = req["status"]
+                        
+    #                     # Determine transition window
+    #                     transition_time = req["transition_time"]["to_become_false"]
+    #                     if current_status is False:
+    #                         transition_time = req["transition_time"]["to_become_true"]
+                        
+    #                     transition_dt = get_datetime_with_delta(delta=(-(transition_time)), dt=current_dt)
+
+    #                     req_status = []
+    #                     for ts, st in req["data"].items():
+    #                         if string_to_datetime(ts).replace(tzinfo=timezone.utc) > transition_dt:
+    #                             req_status.append(st)
+
+    #                     # FIX: Prevent the all([]) == True bug
+    #                     if not req_status:
+    #                         req["status"] = False
+    #                     else:
+    #                         req["status"] = all(req_status)
+
+    #                     state_status.append(req["status"])
+
+    #             # 2. Determine aggregate state
+    #             latest_status = all(state_status) if state_status else False
+                
+    #             # 3. Check for triggers: State Change OR 30s Heartbeat
+    #             now = current_dt.timestamp()
+    #             is_changed = (latest_status != self.current_status)
+    #             is_heartbeat = (now - self.last_status_time >= 30)
+
+    #             if is_changed or is_heartbeat:
+    #                 self.logger.info(
+    #                     "state evaluation trigger", 
+    #                     extra={"state_name": self.config["metadata"]["name"], "change": is_changed, "hb": is_heartbeat}
+    #                 )
+                    
+    #                 # Update internal state and reset heartbeat timer
+    #                 self.current_status = latest_status
+    #                 self.last_status_time = now
+
+    #                 state_name = self.config["metadata"]["name"]
+    #                 state_ns = self.config["metadata"]["sampling_namespace"]
+    #                 state_valid_time = self.config["metadata"]["valid_config_time"]
+
+    #                 # 4. Build the envds-compliant status block
+    #                 status_str = "true" if self.current_status else "false"
+
+    #                 status = {
+    #                     "id": {
+    #                         "app_group": "state",
+    #                         "app_uid": state_name,
+    #                         "sampling_namespace": state_ns,
+    #                         "valid_config_time": state_valid_time
+    #                     },
+    #                     "state": {
+    #                         "state_active": {
+    #                             "requested": "true", 
+    #                             "actual": status_str
+    #                         }
+    #                     },
+    #                     "timestamp": get_datetime_string()
+    #                 }
+                    
+    #                 # 5. Push to buffer for status_status_monitor to broadcast
+    #                 await self.status_buffer.put(status)
+
+    #         except Exception as e:
+    #             self.logger.error("requirement_monitor error", extra={"reason": str(e)})
+
+    #         # Sleep until the next integer second
+    #         await asyncio.sleep(time_to_next(1))
+
     async def requirement_monitor(self):
         """
         Monitors requirements for state transitions. 
@@ -272,10 +357,16 @@ class SamplingState:
                             transition_time = req["transition_time"]["to_become_true"]
                         
                         transition_dt = get_datetime_with_delta(delta=(-(transition_time)), dt=current_dt)
+                        
+                        # --- CPU OPTIMIZATION ---
+                        # Generate the cutoff string exactly once per requirement cycle
+                        transition_str = datetime_to_string(transition_dt)
 
                         req_status = []
                         for ts, st in req["data"].items():
-                            if string_to_datetime(ts).replace(tzinfo=timezone.utc) > transition_dt:
+                            # Fast lexicographical string comparison (O(N) in C)
+                            # replaces heavy string_to_datetime() parsing
+                            if ts > transition_str:
                                 req_status.append(st)
 
                         # FIX: Prevent the all([]) == True bug
@@ -336,35 +427,73 @@ class SamplingState:
             # Sleep until the next integer second
             await asyncio.sleep(time_to_next(1))
 
+    # async def data_gc(self):
+    #     while True:
+    #         try:
+    #             for req_type, req_kind in self.requirements.items():
+    #                 for req_name, req in req_kind.items():
+    #                     gc_time = req["transition_time"]["to_become_false"]
+    #                     if req["transition_time"]["to_become_true"] > gc_time:
+    #                         gc_time = req["transition_time"]["to_become_true"]
+    #                     # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "req": req})
+    #                     # delta = timedelta(seconds=(gc_time * -1))
+    #                     # gc_dt = get_datetime_with_delta(delta)
+    #                     dt_now = get_datetime().replace(tzinfo=timezone.utc)
+    #                     gc_dt = get_datetime_with_delta(delta=(-(gc_time)), dt=dt_now)
+    #                     # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "now": get_datetime_string(), "gc_dt": gc_dt})
+    #                     keys = list(req["data"].keys())
+    #                     # self.logger.debug("data_gc", extra={"keys": keys, "gc_dt": gc_dt})
+    #                     del_list = []
+    #                     for k in keys:
+    #                         # self.logger.debug("data_gc2", extra={"key": string_to_datetime(k).replace(tzinfo=timezone.utc), "gc_dt": gc_dt, "dt_now": get_datetime()})
+    #                         # self.logger.debug("data_gc2", extra={"diff": string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt})
+    #                         if string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt:
+    #                             # self.logger.debug("data_gc-pop", extra={"keys": k})
+    #                             # del self.requirements[req_type][req_name]["data"][k]
+    #                             req["data"].pop(k)
+    #             self.logger.debug("data_gc", extra={"self.req": self.requirements[req_type][req_name]["data"]})
+    #         except Exception as e:
+    #             self.logger.error("data_gc", extra={"reason": e})
+    #         await asyncio.sleep(time_to_next(30))
+            
     async def data_gc(self):
+        """
+        Garbage collector to purge stale requirement data.
+        Runs every 30 seconds to keep memory lean.
+        """
         while True:
             try:
                 for req_type, req_kind in self.requirements.items():
                     for req_name, req in req_kind.items():
+                        # Determine the maximum time we need to hold data for this specific requirement
                         gc_time = req["transition_time"]["to_become_false"]
                         if req["transition_time"]["to_become_true"] > gc_time:
                             gc_time = req["transition_time"]["to_become_true"]
-                        # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "req": req})
-                        # delta = timedelta(seconds=(gc_time * -1))
-                        # gc_dt = get_datetime_with_delta(delta)
+                        
                         dt_now = get_datetime().replace(tzinfo=timezone.utc)
                         gc_dt = get_datetime_with_delta(delta=(-(gc_time)), dt=dt_now)
-                        # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "now": get_datetime_string(), "gc_dt": gc_dt})
+                        
+                        # --- CPU OPTIMIZATION ---
+                        # Generate the cutoff string exactly once per requirement cycle
+                        gc_str = datetime_to_string(gc_dt)
+                        
                         keys = list(req["data"].keys())
-                        # self.logger.debug("data_gc", extra={"keys": keys, "gc_dt": gc_dt})
-                        del_list = []
+                        
                         for k in keys:
-                            # self.logger.debug("data_gc2", extra={"key": string_to_datetime(k).replace(tzinfo=timezone.utc), "gc_dt": gc_dt, "dt_now": get_datetime()})
-                            # self.logger.debug("data_gc2", extra={"diff": string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt})
-                            if string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt:
-                                # self.logger.debug("data_gc-pop", extra={"keys": k})
-                                # del self.requirements[req_type][req_name]["data"][k]
-                                req["data"].pop(k)
-                self.logger.debug("data_gc", extra={"self.req": self.requirements[req_type][req_name]["data"]})
+                            # Fast lexicographical string comparison (O(N) in C)
+                            # Replaces the expensive string_to_datetime() parsing
+                            if k < gc_str:
+                                # Safe pop to avoid KeyErrors if another task removed it
+                                req["data"].pop(k, None) 
+                                
+                self.logger.debug("data_gc complete", extra={"state_name": self.config.get("metadata", {}).get("name")})
+                
             except Exception as e:
-                self.logger.error("data_gc", extra={"reason": e})
+                self.logger.error("data_gc error", extra={"reason": str(e)})
+                
+            # Align to a 30-second boundary
             await asyncio.sleep(time_to_next(30))
-            
+
     # async def update_status(self, status):
 
     #     cond_name = status["condition"]["name"]
@@ -704,7 +833,7 @@ class SamplingStatesManager:
                 
             if state_name not in self.sampling_states["requirement_map"][req_kind][req_name]:
                 self.sampling_states["requirement_map"][req_kind][req_name].append(state_name)
-                
+
     # def open_http_client(self):
     #     # create a new client for each request
     #     self.http_client = httpx.AsyncClient()

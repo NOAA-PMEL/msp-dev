@@ -260,7 +260,7 @@ class SamplingCondition:
             except Exception as e:
                 self.logger.error("condition_monitor", extra={"reason": e})
 
-            await asyncio.sleep(0.001)
+            # await asyncio.sleep(0.001)
             self.data_buffer.task_done()
 
     # async def update_status(self, status):
@@ -608,28 +608,46 @@ class SamplingCondition:
         except Exception as e:
             self.logger.error("evaluate_criteria", extra={"reason": e})
 
+        # finally:
+        #     # 6. Memory cleanup for stale data > 60 seconds old
+        #     try:
+        #         current_dt_raw = string_to_datetime(timestamp)
+        #         if not current_dt_raw:
+        #             return 
+                    
+        #         current_dt = current_dt_raw.replace(tzinfo=timezone.utc)
+        #         cutoff_dt = current_dt - timedelta(seconds=60)
+                
+        #         for src_name, src_dict in self.source_map.items():
+        #             stale_keys = []
+        #             for ts in src_dict.keys():
+        #                 dt_obj = string_to_datetime(ts)
+        #                 if dt_obj and dt_obj.replace(tzinfo=timezone.utc) < cutoff_dt:
+        #                     stale_keys.append(ts)
+                            
+        #             for ts in stale_keys:
+        #                 src_dict.pop(ts, None)
+        #     except Exception as clean_e:
+        #         self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
         finally:
-            # 6. Memory cleanup for stale data > 60 seconds old
+            # 6. FAST Memory cleanup for stale data > 60 seconds old
             try:
                 current_dt_raw = string_to_datetime(timestamp)
                 if not current_dt_raw:
                     return 
                     
-                current_dt = current_dt_raw.replace(tzinfo=timezone.utc)
-                cutoff_dt = current_dt - timedelta(seconds=60)
+                cutoff_dt = current_dt_raw.replace(tzinfo=timezone.utc) - timedelta(seconds=60)
+                cutoff_str = datetime_to_string(cutoff_dt) # Generate the string once
                 
                 for src_name, src_dict in self.source_map.items():
-                    stale_keys = []
-                    for ts in src_dict.keys():
-                        dt_obj = string_to_datetime(ts)
-                        if dt_obj and dt_obj.replace(tzinfo=timezone.utc) < cutoff_dt:
-                            stale_keys.append(ts)
+                    # Fast lexicographical string comparison (O(N) but highly optimized in C)
+                    stale_keys = [ts for ts in src_dict.keys() if ts < cutoff_str]
                             
                     for ts in stale_keys:
                         src_dict.pop(ts, None)
             except Exception as clean_e:
                 self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
-                
+
     # async def update_status_loop(self):
     #     while True:
     #         self.logger.debug("update_state_loop - send update")
@@ -1265,7 +1283,7 @@ class SamplingConditionsManager:
             except Exception as e:
                 self.logger.error("handle_mqtt_buffer", extra={"reason": e})
 
-            await asyncio.sleep(0.0001)
+            # await asyncio.sleep(0.0001)
             self.mqtt_buffer.task_done()
 
     async def mqtt_publish_loop(self):
