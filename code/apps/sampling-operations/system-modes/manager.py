@@ -91,12 +91,23 @@ class SystemMode:
             self.requirements[kind][name]["status"] = is_met
 
     async def evaluate(self):
-        """Determines if the current mode logic triggers a state transition and sends heartbeats."""
-        # 1. Calculate status of underlying requirements
-        mode_status = [req["status"] for kind in self.requirements.values() for req in kind.values()]
+        """
+        Determines if the current mode logic triggers a state transition 
+        and manages standardized heartbeat/status reporting.
+        """
+        # 1. Calculate the aggregate status of underlying requirements
+        # Extract boolean 'status' from all tracked requirement kinds (e.g., SamplingModes)
+        mode_status = [
+            req["status"] 
+            for kind in self.requirements.values() 
+            for req in kind.values()
+        ]
+        
+        # A SystemMode's logic evaluates to True only if ALL requirements are met
         latest_status = all(mode_status) if mode_status else False
         
-        # 2. Check for Heartbeat or Change in Active status
+        # 2. Manage Status Heartbeats and State Changes
+        # Updates are triggered immediately on a flip or every 30 seconds
         now = get_datetime().timestamp()
         is_changed = (self.active != self.current_state)
         is_heartbeat = (now - self.last_status_time >= 30)
@@ -106,6 +117,8 @@ class SystemMode:
             self.last_status_time = now
 
             status_str = "true" if self.active else "false"
+            
+            # Construct the envds-compliant status block for the registry
             status_update = {
                 "id": {
                     "app_group": "system",
@@ -119,15 +132,20 @@ class SystemMode:
                 },
                 "timestamp": get_datetime_string()
             }
-            # Push directly to the status buffer for MQTT broadcast
+            # Push to the status buffer for the monitor to broadcast via MQTT
             await self.status_buffer.put({"status": status_update})
 
-        # 3. Only evaluate transitions if this is the currently active mode
-        if not self.active: return 
+        # 3. Process Transitions
+        # Transitions are only processed if this specific mode is currently the active one
+        if not self.active: 
+            return 
         
+        # Convert boolean status to string keys ("true" or "false") to look up 
+        # transition targets defined in the configuration JSON
         run_type = str(latest_status).lower()
         if self.transitions.get(run_type):
             for trans in self.transitions[run_type]:
+                # Pushes transition requests to the buffer for the manager to execute
                 await self.transitions_buffer.put({"transition": trans})
 
 class SystemModesManager:
@@ -200,7 +218,7 @@ class SystemModesManager:
                 self.logger.error("evaluation_loop error", extra={"reason": str(e)})
                 
             await asyncio.sleep(time_to_next(1))
-            
+
     def activate_system_mode(self, name):
         if name not in self.modes or name == self.active_mode: return
         
@@ -372,13 +390,12 @@ class SystemModesManager:
     #         await asyncio.sleep(30)
 
     async def status_publish_monitor(self):
-        """Standardized monitor: Immediate update on change, reliable 30s heartbeat."""
         while True:
             try:
                 data = await self.status_buffer.get()
                 status_data = data.get("status", {})
 
-                # STRICT envds STANDARD: Use the new System Mode factory
+                # Use the new System Mode factory from event.py
                 event = SamplingEvent.create_system_mode_status_update(
                     source=f"envds.{self.config.daq_id}.system-modes", 
                     data=status_data
@@ -387,12 +404,11 @@ class SystemModesManager:
                 destpath = f"envds/{self.config.daq_id}/system-modes/status/update"
                 event["destpath"] = destpath
                 await self.send_to_mqtt(destpath, event)
-
             except Exception as e:
                 self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
             finally:
                 self.status_buffer.task_done()
-
+                
 async def shutdown():
     print("shutting down")
 
