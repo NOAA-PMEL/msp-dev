@@ -22,6 +22,7 @@ class SamplingEventType(BaseEventType):
     TYPE_SAMPLING_CONDITION = "samplingcondition"
     TYPE_SAMPLING_STATE = "samplingstate"
     TYPE_SAMPLING_MODE = "samplingmode"
+    TYPE_SYSTEM_MODE = "systemmode"
     
     # ACTION_RECV = "recv"
     # ACTION_SEND = "send"
@@ -121,3 +122,13 @@ class SamplingEventType(BaseEventType):
     @staticmethod
     def sampling_mode_status_update():
         return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SAMPLING_MODE), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_UPDATE])
+
+    # ---> ADD THESE TWO METHODS <---
+    @staticmethod
+    def system_mode_status_request():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SYSTEM_MODE), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def system_mode_status_update():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SYSTEM_MODE), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_UPDATE])
+    
