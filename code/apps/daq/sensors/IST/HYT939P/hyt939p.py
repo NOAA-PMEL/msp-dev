@@ -36,6 +36,7 @@ from envds.message.message import Message
 # from typing import Union
 # from cloudevents.http import CloudEvent, from_dict, from_json
 # from cloudevents.conversion import to_json, to_structured
+from cloudevents.http import CloudEvent
 
 from pydantic import BaseModel
 import json
