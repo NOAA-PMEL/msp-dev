@@ -92,60 +92,52 @@ class SystemMode:
 
     async def evaluate(self):
         """
-        Determines if the current mode logic triggers a state transition 
-        and manages standardized heartbeat/status reporting.
+        Determines if the current mode logic triggers a state transition and sends heartbeats.
         """
-        # 1. Calculate the aggregate status of underlying requirements
-        # Extract boolean 'status' from all tracked requirement kinds (e.g., SamplingModes)
-        mode_status = [
-            req["status"] 
-            for kind in self.requirements.values() 
-            for req in kind.values()
-        ]
-        
-        # A SystemMode's logic evaluates to True only if ALL requirements are met
+        # 1. Calculate status of underlying requirements
+        mode_status = [req["status"] for kind in self.requirements.values() for req in kind.values()]
         latest_status = all(mode_status) if mode_status else False
         
-        # 2. Manage Status Heartbeats and State Changes
-        # Updates are triggered immediately on a flip or every 30 seconds
+        # 2. HEARTBEAT & CHANGE DETECTION
+        # ---------------------------------------------------------
         now = get_datetime().timestamp()
+        # SystemMode reports its 'active' flag status to the registry
         is_changed = (self.active != self.current_state)
+        # Force a refresh every 30 seconds for dashboard persistence
         is_heartbeat = (now - self.last_status_time >= 30)
 
         if is_changed or is_heartbeat:
             self.current_state = self.active
-            self.last_status_time = now
+            self.last_status_time = now # Update heartbeat timer
 
             status_str = "true" if self.active else "false"
             
-            # Construct the envds-compliant status block for the registry
+            # 3. CONSTRUCT envds-compliant status update
+            # ---------------------------------------------------------
             status_update = {
                 "id": {
-                    "app_group": "system",
+                    "app_group": "system", # Group must be 'system' for SystemModes
                     "app_uid": self.config["metadata"]["name"]
                 },
                 "state": {
-                    "system_active": {
+                    "system_active": { # State key matches SystemMode expectations
                         "requested": "true",
                         "actual": status_str
                     }
                 },
                 "timestamp": get_datetime_string()
             }
-            # Push to the status buffer for the monitor to broadcast via MQTT
+            # Push directly to the status buffer for MQTT broadcast
             await self.status_buffer.put({"status": status_update})
 
-        # 3. Process Transitions
-        # Transitions are only processed if this specific mode is currently the active one
-        if not self.active: 
-            return 
+        # 4. TRANSITION LOGIC
+        # ---------------------------------------------------------
+        # Only evaluate transitions if this is the currently active mode
+        if not self.active: return 
         
-        # Convert boolean status to string keys ("true" or "false") to look up 
-        # transition targets defined in the configuration JSON
         run_type = str(latest_status).lower()
         if self.transitions.get(run_type):
             for trans in self.transitions[run_type]:
-                # Pushes transition requests to the buffer for the manager to execute
                 await self.transitions_buffer.put({"transition": trans})
 
 class SystemModesManager:
@@ -390,25 +382,35 @@ class SystemModesManager:
     #         await asyncio.sleep(30)
 
     async def status_publish_monitor(self):
+        """Standardized monitor: Immediate update on change, reliable 30s heartbeat."""
         while True:
             try:
+                # 1. Retrieve the standardized status payload from the evaluation loop
                 data = await self.status_buffer.get()
                 status_data = data.get("status", {})
 
-                # Use the new System Mode factory from event.py
+                # 2. STRICT envds STANDARD: Use the System Mode factory
+                # This ensures the CloudEvent 'type' is set correctly for dashboard filtering
                 event = SamplingEvent.create_system_mode_status_update(
                     source=f"envds.{self.config.daq_id}.system-modes", 
                     data=status_data
                 )
 
+                # 3. Dynamic Topic Routing
+                # Uses the daq_id from ConfigMap to allow raz1, crk8s, etc., to coexist
                 destpath = f"envds/{self.config.daq_id}/system-modes/status/update"
                 event["destpath"] = destpath
+                
+                # 4. Broadcast via the manager's MQTT publish queue
                 await self.send_to_mqtt(destpath, event)
+
             except Exception as e:
                 self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
             finally:
-                self.status_buffer.task_done()
-                
+                # 5. Mark the task as done to prevent buffer lockup
+                if 'data' in locals():
+                    self.status_buffer.task_done()
+
 async def shutdown():
     print("shutting down")
 
