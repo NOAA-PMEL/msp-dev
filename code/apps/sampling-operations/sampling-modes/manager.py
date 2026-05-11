@@ -322,17 +322,40 @@ class SamplingModesManager:
         await asyncio.sleep(5)
         while True:
             try:
+                # DEBUG A1: Show the high-level summary of what is currently loaded in memory
+                self.logger.debug("publish_local_definitions_starting", extra={
+                    "loaded_actions": list(self.actions.keys()),
+                    "loaded_modes": list(self.modes.keys())
+                })
+
                 for registry, res_type in [(self.actions, "action"), (self.modes, "samplingmode")]:
-                    for obj in registry.values():
+                    # Changed to .items() so we can easily log the name along with the object
+                    for name, obj in registry.items(): 
+                        
+                        # DEBUG A2: Output the exact definition payload that was loaded for this specific item
+                        self.logger.debug("local_definition_loaded", extra={
+                            "resource_type": res_type,
+                            "resource_name": name,
+                            "config_payload": obj.config
+                        })
+
                         event = SamplingEvent.create_definition_registry_update(
                             resource=f"{res_type}-definition",
                             source=f"envds.{self.config.daq_id}.sampling-modes",
                             data={res_type: obj.config}
                         )
                         event["destpath"] = f"envds/{self.config.daq_id}/{res_type}-definition/registry/update"
+                        
+                        # DEBUG B: Output the assembled CloudEvent right before it goes over the wire
+                        self.logger.debug("sending_definition_event", extra={
+                            "destpath": event.get("destpath"),
+                            "event_type": event.get("type"),
+                            "event_data": event.data
+                        })
+
                         await self.send_event(event)
             except Exception as e:
-                L.error("publish_failed", extra={"reason": str(e)})
+                self.logger.error("publish_failed", extra={"reason": str(e)})
             await asyncio.sleep(60)
 
     async def sync_sampling_definitions_loop(self):
