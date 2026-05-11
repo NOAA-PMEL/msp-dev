@@ -31,11 +31,18 @@ L.setLevel(logging.DEBUG)
 class SystemModesConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
-    daq_id: str = "default_daq"
+    debug: bool = True
+
+    daq_id: str | None = None
+
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
-    # Subscribes to telemetry and mode statuses for orchestration
-    mqtt_topic_subscriptions: str = "envds/+/+/+/data/#,envds/+/system-modes/#,envds/+/sampling-modes/#"
+    mqtt_topic_subscriptions: str = ""
+    mqtt_client_id: str = Field(str(ULID()))
+
+    # FIX: Allow this to be parsed correctly from the environment or default to None
+    knative_broker: str | None = None
+    
     system_init_mode: str = "startup"
     is_primary_controller: bool = True
     
@@ -89,6 +96,12 @@ class SystemMode:
         
         if kind in self.requirements and name in self.requirements[kind]:
             self.requirements[kind][name]["status"] = is_met
+
+    def stop(self):
+        """Placeholder for stopping internal mode tasks if any are added in the future."""
+        # Current SystemMode implementation uses Manager loops, but we include this 
+        # for architectural consistency with SamplingState/SamplingAction.
+        pass
 
     async def evaluate(self):
         """
@@ -171,13 +184,65 @@ class SystemModesManager:
         except Exception as e:
             L.error("configure_failed", extra={"reason": str(e)})
 
+    async def submit_get(self, path: str):
+        """Standard helper to fetch from local datastore with logging."""
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            url = f"http://{datastore_url}/{path}/"
+            
+            resp = await self.http_client.get(url, timeout=timeout)
+            
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                self.logger.warning("datastore_get_failed", extra={"path": path, "status": resp.status_code})
+                return {}
+        except Exception as e:
+            self.logger.error("datastore_get_error", extra={"path": path, "reason": str(e)})
+            return {}
+
+    async def submit_request(self, path: str, query: dict):
+        """Standard helper to fetch specific definitions with logging."""
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            url = f"http://{datastore_url}/{path}/"
+            
+            resp = await self.http_client.get(url, params=query, timeout=timeout)
+            
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                self.logger.warning("datastore_request_failed", extra={"path": path, "status": resp.status_code})
+                return {}
+        except Exception as e:
+            self.logger.error("datastore_request_error", extra={"path": path, "reason": str(e)})
+            return {}
+
     def load_mode(self, cfg):
+        """Processes a definition and instantiates a SystemMode object."""
         if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)
         if self.transitions_buffer is None: self.transitions_buffer = asyncio.Queue(maxsize=2000)
-        name = cfg["metadata"]["name"]
-        self.modes[name] = SystemMode(cfg, self.status_buffer, self.transitions_buffer)
-        L.info("loaded_mode", extra={"res-name": name})
+        
+        try:
+            name = cfg["metadata"]["name"]
+            
+            # PREVENT TASK LEAKS: Stop the old instance if it exists
+            if name in self.modes:
+                self.modes[name].stop()
 
+            self.modes[name] = SystemMode(cfg, self.status_buffer, self.transitions_buffer)
+            
+            # SUCCESS LOG: Explicitly confirms the definition is now working in memory
+            self.logger.info("mode_instance_created", extra={
+                "res_name": name, 
+                "req_count": len(cfg.get("requirements", [])),
+                "trans_count": len(cfg.get("transitions", {}))
+            })
+        except Exception as e:
+            self.logger.error("mode_load_failed", extra={"reason": str(e), "config_name": cfg.get("metadata", {}).get("name")})
+            
     async def setup(self):
         """Starts background task orchestration."""
         # if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)
@@ -246,16 +311,35 @@ class SystemModesManager:
             await asyncio.sleep(60)
 
     async def sync_system_definitions_loop(self):
+        """Syncs SystemMode definitions dynamically from the local Datastore."""
+        resource = "systemmode"
         while True:
             try:
-                ds_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
-                resp = await self.http_client.get(f"http://{ds_url}/systemmode-definition/registry/ids/get/")
-                if resp.status_code == 200:
-                    for did in resp.json().get("results", []):
-                        d_resp = await self.http_client.get(f"http://{ds_url}/systemmode-definition/registry/get/", params={"name": did})
-                        if d_resp.status_code == 200 and d_resp.json().get("results"):
-                            self.load_mode(d_resp.json()["results"][0])
-            except Exception as e: L.error("sync_failed", extra={"reason": str(e)})
+                # 1. Fetch available SystemMode IDs
+                ids_resp = await self.submit_get(path=f"{resource}-definition/registry/ids/get")
+                
+                if ids_resp and "results" in ids_resp:
+                    ids = ids_resp["results"]
+                    self.logger.debug("definitions_ids_received", extra={"resource": resource, "count": len(ids), "ids": ids})
+                    
+                    for did in ids:
+                        # 2. Fetch the actual definition body for each ID
+                        d_resp = await self.submit_request(path=f"{resource}-definition/registry/get", query={"name": did})
+                        
+                        if d_resp and "results" in d_resp and d_resp["results"]:
+                            config = d_resp["results"][0]
+                            self.logger.info("definition_received", extra={"resource": resource, "res_name": did})
+                            
+                            # 3. Load into memory
+                            self.load_mode(config)
+                        else:
+                            self.logger.warning("definition_body_missing", extra={"resource": resource, "res_name": did})
+                else:
+                    self.logger.debug("no_definitions_found", extra={"resource": resource})
+
+            except Exception as e:
+                self.logger.error("sync_loop_failed", extra={"reason": str(e)})
+                
             await asyncio.sleep(60)
 
     async def mqtt_listen_loop(self):

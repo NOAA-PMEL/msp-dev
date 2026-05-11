@@ -32,15 +32,21 @@ L.setLevel(logging.DEBUG)
 class SamplingModesConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
-    daq_id: str = "default_daq"
+    debug: bool = True
+
+    daq_id: str | None = None
+
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
-    # Subscriptions include telemetry, local state evaluations, and local mode status
-    mqtt_topic_subscriptions: str = "envds/+/+/+/data/#,envds/+/sampling-states/#,envds/+/sampling-modes/#"
-    is_primary_controller: bool = True
-    
+    mqtt_topic_subscriptions: str = ""
+    mqtt_client_id: str = Field(str(ULID()))
+
+    # FIX: Allow this to be parsed correctly from the environment or default to None
+    knative_broker: str | None = None
+
     class Config:
-        env_prefix = "SAMPLING_MODES_"
+        env_prefix = "SAMPLING_STATES_"
+        case_sensitive = False
 
 class SamplingMode:
     """Evaluates environmental requirements and triggers assigned SamplingActions."""

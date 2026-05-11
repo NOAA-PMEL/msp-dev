@@ -621,7 +621,49 @@ class SamplingStatesManager:
                 self.logger.info(f"{states_path} not found. Skipping local load.")
         except Exception as e:
             self.logger.error("configure error", extra={"reason": e})
+    
+    async def submit_get(self, path: str):
+        """Standard helper to fetch from local datastore with logging."""
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): 
+                self.open_http_client()
+                
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            url = f"http://{datastore_url}/{path}/"
+            
+            resp = await self.http_client.get(url, timeout=timeout)
+            
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                self.logger.warning("datastore_get_failed", extra={"path": path, "status": resp.status_code})
+                return {}
+        except Exception as e:
+            self.logger.error("datastore_get_error", extra={"path": path, "reason": str(e)})
+            return {}
 
+    async def submit_request(self, path: str, query: dict):
+        """Standard helper to fetch specific definitions with logging."""
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): 
+                self.open_http_client()
+                
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            url = f"http://{datastore_url}/{path}/"
+            
+            resp = await self.http_client.get(url, params=query, timeout=timeout)
+            
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                self.logger.warning("datastore_request_failed", extra={"path": path, "status": resp.status_code})
+                return {}
+        except Exception as e:
+            self.logger.error("datastore_request_error", extra={"path": path, "reason": str(e)})
+            return {}
+        
     def load_state(self, state: dict):
         """Helper to process definitions from either local files or Datastore API."""
         if state.get("kind") != "SamplingState":
@@ -633,7 +675,7 @@ class SamplingStatesManager:
         if not getattr(self, "status_buffer", None):
             self.status_buffer = asyncio.Queue(maxsize=2000)
 
-        # FIX: STOP OLD TASKS BEFORE OVERWRITING
+        # STOP OLD TASKS BEFORE OVERWRITING
         if state_name in self.sampling_states["states"]:
             old_state = self.sampling_states["states"][state_name].get("state")
             if old_state:
@@ -644,6 +686,12 @@ class SamplingStatesManager:
             
         self.sampling_states["states"][state_name]["config"] = state
         self.sampling_states["states"][state_name]["state"] = SamplingState(state, self.status_buffer)
+        
+        # SUCCESS LOG: Explicit verification
+        self.logger.info("state_instance_created", extra={
+            "res_name": state_name, 
+            "req_count": len(state.get("requirements", []))
+        })
         
         for req in state.get("requirements", []):
             req_kind = req["kind"]
@@ -656,7 +704,7 @@ class SamplingStatesManager:
                 
             if state_name not in self.sampling_states["requirement_map"][req_kind][req_name]:
                 self.sampling_states["requirement_map"][req_kind][req_name].append(state_name)
-
+                
     # def open_http_client(self):
     #     # create a new client for each request
     #     self.http_client = httpx.AsyncClient()
@@ -799,21 +847,43 @@ class SamplingStatesManager:
             await asyncio.sleep(60)
 
     async def sync_sampling_definitions_loop(self):
+        """Syncs SamplingState definitions dynamically from the local Datastore."""
+        resource = "samplingstate"
         while True:
             try:
-                ids_resp = await self.submit_get(path="samplingstate-definition/registry/ids/get")
+                # 1. Fetch available SamplingState IDs
+                ids_resp = await self.submit_get(path=f"{resource}-definition/registry/ids/get")
+                
                 if ids_resp and "results" in ids_resp:
+                    ids = ids_resp["results"]
+                    self.logger.debug("definitions_ids_received", extra={"resource": resource, "count": len(ids), "ids": ids})
                     
-                    async def fetch_state(state_id):
-                        return await self.submit_request(path="samplingstate-definition/registry/get", query={"name": state_id})
+                    if ids:
+                        async def fetch_def(def_id):
+                            return await self.submit_request(
+                                path=f"{resource}-definition/registry/get", 
+                                query={"name": def_id}
+                            )
 
-                    responses = await asyncio.gather(*(fetch_state(sid) for sid in ids_resp["results"]))
+                        # 2. Concurrently fetch all bodies
+                        responses = await asyncio.gather(*(fetch_def(did) for did in ids))
 
-                    for resp in responses:
-                        if resp and "results" in resp and resp["results"]:
-                            self.load_state(resp["results"][0])
+                        for idx, resp in enumerate(responses):
+                            if resp and "results" in resp and resp["results"]:
+                                config = resp["results"][0]
+                                did = ids[idx]
+                                self.logger.info("definition_received", extra={"resource": resource, "res_name": did})
+                                
+                                # 3. Load into memory
+                                self.load_state(config)
+                            else:
+                                self.logger.warning("definition_body_missing", extra={"resource": resource, "res_name": ids[idx]})
+                else:
+                    self.logger.debug("no_definitions_found", extra={"resource": resource})
+
             except Exception as e:
-                self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+                self.logger.error("sync_loop_failed", extra={"reason": str(e)})
+                
             await asyncio.sleep(60)
 
     async def get_from_mqtt_loop(self):
