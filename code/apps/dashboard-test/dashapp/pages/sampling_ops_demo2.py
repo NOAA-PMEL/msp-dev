@@ -114,7 +114,7 @@ layout = get_layout()
 
 @callback(
     Output("ops-state-store2", "data"), # NOTE: Use "system-ops-state" for system_ops_demo.py
-    Input("ws-sampling-ops2", "message"), # NOTE: Use "ws-system-ops" for system_ops_demo.py
+    Input("ws-system-ops2", "message"), # NOTE: Use "ws-system-ops" for system_ops_demo.py
     State("ops-state-store2", "data") # NOTE: Use "system-ops-state" for system_ops_demo.py
 )
 def update_state_store(msg, current_state):
