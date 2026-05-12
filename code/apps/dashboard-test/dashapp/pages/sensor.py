@@ -1657,12 +1657,8 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
     
 @callback(
     [
-        Output(
-            {"type": "graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True
-        ),
-        Output(
-            {"type": "graph-2d-line", "index": MATCH}, "figure", allow_duplicate=True
-        ),
+        Output({"type": "graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True),
+        Output({"type": "graph-2d-line", "index": MATCH}, "figure", allow_duplicate=True),
     ],
     Input({"type": "graph-2d-dropdown", "index": MATCH}, "value"),
     [
@@ -1674,151 +1670,94 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
     prevent_initial_call=True,
 )
 def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
-    print(f"select_graph_2d: {z_axis}, {sensor_meta}, {graph_axes}, {graph_id}")
-    # print(f"current_fig: {current_fig}")
-    try:
-        if "graph-2d" not in graph_axes:
-            graph_axes["graph-2d"] = dict()
-        y_axis = graph_id["index"].split("::")[1]
-        use_log = False
-        if y_axis == "diameter":
-            use_log = True
-        graph_axes["graph-2d"][graph_id["index"]] = {
-            "x-axis": "time",
-            "y-axis": y_axis,
-            "z-axis": z_axis,
-        }
-        print(f"select_graph_2d: {graph_axes}")
-
-        x = []
-        y = []
-        z = []
-        orig_z = []
-        
-        # --- NEW: Check and inject coordinate data ---
-        y_is_coord = False
-        if sensor_definition and y_axis in sensor_definition.get("variables", {}):
-            if sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                y_is_coord = True
-                y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
-        # ---------------------------------------------
-        
-        query = {
-            "make": sensor_meta["make"],
-            "model": sensor_meta["model"],
-            "serial_number": sensor_meta["serial_number"],
-        }
-        sort = {"variables.time.data": 1}
-        device_id = f'{sensor_meta["make"]}::{sensor_meta["model"]}::{sensor_meta["serial_number"]}'
-        # results = httpx.get(f"http://{datastore_url}/sensor/data/get", params=query)
-        results = get_device_data(device_id=device_id)
-        # results = db_data_client.find("data", "sensor", query, sort, refresh=False)
-        print(f"2d results: {results}")
-        if results is None or len(results) == 0:
-            print("results = None")
-            # return [{"x": [], "y": [], "type": "scatter"}, graph_axes]
-            # return {"x": [], "y": [], "type": "scatter"}#, graph_axes]
-            raise PreventUpdate
-
-        elif results and len(results) > 0:
-            print("results = good")
-            for doc in results:
-                try:
-                    x.append(doc["variables"]["time"]["data"])
-                    if not y_is_coord:
-                        y.append(doc["variables"][y_axis]["data"])
-                    orig_z.append(doc["variables"][z_axis]["data"])
-                except KeyError:
-                    continue
-
-        print('2d x', x)
-        print('2d y', y)
-        print('2d og z', z)
-        # print(f"x,y: {x}, {y}")
-        # # fig = go.Figure(data=[go.Scatter(x=x, y=y)])
-        # print(f"go fig: {fig}")
-        # fig = dict(data=[{'x': x, 'y': y}])
-        
-        y_units = ""
-        z_units = ""
-        try:
-            y_units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
-            z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
-        except KeyError:
-            pass
-
-        # fig = {
-        #     "data": [{"x": x, "y": y, "type": "scatter"}],
-        #     "layout": {
-        #         "xaxis": {"title": "Time"},
-        #         "yaxis": {"title": f"{y_axis} {units}"},
-        #     },
-        # }
-        if len(y) > 0 and isinstance(y[-1], list):
-            y = y[-1]
-
-        for yi, yval in enumerate(y):
-            # z.append([])
-            new_z = []
-            for xi, xval in enumerate(x):
-                try:
-                    new_z.append(orig_z[xi][yi])
-                except IndexError:
-                    new_z.append(None)
-            z.append(new_z)
-
-        heatmap = go.Figure(
-            data=go.Heatmap(
-                x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
-            ),
-            # data=[{"x": x, "y": y, "z": z, "type": "heatmap"}],
-            layout={
-                "xaxis": {"title": "Time"},
-                "yaxis": {"title": f"{y_axis} {y_units}".strip()},
-                # "yaxis": {"title": f"{y_axis} {y_units}"},
-                # "colorscale": "rainbow"
-            },
-        )
-        if use_log:
-            heatmap.update_yaxes(type="log")
-            heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
-        print(f"heatmap figure: {heatmap}")
-        
-        scatter = go.Figure(
-            # data=go.Scatter(x=y, y=z[-1], type="scatter"),
-            data=[{"x": y, "y": z[-1] if len(z) > 0 else [], "type": "scatter"}],
-            layout={
-                "xaxis": {"title": f"{y_axis} {y_units}".strip()},
-                "yaxis": {"title": f"{z_axis} {z_units}".strip()},
-                "title": str(x[-1]) if len(x) > 0 else "",
-                # "yaxis": {"title": f"{y_axis} {y_units}"},
-                # "colorscale": "rainbow"
-            },
-        )
-        if use_log:
-            scatter.update_xaxes(type="log")
-        print(f"scatter figure: {scatter}")
-
-        # print(f"go fig: {fig}")
-        # return [fig, graph_axes]
-        return [heatmap, scatter]  # , graph_axes]
-    except Exception as e:
-        print(f"select_graph_2d error: {e}")
-        print(traceback.format_exc())
-        # return [dash.no_update, dash.no_update]
+    if not z_axis:
         raise PreventUpdate
-        # return [dash.no_update, dash.no_update]
 
+    if "graph-2d" not in graph_axes:
+        graph_axes["graph-2d"] = dict()
+    
+    y_axis = graph_id["index"].split("::")[1]
+    use_log = (y_axis == "diameter")
+    
+    graph_axes["graph-2d"][graph_id["index"]] = {
+        "x-axis": "time",
+        "y-axis": y_axis,
+        "z-axis": z_axis,
+    }
 
+    x, y, orig_z = [], [], []
+    
+    y_is_coord = False
+    if sensor_definition and y_axis in sensor_definition.get("variables", {}):
+        if sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+            y_is_coord = True
+            y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
+
+    # Use the exact device_id from the metadata dictionary
+    device_id = sensor_meta.get("device_id")
+    results = get_device_data(device_id=device_id, device_type="sensor")
+
+    if not results:
+        raise PreventUpdate
+
+    for doc in results:
+        try:
+            x.append(doc["variables"]["time"]["data"])
+            if not y_is_coord:
+                y.append(doc["variables"][y_axis]["data"])
+            orig_z.append(doc["variables"][z_axis]["data"])
+        except KeyError:
+            continue
+
+    if len(y) > 0 and isinstance(y[-1], list):
+        y = y[-1]
+
+    z = []
+    for yi in range(len(y)):
+        new_z = []
+        for xi in range(len(x)):
+            try:
+                new_z.append(orig_z[xi][yi])
+            except IndexError:
+                new_z.append(None)
+        z.append(new_z)
+
+    y_units, z_units = "", ""
+    try:
+        y_units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
+    except Exception: pass
+    try:
+        z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
+    except Exception: pass
+
+    heatmap = go.Figure(
+        data=go.Heatmap(x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"),
+        layout={
+            "xaxis": {"title": "Time"},
+            "yaxis": {"title": f"{y_axis} {y_units}".strip()},
+        },
+    )
+    if use_log:
+        heatmap.update_yaxes(type="log")
+        heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
+
+    scatter = go.Figure(
+        data=[{"x": y, "y": orig_z[-1] if len(orig_z) > 0 else [], "type": "scatter"}],
+        layout={
+            "xaxis": {"title": f"{y_axis} {y_units}".strip()},
+            "yaxis": {"title": f"{z_axis} {z_units}".strip()},
+            "title": str(x[-1]) if len(x) > 0 else "",
+        },
+    )
+    if use_log:
+        scatter.update_xaxes(type="log")
+
+    return [heatmap, scatter]
 
 @callback(
     [
-        Output(
-            {"type": "graph-3d-line", "index": MATCH}, "figure", allow_duplicate=True
-        ),
-        Output(
-            {"type": "graph-3d-heatmap", "index": MATCH}, "figure", allow_duplicate=True
-        )
+        Output({"type": "graph-3d-line", "index": MATCH}, "figure", allow_duplicate=True),
+        Output({"type": "graph-3d-heatmap", "index": MATCH}, "figure", allow_duplicate=True)
     ],
     Input({"type": "graph-3d-dropdown", "index": MATCH}, "value"),
     [
@@ -1829,121 +1768,85 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
     ],
     prevent_initial_call=True,
 )
-# def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
 def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
-    # print(f"select_graph_3d: {z_axis}, {sensor_meta}, {graph_axes}, {graph_id}")
-    # print(f"current_fig: {current_fig}")
-    try:
-        if "graph-3d" not in graph_axes:
-            graph_axes["graph-3d"] = dict()
-        x_axis = graph_id["index"].split("::")[0]
-        y_axis = graph_id["index"].split("::")[1]
-        # z_axis = graph_id["index"].split("::")[2]
-        
-        # --- NEW: Check if Coordinates ---
-        x_is_coord = False
-        y_is_coord = False
-        if sensor_definition:
-            if x_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                x_is_coord = True
-                x = sensor_definition["variables"][x_axis]["attributes"]["data"]["data"]
-            if y_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                y_is_coord = True
-                y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
-        # ---------------------------------
-        
-        use_log = False
-        if x_axis == "diameter":
-            use_log = True
-        graph_axes["graph-3d"][graph_id["index"]] = {
-            # "x-axis": "time",
-            "x-axis": x_axis,
-            "y-axis": y_axis,
-            "z-axis": z_axis,
-        }
-        print(f"select_graph_3d: {graph_axes}")
-
-        if not x_is_coord: x = []
-        if not y_is_coord: y = []
-        z = []
-        
-        device_id = f'{sensor_meta["make"]}::{sensor_meta["model"]}::{sensor_meta["serial_number"]}'
-        results = get_device_data(device_id=device_id)
-        print(f"3d results: {results}")
-        if results is None or len(results) == 0:
-            raise PreventUpdate
-
-        elif results and len(results) > 0:
-            print("results = good")
-            for doc in results:
-                try:
-                    if not x_is_coord:
-                        x.append(doc["variables"][x_axis]["data"])
-                    if not y_is_coord:
-                        y.append(doc["variables"][y_axis]["data"])
-                    z.append(doc["variables"][z_axis]["data"])
-                except KeyError:
-                    continue
-
-        units = []
-        for axis in [x_axis, y_axis, z_axis]:
-            try:
-                unit = f'({sensor_definition["variables"][axis]["attributes"]["units"]["data"]})'
-                units.append(unit)
-            except Exception:
-                unit = ''
-                units.append(unit)
-        
-        print('units', units)
-        # try:
-        #     x_units = f'({sensor_definition["variables"][x_axis]["attributes"]["units"]["data"]})'
-        #     y_units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
-        #     z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
-        # except KeyError:
-        #     pass
-        
-        if len(x) > 0 and isinstance(x[-1], list):
-            x = x[-1]
-
-        if len(y) > 0 and isinstance(y[-1], list):
-            y = y[-1]
-        
-        if len(z) > 0 and isinstance(z[-1], list):
-            z = z[-1]
-
-        heatmap = go.Figure(
-            data=go.Heatmap(
-                x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
-            ),
-            layout={
-                "xaxis": {"title": f"{x_axis} {units[0]}".strip()},
-                "yaxis": {"title": f"{y_axis} {units[1]}".strip()},
-                # "colorscale": "rainbow"
-            },
-        )
-        if use_log:
-            heatmap.update_xaxes(type="log")
-            heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
-        # print(f"heatmap figure: {heatmap}")
-        
-        scatter = go.Figure(
-            data = go.Surface(z=z, x=x, y=y)
-        )
-        scatter.update_scenes(
-            xaxis_title_text = f"{x_axis} {units[0]}".strip(),
-            yaxis_title_text = f"{y_axis} {units[1]}".strip(),
-            zaxis_title_text = f"{z_axis} {units[2]}".strip()
-        )
-
-        # return [heatmap, scatter]  # , graph_axes]
-        return [scatter, heatmap]
-        # return PreventUpdate
-    except Exception as e:
-        print(f"select_graph_3d error: {e}")
-        print(traceback.format_exc())
-        # return [dash.no_update, dash.no_update]
+    if not z_axis:
         raise PreventUpdate
-        # return [dash.no_update, dash.no_update]
+
+    if "graph-3d" not in graph_axes:
+        graph_axes["graph-3d"] = dict()
+    
+    x_axis = graph_id["index"].split("::")[0]
+    y_axis = graph_id["index"].split("::")[1]
+    
+    x_is_coord, y_is_coord = False, False
+    x, y, z_history = [], [], []
+
+    if sensor_definition:
+        if x_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+            x_is_coord = True
+            x = sensor_definition["variables"][x_axis]["attributes"]["data"]["data"]
+        if y_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+            y_is_coord = True
+            y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
+
+    device_id = sensor_meta.get("device_id")
+    results = get_device_data(device_id=device_id, device_type="sensor")
+
+    if not results:
+        raise PreventUpdate
+
+    for doc in results:
+        try:
+            if not x_is_coord:
+                x.append(doc["variables"][x_axis]["data"])
+            if not y_is_coord:
+                y.append(doc["variables"][y_axis]["data"])
+            z_history.append(doc["variables"][z_axis]["data"])
+        except KeyError:
+            continue
+
+    if len(x) > 0 and isinstance(x[-1], list): x = x[-1]
+    if len(y) > 0 and isinstance(y[-1], list): y = y[-1]
+
+    if not z_history:
+        raise PreventUpdate
+        
+    # Get the latest 2D slice and transpose it to (len(y), len(x)) for Plotly
+    latest_z = z_history[-1] 
+    z = []
+    for yi in range(len(y)):
+        new_row = []
+        for xi in range(len(x)):
+            try:
+                new_row.append(latest_z[xi][yi])
+            except IndexError:
+                new_row.append(None)
+        z.append(new_row)
+
+    units = []
+    for axis in [x_axis, y_axis, z_axis]:
+        try:
+            unit = f'({sensor_definition["variables"][axis]["attributes"]["units"]["data"]})'
+            units.append(unit)
+        except Exception:
+            units.append('')
+
+    scatter = go.Figure(data=go.Surface(z=z, x=x, y=y))
+    scatter.update_scenes(
+        xaxis_title_text=f"{x_axis} {units[0]}".strip(),
+        yaxis_title_text=f"{y_axis} {units[1]}".strip(),
+        zaxis_title_text=f"{z_axis} {units[2]}".strip()
+    )
+
+    heatmap = go.Figure(data=go.Heatmap(z=z, x=x, y=y, type="heatmap", colorscale="Rainbow"))
+    heatmap.update_layout(
+        xaxis={"title": f"{x_axis} {units[0]}".strip()},
+        yaxis={"title": f"{y_axis} {units[1]}".strip()}
+    )
+    if x_axis == "diameter":
+        heatmap.update_xaxes(type="log")
+
+    return [scatter, heatmap]
 
 
 
@@ -2254,35 +2157,108 @@ def update_graph_2d_scatter(
 
 
 
+# @callback(
+#     Output({"type": "graph-3d-line", "index": ALL}, "figure"),
+#     Input("sensor-data-buffer", "data"),
+#     [
+#         State({"type": "graph-3d-dropdown", "index": ALL}, "value"),
+#         State("graph-axes", "data"),
+#         State("sensor-definition", "data"),
+#         State({"type": "graph-3d-line", "index": ALL}, "figure"),
+#         State({"type": "graph-3d-line", "index": ALL}, "id"),
+#     ],
+#     prevent_initial_call=True,
+# )
+# def update_graph_3d_scatter(
+#     sensor_data, z_axis_list, graph_axes, sensor_definition, current_figs, graph_ids
+# ):
+#     if not sensor_data:
+#         raise PreventUpdate
+
+#     scatters = []
+#     for z_axis, graph_id, current_fig in zip(z_axis_list, graph_ids, current_figs):
+#         if not current_fig or not current_fig.get("data"):
+#             scatters.append(dash.no_update)
+#             continue
+
+#         x_axis = graph_id["index"].split("::")[0]
+#         y_axis = graph_id["index"].split("::")[1]
+        
+#         x_is_coord = False
+#         y_is_coord = False
+#         if sensor_definition:
+#             if x_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+#                 x_is_coord = True
+#             if y_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+#                 y_is_coord = True
+
+#         if (
+#             (not x_is_coord and x_axis not in sensor_data.get("variables", {}))
+#             or (not y_is_coord and y_axis not in sensor_data.get("variables", {}))
+#             or z_axis not in sensor_data.get("variables", {})
+#         ):
+#             scatters.append(dash.no_update)
+#             continue
+
+#         if x_is_coord:
+#             x = sensor_definition["variables"][x_axis]["attributes"]["data"]["data"]
+#         else:
+#             x = sensor_data["variables"][x_axis]["data"]
+            
+#         if y_is_coord:
+#             y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
+#         else:
+#             y = sensor_data["variables"][y_axis]["data"]
+            
+#         z = sensor_data["variables"][z_axis]["data"]
+
+#         current_fig["data"][0]["z"] = z
+#         if isinstance(x, list) and len(x) > 0:
+#             x_title = x[-1]
+#         else:
+#             x_title = x
+#         current_fig["layout"]["title"] = str(x_title)
+        
+#         scatters.append(current_fig)
+
+#     if all(s == dash.no_update for s in scatters):
+#         raise PreventUpdate
+        
+#     return scatters
+
 @callback(
-    Output({"type": "graph-3d-line", "index": ALL}, "figure"),
+    [
+        Output({"type": "graph-3d-line", "index": ALL}, "figure"),
+        Output({"type": "graph-3d-heatmap", "index": ALL}, "figure")
+    ],
     Input("sensor-data-buffer", "data"),
     [
         State({"type": "graph-3d-dropdown", "index": ALL}, "value"),
-        State("graph-axes", "data"),
         State("sensor-definition", "data"),
         State({"type": "graph-3d-line", "index": ALL}, "figure"),
-        State({"type": "graph-3d-line", "index": ALL}, "id"),
+        State({"type": "graph-3d-heatmap", "index": ALL}, "figure"),
+        State({"type": "graph-3d-dropdown", "index": ALL}, "id"),
     ],
     prevent_initial_call=True,
 )
-def update_graph_3d_scatter(
-    sensor_data, z_axis_list, graph_axes, sensor_definition, current_figs, graph_ids
+def update_graph_3d_plots(
+    sensor_data, z_axis_list, sensor_definition, line_figs, heatmap_figs, graph_ids
 ):
     if not sensor_data:
         raise PreventUpdate
 
-    scatters = []
-    for z_axis, graph_id, current_fig in zip(z_axis_list, graph_ids, current_figs):
-        if not current_fig or not current_fig.get("data"):
-            scatters.append(dash.no_update)
+    updated_lines, updated_heatmaps = [], []
+    
+    for z_axis, graph_id, line_fig, heatmap_fig in zip(z_axis_list, graph_ids, line_figs, heatmap_figs):
+        if not z_axis or not line_fig or not heatmap_fig:
+            updated_lines.append(dash.no_update)
+            updated_heatmaps.append(dash.no_update)
             continue
 
         x_axis = graph_id["index"].split("::")[0]
         y_axis = graph_id["index"].split("::")[1]
         
-        x_is_coord = False
-        y_is_coord = False
+        x_is_coord, y_is_coord = False, False
         if sensor_definition:
             if x_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                 x_is_coord = True
@@ -2294,7 +2270,8 @@ def update_graph_3d_scatter(
             or (not y_is_coord and y_axis not in sensor_data.get("variables", {}))
             or z_axis not in sensor_data.get("variables", {})
         ):
-            scatters.append(dash.no_update)
+            updated_lines.append(dash.no_update)
+            updated_heatmaps.append(dash.no_update)
             continue
 
         if x_is_coord:
@@ -2307,21 +2284,34 @@ def update_graph_3d_scatter(
         else:
             y = sensor_data["variables"][y_axis]["data"]
             
-        z = sensor_data["variables"][z_axis]["data"]
+        latest_z = sensor_data["variables"][z_axis]["data"]
 
-        current_fig["data"][0]["z"] = z
-        if isinstance(x, list) and len(x) > 0:
-            x_title = x[-1]
-        else:
-            x_title = x
-        current_fig["layout"]["title"] = str(x_title)
+        # Transpose the incoming matrix live
+        z = []
+        for yi in range(len(y)):
+            new_row = []
+            for xi in range(len(x)):
+                try:
+                    new_row.append(latest_z[xi][yi])
+                except IndexError:
+                    new_row.append(None)
+            z.append(new_row)
+
+        line_fig["data"][0]["z"] = z
+        heatmap_fig["data"][0]["z"] = z
         
-        scatters.append(current_fig)
+        if isinstance(x, list) and len(x) > 0: x_title = x[-1]
+        else: x_title = x
+        
+        line_fig["layout"]["title"] = str(x_title)
+        
+        updated_lines.append(line_fig)
+        updated_heatmaps.append(heatmap_fig)
 
-    if all(s == dash.no_update for s in scatters):
+    if all(l == dash.no_update for l in updated_lines):
         raise PreventUpdate
         
-    return scatters
+    return updated_lines, updated_heatmaps
 
 # @callback(
 #     # Output("dbc-switch-value-changed", "children"),
