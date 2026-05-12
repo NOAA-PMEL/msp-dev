@@ -125,7 +125,7 @@ class Datastore:
         self.db_client = None
         self.erddap_client = None
         self.config = DatastoreConfig()
-        level_str = self.config.get("log_level", "INFO").upper()
+        level_str = self.config.log_level.upper()
         self.logger.setLevel(level_str)
 
         self.http_client = None
