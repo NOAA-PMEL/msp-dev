@@ -117,6 +117,119 @@ class StandardInversion(SpiderInversionBase):
         super().__init__(config)
         self.max_charges = self.config.get("max_charges", 3)
 
+        # --- NEW: Pull the static grid directly from the configuration ---
+        # The sampling_system will pass the schema's coordinate array in the config
+        self.std_Dp = np.array(self.config.get("static_diams", []))
+        # Fallback to recalculation ONLY if the config is missing the array
+        if len(self.std_Dp) == 0:
+            self.std_Dp = np.logspace(np.log10(10), np.log10(500), self.num_diameter_bins)
+    # def invert(self, record):
+    #     try:
+    #         # 1. Environmental Conditions
+    #         T_C = np.nanmean(record["variables"]["input_T"]["data"]) 
+    #         P_mbar = np.nanmean(record["variables"]["abs_pressure"]["data"])
+    #         T = (T_C if not np.isnan(T_C) else 20.0) + 273.15
+    #         P = (P_mbar if not np.isnan(P_mbar) else 1013.25) / 10.0
+            
+    #         # Flows
+    #         Qsh_ccm = np.nanmean(record["variables"]["sh_flow"]["data"]) or 900.0
+    #         Qa_ccm = np.nanmean(record["variables"]["aer_flow"]["data"]) or 300.0
+    #         beta = Qa_ccm / Qsh_ccm
+            
+    #         # 2. Extract and isolate the active scan ramp
+    #         V_raw = np.array(record["variables"]["read_V"]["data"], dtype=float)
+    #         C_raw = np.array(record["variables"]["concentration"]["data"], dtype=float)
+    #         V_abs = np.abs(V_raw)
+            
+    #         # Find monotonic active ramp (ignores steady state holds at start/end)
+    #         diff_V = np.abs(np.diff(V_abs))
+    #         moving = diff_V > 0.5
+            
+    #         if not np.any(moving):
+    #             raise ValueError("No active voltage ramp found in scan.")
+                
+    #         start_idx = np.argmax(moving)
+    #         end_idx = len(moving) - np.argmax(moving[::-1]) 
+            
+    #         V_ramp = V_abs[start_idx:end_idx+1]
+    #         C_ramp = C_raw[start_idx:end_idx+1]
+            
+    #         # Sort ascending for interpolation
+    #         if V_ramp[0] > V_ramp[-1]:
+    #             V_ramp = V_ramp[::-1]
+    #             C_ramp = C_ramp[::-1]
+
+    #         V_ramp = np.clip(V_ramp, 1.0, 6000.0)
+
+    #         # 3. Phase 1 Inversion (Apparent dN/dlogDp)
+    #         Zp_ramp = self.G_geom * ((Qsh_ccm / 60.0) * 1e-6) / V_ramp
+    #         Dp_ramp = Zp_to_Dp(Zp_ramp, n_ch=1, T=T, P=P)
+            
+    #         f_n1 = f_Wdnslr(Dp_ramp, n_ch=1, T=T)
+    #         eta_n1 = calc_diffusion_loss(Dp_ramp, self.L_tube_m, Qa_ccm/1000.0, self.d_tube_mm, T, P)
+            
+    #         L_sngl = (beta * f_n1 * eta_n1) / 1.0  # Assumes a_star = 1.0
+            
+    #         dNdlogDp_app = np.zeros_like(C_ramp)
+    #         valid = L_sngl > 1e-6
+    #         dNdlogDp_app[valid] = C_ramp[valid] / L_sngl[valid] / np.log10(np.e)
+
+    #         # 4. Phase 2 Inversion (Sequential Stripping)
+    #         dNdlogDp_strip = np.copy(dNdlogDp_app)
+            
+    #         for i in range(len(Dp_ramp) - 1, -1, -1):
+    #             if dNdlogDp_strip[i] <= 0 or f_n1[i] < 1e-6: 
+    #                 continue
+                    
+    #             for n in range(2, self.max_charges + 1):
+    #                 p_nn = f_Wdnslr(Dp_ramp[i], n_ch=n, T=T)
+    #                 if p_nn == 0: 
+    #                     break
+                    
+    #                 Z_leak = Dp_to_Zp(Dp_ramp[i], n, T, P)
+    #                 D_app = Zp_to_Dp([Z_leak], n_ch=1, T=T, P=P)[0]
+    #                 e_app = calc_diffusion_loss([D_app], self.L_tube_m, Qa_ccm/1000.0, self.d_tube_mm, T, P)[0]
+                    
+    #                 N_leak = dNdlogDp_strip[i] * (p_nn / f_n1[i]) * (eta_n1[i] / e_app)
+                    
+    #                 idx_f = self._get_bin_idx(D_app, Dp_ramp)
+    #                 if idx_f is not None:
+    #                     idx_l, idx_h = int(np.floor(idx_f)), int(np.ceil(idx_f))
+    #                     w_h = idx_f - idx_l
+    #                     if idx_l >= 0: 
+    #                         dNdlogDp_strip[idx_l] -= N_leak * (1.0 - w_h)
+    #                     if idx_h < len(Dp_ramp) and idx_h != idx_l: 
+    #                         dNdlogDp_strip[idx_h] -= N_leak * w_h
+
+    #         dNdlogDp_strip = np.clip(dNdlogDp_strip, 0, None)
+
+    #         # 5. Resample to Fixed 60-Bin Output
+    #         std_Dp = np.logspace(np.log10(10), np.log10(500), self.num_diameter_bins)
+            
+    #         f_interp = interpolate.interp1d(Dp_ramp, dNdlogDp_strip, bounds_error=False, fill_value=0.0)
+    #         std_dNdlogDp = np.clip(f_interp(std_Dp), 0.0, None)
+            
+    #         std_dlogDp = np.gradient(np.log10(std_Dp))
+    #         std_dN = std_dNdlogDp * std_dlogDp
+    #         intN = np.nansum(std_dN)
+
+    #         # Update Record
+    #         record["variables"]["diameter"]["data"] = np.round(std_Dp, 3).tolist()
+    #         record["variables"]["dN"]["data"] = np.round(std_dN, 3).tolist()
+    #         record["variables"]["dlogDp"]["data"] = np.round(std_dlogDp, 5).tolist()
+    #         record["variables"]["dNdlogDp"]["data"] = np.round(std_dNdlogDp, 3).tolist()
+    #         record["variables"]["intN"]["data"] = float(np.round(intN, 3))
+
+    #     except Exception as e:
+    #         # Fallback to None if inversion fails (avoids shape mismatch)
+    #         record["variables"]["diameter"]["data"] = [None] * self.num_diameter_bins
+    #         record["variables"]["dN"]["data"] = [None] * self.num_diameter_bins
+    #         record["variables"]["dlogDp"]["data"] = [None] * self.num_diameter_bins
+    #         record["variables"]["dNdlogDp"]["data"] = [None] * self.num_diameter_bins
+    #         record["variables"]["intN"]["data"] = None
+
+    #     return record
+    
     def invert(self, record):
         try:
             # 1. Environmental Conditions
@@ -197,18 +310,16 @@ class StandardInversion(SpiderInversionBase):
 
             dNdlogDp_strip = np.clip(dNdlogDp_strip, 0, None)
 
-            # 5. Resample to Fixed 60-Bin Output
-            std_Dp = np.logspace(np.log10(10), np.log10(500), self.num_diameter_bins)
-            
+            # 5. Resample to Fixed Output using the JSON's static grid
             f_interp = interpolate.interp1d(Dp_ramp, dNdlogDp_strip, bounds_error=False, fill_value=0.0)
-            std_dNdlogDp = np.clip(f_interp(std_Dp), 0.0, None)
+            std_dNdlogDp = np.clip(f_interp(self.std_Dp), 0.0, None)
             
-            std_dlogDp = np.gradient(np.log10(std_Dp))
+            std_dlogDp = np.gradient(np.log10(self.std_Dp))
             std_dN = std_dNdlogDp * std_dlogDp
             intN = np.nansum(std_dN)
 
             # Update Record
-            record["variables"]["diameter"]["data"] = np.round(std_Dp, 3).tolist()
+            record["variables"]["diameter"]["data"] = np.round(self.std_Dp, 3).tolist()
             record["variables"]["dN"]["data"] = np.round(std_dN, 3).tolist()
             record["variables"]["dlogDp"]["data"] = np.round(std_dlogDp, 5).tolist()
             record["variables"]["dNdlogDp"]["data"] = np.round(std_dNdlogDp, 3).tolist()
@@ -216,14 +327,13 @@ class StandardInversion(SpiderInversionBase):
 
         except Exception as e:
             # Fallback to None if inversion fails (avoids shape mismatch)
-            record["variables"]["diameter"]["data"] = [None] * self.num_diameter_bins
-            record["variables"]["dN"]["data"] = [None] * self.num_diameter_bins
-            record["variables"]["dlogDp"]["data"] = [None] * self.num_diameter_bins
-            record["variables"]["dNdlogDp"]["data"] = [None] * self.num_diameter_bins
+            record["variables"]["diameter"]["data"] = [None] * len(self.std_Dp)
+            record["variables"]["dN"]["data"] = [None] * len(self.std_Dp)
+            record["variables"]["dlogDp"]["data"] = [None] * len(self.std_Dp)
+            record["variables"]["dNdlogDp"]["data"] = [None] * len(self.std_Dp)
             record["variables"]["intN"]["data"] = None
 
         return record
-
 
 class AerosolDynamicsInversion(SpiderInversionBase):
     """

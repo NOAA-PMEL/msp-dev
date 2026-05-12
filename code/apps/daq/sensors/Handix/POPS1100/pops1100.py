@@ -157,16 +157,16 @@ class POPS1100(Sensor):
 
                 if record and self.sampling():
                     
-                    # Inject distribution bounding variables
-                    record["variables"]["diameter_bnd_lower"]["data"] = self.lower_dp_bound
-                    record["variables"]["diameter_bnd_upper"]["data"] = self.upper_dp_bound
+                    # # Inject distribution bounding variables
+                    # record["variables"]["diameter_bnd_lower"]["data"] = self.lower_dp_bound
+                    # record["variables"]["diameter_bnd_upper"]["data"] = self.upper_dp_bound
                     
                     diams, dlogDp = [], []
                     for lower, upper in zip(self.lower_dp_bound, self.upper_dp_bound):
-                        diams.append(round(math.sqrt(lower * upper), 1))
+                        # diams.append(round(math.sqrt(lower * upper), 1))
                         dlogDp.append(round(math.log10(upper / lower), 3))
 
-                    record["variables"]["diameter"]["data"] = diams
+                    # record["variables"]["diameter"]["data"] = diams
                     record["variables"]["dlogDp"]["data"] = dlogDp
 
                     flow = record["variables"]["POPS_Flow"]["data"] or 1.0

@@ -1656,6 +1656,7 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         return default_fig
     
 @callback(
+    # [Output({"type": "graph-1d", "index": MATCH}, "figure"), Output("graph-axes", "data")],
     [
         Output(
             {"type": "graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True
@@ -1694,15 +1695,6 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         y = []
         z = []
         orig_z = []
-        
-        # --- NEW: Check and inject coordinate data ---
-        y_is_coord = False
-        if sensor_definition and y_axis in sensor_definition.get("variables", {}):
-            if sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                y_is_coord = True
-                y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
-        # ---------------------------------------------
-        
         query = {
             "make": sensor_meta["make"],
             "model": sensor_meta["model"],
@@ -1725,8 +1717,7 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
             for doc in results:
                 try:
                     x.append(doc["variables"]["time"]["data"])
-                    if not y_is_coord:
-                        y.append(doc["variables"][y_axis]["data"])
+                    y.append(doc["variables"][y_axis]["data"])
                     orig_z.append(doc["variables"][z_axis]["data"])
                 except KeyError:
                     continue
@@ -1738,9 +1729,7 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         # # fig = go.Figure(data=[go.Scatter(x=x, y=y)])
         # print(f"go fig: {fig}")
         # fig = dict(data=[{'x': x, 'y': y}])
-        
-        y_units = ""
-        z_units = ""
+        units = ""
         try:
             y_units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
             z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
@@ -1754,17 +1743,14 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         #         "yaxis": {"title": f"{y_axis} {units}"},
         #     },
         # }
-        if len(y) > 0 and isinstance(y[-1], list):
+        if isinstance(y[-1], list):
             y = y[-1]
 
         for yi, yval in enumerate(y):
             # z.append([])
             new_z = []
             for xi, xval in enumerate(x):
-                try:
-                    new_z.append(orig_z[xi][yi])
-                except IndexError:
-                    new_z.append(None)
+                new_z.append(orig_z[xi][yi])
             z.append(new_z)
 
         heatmap = go.Figure(
@@ -1774,7 +1760,7 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
             # data=[{"x": x, "y": y, "z": z, "type": "heatmap"}],
             layout={
                 "xaxis": {"title": "Time"},
-                "yaxis": {"title": f"{y_axis} {y_units}".strip()},
+                "yaxis": {"title": f"{y_axis} {y_units}"},
                 # "yaxis": {"title": f"{y_axis} {y_units}"},
                 # "colorscale": "rainbow"
             },
@@ -1783,14 +1769,13 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
             heatmap.update_yaxes(type="log")
             heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
         print(f"heatmap figure: {heatmap}")
-        
         scatter = go.Figure(
             # data=go.Scatter(x=y, y=z[-1], type="scatter"),
-            data=[{"x": y, "y": z[-1] if len(z) > 0 else [], "type": "scatter"}],
+            data=[{"x": y, "y": z[-1], "type": "scatter"}],
             layout={
-                "xaxis": {"title": f"{y_axis} {y_units}".strip()},
-                "yaxis": {"title": f"{z_axis} {z_units}".strip()},
-                "title": str(x[-1]) if len(x) > 0 else "",
+                "xaxis": {"title": f"{y_axis} {y_units}"},
+                "yaxis": {"title": f"{z_axis} {z_units}"},
+                "title": str(x[-1]),
                 # "yaxis": {"title": f"{y_axis} {y_units}"},
                 # "colorscale": "rainbow"
             },
@@ -1804,7 +1789,6 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         return [heatmap, scatter]  # , graph_axes]
     except Exception as e:
         print(f"select_graph_2d error: {e}")
-        print(traceback.format_exc())
         # return [dash.no_update, dash.no_update]
         raise PreventUpdate
         # return [dash.no_update, dash.no_update]
@@ -1839,19 +1823,6 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         x_axis = graph_id["index"].split("::")[0]
         y_axis = graph_id["index"].split("::")[1]
         # z_axis = graph_id["index"].split("::")[2]
-        
-        # --- NEW: Check if Coordinates ---
-        x_is_coord = False
-        y_is_coord = False
-        if sensor_definition:
-            if x_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                x_is_coord = True
-                x = sensor_definition["variables"][x_axis]["attributes"]["data"]["data"]
-            if y_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                y_is_coord = True
-                y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
-        # ---------------------------------
-        
         use_log = False
         if x_axis == "diameter":
             use_log = True
@@ -1863,8 +1834,8 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         }
         print(f"select_graph_3d: {graph_axes}")
 
-        if not x_is_coord: x = []
-        if not y_is_coord: y = []
+        x = []
+        y = []
         z = []
         
         device_id = f'{sensor_meta["make"]}::{sensor_meta["model"]}::{sensor_meta["serial_number"]}'
@@ -1877,10 +1848,8 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
             print("results = good")
             for doc in results:
                 try:
-                    if not x_is_coord:
-                        x.append(doc["variables"][x_axis]["data"])
-                    if not y_is_coord:
-                        y.append(doc["variables"][y_axis]["data"])
+                    x.append(doc["variables"][x_axis]["data"])
+                    y.append(doc["variables"][y_axis]["data"])
                     z.append(doc["variables"][z_axis]["data"])
                 except KeyError:
                     continue
@@ -1902,13 +1871,13 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         # except KeyError:
         #     pass
         
-        if len(x) > 0 and isinstance(x[-1], list):
+        if isinstance(x[-1], list):
             x = x[-1]
 
-        if len(y) > 0 and isinstance(y[-1], list):
+        if isinstance(y[-1], list):
             y = y[-1]
         
-        if len(z) > 0 and isinstance(z[-1], list):
+        if isinstance(z[-1], list):
             z = z[-1]
 
         heatmap = go.Figure(
@@ -1916,8 +1885,8 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
                 x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"
             ),
             layout={
-                "xaxis": {"title": f"{x_axis} {units[0]}".strip()},
-                "yaxis": {"title": f"{y_axis} {units[1]}".strip()},
+                "xaxis": {"title": f"{x_axis} {units[0]}"},
+                "yaxis": {"title": f"{y_axis} {units[1]}"},
                 # "colorscale": "rainbow"
             },
         )
@@ -1930,9 +1899,9 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
             data = go.Surface(z=z, x=x, y=y)
         )
         scatter.update_scenes(
-            xaxis_title_text = f"{x_axis} {units[0]}".strip(),
-            yaxis_title_text = f"{y_axis} {units[1]}".strip(),
-            zaxis_title_text = f"{z_axis} {units[2]}".strip()
+            xaxis_title_text = f"{x_axis} {units[0]}",
+            yaxis_title_text = f"{y_axis} {units[1]}",
+            zaxis_title_text = f"{z_axis} {units[2]}"
         )
 
         # return [heatmap, scatter]  # , graph_axes]
@@ -2278,16 +2247,9 @@ def update_graph_2d_scatter(
                 z_axis_list, graph_ids, current_figs
             ):
                 y_axis = graph_id["index"].split("::")[1]
-                
-                # --- NEW: Check if Coordinate ---
-                y_is_coord = False
-                if sensor_definition and y_axis in sensor_definition.get("variables", {}):
-                    if sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                        y_is_coord = True
-
                 if (
                     "time" not in sensor_data["variables"]
-                    or (not y_is_coord and y_axis not in sensor_data["variables"])
+                    or y_axis not in sensor_data["variables"]
                     or z_axis not in sensor_data["variables"]
                 ):
                     raise PreventUpdate
@@ -2297,13 +2259,7 @@ def update_graph_2d_scatter(
                     # return dash.no_update
 
                 x = sensor_data["variables"]["time"]["data"]
-                
-                # Extract Y depending on if it is a coordinate
-                if y_is_coord:
-                    y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
-                else:
-                    y = sensor_data["variables"][y_axis]["data"]
-                    
+                y = sensor_data["variables"][y_axis]["data"]
                 z = sensor_data["variables"][z_axis]["data"]
                 print(f"scatter update: {x}, {y}, {z}")
 
@@ -2380,37 +2336,20 @@ def update_graph_3d_scatter(
             ):
                 x_axis = graph_id["index"].split("::")[0]
                 y_axis = graph_id["index"].split("::")[1]
-                
-                # --- NEW: Check if Coordinates ---
-                x_is_coord = False
-                y_is_coord = False
-                if sensor_definition:
-                    if x_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                        x_is_coord = True
-                    if y_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                        y_is_coord = True
-
                 if (
                     # "time" not in sensor_data["variables"]
-                    (not x_is_coord and x_axis not in sensor_data["variables"])
-                    or (not y_is_coord and y_axis not in sensor_data["variables"])
+                    x_axis not in sensor_data["variables"]
+                    or y_axis not in sensor_data["variables"]
                     or z_axis not in sensor_data["variables"]
                 ):
                     raise PreventUpdate
 
                 # x = sensor_data["variables"]["time"]["data"]
-                if x_is_coord:
-                    x = sensor_definition["variables"][x_axis]["attributes"]["data"]["data"]
-                else:
-                    x = sensor_data["variables"][x_axis]["data"]
-                    
-                if y_is_coord:
-                    y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
-                else:
-                    y = sensor_data["variables"][y_axis]["data"]
-                    
+                x = sensor_data["variables"][x_axis]["data"]
+                y = sensor_data["variables"][y_axis]["data"]
                 z = sensor_data["variables"][z_axis]["data"]
                 print(f"scatter update: {x}, {y}, {z}")
+
 
                 # current_fig["data"][0]["x"] = y
                 # current_fig["data"][0]["y"] = z
@@ -2427,6 +2366,7 @@ def update_graph_3d_scatter(
     except Exception as e:
         print(f"scatter update error: {e}")
     raise PreventUpdate
+
 
 # @callback(
 #     # Output("dbc-switch-value-changed", "children"),
@@ -2773,57 +2713,95 @@ def update_table_1d(sensor_data, col_defs_list):
 @callback(
     Output(
         {"type": "data-table-2d", "index": ALL}, "rowData"
-    ), 
+    ),  # , Output("active-sensor-changes", "data")],
     Input("sensor-data-buffer", "data"),
+    # Input("ws-sensor-instance", "message"),
     [
         State({"type": "data-table-2d", "index": ALL}, "rowData"),
         State({"type": "data-table-2d", "index": ALL}, "columnDefs"),
-        State("sensor-definition", "data"),
-    ],
+    ],  # , dcc.Store("sensor-definition", "data")],
+    # prevent_initial_call=True,
 )
-def update_table_2d(sensor_data, row_data_list, col_defs_list, sensor_definition):
+def update_table_2d(sensor_data, row_data_list, col_defs_list):  # , sensor_definition):
+    # sensor_def_data_changes = []
+    # active_sensor_data_changes = []
+    # # print(f"message data: {e}")
+    # print(f"sensor_def_data: {sensor_def_data}")
+    # print(f"row_data: {type(row_data)}, {row_data}, col_defs: {col_defs}")
+    # if e is not None and "data" in e:
     if sensor_data:
         new_row_data_list = []
         try:
             for col_defs in col_defs_list:
                 dim_2d = col_defs[0]["field"]
-                
-                # Check if it's a static coordinate
-                dim_2d_is_coord = False
-                if sensor_definition and dim_2d in sensor_definition.get("variables", {}):
-                    if sensor_definition["variables"][dim_2d].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                        dim_2d_is_coord = True
-                
-                # Extract the array accordingly
-                if dim_2d_is_coord:
-                    dim_data = sensor_definition["variables"][dim_2d]["attributes"]["data"]["data"]
-                else:
-                    if dim_2d not in sensor_data["variables"]:
-                        continue
-                    dim_data = sensor_data["variables"][dim_2d]["data"]
-
+                # row_data = [{}]*len(sensor_data["variables"][dim_2d]["data"])
                 row_data = []
-                for index in range(0, len(dim_data)):
+                for index in range(0, len(sensor_data["variables"][dim_2d]["data"])):
                     data = {}
                     for col in col_defs:
                         name = col["field"]
-                        if name == dim_2d:
-                            data[name] = dim_data[index]
-                        else:
-                            try:
-                                data[name] = sensor_data["variables"][name]["data"][index]
-                            except (KeyError, IndexError):
-                                data[name] = None
+                        data[name] = sensor_data["variables"][name]["data"][index]
+                        # print(f"row_data: {index} {name} : {row_data[index][name]} : {row_data[index]}")
+                    # print(f"row_data: {row_data}")
+                    # print(f"data: {data}")
                     row_data.append(data)
+                # print(f"row_data: {row_data}")
                 new_row_data_list.append(row_data)
+            # print(f"new_row_data_list: {new_row_data_list}")
             return new_row_data_list
 
+            # # sensor_data = json.loads(e["data"])
+            # for row_data, col_defs in zip(row_data_list,col_defs_list):
+            #     # dim_2d = table_id.split("::")[1]
+            #     data = {}
+            #     # print(f"row, col: {row_data}, {col_defs}")
+            #     for col in col_defs:
+            #         name = col["field"]
+            #         # print(f"name: {name}")
+            #         if name in sensor_data["variables"]:
+            #             # print(f"variable: {msg["variables"][name]["data"]}")
+            #             data[name] = sensor_data["variables"][name]["data"]
+            #             # print(f"data: {data}")
+            #         else:
+            #             data[name] = ""
+            #     # if row_data is None:
+            #     #     row_data = []
+            #     # print(f"row_data1: {type(row_data), {row_data}}")
+
+            #     for i in range(0, len(data[col_defs[0]["field"]])):
+
+            #     row_data.insert(0, data)
+            #     # print(f"row_data2: {type(row_data), {row_data}}")
+            #     # row_data = row_data.append(data)
+            #     # test_row_data = []
+            #     # test_row_data.append(data)
+            #     # print(f"row-data: {test_row_data}")
+
+            #     # limit size of table to 30 rows
+            #     if len(row_data) > 30:
+            #         # return row_data[:30]
+            #         new_row_data_list.append(row_data[:30])
+            #     else:
+            #         # return row_data
+            #         new_row_data_list.append(row_data)
+            #     # return dash.no_update
+            # # row_data_list.append(row_data)
+            # # print(f"row_data_list: {row_data_list}")
+            # if len(new_row_data_list) == 0:
+            #     raise PreventUpdate
+            # return new_row_data_list
+
         except Exception as e:
-            print(f"data update error table 2d: {e}")
-            print(traceback.format_exc())
+            print(f"data update error: {e}")
+            # return dash.no_update
         raise PreventUpdate
+        # return [dash.no_update for i in range(0,len(col_defs_list))]
+        # return row_data
     else:
+        # return dash.no_update
         raise PreventUpdate
+        # return [dash.no_update for i in range(0,len(col_defs_list))]
+        # return dash.no_update
 
 
 #    content = dbc.Row(children=[

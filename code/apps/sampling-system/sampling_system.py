@@ -3587,6 +3587,90 @@ class SamplingSystem:
     #     except Exception as e:
     #         self.logger.error("update_calculated_variable_by_time_index", extra={"reason": str(e), "variable": variable_name})
 
+    # async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
+    #     import importlib
+        
+    #     self.logger.debug(f"ENTERED update_calculated_variable_by_time_index for {variable_name}")
+        
+    #     try:
+    #         raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
+            
+    #         calc_method = raw_var_def.get("calculate_method") or raw_var_def.get("calculation_method") or raw_var_def.get("action") or {}
+            
+    #         if not calc_method:
+    #             self.logger.warning(f"ABORT: Missing calculate/calculation_method for {variable_name} in raw definition.")
+    #             return
+
+    #         module_name = calc_method.get("action_module", calc_method.get("service", "calculations.default"))
+    #         def_name = calc_method.get("action_def", calc_method.get("path", "").strip("/"))
+
+    #         if not def_name:
+    #             self.logger.warning(f"ABORT: No definition/function name provided for calculated variable: {variable_name}")
+    #             return
+
+    #         try:
+    #             mod = importlib.import_module(module_name)
+    #             calc_func = getattr(mod, def_name)
+    #         except Exception as mod_err:
+    #             self.logger.error(f"ABORT: Failed to load module '{module_name}' or def '{def_name}'", extra={"reason": str(mod_err)})
+    #             return
+
+    #         kwargs = {}
+    #         parameters = calc_method.get("parameters", {})
+    #         sources = raw_var_def.get("source", {})
+
+    #         for param_name, param_mapping in parameters.items():
+    #             src_var_alias = param_mapping.get("source-variable")
+    #             val = None
+
+    #             if src_var_alias and src_var_alias in sources:
+    #                 src_def = sources[src_var_alias]
+                    
+    #                 # 1. Get the actual variable name (e.g., "relative_wind_speed")
+    #                 real_src_var = src_def.get("source_variable", src_var_alias)
+                    
+    #                 # 2. Get the target variableset (e.g., "main")
+    #                 target_vset_name = src_def.get("variableset", variableset_name)
+
+    #                 # 3. Hunt for the data in evaluated_vsets
+    #                 if evaluated_vsets and target_vset_name in evaluated_vsets:
+    #                     target_vset = evaluated_vsets[target_vset_name]
+    #                     if real_src_var in target_vset["variables"]:
+    #                         val = target_vset["variables"][real_src_var].get("data")
+                    
+    #                 # Fallback to local
+    #                 elif real_src_var in variableset_record["variables"]:
+    #                     val = variableset_record["variables"][real_src_var].get("data")
+
+    #             kwargs[param_name] = val
+                
+    #             # IMPORTANT DEBUG: Show exactly what was pulled for each parameter
+    #             self.logger.debug(f"CALC EXTRACT: {variable_name} -> param '{param_name}' got value: {val}")
+
+    #         self.logger.debug("update_calculated_variable_by_time_index EXECUTE", extra={"variable": variable_name, "kwargs": kwargs})
+            
+    #         # Execute with explicit exception catching around the user function
+    #         try:
+    #             if asyncio.iscoroutinefunction(calc_func):
+    #                 result = await calc_func(self, **kwargs)
+    #             else:
+    #                 result = calc_func(self, **kwargs)
+    #         except Exception as user_func_err:
+    #             self.logger.debug(f"USER FUNCTION CRASH: {def_name} failed.", extra={"reason": str(user_func_err)})
+    #             return
+                
+    #         self.logger.debug("update_calculated_variable_by_time_index SUCCESS", extra={"variable": variable_name, "result": result})
+ 
+    #         if isinstance(result, dict) and variable_name in result:
+    #             final_val = result[variable_name]
+    #         else:
+    #             final_val = result
+
+    #         variableset_record["variables"][variable_name]["data"] = final_val
+
+    #     except Exception as e:
+    #         self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
+
     async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
         import importlib
         
@@ -3626,7 +3710,7 @@ class SamplingSystem:
                 if src_var_alias and src_var_alias in sources:
                     src_def = sources[src_var_alias]
                     
-                    # 1. Get the actual variable name (e.g., "relative_wind_speed")
+                    # 1. Get the actual variable name (e.g., "diameter")
                     real_src_var = src_def.get("source_variable", src_var_alias)
                     
                     # 2. Get the target variableset (e.g., "main")
@@ -3636,11 +3720,25 @@ class SamplingSystem:
                     if evaluated_vsets and target_vset_name in evaluated_vsets:
                         target_vset = evaluated_vsets[target_vset_name]
                         if real_src_var in target_vset["variables"]:
-                            val = target_vset["variables"][real_src_var].get("data")
+                            target_var_def = target_vset["variables"][real_src_var]
+                            
+                            # --- NEW: Route static coordinate data from attributes ---
+                            var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+                            if var_type == "coordinate":
+                                val = target_var_def.get("attributes", {}).get("data", {}).get("data")
+                            else:
+                                val = target_var_def.get("data")
                     
-                    # Fallback to local
+                    # 4. Fallback to local
                     elif real_src_var in variableset_record["variables"]:
-                        val = variableset_record["variables"][real_src_var].get("data")
+                        target_var_def = variableset_record["variables"][real_src_var]
+                        
+                        # --- NEW: Route static coordinate data from attributes ---
+                        var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+                        if var_type == "coordinate":
+                            val = target_var_def.get("attributes", {}).get("data", {}).get("data")
+                        else:
+                            val = target_var_def.get("data")
 
                 kwargs[param_name] = val
                 

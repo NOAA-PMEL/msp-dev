@@ -215,10 +215,10 @@ class APS3321(Sensor):
                                 record_buffer["variables"][var]["data"] = record2["variables"][var]["data"]
                     
                     # Safely assigning to ["data"] because variables are now in the JSON schema
-                    if "diameter" in record_buffer["variables"]:
-                        record_buffer["variables"]["diameter"]["data"] = self.diams
-                    if "channel" in record_buffer["variables"]:
-                        record_buffer["variables"]["channel"]["data"] = list(range(1, 65))
+                    # if "diameter" in record_buffer["variables"]:
+                    #     record_buffer["variables"]["diameter"]["data"] = self.diams
+                    # if "channel" in record_buffer["variables"]:
+                    #     record_buffer["variables"]["channel"]["data"] = list(range(1, 65))
                     if "dN" in record_buffer["variables"]:
                         record_buffer["variables"]["dN"]["data"] = [None]*52
                     if "dlogDp" in record_buffer["variables"]:
