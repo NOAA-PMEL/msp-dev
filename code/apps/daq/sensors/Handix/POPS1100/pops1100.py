@@ -16,7 +16,6 @@ from cloudevents.http import CloudEvent
 from pydantic import BaseModel
 
 task_list = []
-
 class POPS1100(Sensor):
     def __init__(self, config=None, **kwargs):
         super(POPS1100, self).__init__(config=config, **kwargs)

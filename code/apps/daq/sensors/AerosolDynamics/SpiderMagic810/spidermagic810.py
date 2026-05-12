@@ -14,7 +14,6 @@ from cloudevents.http import CloudEvent
 from pydantic import BaseModel
 
 task_list = []
-
 class SpiderMagic810(Sensor):
     def __init__(self, config=None, **kwargs):
         super(SpiderMagic810, self).__init__(config=config, **kwargs)
