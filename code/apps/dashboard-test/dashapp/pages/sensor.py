@@ -2104,7 +2104,6 @@ def update_graph_1d(sensor_data, y_axis_list): # FIXED: Arguments now match deco
         raise PreventUpdate
 
 @callback(
-    # Output({"type": "graph-2d-heatmap", "index": ALL}, "extendData"),
     Output({"type": "graph-2d-heatmap", "index": ALL}, "figure", allow_duplicate=True),
     Input("sensor-data-buffer", "data"),
     [
@@ -2119,134 +2118,77 @@ def update_graph_1d(sensor_data, y_axis_list): # FIXED: Arguments now match deco
 def update_graph_2d_heatmap(
     sensor_data, z_axis_list, graph_axes, sensor_definition, current_figs, graph_ids
 ):
+    if not sensor_data:
+        raise PreventUpdate
 
-    # # may need this later with multiple plots but I think it will still loop through drop downs
-    # if "graph-1d" not in graph_axes:
-    #     return dash.no_update
+    heatmaps = []
+    for z_axis, graph_id, current_fig in zip(z_axis_list, graph_ids, current_figs):
+        if not current_fig or not current_fig.get("data"):
+            heatmaps.append(dash.no_update)
+            continue
 
-    # axes = graph_axes["graph-1d"]# = {"x-axis": "time", "y-axis": y_axis}
-    try:
-        heatmaps = []
-        if sensor_data:
-            print(f"update_2d_heatmap: {z_axis_list}, {graph_ids}")
-            for z_axis, graph_id, current_fig in zip(
-                z_axis_list, graph_ids, current_figs
-            ):
-                y_axis = graph_id["index"].split("::")[1]
-                print(f"y_axis, z_axis: {y_axis}, {z_axis}")
-                if (
-                    "time" not in sensor_data["variables"]
-                    or y_axis not in sensor_data["variables"]
-                    or z_axis not in sensor_data["variables"]
-                ):
-                    raise PreventUpdate
-                    # heatmaps.append(dash.no_update)
-                    # # scatters.append(dash.no_update)
-                    # continue
-                    # return dash.no_update
+        y_axis = graph_id["index"].split("::")[1]
+        
+        y_is_coord = False
+        if sensor_definition and y_axis in sensor_definition.get("variables", {}):
+            if sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+                y_is_coord = True
 
-                x = sensor_data["variables"]["time"]["data"]
-                # print(f"current x, z: {x}, {current_fig['data'][0]['x']}, {current_fig['data'][0]['z']}")
-                # print(f"current x, y, z: {x}, {len(current_fig['data'][0]['x'])}, {len(current_fig['data'][0]['y'])}, {len(current_fig['data'][0]['z'])}")
-                # print(f"current x, y, z: {x}, {current_fig['data'][0]['x']}, {current_fig['data'][0]['y']}, {current_fig['data'][0]['z']}")
+        if (
+            "time" not in sensor_data.get("variables", {})
+            or (not y_is_coord and y_axis not in sensor_data.get("variables", {}))
+            or z_axis not in sensor_data.get("variables", {})
+        ):
+            heatmaps.append(dash.no_update)
+            continue
 
-                # print(f"current fig: {current_fig}")
+        x = sensor_data["variables"]["time"]["data"]
 
-                if x in current_fig["data"][0]["x"]:
-                    print("don't update")
-                    raise PreventUpdate
+        if x in current_fig["data"][0].get("x", []):
+            heatmaps.append(dash.no_update)
+            continue
 
-                print("start x,y,z")
-                if not isinstance(x, list):
-                    x = [x]
-                print(f"x: {x}")
+        if not isinstance(x, list):
+            x = [x]
 
-                # work around until extendData works
-                new_x = current_fig["data"][0]["x"]
-                for nx in x:
-                    current_fig["data"][0]["x"].append(nx)
-                print(f"new x: {new_x}")
-                y = current_fig["data"][0]["y"]
-                if len(y) == 0:
-                    y = sensor_data["variables"][y_axis]["data"]
-                if not isinstance(y, list):
-                    y = [y]
-                print(f"y: {y}")
-                orig_z = sensor_data["variables"][z_axis]["data"]
-                if not isinstance(orig_z, list):
-                    orig_z = [orig_z]
-                print(f"update: {[x]}, {[y]}, {[orig_z]}")
+        for nx in x:
+            current_fig["data"][0]["x"].append(nx)
+        
+        y = current_fig["data"][0].get("y", [])
+        if len(y) == 0:
+            if y_is_coord:
+                y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
+            else:
+                y = sensor_data["variables"][y_axis]["data"]
+        
+        orig_z = sensor_data["variables"][z_axis]["data"]
+        if not isinstance(orig_z, list):
+            orig_z = [orig_z]
 
-                # work around until extendData works
-                z = []
-                new_z = current_fig["data"][0]["z"]
-                if len(x) > 1:
-                    for yi, yval in enumerate(y):
-                        z.append([])
-                        new_z = []
-                        for xi, xval in enumerate(x):
-                            new_z.append(orig_z[xi][yi])
-                        z.append(new_z)
-                else:
-                    for yi, yval in enumerate(y):
-                        current_fig["data"][0]["z"][yi].append(orig_z[yi])
-                        # z.append([])
-                        # new_z = []
-                        # for xi, xval in enumerate(x):
-                        #     new_z.append(orig_z[xi][yi])
-                        z.append([orig_z[yi]])
-
-                units = ""
+        z = []
+        if len(x) > 1:
+            for yi, yval in enumerate(y):
+                new_z = []
+                for xi, xval in enumerate(x):
+                    try:
+                        new_z.append(orig_z[xi][yi])
+                    except IndexError:
+                        new_z.append(None)
+                z.append(new_z)
+        else:
+            for yi, yval in enumerate(y):
                 try:
-                    y_units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
-                    z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
-                except KeyError:
+                    current_fig["data"][0]["z"][yi].append(orig_z[yi])
+                except IndexError:
                     pass
+                z.append([orig_z[yi]] if len(orig_z)>yi else [None])
 
-                # patched_heatmap = Patch()
-                # print(f"patched heatmap: {patched_heatmap}")
-                # if x not in patched_heatmap["data"][0]["x"]:
-                #     patched_heatmap["data"][0]["x"].append(x)
-                #     patched_heatmap["data"][0]["z"].append(z)
-
-                print(f'change data: "x": {[x]}, "y": {[y]}, "z": {[z]}')
-                # heatmaps.append({"x": [x], "y": [y], "z": [[z]]})
-                # heatmaps.append({"x": [x], "y": [y], "z": [z]})
-
-                # if len(current_fig["data"][0]["y"]) == 0:
-                #     heatmaps.append({"x": [x], "y": [y], "z": [[z]]})
-                # else:
-                #     heatmaps.append({"x": [x], "z": [[z]]})
-
-                # heatmaps.append({"data": [{"x": new_x, "y": y, "z": new_z}]})
-
-                # heatmaps.append(patched_heatmap)
-                heatmaps.append(current_fig)
-                # new_fig = go.Figure(
-                #     data=go.Heatmap(x=new_x, y=y, z=new_z, type="heatmap"),
-                #     layout={
-                #         "xaxis": {"title": f"{y_axis} {y_units}"},
-                #         "yaxis": {"title": f"{z_axis} {z_units}"},
-                #         # "yaxis": {"title": f"{y_axis} {y_units}"},
-                #         # "colorscale": "rainbow"
-                #     }
-                # )
-
-                # heatmaps.append(
-                # )
-            # return {"x": [x], "y": [y]}
-            print(f"heatmaps: {heatmaps}")
-            if len(heatmaps) == 0:
-                raise PreventUpdate
-            return heatmaps
-
-    except Exception as e:
-        print(f"heatmap update error: {e}")
-        # return dash.no_update
-        # return dash.no_update
-    raise PreventUpdate
-    # return dash.no_update
-
+        heatmaps.append(current_fig)
+        
+    if all(h == dash.no_update for h in heatmaps):
+        raise PreventUpdate
+        
+    return heatmaps
 
 @callback(
     Output({"type": "graph-2d-line", "index": ALL}, "figure"),
@@ -2263,94 +2205,51 @@ def update_graph_2d_heatmap(
 def update_graph_2d_scatter(
     sensor_data, z_axis_list, graph_axes, sensor_definition, current_figs, graph_ids
 ):
+    if not sensor_data:
+        raise PreventUpdate
 
-    # # may need this later with multiple plots but I think it will still loop through drop downs
-    # if "graph-1d" not in graph_axes:
-    #     return dash.no_update
+    scatters = []
+    for z_axis, graph_id, current_fig in zip(z_axis_list, graph_ids, current_figs):
+        if not current_fig or not current_fig.get("data"):
+            scatters.append(dash.no_update)
+            continue
 
-    # axes = graph_axes["graph-1d"]# = {"x-axis": "time", "y-axis": y_axis}
-    try:
-        # heatmaps = []
-        scatters = []
-        if sensor_data:
-            print(f"sensor_data: {sensor_data}")
-            for z_axis, graph_id, current_fig in zip(
-                z_axis_list, graph_ids, current_figs
-            ):
-                y_axis = graph_id["index"].split("::")[1]
-                
-                # --- NEW: Check if Coordinate ---
-                y_is_coord = False
-                if sensor_definition and y_axis in sensor_definition.get("variables", {}):
-                    if sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                        y_is_coord = True
+        y_axis = graph_id["index"].split("::")[1]
+        
+        y_is_coord = False
+        if sensor_definition and y_axis in sensor_definition.get("variables", {}):
+            if sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+                y_is_coord = True
 
-                if (
-                    "time" not in sensor_data["variables"]
-                    or (not y_is_coord and y_axis not in sensor_data["variables"])
-                    or z_axis not in sensor_data["variables"]
-                ):
-                    raise PreventUpdate
-                    # heatmaps.append(dash.no_update)
-                    # scatters.append(dash.no_update)
-                    # continue
-                    # return dash.no_update
+        if (
+            "time" not in sensor_data.get("variables", {})
+            or (not y_is_coord and y_axis not in sensor_data.get("variables", {}))
+            or z_axis not in sensor_data.get("variables", {})
+        ):
+            scatters.append(dash.no_update)
+            continue
 
-                x = sensor_data["variables"]["time"]["data"]
-                
-                # Extract Y depending on if it is a coordinate
-                if y_is_coord:
-                    y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
-                else:
-                    y = sensor_data["variables"][y_axis]["data"]
-                    
-                z = sensor_data["variables"][z_axis]["data"]
-                print(f"scatter update: {x}, {y}, {z}")
+        x = sensor_data["variables"]["time"]["data"]
+        
+        if y_is_coord:
+            y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
+        else:
+            y = sensor_data["variables"][y_axis]["data"]
+            
+        z = sensor_data["variables"][z_axis]["data"]
 
-                # units = ""
-                # try:
-                #     y_units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
-                #     z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
-                # except KeyError:
-                #     pass
+        current_fig["data"][0]["x"] = y
+        current_fig["data"][0]["y"] = z
+        if isinstance(x, list) and len(x) > 0:
+            x = x[-1]
+        current_fig["layout"]["title"] = str(x)
+        
+        scatters.append(current_fig)
 
-                # patched_scatter = Patch()
-                # patched_scatter["data"][0]["x"] = y
-                # patched_scatter["data"][0]["y"] = z
-                # patched_scatter["layout"]["title"] = str(x[-1])
-                # heatmaps.append({"x": [x], "y": [y], "z": [z]})
-
-                current_fig["data"][0]["x"] = y
-                current_fig["data"][0]["y"] = z
-                if isinstance(x, list):
-                    x = x[-1]
-                current_fig["layout"]["title"] = str(x)
-                print(f"scatter current_fig: {current_fig}")
-                scatters.append(current_fig)
-                # scatters.append(
-                #     go.Figure(
-                #         data=go.Scatter(x=y, y=z, type="scatter"),
-                #         layout={
-                #             "xaxis": {"title": f"{y_axis} {y_units}"},
-                #             "yaxis": {"title": f"{z_axis} {z_units}"},
-                #             "title": str(x[-1])
-                #             # "yaxis": {"title": f"{y_axis} {y_units}"},
-                #             # "colorscale": "rainbow"
-                #         }
-                #     )
-                # )
-                # scatters.append(patched_scatter)
-
-            # return {"x": [x], "y": [y]}
-
-            return scatters
-
-    except Exception as e:
-        print(f"scatter update error: {e}")
-        # return dash.no_update
-        # return dash.no_update
-    raise PreventUpdate
-    # return dash.no_update
+    if all(s == dash.no_update for s in scatters):
+        raise PreventUpdate
+        
+    return scatters
 
 
 
@@ -2370,63 +2269,59 @@ def update_graph_2d_scatter(
 def update_graph_3d_scatter(
     sensor_data, z_axis_list, graph_axes, sensor_definition, current_figs, graph_ids
 ):
+    if not sensor_data:
+        raise PreventUpdate
 
-    try:
-        scatters = []
-        if sensor_data:
-            print(f"sensor_data: {sensor_data}")
-            for z_axis, graph_id, current_fig in zip(
-                z_axis_list, graph_ids, current_figs
-            ):
-                x_axis = graph_id["index"].split("::")[0]
-                y_axis = graph_id["index"].split("::")[1]
-                
-                # --- NEW: Check if Coordinates ---
-                x_is_coord = False
-                y_is_coord = False
-                if sensor_definition:
-                    if x_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                        x_is_coord = True
-                    if y_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                        y_is_coord = True
+    scatters = []
+    for z_axis, graph_id, current_fig in zip(z_axis_list, graph_ids, current_figs):
+        if not current_fig or not current_fig.get("data"):
+            scatters.append(dash.no_update)
+            continue
 
-                if (
-                    # "time" not in sensor_data["variables"]
-                    (not x_is_coord and x_axis not in sensor_data["variables"])
-                    or (not y_is_coord and y_axis not in sensor_data["variables"])
-                    or z_axis not in sensor_data["variables"]
-                ):
-                    raise PreventUpdate
+        x_axis = graph_id["index"].split("::")[0]
+        y_axis = graph_id["index"].split("::")[1]
+        
+        x_is_coord = False
+        y_is_coord = False
+        if sensor_definition:
+            if x_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+                x_is_coord = True
+            if y_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+                y_is_coord = True
 
-                # x = sensor_data["variables"]["time"]["data"]
-                if x_is_coord:
-                    x = sensor_definition["variables"][x_axis]["attributes"]["data"]["data"]
-                else:
-                    x = sensor_data["variables"][x_axis]["data"]
-                    
-                if y_is_coord:
-                    y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
-                else:
-                    y = sensor_data["variables"][y_axis]["data"]
-                    
-                z = sensor_data["variables"][z_axis]["data"]
-                print(f"scatter update: {x}, {y}, {z}")
+        if (
+            (not x_is_coord and x_axis not in sensor_data.get("variables", {}))
+            or (not y_is_coord and y_axis not in sensor_data.get("variables", {}))
+            or z_axis not in sensor_data.get("variables", {})
+        ):
+            scatters.append(dash.no_update)
+            continue
 
-                # current_fig["data"][0]["x"] = y
-                # current_fig["data"][0]["y"] = z
-                # current_fig["data"][0]["x"] = y
-                current_fig["data"][0]["z"] = z
-                if isinstance(x, list):
-                    x = x[-1]
-                current_fig["layout"]["title"] = str(x)
-                print(f"scatter current_fig: {current_fig}")
-                scatters.append(current_fig)
+        if x_is_coord:
+            x = sensor_definition["variables"][x_axis]["attributes"]["data"]["data"]
+        else:
+            x = sensor_data["variables"][x_axis]["data"]
+            
+        if y_is_coord:
+            y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
+        else:
+            y = sensor_data["variables"][y_axis]["data"]
+            
+        z = sensor_data["variables"][z_axis]["data"]
 
-            return scatters
+        current_fig["data"][0]["z"] = z
+        if isinstance(x, list) and len(x) > 0:
+            x_title = x[-1]
+        else:
+            x_title = x
+        current_fig["layout"]["title"] = str(x_title)
+        
+        scatters.append(current_fig)
 
-    except Exception as e:
-        print(f"scatter update error: {e}")
-    raise PreventUpdate
+    if all(s == dash.no_update for s in scatters):
+        raise PreventUpdate
+        
+    return scatters
 
 # @callback(
 #     # Output("dbc-switch-value-changed", "children"),
@@ -2782,48 +2677,52 @@ def update_table_1d(sensor_data, col_defs_list):
     ],
 )
 def update_table_2d(sensor_data, row_data_list, col_defs_list, sensor_definition):
-    if sensor_data:
-        new_row_data_list = []
-        try:
-            for col_defs in col_defs_list:
-                dim_2d = col_defs[0]["field"]
-                
-                # Check if it's a static coordinate
-                dim_2d_is_coord = False
-                if sensor_definition and dim_2d in sensor_definition.get("variables", {}):
-                    if sensor_definition["variables"][dim_2d].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-                        dim_2d_is_coord = True
-                
-                # Extract the array accordingly
-                if dim_2d_is_coord:
-                    dim_data = sensor_definition["variables"][dim_2d]["attributes"]["data"]["data"]
+    if not sensor_data:
+        raise PreventUpdate
+        
+    new_row_data_list = []
+    for col_defs in col_defs_list:
+        if not col_defs:
+            new_row_data_list.append(dash.no_update)
+            continue
+            
+        dim_2d = col_defs[0]["field"]
+        
+        dim_2d_is_coord = False
+        if sensor_definition and dim_2d in sensor_definition.get("variables", {}):
+            if sensor_definition["variables"][dim_2d].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+                dim_2d_is_coord = True
+        
+        if dim_2d_is_coord:
+            dim_data = sensor_definition["variables"][dim_2d]["attributes"]["data"]["data"]
+        else:
+            if dim_2d not in sensor_data.get("variables", {}):
+                new_row_data_list.append(dash.no_update)
+                continue
+            dim_data = sensor_data["variables"][dim_2d].get("data")
+            if not dim_data:
+                new_row_data_list.append(dash.no_update)
+                continue
+
+        row_data = []
+        for index in range(0, len(dim_data)):
+            data = {}
+            for col in col_defs:
+                name = col["field"]
+                if name == dim_2d:
+                    data[name] = dim_data[index]
                 else:
-                    if dim_2d not in sensor_data["variables"]:
-                        continue
-                    dim_data = sensor_data["variables"][dim_2d]["data"]
-
-                row_data = []
-                for index in range(0, len(dim_data)):
-                    data = {}
-                    for col in col_defs:
-                        name = col["field"]
-                        if name == dim_2d:
-                            data[name] = dim_data[index]
-                        else:
-                            try:
-                                data[name] = sensor_data["variables"][name]["data"][index]
-                            except (KeyError, IndexError):
-                                data[name] = None
-                    row_data.append(data)
-                new_row_data_list.append(row_data)
-            return new_row_data_list
-
-        except Exception as e:
-            print(f"data update error table 2d: {e}")
-            print(traceback.format_exc())
+                    try:
+                        data[name] = sensor_data["variables"][name]["data"][index]
+                    except (KeyError, IndexError, TypeError):
+                        data[name] = None
+            row_data.append(data)
+        new_row_data_list.append(row_data)
+        
+    if all(r == dash.no_update for r in new_row_data_list):
         raise PreventUpdate
-    else:
-        raise PreventUpdate
+        
+    return new_row_data_list
 
 
 #    content = dbc.Row(children=[
