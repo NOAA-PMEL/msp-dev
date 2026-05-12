@@ -193,8 +193,10 @@ class XPort(Interface):
                 await asyncio.sleep(1.0)
 
     async def wait_for_ok(self, timeout=0):
-        pass
-
+        # If a timeout is provided, sleep for that duration.
+        # Otherwise, default to a 0.1s rest to prevent CPU spin.
+        await asyncio.sleep(timeout if timeout > 0 else 0.1)
+        
     async def send_data(self, event: DAQEvent):
             print(f"here:1 {event}")
             try:
