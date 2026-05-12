@@ -109,8 +109,9 @@ class SamplingCondition:
         self.criterion_tasks = []
         
         self.configure()
-        asyncio.create_task(self.condition_monitor())
-        asyncio.create_task(self.update_status_loop())
+        self._monitor_task = asyncio.create_task(self.condition_monitor())
+        self._status_task =asyncio.create_task(self.update_status_loop())
+        self._cleanup_task = asyncio.create_task(self.cleanup_loop())
 
     # def configure(self):
 
@@ -629,24 +630,24 @@ class SamplingCondition:
         #                 src_dict.pop(ts, None)
         #     except Exception as clean_e:
         #         self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
-        finally:
-            # 6. FAST Memory cleanup for stale data > 60 seconds old
-            try:
-                current_dt_raw = string_to_datetime(timestamp)
-                if not current_dt_raw:
-                    return 
+        # finally:
+        #     # 6. FAST Memory cleanup for stale data > 60 seconds old
+        #     try:
+        #         current_dt_raw = string_to_datetime(timestamp)
+        #         if not current_dt_raw:
+        #             return 
                     
-                cutoff_dt = current_dt_raw.replace(tzinfo=timezone.utc) - timedelta(seconds=60)
-                cutoff_str = datetime_to_string(cutoff_dt) # Generate the string once
+        #         cutoff_dt = current_dt_raw.replace(tzinfo=timezone.utc) - timedelta(seconds=60)
+        #         cutoff_str = datetime_to_string(cutoff_dt) # Generate the string once
                 
-                for src_name, src_dict in self.source_map.items():
-                    # Fast lexicographical string comparison (O(N) but highly optimized in C)
-                    stale_keys = [ts for ts in src_dict.keys() if ts < cutoff_str]
+        #         for src_name, src_dict in self.source_map.items():
+        #             # Fast lexicographical string comparison (O(N) but highly optimized in C)
+        #             stale_keys = [ts for ts in src_dict.keys() if ts < cutoff_str]
                             
-                    for ts in stale_keys:
-                        src_dict.pop(ts, None)
-            except Exception as clean_e:
-                self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
+        #             for ts in stale_keys:
+        #                 src_dict.pop(ts, None)
+        #     except Exception as clean_e:
+        #         self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
 
     # async def update_status_loop(self):
     #     while True:
@@ -671,6 +672,42 @@ class SamplingCondition:
     #         # await self.update_status(status)
 
     #         await asyncio.sleep(10)
+
+    async def cleanup_loop(self):
+        """
+        Runs in the background every 10 seconds to purge stale data from the source_map.
+        Takes advantage of dictionary insertion order to operate in O(1) time.
+        """
+        while True:
+            try:
+                # Give the event loop room to breathe
+                await asyncio.sleep(10)
+                
+                # We use get_datetime() directly to avoid string parsing overhead
+                now_raw = get_datetime()
+                if not now_raw:
+                    continue
+                    
+                cutoff_dt = now_raw.replace(tzinfo=timezone.utc) - timedelta(seconds=60)
+                cutoff_str = datetime_to_string(cutoff_dt)
+                
+                for src_name, src_dict in self.source_map.items():
+                    stale_keys = []
+                    
+                    for ts in src_dict:
+                        if ts < cutoff_str:
+                            stale_keys.append(ts)
+                        else:
+                            # Because timestamps are inserted chronologically,
+                            # once we hit a timestamp newer than the cutoff, 
+                            # we know ALL subsequent timestamps are also new.
+                            break
+                            
+                    for ts in stale_keys:
+                        src_dict.pop(ts, None)
+                        
+            except Exception as clean_e:
+                self.logger.error("cleanup_loop error", extra={"reason": clean_e})
 
     async def update_status_loop(self):
         while True:
@@ -702,6 +739,13 @@ class SamplingCondition:
             
             await self.status_buffer.put(status)
             await asyncio.sleep(10)
+
+    def shutdown(self):
+        """Cancels background tasks to prevent task leaks when this condition is replaced."""
+        if hasattr(self, '_monitor_task'): self._monitor_task.cancel()
+        if hasattr(self, '_status_task'): self._status_task.cancel()
+        if hasattr(self, '_cleanup_task'): self._cleanup_task.cancel()
+        self.logger.info(f"Condition '{self.config['metadata']['name']}' safely shut down.")
 
 class SamplingConditionsManager:
     """docstring for SamplingConditionsManager."""
@@ -849,6 +893,52 @@ class SamplingConditionsManager:
         except Exception as e:
             self.logger.error("configure error", extra={"reason": e})
 
+    # def load_condition(self, condition: dict):
+    #     """Helper to process definitions from either local files or Datastore API."""
+    #     if condition.get("kind") != "SamplingCondition":
+    #         return
+
+    #     cond_name = condition["metadata"]["name"]
+        
+    #     if cond_name not in self.sampling_conditions["conditions"]:
+    #         self.sampling_conditions["conditions"][cond_name] = {
+    #             "config": None,
+    #             "event_buffer": getattr(self, "status_buffer", None),
+    #             "condition": None,
+    #         }
+            
+    #     self.sampling_conditions["conditions"][cond_name]["config"] = condition
+
+    #     # Map sources to targets
+    #     for source_name, source in condition.get("sources", {}).items():
+    #         vm_name = source["variablemap_name"]
+    #         vs_name = source["variableset_name"]
+    #         src_id = "::".join([vm_name, vs_name])
+
+    #         if src_id not in self.sampling_conditions["sources"]:
+    #             self.sampling_conditions["sources"][src_id] = {"targets": []}
+                
+    #         source_variable = source["variable"]
+    #         target_entry = {
+    #             "condition": cond_name,
+    #             "source_name": source_name,
+    #             "source_variable": source_variable,
+    #         }
+            
+    #         if target_entry not in self.sampling_conditions["sources"][src_id]["targets"]:
+    #             self.sampling_conditions["sources"][src_id]["targets"].append(target_entry)
+
+    #     # Ensure status buffer exists if load_condition runs during sync loop
+    #     if not getattr(self, "status_buffer", None):
+    #         self.status_buffer = asyncio.Queue(maxsize=2000)
+    #         self.sampling_conditions["conditions"][cond_name]["event_buffer"] = self.status_buffer
+
+    #     condition_instance = SamplingCondition(
+    #         config=condition,
+    #         status_buffer=self.status_buffer,
+    #     )
+    #     self.sampling_conditions["conditions"][cond_name]["condition"] = condition_instance
+
     def load_condition(self, condition: dict):
         """Helper to process definitions from either local files or Datastore API."""
         if condition.get("kind") != "SamplingCondition":
@@ -856,13 +946,28 @@ class SamplingConditionsManager:
 
         cond_name = condition["metadata"]["name"]
         
-        if cond_name not in self.sampling_conditions["conditions"]:
+        # 1. Check if condition already exists
+        existing_entry = self.sampling_conditions["conditions"].get(cond_name)
+
+        if existing_entry:
+            # If the config hasn't changed at all, do nothing! 
+            # This handles 99% of the 60-second Datastore syncs effortlessly.
+            if existing_entry.get("config") == condition:
+                return
+            
+            # If config changed, gracefully shut down the old tasks before overwriting
+            old_condition_instance = existing_entry.get("condition")
+            if old_condition_instance:
+                old_condition_instance.shutdown()
+        else:
+            # Initialize dictionary for a brand-new condition
             self.sampling_conditions["conditions"][cond_name] = {
                 "config": None,
                 "event_buffer": getattr(self, "status_buffer", None),
                 "condition": None,
             }
             
+        # Update state with the new config
         self.sampling_conditions["conditions"][cond_name]["config"] = condition
 
         # Map sources to targets
@@ -889,6 +994,7 @@ class SamplingConditionsManager:
             self.status_buffer = asyncio.Queue(maxsize=2000)
             self.sampling_conditions["conditions"][cond_name]["event_buffer"] = self.status_buffer
 
+        # Instantiate and assign the fresh condition
         condition_instance = SamplingCondition(
             config=condition,
             status_buffer=self.status_buffer,
