@@ -42,6 +42,39 @@ class Aurora3000(Sensor):
         except FileNotFoundError:
             conf = {"serial_number": "UNKNOWN", "interfaces": {}}
 
+        if "metadata_interval" in conf:
+            self.include_metadata_interval = conf["metadata_interval"]
+
+        sensor_iface_properties = {
+            "default": {
+                "device-interface-properties": {
+                    "connection-properties": {
+                        "baudrate": 38400,
+                        "bytesize": 8,
+                        "parity": "N",
+                        "stopbit": 1,
+                    },
+                    "read-properties": {
+                        "read-method": "readline",  # readline, read-until, readbytes, readbinary
+                        # "read-terminator": "\r",  # only used for read_until
+                        "decode-errors": "strict",
+                        "send-method": "ascii",
+                    },
+                }
+            }
+        }
+
+        if "interfaces" in conf:
+            for name, iface in conf["interfaces"].items():
+                if name in sensor_iface_properties:
+                    for propname, prop in sensor_iface_properties[name].items():
+                        iface[propname] = prop
+
+            self.logger.debug(
+                "aurora3000.configure", extra={"interfaces": conf["interfaces"]}
+            )
+
+
         # Extract defaults for settings
         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
         for name, setting in settings_def.get("variables", {}).items():
