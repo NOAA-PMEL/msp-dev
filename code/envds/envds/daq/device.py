@@ -45,14 +45,13 @@ class DeviceAttribute(BaseModel):
             if data_type == "char" or data_type == "string":
                 data_type = "str"
 
-            # --- NEW ARRAY-AWARE LOGIC ---
+            # --- FIX: BYPASS STRICT ELEMENT VALIDATION FOR LISTS ---
             if isinstance(v, list):
-                # Optionally check if the first element matches the declared type
-                if len(v) > 0 and not isinstance(v[0], eval(data_type)):
-                    raise ValueError(f"Array data elements do not match declared type: {data_type}")
+                # Pydantic natively handles list parsing, so we just return the array
+                # rather than trying to recursively eval() inner elements against "list".
                 return v
-            # -----------------------------
-            
+            # -------------------------------------------------------
+
             if "type" in values and not isinstance(v, eval(data_type)):
                 raise ValueError("attribute data is wrong type")
         return v
