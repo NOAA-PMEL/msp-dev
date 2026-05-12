@@ -249,8 +249,18 @@ class Aurora3000(Sensor):
             if not raw_str or len(raw_str) < 5:
                 return None
                 
-            parts = [x.strip() for x in raw_str.split(",")]
-            
+            # parts = [x.strip() for x in raw_str.split(",")]
+            raw_parts = [x.strip() for x in raw_str.split(",")]
+            # --- ALIGNMENT FIX ---
+            first_chunk = raw_parts[0].split()
+            if len(first_chunk) >= 2:
+                # Clean up firmware ASCII bug in the time string
+                clean_time = first_chunk[1].replace(";", "0")
+                parts = [first_chunk[0], clean_time] + raw_parts[1:]
+            else:
+                parts = raw_parts
+            # ---------------------
+
             # --- VI099 MAPPING LIST ---
             variable_map = [
                 "aurora_date",
