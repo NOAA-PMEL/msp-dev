@@ -72,6 +72,7 @@ class DatastoreConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     debug: bool = True
+    log_level: str = "INFO"
 
     # TODO fix ns prefix
     daq_id: str | None = None
@@ -120,10 +121,12 @@ class Datastore:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.debug("TestClass instantiated")
-        self.logger.setLevel(logging.DEBUG)
+        # self.logger.setLevel(logging.DEBUG)
         self.db_client = None
         self.erddap_client = None
         self.config = DatastoreConfig()
+        level_str = self.config.get("log_level", "INFO").upper()
+        self.logger.setLevel(level_str)
 
         self.http_client = None
 
@@ -153,6 +156,7 @@ class Datastore:
         db_client_config = DBClientConfig(
             type=self.config.db_client_type,
             config={
+                "log_level": self.config.log_level,
                 "connection": self.config.db_client_connection,
                 "hostname": self.config.db_client_hostname,
                 "port": self.config.db_client_port,

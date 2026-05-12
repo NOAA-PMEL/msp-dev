@@ -35,7 +35,7 @@ handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
-L.setLevel(logging.DEBUG)
+# L.setLevel(logging.DEBUG)
 
 
 class Settings(BaseSettings):
@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
     dry_run: bool = False
+    log_level: str = "INFO"
 
     class Config:
         env_prefix = "DATASTORE_"
@@ -50,6 +51,11 @@ class Settings(BaseSettings):
 
 
 app = FastAPI()
+
+config = Settings()
+
+# Pass the uppercase string directly!
+L.setLevel(config.log_level.upper())
 
 datastore = None
 
