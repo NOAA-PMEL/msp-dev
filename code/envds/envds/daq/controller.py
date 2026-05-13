@@ -120,6 +120,7 @@ class ControllerVariable(BaseModel):
     type: str | None = "str"
     shape: list[str] | None = ["time"]
     attributes: dict[str, ControllerAttribute]
+    data: list | None = None
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
 
@@ -131,6 +132,7 @@ class ControllerSetting(BaseModel):
     type: str | None = "str"
     shape: list[str] | None = ["time"]
     attributes: dict[str, ControllerAttribute]
+    data: list | None = None
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
 
