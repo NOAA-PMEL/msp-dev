@@ -802,7 +802,7 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
     if sensor_definition and y_axis in sensor_definition.get("variables", {}):
         if sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
             y_is_coord = True
-            y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
+            y = sensor_definition["variables"][y_axis].get("data", [])
 
     device_id = sensor_meta.get("device_id")
     results = get_device_data(device_id=device_id, device_type="sensor")
@@ -895,10 +895,10 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
     if sensor_definition:
         if x_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
             x_is_coord = True
-            x = sensor_definition["variables"][x_axis]["attributes"]["data"]["data"]
+            x = sensor_definition["variables"][x_axis].get("data", [])
         if y_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
             y_is_coord = True
-            y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
+            y = sensor_definition["variables"][y_axis].get("data", [])
 
     device_id = sensor_meta.get("device_id")
     results = get_device_data(device_id=device_id, device_type="sensor")
@@ -1089,7 +1089,7 @@ def update_graph_2d_heatmap(
         y = current_fig["data"][0].get("y", [])
         if len(y) == 0:
             if y_is_coord:
-                y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
+                y = sensor_definition["variables"][y_axis].get("data", [])
             else:
                 y = sensor_data["variables"][y_axis]["data"]
         
@@ -1164,7 +1164,7 @@ def update_graph_2d_scatter(
         x = sensor_data["variables"]["time"]["data"]
         
         if y_is_coord:
-            y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
+            y = sensor_definition["variables"][y_axis].get("data", [])
         else:
             y = sensor_data["variables"][y_axis]["data"]
             
@@ -1233,12 +1233,12 @@ def update_graph_3d_plots(
             continue
 
         if x_is_coord:
-            x = sensor_definition["variables"][x_axis]["attributes"]["data"]["data"]
+            x = sensor_definition["variables"][x_axis].get("data", [])
         else:
             x = sensor_data["variables"][x_axis]["data"]
             
         if y_is_coord:
-            y = sensor_definition["variables"][y_axis]["attributes"]["data"]["data"]
+            y = sensor_definition["variables"][y_axis].get("data", [])
         else:
             y = sensor_data["variables"][y_axis]["data"]
             
@@ -1450,7 +1450,7 @@ def update_table_2d(sensor_data, row_data_list, col_defs_list, sensor_definition
                 dim_2d_is_coord = True
         
         if dim_2d_is_coord:
-            dim_data = sensor_definition["variables"][dim_2d]["attributes"]["data"]["data"]
+            dim_data = sensor_definition["variables"][dim_2d].get("data", [])
         else:
             if dim_2d not in sensor_data.get("variables", {}):
                 new_row_data_list.append(dash.no_update)
