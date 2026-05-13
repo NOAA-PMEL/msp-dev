@@ -14,6 +14,7 @@ from envds.daq.types import DAQEventType as det
 from cloudevents.http import CloudEvent
 from pydantic import BaseModel
 
+
 class TAP(Sensor):
     def __init__(self, config=None, **kwargs):
         super(TAP, self).__init__(config=config, **kwargs)

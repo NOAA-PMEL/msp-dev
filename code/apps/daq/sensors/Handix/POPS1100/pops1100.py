@@ -31,15 +31,21 @@ class POPS1100(Sensor):
             sys.exit(1)
 
         # Default 16-bin configuration per POPS manual
-        self.lower_dp_bound = [
-            115., 125., 135., 150., 165., 185., 210., 250., 
-            350., 475., 575., 855., 1220., 1530., 1990., 2585.
-        ]
+        # self.lower_dp_bound = [
+        #     115., 125., 135., 150., 165., 185., 210., 250., 
+        #     350., 475., 575., 855., 1220., 1530., 1990., 2585.
+        # ]
 
-        self.upper_dp_bound = [
-            125., 135., 150., 165., 185., 210., 250., 350., 
-            475., 575., 855., 1220., 1530., 1990., 2585., 3370.
-        ]
+        # self.upper_dp_bound = [
+        #     125., 135., 150., 165., 185., 210., 250., 350., 
+        #     475., 575., 855., 1220., 1530., 1990., 2585., 3370.
+        # ]
+
+        lower_bnd_var = self.metadata.get("variables", {}).get("diameter_bnd_lower", {})
+        self.lower_dp_bound = lower_bnd_var.get("data", [])
+        
+        upper_bnd_var = self.metadata.get("variables", {}).get("diameter_bnd_upper", {})
+        self.upper_dp_bound = upper_bnd_var.get("data", [])
 
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())

@@ -13,7 +13,6 @@ from envds.daq.event import DAQEvent
 from envds.daq.types import DAQEventType as det
 from cloudevents.http import CloudEvent
 from pydantic import BaseModel
-
 class Aurora3000(Sensor):
     def __init__(self, config=None, **kwargs):
         super(Aurora3000, self).__init__(config=config, **kwargs)
