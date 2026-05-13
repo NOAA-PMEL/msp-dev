@@ -1173,8 +1173,13 @@ class Device(envdsBase):
             # record["variables"] = self.config.metadata.dict()["variables"]
 
             # print(1, record)
-            for name, _ in record["variables"].items():
-                record["variables"][name]["data"] = None
+            # for name, _ in record["variables"].items():
+            #     record["variables"][name]["data"] = None
+            for name, var_dict in record["variables"].items():
+                # Do not scrub the data array if the variable is a static coordinate
+                var_type = var_dict.get("attributes", {}).get("variable_type", {}).get("data")
+                if var_type != "coordinate":
+                    record["variables"][name]["data"] = None
             # print(2, record)
         else:
             for name, variable in self.config.metadata.dict()["variables"].items():
