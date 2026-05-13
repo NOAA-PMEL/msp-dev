@@ -187,7 +187,8 @@ class Device(envdsBase):
         self.settings = RuntimeSettings()
 
         self.device_definition_registered = False
-        self.device_definition_send_time = 60 # start with every 5 seconds and change once ack
+        self.device_definition_send_time = 60 # changed to 60s and no ack
+        self.device_instance_send_time = 15 
         self.device_registered = False
 
         # list of sampling tasks to start/stop in do_start
@@ -306,7 +307,8 @@ class Device(envdsBase):
                 # self.logger.debug("default_data_loop", extra={"m": message})
                 await self.send_message(message)
         
-            await asyncio.sleep(5)
+            # await asyncio.sleep(5)
+            await asyncio.sleep(self.device_instance_send_time)
 
     async def register_device_type(self):
         # await init_db_models()

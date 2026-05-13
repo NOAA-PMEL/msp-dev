@@ -259,7 +259,8 @@ class Controller(envdsBase):
         self.run_task_list.append(self.client_recv_loop())
 
         self.controller_definition_registered = False
-        self.controller_definition_send_time = 5 # start with every 5 seconds and change once ack
+        self.controller_definition_send_time = 60 # changed to be 60 always and no ack
+        self.controller_instance_send_time = 15 # changed to be 60 always and no ack
         self.controller_registered = False
 
     def configure(self):
@@ -363,7 +364,8 @@ class Controller(envdsBase):
                 # self.logger.debug("default_data_loop", extra={"m": message})
                 await self.send_message(message)
         
-            await asyncio.sleep(5)
+            # await asyncio.sleep(5)
+            await asyncio.sleep(self.controller_instance_send_time)
 
     def disable(self):
 
