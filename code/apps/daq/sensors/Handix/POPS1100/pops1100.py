@@ -289,7 +289,7 @@ class POPS1100(Sensor):
             return None
             
         try:
-            # Get all scalar variables defined in the JSON metadata
+            # Define excluded keys to isolate scalar mappings
             exclude_vars = ["time", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN", "bin_count"]
             variables = [v for v in self.metadata["variables"].keys() if v not in exclude_vars]
             
@@ -299,19 +299,21 @@ class POPS1100(Sensor):
             record["timestamp"] = data.data["timestamp"]
             record["variables"]["time"]["data"] = data.data["timestamp"]
             
-            # Split raw string
+            # Split raw serial string
             parts = data.data["data"].strip().split(",")
 
-            # 1. Clean Headers: Remove "POPS" and "POPS-347" strings
+            # 1. Clean Headers: Remove "POPS" and "POPS-XXX" [cite: 597, 599]
             if parts and parts[0] == "POPS":
-                parts.pop(0) # [cite: 17, 216]
+                parts.pop(0)
             parts = [p for p in parts if "POPS-" not in p]
 
-            # 2. Clean SD Path: Remove the filename string (e.g., /media/uSD/...)
+            # 2. Clean SD Path: Remove filename string (e.g., /media/uSD/...) [cite: 485, 486]
             parts = [p for p in parts if "/media/uSD" not in p]
 
-            # 3. Scalar Mapping: JSON variables now align 1:1 with parts indices
-            # Status (6), DataStatus (7), PartCt (8), HistSum (9), PartCon (10)...
+            # --- DEBUG: Verify pre-histogram alignment ---
+            self.logger.debug("Parsing scalars", extra={"total_parts": len(parts), "total_vars": len(variables)})
+
+            # 3. Scalar Mapping Loop
             for index, name in enumerate(variables):
                 if name in record["variables"]:
                     instvar = self.metadata["variables"][name]
@@ -319,19 +321,29 @@ class POPS1100(Sensor):
                     if vartype == "string": vartype = "str"
                     
                     try:
-                        # Map exactly as in your original file 
-                        record["variables"][name]["data"] = eval(vartype)(parts[index].strip())
-                    except (ValueError, TypeError, IndexError):
+                        val_str = parts[index].strip()
+                        record["variables"][name]["data"] = eval(vartype)(val_str)
+                        
+                        # LOG EACH MAPPING: Check index 7 (DataStatus) and 9 (HistSum) specifically
+                        self.logger.debug(
+                            f"Variable Map: [{index}]", 
+                            extra={"name": name, "val": val_str, "type": vartype}
+                        )
+                    except (ValueError, TypeError, IndexError) as e:
+                        self.logger.error(f"Map Error at index {index}", extra={"var": name, "error": str(e)})
                         record["variables"][name]["data"] = None
 
-            # 4. Bin Extraction: Start after the last scalar variable (RawPts)
+            # 4. Bin Extraction: Histogram starts after the last scalar (RawPts) [cite: 498]
             raw_bins = parts[len(variables):]
             
-            # STRICT VALIDATION: Bad records are truncated (e.g., the 15-bin log seen earlier)
-            # NBins is 16 by default [cite: 482, 890]
+            # DEBUG: Check if we actually have 16 bins remaining [cite: 890, 891]
+            self.logger.debug("Parsing bins", extra={"bins_found": len(raw_bins), "raw_bins": raw_bins})
+
             if len(raw_bins) != 16:
-                self.logger.warning("Malformed record: dropping truncated data", 
-                                    extra={"expected": 16, "received": len(raw_bins)})
+                self.logger.warning(
+                    "Incomplete Histogram: Dropping Record", 
+                    extra={"expected": 16, "received": len(raw_bins)}
+                )
                 return None
                 
             record["variables"]["bin_count"]["data"] = [int(val.strip()) for val in raw_bins]
@@ -339,7 +351,7 @@ class POPS1100(Sensor):
             return record
 
         except Exception as e:
-            self.logger.error(f"default_parse error: {e}")
+            self.logger.error(f"Critical parse error: {e}")
             return None
     
 class ServerConfig(BaseModel):
