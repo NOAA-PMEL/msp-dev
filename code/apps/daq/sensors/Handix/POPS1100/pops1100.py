@@ -213,77 +213,135 @@ class POPS1100(Sensor):
                 self.logger.error("default_data_loop error", extra={"error": str(e)})
             await asyncio.sleep(0.01)
 
-    def default_parse(self, data):
-        if not data: return None
-        try:
-            v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
-            record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
-            self.include_metadata = False
+    # def default_parse(self, data):
+    #     if not data: return None
+    #     try:
+    #         v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
+    #         record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+    #         self.include_metadata = False
 
-            raw_payload = data.data if isinstance(data.data, dict) else {}
-            record["timestamp"] = raw_payload.get("timestamp")
-            if "time" in record.get("variables", {}):
-                record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+    #         raw_payload = data.data if isinstance(data.data, dict) else {}
+    #         record["timestamp"] = raw_payload.get("timestamp")
+    #         if "time" in record.get("variables", {}):
+    #             record["variables"]["time"]["data"] = raw_payload.get("timestamp")
                 
-            raw_str = raw_payload.get("data", "")
-            parts = raw_str.strip().split(",")
+    #         raw_str = raw_payload.get("data", "")
+    #         parts = raw_str.strip().split(",")
 
-            if len(parts) < 37:
-                return None
+    #         if len(parts) < 37:
+    #             return None
 
-            # Remove unused header blocks
-            parts.pop(0) # Remove "POPS" string
-            if len(parts) > 1:
-                parts.pop(1) # Remove secondary unused header string
+    #         # Remove unused header blocks
+    #         parts.pop(0) # Remove "POPS" string
+    #         if len(parts) > 1:
+    #             parts.pop(1) # Remove secondary unused header string
                 
-            # Safely locate and remove the SD card path if present
-            fname_idx = next((i for i, p in enumerate(parts) if "/media/uSD" in p), -1)
-            if fname_idx >= 0:
-                parts.pop(fname_idx)
+    #         # Safely locate and remove the SD card path if present
+    #         fname_idx = next((i for i, p in enumerate(parts) if "/media/uSD" in p), -1)
+    #         if fname_idx >= 0:
+    #             parts.pop(fname_idx)
 
-            # Get target variables to iterate through, excluding array/computed types
-            exclude_vars = ["time", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN"]
-            variables = [v for v in self.config.metadata.variables.keys() if v not in exclude_vars]
+    #         # Get target variables to iterate through, excluding array/computed types
+    #         exclude_vars = ["time", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN"]
+    #         variables = [v for v in self.config.metadata.variables.keys() if v not in exclude_vars]
             
-            dist_index = None
+    #         dist_index = None
 
-            for index, name in enumerate(variables):
-                if name == "bin_count":
-                    dist_index = index
-                    break
+    #         for index, name in enumerate(variables):
+    #             if name == "bin_count":
+    #                 dist_index = index
+    #                 break
                     
-                if name in record["variables"] and index < len(parts):
-                    instvar = self.config.metadata.variables[name]
-                    vartype = "str" if instvar.type == "string" else instvar.type
-                    val_str = parts[index].strip()
+    #             if name in record["variables"] and index < len(parts):
+    #                 instvar = self.config.metadata.variables[name]
+    #                 vartype = "str" if instvar.type == "string" else instvar.type
+    #                 val_str = parts[index].strip()
                     
-                    try:
-                        if vartype == "int":
-                            record["variables"][name]["data"] = int(float(val_str))
-                        elif vartype == "float":
-                            record["variables"][name]["data"] = float(val_str)
-                        else:
-                            record["variables"][name]["data"] = val_str
-                    except ValueError:
-                        record["variables"][name]["data"] = "" if vartype in ["str", "char"] else None
+    #                 try:
+    #                     if vartype == "int":
+    #                         record["variables"][name]["data"] = int(float(val_str))
+    #                     elif vartype == "float":
+    #                         record["variables"][name]["data"] = float(val_str)
+    #                     else:
+    #                         record["variables"][name]["data"] = val_str
+    #                 except ValueError:
+    #                     record["variables"][name]["data"] = "" if vartype in ["str", "char"] else None
             
-            # Extract raw histogram distribution
-            if dist_index is not None and dist_index < len(parts):
-                bin_counts = []
-                for val in parts[dist_index:]:
-                    try:
-                        bin_counts.append(int(float(val.strip())))
-                    except ValueError:
-                        bin_counts.append(0)
+    #         # Extract raw histogram distribution
+    #         if dist_index is not None and dist_index < len(parts):
+    #             bin_counts = []
+    #             for val in parts[dist_index:]:
+    #                 try:
+    #                     bin_counts.append(int(float(val.strip())))
+    #                 except ValueError:
+    #                     bin_counts.append(0)
                         
-                record["variables"]["bin_count"]["data"] = bin_counts
+    #             record["variables"]["bin_count"]["data"] = bin_counts
+
+    #         return record
+            
+    #     except Exception as e:
+    #         self.logger.error("default_parse error", extra={"error": str(e)})
+    #         return None
+
+    def default_parse(self, data):
+        if not data:
+            return None
+            
+        try:
+            # Get all scalar variables defined in the JSON metadata
+            exclude_vars = ["time", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN", "bin_count"]
+            variables = [v for v in self.metadata["variables"].keys() if v not in exclude_vars]
+            
+            record = self.build_data_record(meta=self.include_metadata)
+            self.include_metadata = False
+            
+            record["timestamp"] = data.data["timestamp"]
+            record["variables"]["time"]["data"] = data.data["timestamp"]
+            
+            # Split raw string
+            parts = data.data["data"].strip().split(",")
+
+            # 1. Clean Headers: Remove "POPS" and "POPS-347" strings
+            if parts and parts[0] == "POPS":
+                parts.pop(0) # [cite: 17, 216]
+            parts = [p for p in parts if "POPS-" not in p]
+
+            # 2. Clean SD Path: Remove the filename string (e.g., /media/uSD/...)
+            parts = [p for p in parts if "/media/uSD" not in p]
+
+            # 3. Scalar Mapping: JSON variables now align 1:1 with parts indices
+            # Status (6), DataStatus (7), PartCt (8), HistSum (9), PartCon (10)...
+            for index, name in enumerate(variables):
+                if name in record["variables"]:
+                    instvar = self.metadata["variables"][name]
+                    vartype = instvar["type"]
+                    if vartype == "string": vartype = "str"
+                    
+                    try:
+                        # Map exactly as in your original file 
+                        record["variables"][name]["data"] = eval(vartype)(parts[index].strip())
+                    except (ValueError, TypeError, IndexError):
+                        record["variables"][name]["data"] = None
+
+            # 4. Bin Extraction: Start after the last scalar variable (RawPts)
+            raw_bins = parts[len(variables):]
+            
+            # STRICT VALIDATION: Bad records are truncated (e.g., the 15-bin log seen earlier)
+            # NBins is 16 by default [cite: 482, 890]
+            if len(raw_bins) != 16:
+                self.logger.warning("Malformed record: dropping truncated data", 
+                                    extra={"expected": 16, "received": len(raw_bins)})
+                return None
+                
+            record["variables"]["bin_count"]["data"] = [int(val.strip()) for val in raw_bins]
 
             return record
-            
-        except Exception as e:
-            self.logger.error("default_parse error", extra={"error": str(e)})
-            return None
 
+        except Exception as e:
+            self.logger.error(f"default_parse error: {e}")
+            return None
+    
 class ServerConfig(BaseModel):
     host: str = "localhost"
     port: int = 9080
