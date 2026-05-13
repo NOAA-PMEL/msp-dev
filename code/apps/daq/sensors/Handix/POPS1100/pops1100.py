@@ -174,13 +174,24 @@ class POPS1100(Sensor):
                     # record["variables"]["diameter"]["data"] = diams
                     record["variables"]["dlogDp"]["data"] = dlogDp
 
+                    bin_counts = record["variables"].get("bin_count", {}).get("data", [])
+
+                    # --- STRICT VALIDATION: Only process if we have exactly 16 bins ---
+                    expected_bins = len(self.upper_dp_bound) # Should be 16
+                    if len(bin_counts) != expected_bins:
+                        self.logger.warning(
+                            "Invalid record: bin_count length mismatch", 
+                            extra={"expected": expected_bins, "received": len(bin_counts)}
+                        )
+                        continue # Drop this record and wait for the next one
+                    # -----------------------------------------------------------------
+
                     flow = record["variables"]["POPS_Flow"]["data"] or 1.0
                     
                     dN, dNdlogDp = [], []
                     intN = 0
                     
                     # Calculate size distribution variables based on raw bin counts
-                    bin_counts = record["variables"].get("bin_count", {}).get("data", [])
                     for i, cnt in enumerate(bin_counts):
                         conc = cnt / (flow * 1.0)
                         intN += conc
