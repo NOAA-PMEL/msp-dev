@@ -289,9 +289,16 @@ class POPS1100(Sensor):
             return None
             
         try:
-            # 1. Identify scalar variables for mapping
+            # 1. Identify scalar variables for mapping.
+            # MUST filter out "setting" variables (like sampling_state, pump_power) 
+            # and calculated/coordinate variables.
             exclude_vars = ["time", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN", "bin_count"]
-            variables = [v for v in self.metadata["variables"].keys() if v not in exclude_vars]
+            
+            variables = []
+            for v, meta in self.metadata["variables"].items():
+                v_type = meta.get("attributes", {}).get("variable_type", {}).get("data", "")
+                if v_type == "main" and v not in exclude_vars:
+                    variables.append(v)
             
             record = self.build_data_record(meta=self.include_metadata)
             self.include_metadata = False
@@ -303,17 +310,17 @@ class POPS1100(Sensor):
             # 3. Clean raw serial string
             parts = data.data["data"].strip().split(",")
 
-            # Remove "POPS" header
+            # Remove ONLY the "POPS" header
             if parts and parts[0] == "POPS":
                 parts.pop(0)
                 
-            # Filter out POPS-ID (e.g. POPS-347) and SD Path string
-            parts = [p for p in parts if "POPS-" not in p and "/media/uSD" not in p]
+            # Remove ONLY the SD Path string (e.g., /media/uSD...)
+            # We DO NOT remove "POPS-347" because it maps to POPS_ID!
+            parts = [p for p in parts if "/media/uSD" not in p]
 
-            # --- DEBUG: Start Mapping Trace ---
             self.logger.debug("parse_trace_start", extra={"total_chunks": len(parts), "json_vars": len(variables)})
 
-            # 4. Map Scalars: Iterate through JSON variables
+            # 4. Map Scalars: Iterate through filtered JSON variables
             for index, var_name in enumerate(variables):
                 if var_name in record["variables"]:
                     instvar = self.metadata["variables"][var_name]
@@ -322,10 +329,8 @@ class POPS1100(Sensor):
                     
                     try:
                         val_str = parts[index].strip()
-                        # Using 'eval' to cast types as seen in original driver
                         record["variables"][var_name]["data"] = eval(v_type)(val_str)
                         
-                        # RENAME KEYS: Avoid logfmter restricted words
                         self.logger.debug(
                             "var_mapping", 
                             extra={
@@ -344,7 +349,7 @@ class POPS1100(Sensor):
             
             self.logger.debug("bin_trace", extra={"bins_count": len(raw_bins), "bin_list": str(raw_bins)})
 
-            # STRICT VALIDATION: Manual Rev 8 confirms 16 bins is the standard 
+            # STRICT VALIDATION: Manual Rev 8 confirms 16 bins is the standard [cite: 885, 891]
             if len(raw_bins) != 16:
                 self.logger.warning(
                     "truncated_record_drop", 
