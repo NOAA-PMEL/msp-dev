@@ -289,60 +289,66 @@ class POPS1100(Sensor):
             return None
             
         try:
-            # Define excluded keys to isolate scalar mappings
+            # 1. Identify scalar variables for mapping
             exclude_vars = ["time", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN", "bin_count"]
             variables = [v for v in self.metadata["variables"].keys() if v not in exclude_vars]
             
             record = self.build_data_record(meta=self.include_metadata)
             self.include_metadata = False
             
+            # 2. Populate timestamps
             record["timestamp"] = data.data["timestamp"]
             record["variables"]["time"]["data"] = data.data["timestamp"]
             
-            # Split raw serial string
+            # 3. Clean raw serial string
             parts = data.data["data"].strip().split(",")
 
-            # 1. Clean Headers: Remove "POPS" and "POPS-XXX" [cite: 597, 599]
+            # Remove "POPS" header
             if parts and parts[0] == "POPS":
                 parts.pop(0)
-            parts = [p for p in parts if "POPS-" not in p]
+                
+            # Filter out POPS-ID (e.g. POPS-347) and SD Path string
+            parts = [p for p in parts if "POPS-" not in p and "/media/uSD" not in p]
 
-            # 2. Clean SD Path: Remove filename string (e.g., /media/uSD/...) [cite: 485, 486]
-            parts = [p for p in parts if "/media/uSD" not in p]
+            # --- DEBUG: Start Mapping Trace ---
+            self.logger.debug("parse_trace_start", extra={"total_chunks": len(parts), "json_vars": len(variables)})
 
-            # --- DEBUG: Verify pre-histogram alignment ---
-            self.logger.debug("Parsing scalars", extra={"total_parts": len(parts), "total_vars": len(variables)})
-
-            # 3. Scalar Mapping Loop
-            for index, name in enumerate(variables):
-                if name in record["variables"]:
-                    instvar = self.metadata["variables"][name]
-                    vartype = instvar["type"]
-                    if vartype == "string": vartype = "str"
+            # 4. Map Scalars: Iterate through JSON variables
+            for index, var_name in enumerate(variables):
+                if var_name in record["variables"]:
+                    instvar = self.metadata["variables"][var_name]
+                    v_type = instvar["type"]
+                    if v_type == "string": v_type = "str"
                     
                     try:
                         val_str = parts[index].strip()
-                        record["variables"][name]["data"] = eval(vartype)(val_str)
+                        # Using 'eval' to cast types as seen in original driver
+                        record["variables"][var_name]["data"] = eval(v_type)(val_str)
                         
-                        # LOG EACH MAPPING: Check index 7 (DataStatus) and 9 (HistSum) specifically
+                        # RENAME KEYS: Avoid logfmter restricted words
                         self.logger.debug(
-                            f"Variable Map: [{index}]", 
-                            extra={"name": name, "val": val_str, "type": vartype}
+                            "var_mapping", 
+                            extra={
+                                "col_idx": index, 
+                                "target_var": var_name, 
+                                "raw_val": val_str, 
+                                "cast_to": v_type
+                            }
                         )
                     except (ValueError, TypeError, IndexError) as e:
-                        self.logger.error(f"Map Error at index {index}", extra={"var": name, "error": str(e)})
-                        record["variables"][name]["data"] = None
+                        self.logger.error("mapping_failure", extra={"at_idx": index, "var": var_name, "err": str(e)})
+                        record["variables"][var_name]["data"] = None
 
-            # 4. Bin Extraction: Histogram starts after the last scalar (RawPts) [cite: 498]
+            # 5. Bin Extraction: Histogram starts after the last mapped scalar
             raw_bins = parts[len(variables):]
             
-            # DEBUG: Check if we actually have 16 bins remaining [cite: 890, 891]
-            self.logger.debug("Parsing bins", extra={"bins_found": len(raw_bins), "raw_bins": raw_bins})
+            self.logger.debug("bin_trace", extra={"bins_count": len(raw_bins), "bin_list": str(raw_bins)})
 
+            # STRICT VALIDATION: Manual Rev 8 confirms 16 bins is the standard 
             if len(raw_bins) != 16:
                 self.logger.warning(
-                    "Incomplete Histogram: Dropping Record", 
-                    extra={"expected": 16, "received": len(raw_bins)}
+                    "truncated_record_drop", 
+                    extra={"found": len(raw_bins), "expected": 16}
                 )
                 return None
                 
@@ -351,7 +357,7 @@ class POPS1100(Sensor):
             return record
 
         except Exception as e:
-            self.logger.error(f"Critical parse error: {e}")
+            self.logger.error("critical_parse_error", extra={"details": str(e)})
             return None
     
 class ServerConfig(BaseModel):
