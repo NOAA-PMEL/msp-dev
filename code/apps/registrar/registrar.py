@@ -112,7 +112,7 @@ class Registrar:
         # create a new client for each request
         limits = httpx.Limits(max_keepalive_connections=50, max_connections=200)
         self.http_client = httpx.AsyncClient(limits=limits)
-        
+
     async def close_http_client(self):
         if self.http_client:
             await self.http_client.aclose()
@@ -146,7 +146,8 @@ class Registrar:
                 r = await self.http_client.post(
                     self.config.knative_broker,
                     headers=headers,
-                    data=body,
+                    # data=body,
+                    content=body,
                     timeout=timeout,
                 )
                 r.raise_for_status()
@@ -546,39 +547,21 @@ class Registrar:
                     await self.send_event(event)
 
                 # 3. Dynamic catch-all for Sampling (Already fixed in last step)
-                # elif update_type.endswith("-definition-update"):
-                #     resource_type = update_type.replace("-update", "") # e.g. 'samplingcondition-definition'
-                    
-                #     event = SamplingEvent.create_definition_registry_update(
-                #         resource=resource_type,
-                #         source=f"envds.{self.config.daq_id}.registrar",
-                #         data={resource_type: update}
-                #     )
-                    
-                #     # Route to the standard datastore topic format
-                #     destpath = f"envds/{self.config.daq_id}/{resource_type}/registry/update"
-                #     event["destpath"] = destpath
-                    
-                #     self.logger.debug(
-                #         "register_sampling_definition", extra={"resource": resource_type, "destpath": destpath}
-                #     )
-                #     await self.send_event(event)
                 elif update_type.endswith("-definition-update"):
-                    # CRITICAL FIX: Strip the entire suffix to get the bare resource!
-                    # 'samplingcondition-definition-update' -> 'samplingcondition'
-                    resource_base = update_type.replace("-definition-update", "") 
+                    resource_type = update_type.replace("-update", "") # e.g. 'samplingcondition-definition'
                     
                     event = SamplingEvent.create_definition_registry_update(
-                        resource=resource_base,
+                        resource=resource_type,
                         source=f"envds.{self.config.daq_id}.registrar",
-                        data={f"{resource_base}-definition": update}
+                        data={resource_type: update}
                     )
                     
-                    destpath = f"envds/{self.config.daq_id}/{resource_base}/registry/update"
+                    # Route to the standard datastore topic format
+                    destpath = f"envds/{self.config.daq_id}/{resource_type}/registry/update"
                     event["destpath"] = destpath
                     
                     self.logger.debug(
-                        "register_sampling_definition", extra={"resource": resource_base, "destpath": destpath}
+                        "register_sampling_definition", extra={"resource": resource_type, "destpath": destpath}
                     )
                     await self.send_event(event)
 
