@@ -159,7 +159,7 @@ class FS7(Sensor):
             with open("/app/config/sensor.conf", "r") as f:
                 conf = yaml.safe_load(f)
         except FileNotFoundError:
-            conf = {"serial_number": "UNKNOWN", "interfaces": {}}
+            conf = {"serial_number": "UNKNOWN", "interfaces": {}, "diameter": "0"}
 
         if "metadata_interval" in conf:
             self.include_metadata_interval = conf["metadata_interval"]
@@ -215,6 +215,9 @@ class FS7(Sensor):
         )
 
         print(f"self.config: {self.config}")
+
+        if "diameter" in conf:
+            self.diameter = float(conf["diameter"])
 
         try:
             self.device_format_version = self.config.metadata.attributes[
