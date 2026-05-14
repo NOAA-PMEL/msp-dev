@@ -25,9 +25,11 @@ import dash_ag_grid as dag
 import pandas as pd
 import numpy as np
 from logfmter import Logfmter
+# import pymongo
 from collections import deque
 import httpx
 import traceback
+# import xarray as xr
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -38,11 +40,15 @@ L.setLevel(logging.DEBUG)
 dash.register_page(
     __name__,
     path_template="/sensor/<sensor_id>",
-    title="Sensors",
+    title="Sensors",  # , prevent_initial_callbacks=True
     nav_bar=False
 )
+ 
 
 class Settings(BaseSettings):
+    # host: str = "0.0.0.0"
+    # port: int = 8787
+    # debug: bool = False
     daq_id: str = "default"
 
     external_hostname: str = "localhost"
@@ -62,6 +68,7 @@ class Settings(BaseSettings):
         env_prefix = "DASHBOARD_"
         case_sensitive = False
 
+
 config = Settings()
 
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
@@ -79,6 +86,7 @@ ws_send_buffer = html.Div(id="ws-send-instance-buffer", style={"display": "none"
 
 
 def build_tables(layout_options):
+
     table_list = []
     print(f"build_tables: {layout_options}")
     for ltype, dims in layout_options.items():
@@ -93,8 +101,8 @@ def build_tables(layout_options):
                             dag.AgGrid(
                                 id={"type": "settings-table", "index": dim},
                                 rowData=[],
-                                columnDefs=options["table-column-defs"],
-                                columnSizeOptions="autoSize",
+                                columnDefs=layout_options["layout-settings"][dim]["table-column-defs"],
+                                columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
                                 dashGridOptions={"domLayout": "autoHeight"},
                                 style={"height": None, "maxHeight": "400px", "overflow": "auto"}
                             )
@@ -103,38 +111,25 @@ def build_tables(layout_options):
                     )
                 )
 
-            elif ltype == "layout-calibration" and len(options["table-column-defs"]) > 0:
-                title = "Calibration Values"
-                table_list.append(
-                    dbc.AccordionItem(
-                        [
-                            dag.AgGrid(
-                                id={"type": "calibration-table", "index": dim},
-                                rowData=[],
-                                columnDefs=options["table-column-defs"],
-                                columnSizeOptions="autoSize",
-                                dashGridOptions={"domLayout": "autoHeight"}
-                            )
-                        ],
-                        title=title,
-                    )
-                )
-
-            elif ltype == "layout-1d":
+            if ltype == "layout-1d":
                 title = f"Data 1-D ({dim})"
+
                 table_list.append(
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
                                 id={"type": "data-table-1d", "index": dim},
                                 rowData=[],
-                                columnDefs=options["table-column-defs"],
-                                columnSizeOptions="autoSize",
+                                columnDefs=layout_options["layout-1d"][dim][
+                                    "table-column-defs"
+                                ],
+                                columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
                             )
                         ],
                         title=title,
                     )
                 )
+                print(f"build_tables: {table_list}")
 
             elif ltype == "layout-2d":
                 title = f"Data 2-D (time, {dim})"
@@ -144,8 +139,10 @@ def build_tables(layout_options):
                             dag.AgGrid(
                                 id={"type": "data-table-2d", "index": f"time::{dim}"},
                                 rowData=[],
-                                columnDefs=options["table-column-defs"],
-                                columnSizeOptions="autoSize",
+                                columnDefs=layout_options["layout-2d"][dim][
+                                    "table-column-defs"
+                                ],
+                                columnSizeOptions="autoSize",  # "autoSize", "autoSizeSkip", "sizeToFit", "responsiveSizeToFit"
                             )
                         ],
                         title=title,
@@ -153,6 +150,7 @@ def build_tables(layout_options):
                 )
 
     print(f"build_tables: {table_list}")
+
     return table_list
 
 
@@ -162,14 +160,14 @@ def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
             dbc.CardHeader(
                 children=[
                     dcc.Dropdown(
-                        id={"type": "sensor-graph-1d-dropdown", "index": xaxis},
+                        id={"type": "sensor-graph-1d-dropdown", "index": xaxis}, # ADDED 'sensor-'
                         options=dropdown_list,
                         value="",
                     )
                 ]
             ),
             dcc.Graph(
-                id={"type": "sensor-graph-1d", "index": xaxis},
+                id={"type": "sensor-graph-1d", "index": xaxis}, # ADDED 'sensor-'
                 figure=go.Figure(
                     data=go.Scatter(x=[], y=[], type="scatter")
                 ),
@@ -180,6 +178,7 @@ def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
     return graph
 
 def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
+
     content = dbc.Row(
         children=[
             dbc.Button("Submit", {"type": "graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
@@ -205,7 +204,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
             dbc.AccordionItem(
                 [dbc.Card(children=[content])],
                 title="Axes Settings",
-                start_collapsed=True
+                # start_collapsed=True
             )
         ],
         start_collapsed=True
@@ -244,6 +243,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
             ),
         ]
     )
+
     return graph
 
 
@@ -260,7 +260,7 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
             dbc.AccordionItem(
                 [dbc.Card(children=[content])],
                 title="Axes Settings",
-                start_collapsed=True
+                # start_collapsed=True
             )
         ],
         start_collapsed=True
@@ -286,6 +286,7 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
                             style={"height": 500},
                         )
                     ),
+
                     dbc.Col(
                         dcc.Graph(
                             id={
@@ -299,10 +300,52 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
             ),
         ]
     )
+
     return graph
 
 
+def build_graph_settings_2d():
+
+    collapse = html.Div(
+        [
+            dbc.Button(
+                "Graph Settings",
+                id="collapse-button",
+                className="mb-3",
+                color="primary",
+                n_clicks=0,
+            ),
+            dbc.Collapse(
+                dbc.Card(dbc.CardBody("This content is hidden in the collapse")),
+                id="collapse",
+                is_open=False,
+            ),
+        ]
+    )
+
+
+def build_graph_settings_3d():
+
+    collapse = html.Div(
+        [
+            dbc.Button(
+                "Graph Settings",
+                id="collapse-button",
+                className="mb-3",
+                color="primary",
+                n_clicks=0,
+            ),
+            dbc.Collapse(
+                dbc.Card(dbc.CardBody("This content is hidden in the collapse")),
+                id="collapse",
+                is_open=False,
+            ),
+        ]
+    )
+
+
 def build_graphs(layout_options):
+
     graph_list = []
     print(f"build_graphs: {layout_options}")
     for ltype, dims in layout_options.items():
@@ -311,13 +354,16 @@ def build_graphs(layout_options):
             title = "Plots"
             if ltype == "layout-1d":
                 title = f"Plots 1-D ({dim})"
+
                 graph_list.append(
                     dbc.AccordionItem(
                         [
                             dbc.Row(
                                 children=[
                                     build_graph_1d(
-                                        options["variable-list"],
+                                        layout_options["layout-1d"][dim][
+                                            "variable-list"
+                                        ],
                                         xaxis=dim,
                                     )
                                 ]
@@ -326,6 +372,7 @@ def build_graphs(layout_options):
                         title=title,
                     )
                 )
+                print(f"build_graphs: {graph_list}")
 
             elif ltype == "layout-2d":
                 title = f"Plots 2-D (time, {dim})"
@@ -335,7 +382,9 @@ def build_graphs(layout_options):
                             dbc.Row(
                                 children=[
                                     build_graph_2d(
-                                        options["variable-list"],
+                                        layout_options["layout-2d"][dim][
+                                            "variable-list"
+                                        ],
                                         xaxis="time",
                                         yaxis=dim,
                                     )
@@ -346,32 +395,36 @@ def build_graphs(layout_options):
                     )
                 )
             
-            elif ltype == "layout-3d":
-                axes = dim.split("::")
-                title = f"Plots 3-D ({axes[0]}, {axes[1]})"
-                graph_list.append(
-                    dbc.AccordionItem(
-                        [
-                            dbc.Row(
-                                children=[
-                                    build_graph_3d(
-                                        options["variable-list"],
-                                        xaxis=axes[0],
-                                        yaxis=axes[1],
-                                    )
-                                ]
-                            )
-                        ],
-                        title=title,
-                    )
+        if ltype == "layout-3d":
+            title = f"Plots 3-D ({list(dims.keys())[0]}, {list(dims.keys())[1]})"
+            graph_list.append(
+                dbc.AccordionItem(
+                    [
+                        dbc.Row(
+                            children=[
+                                build_graph_3d(
+                                    layout_options["layout-3d"][dim][
+                                        "variable-list"
+                                    ],
+                                    xaxis =list(dims.keys())[0],
+                                    yaxis=list(dims.keys())[1],
+                                )
+                            ]
+                        )
+                    ],
+                    title=title,
                 )
+            )
 
-    print(f"build_graphs list: {graph_list}")
+    print(f"build_tables: {graph_list}")
+
     return graph_list
 
 def get_device_data(device_id: str, device_type: str="sensor"):
+    
     query = {"device_type": device_type, "device_id": device_id}
     url = f"http://{datastore_url}/device/data/get/"
+    print(f"device-data-get: {url}, query: {query}")
     try:
         timeout = httpx.Timeout(30.0, read=None)
         response = httpx.get(url, params=query, timeout=timeout)
@@ -383,19 +436,24 @@ def get_device_data(device_id: str, device_type: str="sensor"):
     return []
 
 def get_device_instance(device_id: str, device_type: str="sensor"):
+
     query = {"device_type": device_type, "device_id": device_id}
     url = f"http://{datastore_url}/device-instance/registry/get/"
+    L.debug("get_device_instance", extra={"url": url, "query": query})
     try:
         timeout = httpx.Timeout(30.0, read=None)
         response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
+        L.debug("get_device_instance", extra={"results": results})
         if "results" in results and results["results"]:
             return results["results"][0]
     except Exception as e:
         L.error("get_device_instance", extra={"reason": e})
+    
     return {}
 
 def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"):
+
     device = get_device_instance(device_id=device_id, device_type=device_type)
     if device:
         try:
@@ -404,24 +462,30 @@ def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"
                 device["model"],
                 device["version"]
             ])
+            print(f"device_definition_id: {device_definition_id}")
             return get_device_definition(device_definition_id=device_definition_id, device_type=device_type)
+        
         except Exception as e:
             print("ERROR: get_device_definition_by_device_id", extra={"reason": e})
+    
     return {}
 
 def get_device_definition(device_definition_id: str, device_type: str="sensor"):
+
     query = {"device_type": device_type, "device_definition_id": device_definition_id}
     url = f"http://{datastore_url}/device-definition/registry/get/"
+    print(f"device-definition-get: {url}, query: {query}")
     try:
         timeout = httpx.Timeout(30.0, read=None)
         response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
+        print(f"device_definition results: {results}")
         if "results" in results and results["results"]:
             return results["results"][0]
     except Exception as e:
         L.error("get_device_definition", extra={"reason": e})
+        
         return {}
-
 
 def layout(sensor_id=None):
     print(f"get_layout: {sensor_id}")
@@ -436,6 +500,7 @@ def layout(sensor_id=None):
         }
 
         sensor_definition = get_device_definition_by_device_id(device_id=sensor_id, device_type="sensor")
+        print(f"sensor_definition: {sensor_definition}")
 
     else:
         sensor_meta = {}
@@ -443,10 +508,12 @@ def layout(sensor_id=None):
 
     layout_options = {
         "layout-settings": {"time": {"table-column-defs": [], "variable-list": []}},
-        "layout-calibration": {"time": {"table-column-defs": [], "variable-list": []}},
         "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}},
     }
-
+    column_defs_1d = []  # deque([], maxlen=10)
+    dropdown_list_1d = []
+    column_defs_1d = []  # deque([], maxlen=10)
+    dropdown_list_2d = []
     if sensor_definition:
         try:
             dimensions = sensor_definition["dimensions"]
@@ -455,15 +522,15 @@ def layout(sensor_id=None):
                 multi_dim = True
 
             for name, var in sensor_definition["variables"].items():
-                var_type = var["attributes"].get("variable_type", {}).get("data")
-                
-                if var_type == "setting":
+                if var["attributes"]["variable_type"]["data"] == "setting":
                     long_name = name
                     ln = var["attributes"].get("long_name", None)
                     if ln:
                         long_name = ln.get("data", name)
 
+                    # get data type
                     dtype = var.get("type", "unknown")
+                    print(f"dtype = {dtype}")
                     data_type = "text"
                     if dtype in ["float", "double", "int"]:
                         data_type = "number"
@@ -480,105 +547,121 @@ def layout(sensor_id=None):
                     }
                     layout_options["layout-settings"]["time"]["table-column-defs"].append(cd)
 
-                elif var_type == "calibration":
-                    long_name = name
-                    ln = var["attributes"].get("long_name", None)
-                    if ln:
-                        long_name = ln.get("data", name)
-
-                    cd = {
-                        "field": name,
-                        "headerName": long_name,
-                        "filter": False,
-                        "cellDataType": "text", 
-                    }
-                    layout_options["layout-calibration"]["time"]["table-column-defs"].append(cd)
-
-                elif var_type == "main":
-                    if "shape" not in var:
-                        continue
-                    if "time" not in var["shape"]:
-                        continue
-
-                    long_name = name
-                    ln = var["attributes"].get("long_name", None)
-                    if ln:
-                        long_name = ln.get("data", name)
-
-                    dtype = var.get("type", "unknown")
-                    data_type = "text"
-                    if dtype in ["float", "double", "int"]:
-                        data_type = "number"
-                    elif dtype in ["str", "string", "char"]:
-                        data_type = "text"
-                    elif dtype in ["bool"]:
-                        data_type = "boolean"
-
-                    cd = {
-                        "field": name,
-                        "headerName": long_name,
-                        "filter": False,
-                        "cellDataType": data_type,
-                    }
-
-                    if multi_dim and len(var["shape"]) == 2:
-                        if "layout-2d" not in layout_options:
-                            layout_options["layout-2d"] = {}
-
-                        dim_2d = [d for d in var["shape"] if d != "time"][0]
-
-                        if dim_2d not in layout_options["layout-2d"]:
-                            layout_options["layout-2d"][dim_2d] = {
-                                "table-column-defs": [],
-                                "variable-list": [],
-                            }
-                            dln = dim_2d
-                            try:
-                                dln = sensor_definition["attributes"][dim_2d]["long_name"]["data"]
-                            except KeyError:
-                                pass
-
-                            data_type = "text"
-                            try:
-                                dtype = sensor_definition["variables"][dim_2d]["type"]
-                                if dtype in ["float", "double", "int"]:
-                                    data_type = "number"
-                                elif dtype in ["str", "string", "char"]:
-                                    data_type = "text"
-                                elif dtype in ["bool"]:
-                                    data_type = "boolean"
-                            except KeyError:
-                                pass
-
-                            dcd = {
-                                "field": dim_2d,
-                                "headerName": dln,
-                                "filter": False,
-                                "cellDataType": data_type,
-                                "pinned": "left",
-                            }
-                            layout_options["layout-2d"][dim_2d]["table-column-defs"].append(dcd)
-
-                        layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
-
-                    elif multi_dim and len(var["shape"]) == 3:
-                        if "layout-3d" not in layout_options:
-                            layout_options["layout-3d"] = {}
-
-                        dims_3d = [d for d in var["shape"] if d != "time"]
-                        dim_3d_key = f"{dims_3d[0]}::{dims_3d[1]}"
-
-                        if dim_3d_key not in layout_options["layout-3d"]:
-                            layout_options["layout-3d"][dim_3d_key] = {
-                                "table-column-defs": [],
-                                "variable-list": [],
-                            }
-
-                        layout_options["layout-3d"][dim_3d_key]["table-column-defs"].append(cd)
-                    else:
-                        layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
-                else:
+                # only get the data variables for main
+                elif var["attributes"]["variable_type"]["data"] != "main":
                     continue
+                if "shape" not in var:
+                    continue
+                if "time" not in var["shape"]:
+                    continue
+
+                long_name = name
+                ln = var["attributes"].get("long_name", None)
+                if ln:
+                    long_name = ln.get("data", name)
+
+                # get data type
+                dtype = var.get("type", "unknown")
+                print(f"dtype = {dtype}")
+                data_type = "text"
+                if dtype in ["float", "double", "int"]:
+                    data_type = "number"
+                elif dtype in ["str", "string", "char"]:
+                    data_type = "text"
+                elif dtype in ["bool"]:
+                    data_type = "boolean"
+
+                cd = {
+                    "field": name,
+                    "headerName": long_name,
+                    "filter": False,
+                    "cellDataType": data_type,
+                }
+
+                if multi_dim and len(var["shape"]) == 2:
+                    if "layout-2d" not in layout_options:
+                        layout_options["layout-2d"] = {}
+
+                    dim_2d = [d for d in var["shape"] if d != "time"][0]
+
+                    # if no entry for second dim, create
+                    if dim_2d not in layout_options["layout-2d"]:
+                        layout_options["layout-2d"][dim_2d] = {
+                            "table-column-defs": [],
+                            "variable-list": [],
+                        }
+                        dln = dim_2d
+                        try:
+                            dln = sensor_definition["attributes"][dim_2d]["long_name"]["data"]
+                        except KeyError:
+                            pass
+
+                        data_type = "text"
+                        try:
+                            dtype = sensor_definition["variables"][dim_2d]["type"]
+                            if dtype in ["float", "double", "int"]:
+                                data_type = "number"
+                            elif dtype in ["str", "string", "char"]:
+                                data_type = "text"
+                            elif dtype in ["bool"]:
+                                data_type = "boolean"
+                        except KeyError:
+                            pass
+
+                        dcd = {
+                            "field": dim_2d,
+                            "headerName": dln,
+                            "filter": False,
+                            "cellDataType": data_type,
+                            "pinned": "left",
+                        }
+                        layout_options["layout-2d"][dim_2d]["table-column-defs"].append(dcd)
+
+                    layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
+
+                elif multi_dim and len(var["shape"]) == 3:
+                    if "layout-3d" not in layout_options:
+                        layout_options["layout-3d"] = {}
+
+                    dim_3d = [d for d in var["shape"] if d != "time"][0]
+
+                    # if no entry for second dim, create
+                    if dim_3d not in layout_options["layout-3d"]:
+                        layout_options["layout-3d"][dim_3d] = {
+                            "table-column-defs": [],
+                            "variable-list": [],
+                        }
+                        dln = dim_3d
+                        try:
+                            dln = sensor_definition["attributes"][dim_3d]["long_name"]["data"]
+                        except KeyError:
+                            pass
+
+                        data_type = "text"
+                        try:
+                            dtype = sensor_definition["variables"][dim_3d]["type"]
+                            if dtype in ["float", "double", "int"]:
+                                data_type = "number"
+                            elif dtype in ["str", "string", "char"]:
+                                data_type = "text"
+                            elif dtype in ["bool"]:
+                                data_type = "boolean"
+                        except KeyError:
+                            pass
+
+                        dcd = {
+                            "field": dim_3d,
+                            "headerName": dln,
+                            "filter": False,
+                            "cellDataType": data_type,
+                            "pinned": "left",
+                        }
+                        layout_options["layout-3d"][dim_3d]["table-column-defs"].append(dcd)
+
+                    layout_options["layout-3d"][dim_3d]["table-column-defs"].append(cd)
+                else:
+                    print('cd', cd)
+                    layout_options["layout-1d"]["time"]["table-column-defs"].append(cd)
 
             for ltype, dims in layout_options.items():
                 for dim, options in dims.items():
@@ -617,6 +700,8 @@ def layout(sensor_id=None):
             dcc.Store(id="sensor-settings-buffer", data={})
         ]
     )
+
+    request = {"client-request": "start-updates"}
     return layout
 
 @callback(
@@ -630,6 +715,7 @@ def layout(sensor_id=None):
     ],
 )
 def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
+    # 1. Provide a default figure with "lines+markers" mode so single dots are visible
     default_fig = go.Figure(
         data=go.Scatter(x=[], y=[], type="scatter", mode="lines+markers"),
         layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}}
@@ -665,6 +751,7 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         except Exception:
             pass
 
+        # 2. Return a proper Figure object
         fig = go.Figure(
             data=go.Scatter(x=x, y=y, type="scatter", mode="lines+markers"),
             layout={
@@ -835,6 +922,7 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
     if not z_history:
         raise PreventUpdate
         
+    # Get the latest 2D slice and transpose it to (len(y), len(x)) for Plotly
     latest_z = z_history[-1] 
     z = []
     for yi in range(len(y)):
@@ -906,7 +994,7 @@ def update_sensor_buffers(event):
     ],
     prevent_initial_call=True
 )
-def update_graph_1d(sensor_data, y_axis_list):
+def update_graph_1d(sensor_data, y_axis_list): # FIXED: Arguments now match decorator
     if not sensor_data:
         raise PreventUpdate
 
@@ -929,9 +1017,11 @@ def update_graph_1d(sensor_data, y_axis_list):
                 figs_to_update.append(dash.no_update)
                 continue
 
+            # Ensure we have single scalars for the trace
             if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[-1]
             if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[-1]
 
+            # 3. Format required by Plotly's extendData: ( {dict}, [traces], maxPoints )
             figs_to_update.append(
                 ( {"x": [[x_val]], "y": [[y_val]]}, [0], 1000 )
             )
@@ -1154,6 +1244,7 @@ def update_graph_3d_plots(
             
         latest_z = sensor_data["variables"][z_axis]["data"]
 
+        # Transpose the incoming matrix live
         z = []
         for yi in range(len(y)):
             new_row = []
@@ -1288,38 +1379,6 @@ def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_
             print(traceback.format_exc())
         raise PreventUpdate
     else:
-        raise PreventUpdate
-
-
-@callback(
-    Output({"type": "calibration-table", "index": ALL}, "rowData"),
-    Input("sensor-data-buffer", "data"),
-    State({"type": "calibration-table", "index": ALL}, "columnDefs"),
-)
-def update_calibration_table(sensor_data, col_defs_list):
-    if not sensor_data:
-        raise PreventUpdate
-
-    row_data_list = []
-    try:
-        for col_defs in col_defs_list:
-            data = {}
-            for col in col_defs:
-                name = col["field"]
-                if name in sensor_data.get("variables", {}):
-                    data[name] = str(sensor_data["variables"][name].get("data", ""))
-                else:
-                    data[name] = ""
-            
-            row_data_list.append([data])
-
-        if len(row_data_list) == 0:
-            raise PreventUpdate
-            
-        return row_data_list
-
-    except Exception as e:
-        print(f"data update error calibration table: {e}")
         raise PreventUpdate
 
 
