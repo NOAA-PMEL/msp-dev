@@ -204,8 +204,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
         children=[
             dbc.AccordionItem(
                 [dbc.Card(children=[content])],
-                title="Axes Settings",
-                start_collapsed=True
+                title="Axes Settings"
             )
         ],
         start_collapsed=True
@@ -259,8 +258,7 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
         children=[
             dbc.AccordionItem(
                 [dbc.Card(children=[content])],
-                title="Axes Settings",
-                start_collapsed=True
+                title="Axes Settings"
             )
         ],
         start_collapsed=True
