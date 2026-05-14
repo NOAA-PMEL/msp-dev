@@ -163,7 +163,7 @@ class Registrar:
     async def submit_get(self, path: str):
         try:
             self.logger.debug("submit_request", extra={"path": path})
-            timeout = httpx.Timeout(10.0, read=None)
+            timeout = httpx.Timeout(10.0, read=15.0)
             if not self.http_client:
                 self.open_http_client()            # if query is None:
             #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
@@ -183,7 +183,7 @@ class Registrar:
     async def submit_request(self, path: str, query: dict):
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
-            timeout = httpx.Timeout(10.0, read=None)
+            timeout = httpx.Timeout(10.0, read=15.0)
             if not self.http_client:
                 self.open_http_client()            # if query is None:
             # if query is None:
@@ -875,7 +875,8 @@ class Registrar:
     #             pass  # Instance syncing logic
 
     async def registry_compare_bcast(self, message: CloudEvent):
-        data = message.data
+        # data = message.data
+        data = message.data or {}
         source = message.get("source", "")
         
         # Determine if we are allowed to request/pull updates from this node
