@@ -183,27 +183,80 @@ class SpiderMagic810(Sensor):
                 self.logger.error("sampling_monitor error", extra={"error": str(e)})
             await asyncio.sleep(1)
 
+    # async def default_data_loop(self):
+    #     while True:
+    #         try:
+    #             data = await self.default_data_buffer.get()
+    #             record = self.default_parse(data)
+    #             if record and self.sampling():
+    #                 event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record)
+    #                 await self.send_message(event)
+    #         except Exception:
+    #             pass
+    #         await asyncio.sleep(0.1)
+
     async def default_data_loop(self):
         while True:
             try:
-                data = await self.default_data_buffer.get()
-                record = self.default_parse(data)
+                data_obj = await self.default_data_buffer.get()
+                
+                # a) DEBUG: Receiving data
+                self.logger.debug("buffer_pulled", extra={"payload_type": str(type(data_obj))})
+                
+                record = self.default_parse(data_obj)
+                
                 if record and self.sampling():
+                    # DEBUG: Record is complete and ready to publish
+                    self.logger.debug("publishing_record", extra={"record_timestamp": record.get("timestamp")})
+                    
                     event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record)
                     await self.send_message(event)
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.error("data_loop_error", extra={"error_detail": str(e)})
             await asyncio.sleep(0.1)
 
-    def default_parse(self, data):
-        if not data: 
+    # def default_parse(self, data):
+    #     if not data: 
+    #         return None
+
+    #     try:
+    #         raw_payload = data.data if isinstance(data.data, dict) else {}
+    #         raw = raw_payload.get("data", "")
+            
+    #         if 'START SEQ' in raw:
+    #             v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
+    #             self.current_record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+    #             self.include_metadata = False
+                
+    #             self.current_record["timestamp"] = raw_payload.get("timestamp")
+    #             if "time" in self.current_record.get("variables", {}):
+    #                 self.current_record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+                    
+    #             self.sequence_start = True
+    #             return None
+                
+    #         elif 'END SEQ' in raw:
+    #             self.sequence_start = False
+    #             return self.current_record
+                
+    #         return None
+    #     except Exception:
+    #         return None
+
+    def default_parse(self, data_obj):
+        if not data_obj: 
             return None
             
         try:
-            raw_payload = data.data if isinstance(data.data, dict) else {}
-            raw = raw_payload.get("data", "")
+            raw_payload = data_obj.data if isinstance(data_obj.data, dict) else {}
+            raw_str = raw_payload.get("data", "")
             
-            if 'START SEQ' in raw:
+            # b) DEBUG: Parsing preview (shows the first 40 chars to verify string content)
+            self.logger.debug("parse_incoming", extra={"content_preview": raw_str[:40].strip()})
+            
+            if 'START SEQ' in raw_str:
+                self.logger.debug("seq_state", extra={"state": "START_SEQ_DETECTED"})
+                
                 v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
                 self.current_record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
                 self.include_metadata = False
@@ -215,14 +268,21 @@ class SpiderMagic810(Sensor):
                 self.sequence_start = True
                 return None
                 
-            elif 'END SEQ' in raw:
+            elif 'END SEQ' in raw_str:
+                self.logger.debug("seq_state", extra={
+                    "state": "END_SEQ_DETECTED", 
+                    "tracked_vars": len(self.current_record.get("variables", {}))
+                })
                 self.sequence_start = False
                 return self.current_record
                 
+            # If it's a middle-sequence line, just return None while the instrument continues to build the record
             return None
-        except Exception:
+            
+        except Exception as e:
+            self.logger.error("parse_failure", extra={"error_detail": str(e)})
             return None
-
+        
 class ServerConfig(BaseModel):
     host: str = "localhost"
     port: int = 9080
