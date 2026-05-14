@@ -105,12 +105,14 @@ def build_tables(layout_options):
 
             elif ltype == "layout-calibration" and len(options["table-column-defs"]) > 0:
                 title = "Calibration Values"
+                # Initialize with placeholder text so the table draws its height immediately
+                initial_data = {cd["field"]: "Waiting for data..." for cd in options["table-column-defs"]}
                 table_list.append(
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
                                 id={"type": "calibration-table", "index": dim},
-                                rowData=[],
+                                rowData=[initial_data],
                                 columnDefs=options["table-column-defs"],
                                 columnSizeOptions="autoSize",
                                 dashGridOptions={"domLayout": "autoHeight"}
@@ -1292,32 +1294,53 @@ def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_
 @callback(
     Output({"type": "calibration-table", "index": ALL}, "rowData"),
     Input("sensor-data-buffer", "data"),
-    State({"type": "calibration-table", "index": ALL}, "columnDefs"),
+    [
+        State({"type": "calibration-table", "index": ALL}, "rowData"),
+        State({"type": "calibration-table", "index": ALL}, "columnDefs"),
+    ]
 )
-def update_calibration_table(sensor_data, col_defs_list):
+def update_calibration_table(sensor_data, row_data_list, col_defs_list):
     if not sensor_data:
         raise PreventUpdate
 
-    row_data_list = []
+    new_row_data_list = []
+    has_updates = False
+
     try:
-        for col_defs in col_defs_list:
-            data = {}
+        for row_data, col_defs in zip(row_data_list, col_defs_list):
+            if not col_defs:
+                new_row_data_list.append(dash.no_update)
+                continue
+                
+            # Retain existing row data if present, otherwise start blank
+            data = row_data[0] if row_data and len(row_data) > 0 else {}
+            row_updated = False
+            
             for col in col_defs:
                 name = col["field"]
                 if name in sensor_data.get("variables", {}):
-                    data[name] = str(sensor_data["variables"][name].get("data", ""))
+                    new_val = str(sensor_data["variables"][name].get("data", ""))
+                    if data.get(name) != new_val:
+                        data[name] = new_val
+                        row_updated = True
                 else:
-                    data[name] = ""
-            
-            row_data_list.append([data])
+                    if name not in data:
+                        data[name] = "Waiting for data..."
+                        row_updated = True
+                        
+            if row_updated:
+                new_row_data_list.append([data])
+                has_updates = True
+            else:
+                new_row_data_list.append(dash.no_update)
 
-        if len(row_data_list) == 0:
+        if not has_updates:
             raise PreventUpdate
             
-        return row_data_list
+        return new_row_data_list
 
     except Exception as e:
-        print(f"data update error calibration table: {e}")
+        L.error(f"data update error calibration table: {e}")
         raise PreventUpdate
 
 
