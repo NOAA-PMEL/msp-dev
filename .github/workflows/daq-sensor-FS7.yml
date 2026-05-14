@@ -1,0 +1,65 @@
+name: Build and Push ist_fs7
+
+on:
+
+  push:
+    branches: [ dev-* , add-envds-package-workflow']
+    paths:
+      - 'code/apps/daq/sensors/IST/FS7/**'
+  
+  pull_request:
+    branches: [main, dev-*]
+    paths:
+      - 'code/apps/daq/sensors/IST/FS7/**'
+  
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ist-fs7
+
+jobs:
+
+  build-and-push-ist_fs7:
+
+    runs-on: ubuntu-latest
+    defaults:
+        run:
+            working-directory: './code/apps/daq/sensors/IST/FS7'
+      
+    permissions:
+        contents: read
+        packages: write
+        attestations: write
+        id-token: write
+
+    steps:
+
+        - name: 'Checkout Main'
+          uses: actions/checkout@v4
+
+        - name: 'set env variables'
+          run: |
+            VER=$(cat VERSION)
+            echo "IMAGE_TAG=$VER" >> $GITHUB_ENV
+
+        - name: Set up QEMU
+          uses: docker/setup-qemu-action@v2
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v2
+
+        - name: 'Login to GitHub Container Registry'
+          uses: docker/login-action@v1
+          with:
+            registry: ${{ env.REGISTRY }}
+            username: ${{github.actor}}
+            password: ${{secrets.GITHUB_TOKEN}}
+
+        - name: Build and push multi-platform image
+          uses: docker/build-push-action@v4
+          with:
+            context: code/apps/daq/sensors/IST/FS7/.
+            push: true
+            tags: |
+              ghcr.io/noaa-pmel/msp/ist-fs7:${{env.IMAGE_TAG}}
+            platforms: linux/amd64,linux/arm64
+            
