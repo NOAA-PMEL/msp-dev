@@ -308,107 +308,116 @@ class SpiderMagic810(Sensor):
         except ValueError:
             pass
 
-    def default_parse(self, data):
-        if data:
-            try:
-                variables = list(self.config.metadata.variables.keys())
-                if "time" in variables:
-                    variables.remove("time")
+    def default_parse(self, data_obj):
+        if not data_obj: 
+            return None
+            
+        try:
+            raw_payload = data_obj.data if isinstance(data_obj.data, dict) else {}
+            raw_str = raw_payload.get("data", "")
+            
+            self.logger.debug("parse_incoming", extra={"content_preview": raw_str[:40].strip()})
+            
+            parts = raw_str.strip().split(",")
 
-                self.include_metadata = False
+            if 'v1' in raw_str:
+                parts = parts[2:3] + parts[4:8]
+                parts = [item.replace('Hz', '').replace('tau=', '').strip() for item in parts]
+                # Explicit variable mapping
+                self.extra_var_names = ['tau', 'HV_polarity', 'scan_dir', 'data_freq', 'HV_status']
+                self.extra_vars = parts
+                self.logger.debug("parse_state_v1", extra={"parsed_parts": parts})
+                return None
+            
+            elif 'STARTING' in raw_str:
+                parts = parts[1:3] + parts[4:25]
+                parts = [item.replace('V', '').strip() for item in parts]
+                # Explicit variable mapping
+                self.extra_var_names += [
+                    'vp_rd', 'spidermagic_timestamp', 'dew_point', 'input_T', 'input_rh', 
+                    'cond_T', 'init_T', 'mod_T', 'opt_T', 'heatsink_T', 'case_T', 'wick_sensor', 
+                    'mod_T_sp', 'humid_exit_dew_point', 'wadc', 'DMA_V', 'Qsh', 'abs_pressure', 
+                    'flow', 'pHt2.%', 'status_hex', 'status_ascii', 'spidermagic_serial_number'
+                ]
+                self.extra_vars += parts
+                self.logger.debug("parse_state_STARTING", extra={"parsed_parts": parts})
+                return None
+
+            elif 'Vi' in raw_str:
+                parts = parts[0:4]
+                parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '').strip() for item in parts]
                 try:
-                    raw_str = data.data["data"]
-                    self.logger.debug("parsing_incoming", extra={"raw_string": raw_str.strip()})
+                    elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
+                except Exception:
+                    elapsed_time = 0.0
+                parts.append(elapsed_time)
+                # Explicit variable mapping
+                self.extra_var_names += ['Vi', 'Vf', 'Vmax', 'Tc', 'elap_time']
+                self.extra_vars += parts
+                self.logger.debug("parse_state_Vi", extra={"parsed_parts": parts})
+                return None
+            
+            elif 'START SEQ' in raw_str:
+                # Explicitly grab the required shapes
+                v_types = ["main", "raw_scan", "coordinate"]
+                if self.include_metadata:
+                    v_types.extend(["setting", "calibration"])
                     
-                    parts = raw_str.strip().split(",")
+                self.current_record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+                self.include_metadata = False
+                
+                self.current_record["timestamp"] = raw_payload.get("timestamp")
+                if "time" in self.current_record.get("variables", {}):
+                    self.current_record["variables"]["time"]["data"] = raw_payload.get("timestamp")
 
-                    if 'v1' in raw_str:
-                        parts = parts[2:3] + parts[4:8]
-                        parts = [item.replace('Hz', '').replace('tau=', '').strip() for item in parts]
-                        self.var_name = variables[0:5]
-                        self.extra_var_names = variables[0:5]
-                        self.extra_vars = parts
-                        self.logger.debug("parse_state_v1", extra={"parsed_parts": parts})
-                        return None
+                # Map the accumulated extra scalar vars to the record
+                for index, name in enumerate(self.extra_var_names):
+                    if name in self.current_record["variables"]:
+                        instvar = self.metadata["variables"][name]
+                        vartype = instvar["type"]
+                        if vartype == "string": vartype = "str"
+                        try:
+                            self.current_record["variables"][name]["data"] = eval(vartype)(self.extra_vars[index])
+                        except (ValueError, TypeError, IndexError):
+                            self.current_record["variables"][name]["data"] = None
+
+                self.sequence_start = True
+                self.array_buffer = [] # Ensure array buffer starts clean!
+                self.logger.debug("parse_state_START_SEQ", extra={"status": "Building new record"})
+                return None
+            
+            elif 'END SEQ' in raw_str:
+                # Explicit variable mapping for the raw scan columns
+                scan_var_names = [
+                    'scan_status', 'set_V', 'read_V', 'concentration', 
+                    'raw_counts', 'dead_counts', 'sh_flow', 'aer_flow'
+                ]
+                
+                if len(self.array_buffer) > 0:
+                    parts_arr = np.array(list(self.array_buffer), dtype=object)
+                    transposed = np.transpose(parts_arr).tolist()
                     
-                    elif 'STARTING' in raw_str:
-                        parts = parts[1:3] + parts[4:25]
-                        parts = [item.replace('V', '').strip() for item in parts]
-                        self.var_name = variables[5:28]
-                        self.extra_var_names += variables[5:28]
-                        self.extra_vars += parts
-                        self.logger.debug("parse_state_STARTING", extra={"parsed_parts": parts})
-                        return None
-
-                    elif 'Vi' in raw_str:
-                        parts = parts[0:4]
-                        parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '').strip() for item in parts]
-                        elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
-                        parts.append(elapsed_time)
-                        self.var_name = variables[28:33]
-                        self.extra_var_names += variables[28:33]
-                        self.extra_vars += parts
-                        self.logger.debug("parse_state_Vi", extra={"parsed_parts": parts})
-                        return None
-                    
-                    elif 'START SEQ' in raw_str:
-                        # Explicitly request all required variable types!
-                        v_types = ["main", "raw_scan", "coordinate"]
-                        if self.include_metadata:
-                            v_types.extend(["setting", "calibration"])
-                        self.current_record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)    
-                        # self.current_record = self.build_data_record(meta=self.include_metadata)
-                        self.current_record["timestamp"] = data.data["timestamp"]
-                        self.current_record["variables"]["time"]["data"] = data.data["timestamp"]
-
-                        # map extra scalar vars to the record
-                        for index, name in enumerate(self.extra_var_names):
-                            if name in self.current_record["variables"]:
-                                instvar = self.metadata["variables"][name]
-                                vartype = instvar["type"]
-                                if vartype == "string": vartype = "str"
-                                try:
-                                    self.current_record["variables"][name]["data"] = eval(vartype)(self.extra_vars[index])
-                                except (ValueError, TypeError, IndexError):
-                                    self.current_record["variables"][name]["data"] = None
-
-                        self.sequence_start = True
-                        self.seq_counter = 0
-                        self.logger.debug("parse_state_START_SEQ", extra={"status": "Building new record"})
-                        return None
-                    
-                    elif 'END SEQ' in raw_str:
-                        self.scan_var_names = variables[33:41]
-                        
-                        # Transpose the accumulated array buffer into columns
-                        if len(self.array_buffer) > 0:
-                            parts = np.array(list(self.array_buffer), dtype=object)
-                            transposed = np.transpose(parts).tolist()
-                            
-                            for index, name in enumerate(self.scan_var_names):
-                                if name in self.current_record["variables"]:
-                                    self.current_record["variables"][name]["data"] = transposed[index]
+                    for index, name in enumerate(scan_var_names):
+                        if name in self.current_record["variables"]:
+                            # Force numeric columns to floats so math doesn't break
+                            if name in ['set_V', 'read_V', 'concentration', 'sh_flow', 'aer_flow']:
+                                self.current_record["variables"][name]["data"] = [float(x) if x is not None else np.nan for x in transposed[index]]
+                            else:
+                                self.current_record["variables"][name]["data"] = transposed[index]
                                     
-                        self.array_buffer = []
-                        self.sequence_end = True
-                        self.sequence_start = False
-                        self.logger.debug("parse_state_END_SEQ", extra={"status": "Sequence complete"})
-                        return self.current_record
-                    
-                    elif self.sequence_start:
-                        self.var_name = variables[33:41]
-                        if len(parts) != 8:
-                            return None
-                        # Middle of the sequence: append row to buffer
-                        self.check_array_buffer(parts, array_cond=False)
+                self.array_buffer = []
+                self.sequence_start = False
+                self.logger.debug("parse_state_END_SEQ", extra={"status": "Sequence complete"})
+                return self.current_record
+            
+            elif self.sequence_start:
+                if len(parts) == 8:
+                    self.check_array_buffer(parts, array_cond=False)
+                return None
 
-                    else:
-                        return None
-
-                except KeyError:
-                    pass
-            except Exception as e:
-                self.logger.error("default_parse_error", extra={"err_detail": str(e), "trace": traceback.format_exc()})
+        except Exception as e:
+            self.logger.error("parse_failure", extra={"err_detail": str(e)})
+            
         return None
         
 class ServerConfig(BaseModel):
