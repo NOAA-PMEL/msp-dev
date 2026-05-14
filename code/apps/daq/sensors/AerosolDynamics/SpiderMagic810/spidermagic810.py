@@ -387,32 +387,41 @@ class SpiderMagic810(Sensor):
                 return None
             
             elif 'END SEQ' in raw_str:
-                # Explicit variable mapping for the raw scan columns
                 scan_var_names = [
                     'scan_status', 'set_V', 'read_V', 'concentration', 
                     'raw_counts', 'dead_counts', 'sh_flow', 'aer_flow'
                 ]
                 
-                if len(self.array_buffer) > 0:
-                    parts_arr = np.array(list(self.array_buffer), dtype=object)
+                rows_parsed = len(self.array_buffer)
+                if rows_parsed > 0:
+                    parts_arr = np.array(self.array_buffer, dtype=object)
                     transposed = np.transpose(parts_arr).tolist()
                     
                     for index, name in enumerate(scan_var_names):
                         if name in self.current_record["variables"]:
-                            # Force numeric columns to floats so math doesn't break
-                            if name in ['set_V', 'read_V', 'concentration', 'sh_flow', 'aer_flow']:
-                                self.current_record["variables"][name]["data"] = [float(x) if x is not None else np.nan for x in transposed[index]]
+                            # Safely cast all numeric columns to float, falling back to NaN if a character is found
+                            if name in ['set_V', 'read_V', 'concentration', 'sh_flow', 'aer_flow', 'raw_counts', 'dead_counts']:
+                                clean_col = []
+                                for val in transposed[index]:
+                                    try:
+                                        clean_col.append(float(val))
+                                    except (ValueError, TypeError):
+                                        clean_col.append(np.nan)
+                                self.current_record["variables"][name]["data"] = clean_col
                             else:
                                 self.current_record["variables"][name]["data"] = transposed[index]
-                                    
+                                
                 self.array_buffer = []
                 self.sequence_start = False
-                self.logger.debug("parse_state_END_SEQ", extra={"status": "Sequence complete"})
+                self.logger.debug("parse_state_END_SEQ", extra={"status": "Sequence complete", "rows_parsed": rows_parsed})
                 return self.current_record
             
             elif self.sequence_start:
-                if len(parts) == 8:
-                    self.check_array_buffer(parts, array_cond=False)
+                # Use >= 8 to protect against trailing commas, and slice the first 8 columns
+                if len(parts) >= 8:
+                    self.array_buffer.append(parts[:8])
+                else:
+                    self.logger.debug("dropped_row", extra={"row_len": len(parts), "content": raw_str.strip()})
                 return None
 
         except Exception as e:
