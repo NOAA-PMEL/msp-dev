@@ -125,7 +125,7 @@ class StandardInversion(SpiderInversionBase):
     diffusion loss corrections.
     """
     def __init__(self, target_grid, config=None):
-        super().__init__(config)
+        super().__init__(target_grid=target_grid, config=config)
         self.max_charges = self.config.get("max_charges", 3)
 
         # # --- NEW: Pull the static grid directly from the configuration ---
@@ -475,7 +475,7 @@ class AerosolDynamicsInversion(SpiderInversionBase):
     Proprietary inversion routine provided by Aerosol Dynamics.
     """
     def __init__(self, target_grid, config=None):
-        super().__init__(config)
+        super().__init__(target_grid=target_grid, config=config)
         # TODO: Add any specific setup (e.g., loading transfer matrices) here
 
     def invert(self, record):
