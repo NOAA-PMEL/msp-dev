@@ -162,44 +162,86 @@ class Registrar:
             self.logger.error("send_event", extra={"reason": e})
         await asyncio.sleep(0.1)
 
+    # async def submit_get(self, path: str):
+    #     try:
+    #         self.logger.debug("submit_request", extra={"path": path})
+    #         timeout = httpx.Timeout(10.0, read=15.0)
+    #         if not self.http_client:
+    #             self.open_http_client()            # if query is None:
+    #         #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+    #         #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+    #         #     self.logger.debug("submit_request", extra={"results": results})
+    #         #     # return results
+    #         # else:
+    #         self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+    #         results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+    #         self.logger.debug("submit_request", extra={"results": results.json()})
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_request", extra={"reason": e})
+    #         return {}
+
+
+    # async def submit_request(self, path: str, query: dict):
+    #     try:
+    #         self.logger.debug("submit_request", extra={"path": path, "query": query})
+    #         timeout = httpx.Timeout(10.0, read=15.0)
+    #         if not self.http_client:
+    #             self.open_http_client()            # if query is None:
+    #         # if query is None:
+    #         #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+    #         #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+    #         #     self.logger.debug("submit_request", extra={"results": results})
+    #         #     # return results
+    #         # else:
+    #         self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/", "query": query})
+    #         results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
+    #         self.logger.debug("submit_request", extra={"results": results.json()})
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_request", extra={"reason": e})
+    #         return {}
+
     async def submit_get(self, path: str):
         try:
             self.logger.debug("submit_request", extra={"path": path})
             timeout = httpx.Timeout(10.0, read=15.0)
             if not self.http_client:
-                self.open_http_client()            # if query is None:
-            #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
-            #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
-            #     self.logger.debug("submit_request", extra={"results": results})
-            #     # return results
-            # else:
-            self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
-            results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
-            self.logger.debug("submit_request", extra={"results": results.json()})
+                self.open_http_client()            
+            
+            url = f"http://{self.datastore_url}/{path}/"
+            self.logger.debug("submit_request", extra={"url": url})
+            
+            results = await self.http_client.get(url, timeout=timeout)
+            
+            # Catch 404s and 500s before trying to parse JSON!
+            results.raise_for_status() 
+            
             return results.json()
         except Exception as e:
-            self.logger.error("submit_request", extra={"reason": e})
+            # repr(e) forces the exception to print as a string so it isn't blank!
+            self.logger.error("submit_get_error", extra={"reason": repr(e), "path": path})
             return {}
-
 
     async def submit_request(self, path: str, query: dict):
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
             timeout = httpx.Timeout(10.0, read=15.0)
             if not self.http_client:
-                self.open_http_client()            # if query is None:
-            # if query is None:
-            #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
-            #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
-            #     self.logger.debug("submit_request", extra={"results": results})
-            #     # return results
-            # else:
-            self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/", "query": query})
-            results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
-            self.logger.debug("submit_request", extra={"results": results.json()})
+                self.open_http_client()            
+            
+            url = f"http://{self.datastore_url}/{path}/"
+            self.logger.debug("submit_request", extra={"url": url, "query": query})
+            
+            results = await self.http_client.get(url, params=query, timeout=timeout)
+            
+            # Catch 404s and 500s before trying to parse JSON!
+            results.raise_for_status()
+            
             return results.json()
         except Exception as e:
-            self.logger.error("submit_request", extra={"reason": e})
+            # repr(e) forces the exception to print as a string so it isn't blank!
+            self.logger.error("submit_request_error", extra={"reason": repr(e), "path": path})
             return {}
 
     def is_sync_allowed(self, source: str) -> bool:
