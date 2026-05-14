@@ -13,6 +13,8 @@ from envds.daq.event import DAQEvent
 from cloudevents.http import CloudEvent
 from pydantic import BaseModel
 
+from envds.daq.types import DAQEventType as det
+
 import math
 import traceback
 from inversion import StandardInversion
