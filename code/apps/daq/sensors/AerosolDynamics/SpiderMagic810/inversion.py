@@ -352,15 +352,28 @@ class StandardInversion(SpiderInversionBase):
         self.logger.debug("inversion_start", extra={"input_ts": record.get("timestamp")})
         
         try:
-            # 1. Environmental Conditions
-            T_C = np.nanmean(record["variables"]["input_T"]["data"]) 
-            P_mbar = np.nanmean(record["variables"]["abs_pressure"]["data"])
-            T = (T_C if not np.isnan(T_C) else 20.0) + 273.15
-            P = (P_mbar if not np.isnan(P_mbar) else 1013.25) / 10.0
+            # Helper to safely extract and mean data, protecting against None/Nulls
+            def safe_mean(var_dict, default_val):
+                try:
+                    val = var_dict.get("data")
+                    if val is None: 
+                        return default_val
+                    if isinstance(val, (list, tuple, np.ndarray)):
+                        m = np.nanmean(np.array(val, dtype=float))
+                        return m if not np.isnan(m) else default_val
+                    return float(val)
+                except Exception:
+                    return default_val
+
+            # 1. Environmental Conditions (Safely extracted)
+            T_C = safe_mean(record["variables"].get("input_T", {}), 20.0)
+            P_mbar = safe_mean(record["variables"].get("abs_pressure", {}), 1013.25)
+            T = T_C + 273.15
+            P = P_mbar / 10.0
             
-            # Flows
-            Qsh_ccm = np.nanmean(record["variables"]["sh_flow"]["data"]) or 900.0
-            Qa_ccm = np.nanmean(record["variables"]["aer_flow"]["data"]) or 300.0
+            # Flows (Safely extracted)
+            Qsh_ccm = safe_mean(record["variables"].get("sh_flow", {}), 900.0)
+            Qa_ccm = safe_mean(record["variables"].get("aer_flow", {}), 300.0)
             beta = Qa_ccm / Qsh_ccm
             
             # 2. Extract and isolate the active scan ramp

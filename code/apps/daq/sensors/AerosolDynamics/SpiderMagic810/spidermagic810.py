@@ -352,7 +352,12 @@ class SpiderMagic810(Sensor):
                         return None
                     
                     elif 'START SEQ' in raw_str:
-                        self.current_record = self.build_data_record(meta=self.include_metadata)
+                        # Explicitly request all required variable types!
+                        v_types = ["main", "raw_scan", "coordinate"]
+                        if self.include_metadata:
+                            v_types.extend(["setting", "calibration"])
+                        self.current_record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)    
+                        # self.current_record = self.build_data_record(meta=self.include_metadata)
                         self.current_record["timestamp"] = data.data["timestamp"]
                         self.current_record["variables"]["time"]["data"] = data.data["timestamp"]
 
