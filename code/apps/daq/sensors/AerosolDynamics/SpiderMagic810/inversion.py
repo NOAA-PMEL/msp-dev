@@ -16,6 +16,9 @@ def lambda_gas(T, P):
     
 def Cc_func(Dp_nm, T, P):
     """Cunningham Slip Correction Factor"""
+    # Force incoming data to be a numpy array to prevent list math errors
+    Dp_nm = np.array(Dp_nm, dtype=float)
+    
     Dp_m = Dp_nm * 1e-9
     Kn = 2 * lambda_gas(T, P) / Dp_m
     return 1 + Kn * (1.142 + 0.558 * np.exp(-0.999 / Kn))
@@ -69,7 +72,10 @@ def f_Wdnslr(Dp_nm, n_ch, T):
 
 def calc_diffusion_loss(Dp_nm, L_tube, Q_lpm, d_tube_mm, T, P):
     """Gormley-Kennedy diffusional loss calculation"""
-    Dp_m = np.array(Dp_nm) * 1e-9
+    # Force incoming data to be a numpy array
+    Dp_nm = np.array(Dp_nm, dtype=float)
+    
+    Dp_m = Dp_nm * 1e-9
     Q_m3s = (Q_lpm / 60.0) * 1e-3
     D_diff = (1.380649e-23 * T * Cc_func(Dp_nm, T, P)) / (3 * np.pi * mu(T) * Dp_m)
     mu_dim = (np.pi * D_diff * L_tube) / Q_m3s
