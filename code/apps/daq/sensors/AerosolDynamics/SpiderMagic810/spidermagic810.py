@@ -13,6 +13,9 @@ from envds.daq.event import DAQEvent
 from cloudevents.http import CloudEvent
 from pydantic import BaseModel
 
+import math
+import traceback
+from inversion import StandardInversion
 
 task_list = []
 class SpiderMagic810(Sensor):
@@ -26,6 +29,11 @@ class SpiderMagic810(Sensor):
         try:            
             with open(self.sensor_definition_file, "r") as f:
                 self.metadata = json.load(f)
+
+                # Initialize inversion routine with the static grid
+                target_diameters = self.metadata["variables"]["diameter"]["data"]
+                self.inversion_routine = StandardInversion(target_grid=target_diameters)
+
         except FileNotFoundError: 
             sys.exit(1)
             
@@ -105,6 +113,23 @@ class SpiderMagic810(Sensor):
         if "interfaces" in conf:
             for name, iface in conf["interfaces"].items(): 
                 self.add_interface(name, iface)
+
+    async def handle_interface_data(self, message: CloudEvent):
+        await super(SpiderMagic810, self).handle_interface_data(message)
+
+        if message.get("type") == det.interface_data_recv():
+            try:
+                path_id = message["path_id"]
+                iface_path = self.config.interfaces.get("default", {}).get("path")
+                
+                if path_id == iface_path or path_id == "default":
+                    self.logger.debug(
+                        "interface_recv_hit", 
+                        extra={"route_path": path_id, "payload": message.data}
+                    )
+                    await self.default_data_buffer.put(message)
+            except KeyError as e:
+                self.logger.error("interface_route_error", extra={"missing_key": str(e)})
 
     async def settings_check(self):
         await super().settings_check()
@@ -198,22 +223,50 @@ class SpiderMagic810(Sensor):
     async def default_data_loop(self):
         while True:
             try:
-                data_obj = await self.default_data_buffer.get()
+                data_msg = await self.default_data_buffer.get()
                 
-                # a) DEBUG: Receiving data
-                self.logger.debug("buffer_pulled", extra={"payload_type": str(type(data_obj))})
+                if data_msg:
+                    self.collecting = True
+                    self.logger.debug("buffer_pulled", extra={"payload_type": str(type(data_msg))})
+
+                record = self.default_parse(data_msg)
                 
-                record = self.default_parse(data_obj)
-                
+                if not record:
+                    continue
+
                 if record and self.sampling():
-                    # DEBUG: Record is complete and ready to publish
-                    self.logger.debug("publishing_record", extra={"record_timestamp": record.get("timestamp")})
+                    self.logger.debug("scan_complete_starting_inversion", extra={"rec_ts": record.get("timestamp")})
                     
-                    event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record)
+                    try:
+                        record = self.inversion_routine.invert(record)
+                        self.logger.debug("inversion_complete", extra={"status": "success"})
+                    except Exception as e:
+                        self.logger.error("inversion_runtime_error", extra={"err_detail": str(e), "trace": traceback.format_exc()})
+
+                    # Handle reverse scans natively
+                    vp_rd = record["variables"]["vp_rd"]["data"].strip()
+                    self.logger.debug("direction_check", extra={"vp_rd_val": vp_rd})
+                    if vp_rd == "pd" or vp_rd == "nd":
+                        for name, variable in self.metadata["variables"].items():
+                            if name in ["time", "diameter", "dN", "dlogDp", "dNdlogDp", "intN"]:
+                                continue
+                            if variable["shape"] == ["time", "scan_bins"]: 
+                                if isinstance(record["variables"][name]["data"], list):
+                                    record["variables"][name]["data"].reverse()
+
+                    event = DAQEvent.create_data_update(
+                        source=self.get_id_as_source(),
+                        data=record,
+                    )
+                    destpath = f"{self.get_id_as_topic()}/data/update"
+                    event["destpath"] = destpath
+                    
+                    self.logger.debug("publishing_record", extra={"dest_topic": destpath})
                     await self.send_message(event)
+
             except Exception as e:
-                self.logger.error("data_loop_error", extra={"error_detail": str(e)})
-            await asyncio.sleep(0.1)
+                self.logger.error("data_loop_error", extra={"err_detail": str(e), "trace": traceback.format_exc()})
+            await asyncio.sleep(0.001)
 
     # def default_parse(self, data):
     #     if not data: 
@@ -243,45 +296,113 @@ class SpiderMagic810(Sensor):
     #     except Exception:
     #         return None
 
-    def default_parse(self, data_obj):
-        if not data_obj: 
-            return None
-            
+    def check_array_buffer(self, parts, array_cond=False):
         try:
-            raw_payload = data_obj.data if isinstance(data_obj.data, dict) else {}
-            raw_str = raw_payload.get("data", "")
-            
-            # b) DEBUG: Parsing preview (shows the first 40 chars to verify string content)
-            self.logger.debug("parse_incoming", extra={"content_preview": raw_str[:40].strip()})
-            
-            if 'START SEQ' in raw_str:
-                self.logger.debug("seq_state", extra={"state": "START_SEQ_DETECTED"})
-                
-                v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
-                self.current_record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+            if not array_cond:
+                parts = [float(item) for item in parts]
+                self.array_buffer.append(parts)
+            else:
+                self.array_buffer.append(parts)
+        except ValueError:
+            pass
+
+    def default_parse(self, data):
+        if data:
+            try:
+                variables = list(self.config.metadata.variables.keys())
+                if "time" in variables:
+                    variables.remove("time")
+
                 self.include_metadata = False
-                
-                self.current_record["timestamp"] = raw_payload.get("timestamp")
-                if "time" in self.current_record.get("variables", {}):
-                    self.current_record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+                try:
+                    raw_str = data.data["data"]
+                    self.logger.debug("parsing_incoming", extra={"raw_string": raw_str.strip()})
                     
-                self.sequence_start = True
-                return None
-                
-            elif 'END SEQ' in raw_str:
-                self.logger.debug("seq_state", extra={
-                    "state": "END_SEQ_DETECTED", 
-                    "tracked_vars": len(self.current_record.get("variables", {}))
-                })
-                self.sequence_start = False
-                return self.current_record
-                
-            # If it's a middle-sequence line, just return None while the instrument continues to build the record
-            return None
-            
-        except Exception as e:
-            self.logger.error("parse_failure", extra={"error_detail": str(e)})
-            return None
+                    parts = raw_str.strip().split(",")
+
+                    if 'v1' in raw_str:
+                        parts = parts[2:3] + parts[4:8]
+                        parts = [item.replace('Hz', '').replace('tau=', '').strip() for item in parts]
+                        self.var_name = variables[0:5]
+                        self.extra_var_names = variables[0:5]
+                        self.extra_vars = parts
+                        self.logger.debug("parse_state_v1", extra={"parsed_parts": parts})
+                        return None
+                    
+                    elif 'STARTING' in raw_str:
+                        parts = parts[1:3] + parts[4:25]
+                        parts = [item.replace('V', '').strip() for item in parts]
+                        self.var_name = variables[5:28]
+                        self.extra_var_names += variables[5:28]
+                        self.extra_vars += parts
+                        self.logger.debug("parse_state_STARTING", extra={"parsed_parts": parts})
+                        return None
+
+                    elif 'Vi' in raw_str:
+                        parts = parts[0:4]
+                        parts = [item.replace('Vi=', '').replace('Vf=', '').replace('Vmax=', '').replace('Tc=', '').strip() for item in parts]
+                        elapsed_time = abs(round((math.log(float(parts[1])/float(parts[0])))*float(parts[3]), 2))
+                        parts.append(elapsed_time)
+                        self.var_name = variables[28:33]
+                        self.extra_var_names += variables[28:33]
+                        self.extra_vars += parts
+                        self.logger.debug("parse_state_Vi", extra={"parsed_parts": parts})
+                        return None
+                    
+                    elif 'START SEQ' in raw_str:
+                        self.current_record = self.build_data_record(meta=self.include_metadata)
+                        self.current_record["timestamp"] = data.data["timestamp"]
+                        self.current_record["variables"]["time"]["data"] = data.data["timestamp"]
+
+                        # map extra scalar vars to the record
+                        for index, name in enumerate(self.extra_var_names):
+                            if name in self.current_record["variables"]:
+                                instvar = self.metadata["variables"][name]
+                                vartype = instvar["type"]
+                                if vartype == "string": vartype = "str"
+                                try:
+                                    self.current_record["variables"][name]["data"] = eval(vartype)(self.extra_vars[index])
+                                except (ValueError, TypeError, IndexError):
+                                    self.current_record["variables"][name]["data"] = None
+
+                        self.sequence_start = True
+                        self.seq_counter = 0
+                        self.logger.debug("parse_state_START_SEQ", extra={"status": "Building new record"})
+                        return None
+                    
+                    elif 'END SEQ' in raw_str:
+                        self.scan_var_names = variables[33:41]
+                        
+                        # Transpose the accumulated array buffer into columns
+                        if len(self.array_buffer) > 0:
+                            parts = np.array(list(self.array_buffer), dtype=object)
+                            transposed = np.transpose(parts).tolist()
+                            
+                            for index, name in enumerate(self.scan_var_names):
+                                if name in self.current_record["variables"]:
+                                    self.current_record["variables"][name]["data"] = transposed[index]
+                                    
+                        self.array_buffer = []
+                        self.sequence_end = True
+                        self.sequence_start = False
+                        self.logger.debug("parse_state_END_SEQ", extra={"status": "Sequence complete"})
+                        return self.current_record
+                    
+                    elif self.sequence_start:
+                        self.var_name = variables[33:41]
+                        if len(parts) != 8:
+                            return None
+                        # Middle of the sequence: append row to buffer
+                        self.check_array_buffer(parts, array_cond=False)
+
+                    else:
+                        return None
+
+                except KeyError:
+                    pass
+            except Exception as e:
+                self.logger.error("default_parse_error", extra={"err_detail": str(e), "trace": traceback.format_exc()})
+        return None
         
 class ServerConfig(BaseModel):
     host: str = "localhost"
