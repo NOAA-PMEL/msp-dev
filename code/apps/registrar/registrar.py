@@ -110,8 +110,9 @@ class Registrar:
 
     def open_http_client(self):
         # create a new client for each request
-        self.http_client = httpx.AsyncClient()
-
+        limits = httpx.Limits(max_keepalive_connections=50, max_connections=200)
+        self.http_client = httpx.AsyncClient(limits=limits)
+        
     async def close_http_client(self):
         if self.http_client:
             await self.http_client.aclose()
@@ -378,7 +379,8 @@ class Registrar:
         while True:
             try:
                 message = await self.sync_bcast_buffer.get()
-                await self.handle_registry_sync(message)
+                # await self.handle_registry_sync(message)
+                asyncio.create_task(self.handle_registry_sync(message))
                 self.logger.debug("handle_registry_sync_loop", extra={"mesg": message})
                 await asyncio.sleep(0.001)
             except Exception as e:
@@ -544,21 +546,39 @@ class Registrar:
                     await self.send_event(event)
 
                 # 3. Dynamic catch-all for Sampling (Already fixed in last step)
+                # elif update_type.endswith("-definition-update"):
+                #     resource_type = update_type.replace("-update", "") # e.g. 'samplingcondition-definition'
+                    
+                #     event = SamplingEvent.create_definition_registry_update(
+                #         resource=resource_type,
+                #         source=f"envds.{self.config.daq_id}.registrar",
+                #         data={resource_type: update}
+                #     )
+                    
+                #     # Route to the standard datastore topic format
+                #     destpath = f"envds/{self.config.daq_id}/{resource_type}/registry/update"
+                #     event["destpath"] = destpath
+                    
+                #     self.logger.debug(
+                #         "register_sampling_definition", extra={"resource": resource_type, "destpath": destpath}
+                #     )
+                #     await self.send_event(event)
                 elif update_type.endswith("-definition-update"):
-                    resource_type = update_type.replace("-update", "") # e.g. 'samplingcondition-definition'
+                    # CRITICAL FIX: Strip the entire suffix to get the bare resource!
+                    # 'samplingcondition-definition-update' -> 'samplingcondition'
+                    resource_base = update_type.replace("-definition-update", "") 
                     
                     event = SamplingEvent.create_definition_registry_update(
-                        resource=resource_type,
+                        resource=resource_base,
                         source=f"envds.{self.config.daq_id}.registrar",
-                        data={resource_type: update}
+                        data={f"{resource_base}-definition": update}
                     )
                     
-                    # Route to the standard datastore topic format
-                    destpath = f"envds/{self.config.daq_id}/{resource_type}/registry/update"
+                    destpath = f"envds/{self.config.daq_id}/{resource_base}/registry/update"
                     event["destpath"] = destpath
                     
                     self.logger.debug(
-                        "register_sampling_definition", extra={"resource": resource_type, "destpath": destpath}
+                        "register_sampling_definition", extra={"resource": resource_base, "destpath": destpath}
                     )
                     await self.send_event(event)
 
@@ -891,20 +911,20 @@ class Registrar:
                 local_list_name = f"current_{resource.replace('-', '_')}_definition_list"
                 local_list = getattr(self, local_list_name, [])
                 
-                # -------------------------------------------------------------
-                # 1. Identify what the remote node is missing and send it
-                #    (Always execute this, even for unallowed sources)
-                # -------------------------------------------------------------
-                missing_remote = [item for item in local_list if item not in bcast_list]
-                if missing_remote:
-                    self.logger.debug(f"missing_remote ({resource})", extra={"missing": missing_remote})
-                    for definition_id in missing_remote:
-                        if resource == "device":
-                            await self.send_device_definition_update(definition_id)
-                        elif resource == "controller":
-                            await self.send_controller_definition_update(definition_id)
-                        else:
-                            await self.send_sampling_update(resource, definition_id)
+                # # -------------------------------------------------------------
+                # # 1. Identify what the remote node is missing and send it
+                # #    (Always execute this, even for unallowed sources)
+                # # -------------------------------------------------------------
+                # missing_remote = [item for item in local_list if item not in bcast_list]
+                # if missing_remote:
+                #     self.logger.debug(f"missing_remote ({resource})", extra={"missing": missing_remote})
+                #     for definition_id in missing_remote:
+                #         if resource == "device":
+                #             await self.send_device_definition_update(definition_id)
+                #         elif resource == "controller":
+                #             await self.send_controller_definition_update(definition_id)
+                #         else:
+                #             await self.send_sampling_update(resource, definition_id)
                             
                 # -------------------------------------------------------------
                 # 2. Identify what we are missing and request it 
