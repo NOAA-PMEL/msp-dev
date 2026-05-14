@@ -103,25 +103,6 @@ def build_tables(layout_options):
                     )
                 )
 
-            elif ltype == "layout-calibration" and len(options["table-column-defs"]) > 0:
-                title = "Calibration Values"
-                # Initialize with placeholder text so the table draws its height immediately
-                initial_data = {cd["field"]: "Waiting for data..." for cd in options["table-column-defs"]}
-                table_list.append(
-                    dbc.AccordionItem(
-                        [
-                            dag.AgGrid(
-                                id={"type": "calibration-table", "index": dim},
-                                rowData=[initial_data],
-                                columnDefs=options["table-column-defs"],
-                                columnSizeOptions="autoSize",
-                                dashGridOptions={"domLayout": "autoHeight"}
-                            )
-                        ],
-                        title=title,
-                    )
-                )
-
             elif ltype == "layout-1d":
                 title = f"Data 1-D ({dim})"
                 table_list.append(
@@ -443,9 +424,10 @@ def layout(sensor_id=None):
 
     layout_options = {
         "layout-settings": {"time": {"table-column-defs": [], "variable-list": []}},
-        "layout-calibration": {"time": {"table-column-defs": [], "variable-list": []}},
         "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}},
     }
+    
+    calibration_vars = []
 
     if sensor_definition:
         try:
@@ -481,18 +463,8 @@ def layout(sensor_id=None):
                     layout_options["layout-settings"]["time"]["table-column-defs"].append(cd)
 
                 elif var_type == "calibration":
-                    long_name = name
-                    ln = var["attributes"].get("long_name", None)
-                    if ln:
-                        long_name = ln.get("data", name)
-
-                    cd = {
-                        "field": name,
-                        "headerName": long_name,
-                        "filter": False,
-                        "cellDataType": "text", 
-                    }
-                    layout_options["layout-calibration"]["time"]["table-column-defs"].append(cd)
+                    # Collect calibration variables to render as freeform text later
+                    calibration_vars.append(name)
 
                 elif var_type == "main":
                     if "shape" not in var:
@@ -605,11 +577,26 @@ def layout(sensor_id=None):
                 build_graphs(layout_options),
                 id="sensor-plot-accordion",
             ),
+            dbc.Accordion(
+                [
+                    dbc.AccordionItem(
+                        html.Pre(
+                            id="calibration-display", 
+                            children="Waiting for data...",
+                            style={"whiteSpace": "pre-wrap", "wordBreak": "break-all"}
+                        ),
+                        title="Calibration Values"
+                    )
+                ],
+                id="sensor-calibration-accordion",
+                start_collapsed=True
+            ),
             WebSocket(
                 id="ws-sensor-instance",
                 url=f"{ws_url_base}/msp/dashboardtest/ws/sensor/{sensor_id}"
             ),
             ws_send_buffer,
+            dcc.Store(id="calibration-vars", data=calibration_vars),
             dcc.Store(id="sensor-definition", data=sensor_definition),
             dcc.Store(id="sensor-meta", data=sensor_meta),
             dcc.Store(id="graph-axes", data={}),
@@ -1292,56 +1279,37 @@ def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_
 
 
 @callback(
-    Output({"type": "calibration-table", "index": ALL}, "rowData"),
+    Output("calibration-display", "children"),
     Input("sensor-data-buffer", "data"),
     [
-        State({"type": "calibration-table", "index": ALL}, "rowData"),
-        State({"type": "calibration-table", "index": ALL}, "columnDefs"),
+        State("calibration-display", "children"),
+        State("calibration-vars", "data"),
     ]
 )
-def update_calibration_table(sensor_data, row_data_list, col_defs_list):
-    if not sensor_data:
+def update_calibration_display(sensor_data, current_display, cal_vars):
+    if not sensor_data or not cal_vars:
         raise PreventUpdate
-
-    new_row_data_list = []
-    has_updates = False
 
     try:
-        for row_data, col_defs in zip(row_data_list, col_defs_list):
-            if not col_defs:
-                new_row_data_list.append(dash.no_update)
-                continue
-                
-            # Retain existing row data if present, otherwise start blank
-            data = row_data[0] if row_data and len(row_data) > 0 else {}
-            row_updated = False
-            
-            for col in col_defs:
-                name = col["field"]
-                if name in sensor_data.get("variables", {}):
-                    new_val = str(sensor_data["variables"][name].get("data", ""))
-                    if data.get(name) != new_val:
-                        data[name] = new_val
-                        row_updated = True
-                else:
-                    if name not in data:
-                        data[name] = "Waiting for data..."
-                        row_updated = True
-                        
-            if row_updated:
-                new_row_data_list.append([data])
+        cal_data = json.loads(current_display)
+    except:
+        cal_data = {}
+
+    has_updates = False
+    for name in cal_vars:
+        if name in sensor_data.get("variables", {}):
+            new_val = sensor_data["variables"][name].get("data")
+            if cal_data.get(name) != new_val:
+                cal_data[name] = new_val
                 has_updates = True
-            else:
-                new_row_data_list.append(dash.no_update)
-
-        if not has_updates:
-            raise PreventUpdate
-            
-        return new_row_data_list
-
-    except Exception as e:
-        L.error(f"data update error calibration table: {e}")
+    
+    if not has_updates and current_display != "Waiting for data...":
         raise PreventUpdate
+        
+    if not cal_data:
+        return "Waiting for data..."
+        
+    return json.dumps(cal_data, indent=2)
 
 
 @callback(
