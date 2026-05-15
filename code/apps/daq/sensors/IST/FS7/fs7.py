@@ -450,11 +450,11 @@ class FS7(Sensor):
                     volts = float(result["data"])
                     record["variables"]["volts"]["data"] = volts
 
-                    # Calculate fluidic dependent constant assuming n-parameter of 0.51
+                    # Calculate fluidic dependent constant (k) assuming n-parameter of 0.51
                     n = 0.51
-                    U50 = self.calibration_voltages[1]
+                    u50 = self.calibration_voltages[1]
                     v50 = self.calibration_flows[1]
-                    k_numer = (U50/self.zero_flow_voltage)**2
+                    k_numer = (u50/self.zero_flow_voltage)**2
                     k_denom = (v50)**n
                     k = k_numer / k_denom
 
