@@ -87,16 +87,29 @@ def build_tables(layout_options):
 
             if ltype == "layout-settings":
                 title = f"Device Settings"
+                
+                # Reshaped row definitions for the parameter layout grid
+                column_defs = [
+                    {"field": "parameter", "headerName": "Setting Parameter", "editable": False, "pinned": "left"},
+                    {"field": "description", "headerName": "Description", "editable": False},
+                    {
+                        "field": "value", 
+                        "headerName": "Actual Value", 
+                        "editable": True,
+                        "cellEditorSelector": {"function": "determineSettingEditor(params)"}
+                    }
+                ]
+                
                 table_list.append(
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
                                 id={"type": "settings-table", "index": dim},
-                                rowData=[],
-                                columnDefs=options["table-column-defs"],
+                                rowData=options.get("row-data-skeletons", []),
+                                columnDefs=column_defs,
                                 columnSizeOptions="autoSize",
-                                dashGridOptions={"domLayout": "autoHeight"},
-                                style={"height": None, "maxHeight": "400px", "overflow": "auto"}
+                                dashGridOptions={"domLayout": "autoHeight", "singleClickEdit": True},
+                                style={"height": None, "maxHeight": "500px", "overflow": "auto"}
                             )
                         ],
                         title=title,
@@ -423,7 +436,8 @@ def layout(sensor_id=None):
         sensor_definition = {}
 
     layout_options = {
-        "layout-settings": {"time": {"table-column-defs": [], "variable-list": []}},
+        "layout-settings": {"time": {"table-column-defs": [], "variable-list": [], "row-data-skeletons": []}},
+        "layout-calibration": {"time": {"table-column-defs": [], "variable-list": []}},
         "layout-1d": {"time": {"table-column-defs": [], "variable-list": []}},
     }
     
@@ -446,24 +460,27 @@ def layout(sensor_id=None):
                         long_name = ln.get("data", name)
 
                     dtype = var.get("type", "unknown")
-                    data_type = "text"
-                    if dtype in ["float", "double", "int"]:
-                        data_type = "number"
-                    elif dtype in ["str", "string", "char"]:
-                        data_type = "text"
-                    elif dtype in ["bool"]:
-                        data_type = "boolean"
+                    allowed_vals = var["attributes"].get("allowed_values", {}).get("data", None)
+                    
+                    # Extract numeric bounds
+                    min_val = var["attributes"].get("valid_min", {}).get("data", None)
+                    max_val = var["attributes"].get("valid_max", {}).get("data", None)
+                    step_val = var["attributes"].get("step_increment", {}).get("data", None)
 
-                    cd = {
-                        "field": name,
-                        "headerName": long_name,
-                        "filter": False,
-                        "cellDataType": data_type,
+                    # Build meta properties to expose inside JavaScript function determineSettingEditor
+                    control_metadata = {
+                        "parameter": name,
+                        "description": long_name,
+                        "value": "",
+                        "type": dtype,
+                        "allowed_values": [x.strip() for x in allowed_vals.split(",")] if allowed_vals else None,
+                        "min": min_val,
+                        "max": max_val,
+                        "step": step_val
                     }
-                    layout_options["layout-settings"]["time"]["table-column-defs"].append(cd)
+                    layout_options["layout-settings"]["time"]["row-data-skeletons"].append(control_metadata)
 
                 elif var_type == "calibration":
-                    # Collect calibration variables to render as freeform text later
                     calibration_vars.append(name)
 
                 elif var_type == "main":
@@ -554,14 +571,15 @@ def layout(sensor_id=None):
 
             for ltype, dims in layout_options.items():
                 for dim, options in dims.items():
-                    for cd in options["table-column-defs"]:
-                        if cd["field"] in dimensions:
-                            continue
-                        if cd["cellDataType"] != "number":
-                            continue
-                        layout_options[ltype][dim]["variable-list"].append(
-                            {"label": cd["field"], "value": cd["field"]}
-                        )
+                    if "table-column-defs" in options:
+                        for cd in options["table-column-defs"]:
+                            if cd["field"] in dimensions:
+                                continue
+                            if cd["cellDataType"] != "number":
+                                continue
+                            layout_options[ltype][dim]["variable-list"].append(
+                                {"label": cd["field"], "value": cd["field"]}
+                            )
 
         except KeyError as e:
             print(f"build column_defs error: {e}")
@@ -1170,111 +1188,91 @@ def update_graph_3d_plots(
 
 @callback(
     Output("ws-send-instance-buffer", "children"),
-    Input({"type": "settings-table", "index": ALL}, "cellRendererData"),
     Input({"type": "settings-table", "index": ALL}, "cellValueChanged"),
     State("sensor-meta", "data")
 )
-def get_requested_setting(changed_component, changed_input, sensor_meta):
-    print('changed component', changed_component)
-    print('changed input', changed_input)
+def handle_setting_cell_changed(changed_cells, sensor_meta):
+    """Detect vertical settings table grid edits and compile a structured CloudEvent settings request."""
+    if not changed_cells or not any(x for x in changed_cells):
+        raise PreventUpdate
+
     try:
-        if any(component is not None for component in changed_component):
-            print('component was changed here')
-            requested_val = int(changed_component[0]["value"])
-            col_id = changed_component[0]["colId"]
-        elif any(component is not None for component in changed_input):
-            requested_val = int(changed_input[0][0]['value'])
-            print('requested_val', requested_val)
-            col_id = changed_input[0][0]["colId"]
-            print('col id', col_id)
-        else:
-            raise PreventUpdate
+        # Extract row info from vertical property change event
+        event_entry = [x for x in changed_cells if x is not None][0][0]
+        col_id = event_entry["data"]["parameter"]
+        raw_val = event_entry["data"]["value"]
+        
+        # Cast to proper dynamic types based on context definitions
         try:
-            event = {
-                "source": "testsource",
-                "data": {"settings": col_id, "requested": requested_val},
-                "destpath": "envds/sensor/settings/request",
-                "deviceid": sensor_meta["device_id"]
-            }
-        except Exception as e:
-                print(f"data update error: {e}")
-                print(traceback.format_exc())
+            if event_entry["data"]["type"] == "int":
+                requested_val = int(raw_val)
+            elif event_entry["data"]["type"] == "float":
+                requested_val = float(raw_val)
+            elif raw_val in ["True", "False"]:
+                requested_val = raw_val == "True"
+            else:
+                requested_val = str(raw_val)
+        except (ValueError, TypeError):
+            requested_val = raw_val
+
+        event = {
+            "source": f"envds.{config.daq_id}.dashboard",
+            "data": {"settings": {col_id: {"requested": requested_val}}},
+            "destpath": "envds/sensor/settings/request",
+            "deviceid": sensor_meta["device_id"]
+        }
+        print(f"Generated settings control request event: {event}")
         return json.dumps(event)
-    
+        
     except Exception as e:
-        print(f"requested setting error: {e}")
+        print(f"vertical property cell editing error: {e}")
         print(traceback.format_exc())
+        raise PreventUpdate
 
 
 @callback(
     Output({"type": "settings-table", "index": ALL}, "rowData"), 
-    Output({"type": "settings-table", "index": ALL}, "columnDefs"),
     Input("sensor-settings-buffer", "data"),
-    [
-        State({"type": "settings-table", "index": ALL}, "rowData"),
-        State({"type": "settings-table", "index": ALL}, "columnDefs"),
-        State("sensor-definition", "data")
-    ],
+    State({"type": "settings-table", "index": ALL}, "rowData"),
 )
-def update_settings_table(sensor_settings, row_data_list, col_defs_list, sensor_definition):
-    if sensor_settings:
-        new_row_data_list = []
-        new_column_defs = []
-        try:
-            for row_data, col_defs in zip(row_data_list, col_defs_list):
-                print('col defs', col_defs)
-                print('row data', row_data)
-                data = {}
-                for col in col_defs:
-                    print('col', col)
-                    name = col["field"]
-                    if name in sensor_settings["settings"]:
-                        print('name', name)
-                        data[name] = sensor_settings["settings"][name]["data"]["actual"]
-                        print('data', data[name])
-                    else:
-                        data[name] = ""
-                    
-                    if row_data:
-                        if row_data[0][col['field']] == data[name]:
-                            raise PreventUpdate 
-
-                    setting_type = sensor_definition["variables"][name]["attributes"]["valid_min"]["type"]
-                    if setting_type == "int" or setting_type == "float":
-                        min_val = sensor_definition["variables"][name]["attributes"]["valid_min"]["data"]
-                        max_val = sensor_definition["variables"][name]["attributes"]["valid_max"]["data"]
-                        step_val = sensor_definition["variables"][name]["attributes"]["step_increment"]["data"]
-                        print('min, max, step', min_val, max_val, step_val)
-
-                        if min_val == 0:
-                            if max_val == 1:
-                                if step_val == 1:
-                                    col["cellRenderer"] = "DBC_Switch"
-                                    col["cellRendererParams"] = {"color": "success"}
-                        
-                        elif max_val > 1:
-                            col["editable"] = True
-                            col["cellEditor"] = "agNumberCellEditor"
-                            col["cellEditorParams"] = {
-                                "min": min_val,
-                                "max": max_val,
-                                "step": step_val,
-                                "showStepperButtons": True
-                            }
-
-                    new_column_defs.append(col)
-                row_data.insert(0, data)
-                print('row data 2', row_data)
-                new_row_data_list.append(row_data[0:1])
-                print('new data list', new_row_data_list)
-            if len(new_row_data_list) == 0:
-                raise PreventUpdate
-            return new_row_data_list, [new_column_defs]
-        except Exception as e:
-            print(f"data update error: {e}")
-            print(traceback.format_exc())
+def update_settings_table(sensor_settings, row_data_list):
+    """Live-update parameter layout rows when the instrument broadcasts actual setting updates."""
+    if not sensor_settings or not row_data_list:
         raise PreventUpdate
-    else:
+
+    updated_row_lists = []
+    has_updates = False
+
+    try:
+        for rows in row_data_list:
+            if not rows:
+                updated_row_lists.append(dash.no_update)
+                continue
+                
+            grid_patched = False
+            # Iterate vertical skeleton list elements
+            for row in rows:
+                param_name = row["parameter"]
+                if param_name in sensor_settings.get("settings", {}):
+                    # Safely map context update safely back to table view row
+                    actual_val = sensor_settings["settings"][param_name]["data"].get("actual", "")
+                    if row["value"] != actual_val:
+                        row["value"] = actual_val
+                        grid_patched = True
+            
+            if grid_patched:
+                updated_row_lists.append(rows)
+                has_updates = True
+            else:
+                updated_row_lists.append(dash.no_update)
+
+        if not has_updates:
+            raise PreventUpdate
+            
+        return updated_row_lists
+
+    except Exception as e:
+        print(f"settings-table live update pipeline failure: {e}")
         raise PreventUpdate
 
 
