@@ -162,7 +162,7 @@ class DwyerSCD(Operational):
                             
                             # Function 6 = Write Single Register
                             cmd = self.build_modbus_ascii(self.modbus_address, 6, 0x1001, sv_scaled)
-                            await self.interface_send_data(data={"data": cmd}, path_id=target_path)
+                            await self.interface_send_data(data={"data": cmd}, path_id="default")
                         except Exception as e:
                             self.logger.error("settings_check SV error", extra={"error": str(e)})
 
@@ -220,7 +220,7 @@ class DwyerSCD(Operational):
         while True:
             try:
                 self.logger.debug(f"Sending Modbus poll to path: {target_path}", extra={"polling_cmd": cmd.strip()})
-                await self.interface_send_data(data={"data": cmd}, path_id=target_path)
+                await self.interface_send_data(data={"data": cmd}, path_id="default")
             except Exception as e:
                 self.logger.error("polling_loop error", extra={"reason": str(e)})
             await asyncio.sleep(self.sampling_interval)
