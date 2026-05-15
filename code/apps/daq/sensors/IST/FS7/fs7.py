@@ -164,6 +164,13 @@ class FS7(Sensor):
         if "metadata_interval" in conf:
             self.include_metadata_interval = conf["metadata_interval"]
 
+        # 1. Initialize internal calibration variables to safe defaults
+        self.tubing_diameter = 0.5
+        self.zero_flow_voltage = 0.0
+        self.zero_flow_temperature = 20.0
+        self.calibration_flows = [0.0, 0.0, 0.0]
+        self.calibration_voltages = [0.0, 0.0, 0.0]
+
         sensor_iface_properties = {
             "default": {
                 "sensor-interface-properties": {
@@ -189,15 +196,6 @@ class FS7(Sensor):
                 "fs7.configure", extra={"interfaces": conf["interfaces"]}
             )
 
-            settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
-
-            for name, setting in settings_def["variables"].items():
-                requested = setting["attributes"]["default_value"]["data"]
-                if "settings" in config and name in config["settings"]:
-                    requested = config["settings"][name]
-
-                self.settings.set_setting(name, requested=requested)
-
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
             dimensions=self.metadata["dimensions"],
@@ -215,10 +213,7 @@ class FS7(Sensor):
         )
 
         print(f"self.config: {self.config}")
-
-        if "diameter" in conf:
-            self.diameter = float(conf["diameter"])
-
+        
         try:
             self.device_format_version = self.config.metadata.attributes[
                 "format_version"
@@ -241,6 +236,46 @@ class FS7(Sensor):
             print(e)
 
         self.logger.debug("iface_map", extra={"map": self.iface_map})
+
+        try:
+            settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
+            for name, setting in settings_def.get("variables", {}).items():
+                requested = setting["attributes"].get("default_value", {}).get("data")
+                if "settings" in conf and name in conf["settings"]:
+                    requested = conf["settings"][name]
+                self.settings.set_setting(name, requested=requested)
+        
+        except Exception as e:
+            print(e)
+
+        try:
+            # Extract defaults for persistent calibrations
+            cal_def = self.get_definition_by_variable_type(self.metadata, variable_type="calibration")
+            for name, cal in cal_def.get("variables", {}).items():
+                # Get default from JSON definition (if provided)
+                default_val = cal["attributes"].get("default_value", {}).get("data")
+                
+                # Support framework-injected calibrations from the ConfigMap
+                if "calibrations" in conf and name in conf["calibrations"]:
+                    val_to_use = conf["calibrations"][name]
+                else:
+                    val_to_use = default_val
+
+                # Assign to our internal tracker variables
+                if val_to_use is not None:
+                    if name == "tubing_diameter":
+                        self.tubing_diameter = val_to_use
+                    elif name == "zero_flow_voltage":
+                        self.zero_flow_voltage = val_to_use
+                    elif name == "zero_flow_temperature":
+                        self.zero_flow_temperature = val_to_use
+                    elif name == "calibration_flows":
+                        self.calibration_flows = val_to_use
+                    elif name == "calibration_voltages":
+                        self.calibration_voltages = val_to_use
+        
+        except Exception as e:
+            print(e)
 
 
     # async def handle_interface_message(self, message: Message):
@@ -383,30 +418,56 @@ class FS7(Sensor):
                 # self.logger.debug("default_data_loop", extra={"record": record})
             except Exception as e:
                 print(f"default_data_loop error: {e}")
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)         
+
 
     def default_parse(self, data):
+        if not data: 
+            return None
+        
         if data:
             try:
-                timestamp = data.data["timestamp"]
-                iface_data = data.data["data"]
-                volt_val = iface_data["data"]
+                v_types = ["main", "setting", "coordinate", "calibration"] if self.include_metadata else ["main"]
                 
-                variables = list(self.config.metadata.variables.keys())
-                variables.remove("time")
-                record = self.build_data_record(meta=self.include_metadata)
+                # variables = list(self.config.metadata.variables.keys())
+                # variables.remove("time")
+                
+                record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+               
                 print(f"default_parse: data: {data}, record: {record}")
                 self.include_metadata = False
+
+                raw_payload = data.data if isinstance(data.data, dict) else {}
+                record["timestamp"] = raw_payload.get("timestamp")
+                if "time" in record["variables"]:
+                    record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+
+
+
                 try:
-                    record["timestamp"] = data.data["timestamp"]
-                    record["variables"]["time"]["data"] = data.data["timestamp"]
 
                     result = data.data["data"]
-                    record["variables"]["volts"]["data"] = float(result["data"])
+                    volts = float(result["data"])
+                    record["variables"]["volts"]["data"] = volts
 
-                    uvolts = record["variables"]["volts"]["data"] * 1000000.0
-                    E = uvolts / record["variables"]["sensitivity"]["data"]
-                    record["variables"]["irradiance"]["data"] = round(E,5)
+                    # Calculate fluidic dependent constant assuming n-parameter of 0.51
+                    n = 0.51
+                    U50 = self.calibration_voltages[1]
+                    v50 = self.calibration_flows[1]
+                    k_numer = (U50/self.zero_flow_voltage)**2
+                    k_denom = (v50)**n
+                    k = k_numer / k_denom
+
+                    # Calculate velocity using assumed 0 flow voltage (U0)
+                    v_numer = ((volts - self.zero_flow_voltage)*(volts + self.zero_flow_voltage))**(1/n)
+                    v_denom = (k**(1/n))*(self.zero_flow_voltage**(2/n))
+                    velocity = v_numer / v_denom  
+
+                    area = 3.1415*((self.diameter /2 )**2)
+                    uncorr_flow = velocity * area
+                    uncorr_flow = uncorr_flow * 60000 # convert from m3/s to LPM
+    
+                    record["variables"]["flow_uncorrected"]["data"] = uncorr_flow
                     return record
                     
                 except KeyError:
