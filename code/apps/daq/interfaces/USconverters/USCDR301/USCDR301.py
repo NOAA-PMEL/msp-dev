@@ -196,17 +196,36 @@ class USCDR301(Interface):
         # Otherwise, default to a 0.1s rest to prevent CPU spin.
         await asyncio.sleep(timeout if timeout > 0 else 0.1)
 
-    async def send_data(self, event: DAQEvent):
-            print(f"here:1 {event}")
-            try:
-                print(f"send_data:1 - {event}")
-                client_id = event["path_id"]
-                client = self.client_map[client_id]["client"]
-                data = event.data["data"]
+    # async def send_data(self, event: DAQEvent):
+    #         print(f"here:1 {event}")
+    #         try:
+    #             print(f"send_data:1 - {event}")
+    #             client_id = event["path_id"]
+    #             client = self.client_map[client_id]["client"]
+    #             data = event.data["data"]
 
+    #             await client.send(data)
+    #         except KeyError:
+    #             pass
+
+    async def send_data(self, event: DAQEvent):
+        try:
+            client_id = event["path_id"]
+            client = self.client_map[client_id]["client"]
+            
+            # Ensure the client exists and is connected before sending
+            if client is not None:
+                data = event.data["data"]
                 await client.send(data)
-            except KeyError:
-                pass
+            else:
+                # Optionally log that the command was dropped because it's unconnected
+                self.logger.debug("Interface unconnected; dropping outgoing command.", extra={"client_id": client_id})
+                
+        except KeyError:
+            pass
+        except Exception as e:
+            # Catch all other exceptions (like AttributeError or network errors) to prevent crash loops
+            self.logger.error("send_data exception", extra={"error": str(e)})
 
     async def shutdown(self):
         self.logger.info("USCDR301 Interface starting shutdown sequence...")
