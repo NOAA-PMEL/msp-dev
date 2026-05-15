@@ -127,11 +127,14 @@ class DwyerSCD(Operational):
             (data >> 8) & 0xFF,
             data & 0xFF
         ]
+        self.logger.debug(f"build_modbus_ascii", extra={"modbus_paylaod": payload})
         # Calculate Longitudinal Redundancy Check (LRC)
         lrc = (~sum(payload) + 1) & 0xFF
+        self.logger.debug(f"build_modbus_ascii", extra={"modbus_lrc": lrc})
         
         # Format as : + payload + LRC + CR + LF
         cmd = ":" + "".join([f"{x:02X}" for x in payload]) + f"{lrc:02X}\r\n"
+        self.logger.debug(f"build_modbus_ascii", extra={"modbus_cmd": cmd})
         return cmd
 
     async def settings_check(self):
@@ -184,6 +187,7 @@ class DwyerSCD(Operational):
                 state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
                 state_str = str(state).lower()
 
+                self.logger.debug(f"sampling_monitor", extra={"sampling_state": state_str})
                 if self.sampling() and state_str == "sampling":
                     if self.polling_mode == "polled":
                         if self.polling_task is None or self.polling_task.done():
@@ -207,14 +211,18 @@ class DwyerSCD(Operational):
     async def polling_loop(self):
         # SCD1000/2000 Modbus Read: 1000H (PV), 1001H (SV)
         # Function 3 = Read Holding Registers, Count = 2
+        self.logger.debug(f"polling_loop")
         cmd = self.build_modbus_ascii(self.modbus_address, 3, 0x1000, 2)
+        self.logger.debug(f"polling_loop", extra={"modbus_ascii": cmd.strip()})
         target_path = self.config.interfaces.get("default", {}).get("path", "default")
+        self.logger.debug(f"polling_loop", extra={"target_path": target_path})
 
         while True:
             try:
+                self.logger.debug(f"Sending Modbus poll to path: {target_path}", extra={"polling_cmd": cmd.strip()})
                 await self.interface_send_data(data={"data": cmd}, path_id=target_path)
             except Exception as e:
-                self.logger.error("polling_loop error", extra={"error": str(e)})
+                self.logger.error("polling_loop error", extra={"reason": str(e)})
             await asyncio.sleep(self.sampling_interval)
 
     async def default_data_loop(self):
