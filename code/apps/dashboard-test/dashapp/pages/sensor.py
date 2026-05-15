@@ -75,8 +75,6 @@ if config.ws_use_tls:
 
 link_url_base = f"{http_url_base}/msp/dashboardtest"
 
-ws_send_buffer = html.Div(id="ws-send-instance-buffer", style={"display": "none"})
-
 
 def build_tables(layout_options):
     table_list = []
@@ -92,9 +90,10 @@ def build_tables(layout_options):
                 column_defs = [
                     {"field": "parameter", "headerName": "Setting Parameter", "editable": False, "pinned": "left"},
                     {"field": "description", "headerName": "Description", "editable": False},
+                    {"field": "actual_value", "headerName": "Actual Value", "editable": False},
                     {
-                        "field": "value", 
-                        "headerName": "Actual Value", 
+                        "field": "requested_value", 
+                        "headerName": "Requested Value", 
                         "editable": True,
                         "cellEditorSelector": {"function": "determineSettingEditor(params)"}
                     }
@@ -108,9 +107,10 @@ def build_tables(layout_options):
                                 rowData=options.get("row-data-skeletons", []),
                                 columnDefs=column_defs,
                                 columnSizeOptions="autoSize",
-                                dashGridOptions={"domLayout": "autoHeight", "singleClickEdit": True},
+                                dashGridOptions={"domLayout": "autoHeight", "singleClickEdit": True, "rowSelection": "single"},
                                 style={"height": None, "maxHeight": "500px", "overflow": "auto"}
-                            )
+                            ),
+                            dbc.Button("Submit Selected Setting", id={"type": "submit-setting-btn", "index": dim}, color="primary", className="mt-3")
                         ],
                         title=title,
                     )
@@ -471,7 +471,8 @@ def layout(sensor_id=None):
                     control_metadata = {
                         "parameter": name,
                         "description": long_name,
-                        "value": "",
+                        "actual_value": "",
+                        "requested_value": "",
                         "type": dtype,
                         "allowed_values": [x.strip() for x in allowed_vals.split(",")] if allowed_vals else None,
                         "min": min_val,
@@ -584,6 +585,14 @@ def layout(sensor_id=None):
         except KeyError as e:
             print(f"build column_defs error: {e}")
 
+    # Create the initial fetch request to automatically populate the settings table on page load
+    initial_request = {
+        "source": f"envds.{config.daq_id}.dashboard",
+        "data": {},
+        "destpath": "envds/sensor/settings/request",
+        "deviceid": sensor_meta.get("device_id", "")
+    }
+
     layout = html.Div(
         [
             html.H1(f"Sensor: {sensor_id}"),
@@ -613,7 +622,7 @@ def layout(sensor_id=None):
                 id="ws-sensor-instance",
                 url=f"{ws_url_base}/msp/dashboardtest/ws/sensor/{sensor_id}"
             ),
-            ws_send_buffer,
+            html.Div(id="ws-send-instance-buffer", children=json.dumps(initial_request), style={"display": "none"}),
             dcc.Store(id="calibration-vars", data=calibration_vars),
             dcc.Store(id="sensor-definition", data=sensor_definition),
             dcc.Store(id="sensor-meta", data=sensor_meta),
@@ -1187,47 +1196,57 @@ def update_graph_3d_plots(
 
 
 @callback(
-    Output("ws-send-instance-buffer", "children"),
-    Input({"type": "settings-table", "index": ALL}, "cellValueChanged"),
-    State("sensor-meta", "data")
+    Output("ws-send-instance-buffer", "children", allow_duplicate=True),
+    Input({"type": "submit-setting-btn", "index": ALL}, "n_clicks"),
+    State({"type": "settings-table", "index": ALL}, "selectedRows"),
+    State("sensor-meta", "data"),
+    prevent_initial_call=True
 )
-def handle_setting_cell_changed(changed_cells, sensor_meta):
-    """Detect vertical settings table grid edits and compile a structured CloudEvent settings request."""
-    if not changed_cells or not any(x for x in changed_cells):
+def submit_setting_change(n_clicks_list, selected_rows_list, sensor_meta):
+    """Detects explicit button click, pulls the active row's requested_value, and compiles a structured Request CloudEvent."""
+    
+    # Check if a button was actually clicked
+    if not any(n for n in n_clicks_list if n):
         raise PreventUpdate
 
+    # Iterate through the grid states to find the one where the user selected a row
+    selected_row = None
+    for rows in selected_rows_list:
+        if rows and len(rows) > 0:
+            selected_row = rows[0]
+            break
+            
+    if not selected_row:
+        raise PreventUpdate
+        
+    col_id = selected_row["parameter"]
+    raw_val = selected_row.get("requested_value")
+    
+    if raw_val is None or raw_val == "":
+        raise PreventUpdate
+        
+    # Cast to proper dynamic types based on context definitions
     try:
-        # Extract row info from vertical property change event
-        event_entry = [x for x in changed_cells if x is not None][0][0]
-        col_id = event_entry["data"]["parameter"]
-        raw_val = event_entry["data"]["value"]
-        
-        # Cast to proper dynamic types based on context definitions
-        try:
-            if event_entry["data"]["type"] == "int":
-                requested_val = int(raw_val)
-            elif event_entry["data"]["type"] == "float":
-                requested_val = float(raw_val)
-            elif raw_val in ["True", "False"]:
-                requested_val = raw_val == "True"
-            else:
-                requested_val = str(raw_val)
-        except (ValueError, TypeError):
-            requested_val = raw_val
+        if selected_row["type"] == "int":
+            requested_val = int(raw_val)
+        elif selected_row["type"] == "float":
+            requested_val = float(raw_val)
+        elif raw_val in ["True", "False"]:
+            requested_val = raw_val == "True"
+        else:
+            requested_val = str(raw_val)
+    except (ValueError, TypeError):
+        requested_val = raw_val
 
-        event = {
-            "source": f"envds.{config.daq_id}.dashboard",
-            "data": {"settings": {col_id: {"requested": requested_val}}},
-            "destpath": "envds/sensor/settings/request",
-            "deviceid": sensor_meta["device_id"]
-        }
-        print(f"Generated settings control request event: {event}")
-        return json.dumps(event)
-        
-    except Exception as e:
-        print(f"vertical property cell editing error: {e}")
-        print(traceback.format_exc())
-        raise PreventUpdate
+    event = {
+        "source": f"envds.{config.daq_id}.dashboard",
+        "data": {"settings": {col_id: {"requested": requested_val}}},
+        "destpath": "envds/sensor/settings/request",
+        "deviceid": sensor_meta["device_id"]
+    }
+    
+    print(f"Generated explicit settings control request event: {event}")
+    return json.dumps(event)
 
 
 @callback(
@@ -1250,14 +1269,30 @@ def update_settings_table(sensor_settings, row_data_list):
                 continue
                 
             grid_patched = False
-            # Iterate vertical skeleton list elements
+            
             for row in rows:
                 param_name = row["parameter"]
                 if param_name in sensor_settings.get("settings", {}):
-                    # Safely map context update safely back to table view row
-                    actual_val = sensor_settings["settings"][param_name]["data"].get("actual", "")
-                    if row["value"] != actual_val:
-                        row["value"] = actual_val
+                    param_data = sensor_settings["settings"][param_name]
+                    
+                    # Handle multiple potential envds packing patterns
+                    if isinstance(param_data, dict) and "data" in param_data:
+                        actual_val = param_data["data"].get("actual", "")
+                        req_val = param_data["data"].get("requested", "")
+                    elif isinstance(param_data, dict):
+                        actual_val = param_data.get("actual", "")
+                        req_val = param_data.get("requested", "")
+                    else:
+                        continue
+
+                    # Safely map context update back to table view actual column
+                    if str(row.get("actual_value")) != str(actual_val):
+                        row["actual_value"] = actual_val
+                        grid_patched = True
+                        
+                    # Sync requested field if empty, to show the current targeted state
+                    if row.get("requested_value") == "" or row.get("requested_value") is None:
+                        row["requested_value"] = req_val
                         grid_patched = True
             
             if grid_patched:
