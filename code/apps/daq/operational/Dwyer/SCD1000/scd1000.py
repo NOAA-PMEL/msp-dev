@@ -147,6 +147,9 @@ class DwyerSCD(Operational):
                         
                     elif name == "set_value":
                         try:
+                            # Fetch the actual remote path (e.g., 'port-1') instead of hardcoding 'default'
+                            target_path = self.config.interfaces.get("default", {}).get("path", "default")
+
                             # SCD1000/2000 Modbus write: Set Point is at 1001H, resolution 0.1 degree
                             sv_scaled = int(float(target_val) * 10.0)
                             
@@ -156,7 +159,7 @@ class DwyerSCD(Operational):
                             
                             # Function 6 = Write Single Register
                             cmd = self.build_modbus_ascii(self.modbus_address, 6, 0x1001, sv_scaled)
-                            await self.interface_send_data(data={"data": cmd}, path_id="default")
+                            await self.interface_send_data(data={"data": cmd}, path_id=target_path)
                         except Exception as e:
                             self.logger.error("settings_check SV error", extra={"error": str(e)})
 
@@ -205,10 +208,11 @@ class DwyerSCD(Operational):
         # SCD1000/2000 Modbus Read: 1000H (PV), 1001H (SV)
         # Function 3 = Read Holding Registers, Count = 2
         cmd = self.build_modbus_ascii(self.modbus_address, 3, 0x1000, 2)
+        target_path = self.config.interfaces.get("default", {}).get("path", "default")
 
         while True:
             try:
-                await self.interface_send_data(data={"data": cmd}, path_id="default")
+                await self.interface_send_data(data={"data": cmd}, path_id=target_path)
             except Exception as e:
                 self.logger.error("polling_loop error", extra={"error": str(e)})
             await asyncio.sleep(self.sampling_interval)
