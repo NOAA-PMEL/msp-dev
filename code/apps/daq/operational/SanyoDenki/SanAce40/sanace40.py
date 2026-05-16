@@ -119,20 +119,20 @@ class SanAce40(Operational):
             if not setting_obj:
                 return
                 
-            # Securely extract and cast the requested setpoint
             requested_raw = setting_obj.get("requested", 0.0)
             requested_sp = float(requested_raw) if requested_raw is not None else 0.0
             
+            # Extract the nested payload
             raw_payload = data if isinstance(data, dict) else getattr(data, "data", {})
-            duty_cycle = raw_payload.get("data", {}).get("duty_cycle")
+            level1_data = raw_payload.get("data", {})
+            level2_data = level1_data.get("data", {})
+            
+            duty_cycle = level2_data.get("duty_cycle")
             
             if duty_cycle is not None:
-                # Unidirectional fan: direct 1:1 mapping (0-100% SP = 0-100% DC)
                 sp = float(duty_cycle)
-                
-                # Secure mathematical comparison using cast floats
                 if (requested_sp - 5.0) < sp < (requested_sp + 5.0):
-                    self.settings.set_actual("fan_speed_sp", actual=requested_raw) # Keep original type structure for actual
+                    self.settings.set_actual("fan_speed_sp", actual=requested_raw)
         except Exception as e:
             self.logger.error("check_fan_speed_sp error", extra={"error": str(e)})
 
