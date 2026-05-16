@@ -50,6 +50,8 @@ class SanAce40(Operational):
         except FileNotFoundError:
             conf = {"serial_number": "UNKNOWN", "interfaces": {}}
 
+        self.logger.debug("configure", extra={"input_config": config})
+
         env_polling_mode = os.environ.get("POLLING_MODE")
         if env_polling_mode:
             self.polling_mode = env_polling_mode.lower()
@@ -64,7 +66,9 @@ class SanAce40(Operational):
             requested = setting["attributes"].get("default_value", {}).get("data")
             if "settings" in conf and name in conf["settings"]:
                 requested = conf["settings"][name]
+                self.logger.debug("configure", extra={"setting_name": name, "requested": requested})
             self.settings.set_setting(name, requested=requested)
+        self.logger.debug("configure", extra={"settings": settings_def})
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
@@ -91,10 +95,33 @@ class SanAce40(Operational):
             for name, iface in conf["interfaces"].items():
                 self.add_interface(name, iface)
 
+    # def check_fan_speed_sp(self, data):
+    #     try:
+    #         setting_obj = self.settings.get_setting("fan_speed_sp")
+    #         requested_sp = setting_obj.get("requested", 0.0)
+            
+    #         raw_payload = data if isinstance(data, dict) else getattr(data, "data", {})
+    #         duty_cycle = raw_payload.get("data", {}).get("duty_cycle")
+            
+    #         if duty_cycle is not None:
+    #             # Unidirectional fan: direct 1:1 mapping (0-100% SP = 0-100% DC)
+    #             sp = float(duty_cycle)
+                
+    #             # If within +/- 5% of target, mark as achieved
+    #             if (requested_sp - 5.0) < sp < (requested_sp + 5.0):
+    #                 self.settings.set_actual("fan_speed_sp", actual=requested_sp)
+    #     except Exception as e:
+    #         self.logger.error("check_fan_speed_sp error", extra={"error": str(e)})
+
     def check_fan_speed_sp(self, data):
         try:
             setting_obj = self.settings.get_setting("fan_speed_sp")
-            requested_sp = setting_obj.get("requested", 0.0)
+            if not setting_obj:
+                return
+                
+            # Securely extract and cast the requested setpoint
+            requested_raw = setting_obj.get("requested", 0.0)
+            requested_sp = float(requested_raw) if requested_raw is not None else 0.0
             
             raw_payload = data if isinstance(data, dict) else getattr(data, "data", {})
             duty_cycle = raw_payload.get("data", {}).get("duty_cycle")
@@ -103,9 +130,9 @@ class SanAce40(Operational):
                 # Unidirectional fan: direct 1:1 mapping (0-100% SP = 0-100% DC)
                 sp = float(duty_cycle)
                 
-                # If within +/- 5% of target, mark as achieved
+                # Secure mathematical comparison using cast floats
                 if (requested_sp - 5.0) < sp < (requested_sp + 5.0):
-                    self.settings.set_actual("fan_speed_sp", actual=requested_sp)
+                    self.settings.set_actual("fan_speed_sp", actual=requested_raw) # Keep original type structure for actual
         except Exception as e:
             self.logger.error("check_fan_speed_sp error", extra={"error": str(e)})
 
