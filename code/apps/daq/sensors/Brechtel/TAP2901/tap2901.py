@@ -148,6 +148,49 @@ class TAP(Sensor):
                     if name in ["sampling_state", "calibration_routine", "set_active_spot"]:
                         self.settings.set_actual(name, target_val)
 
+    # async def sampling_monitor(self):
+    #     need_start = True
+    #     if not hasattr(self, 'current_requested_spot'):
+    #         self.current_requested_spot = 0
+            
+    #     await asyncio.sleep(2)
+    #     while True:
+    #         try:
+    #             # White Filter Calibration Tracker
+    #             cal_obj = self.settings.get_setting("calibration_routine")
+    #             current_cal = str(cal_obj.get("requested", "none")).lower() if isinstance(cal_obj, dict) else "none"
+
+    #             if self.last_cal_routine == "white_filter" and current_cal != "white_filter":
+    #                 self.logger.info("White filter calibration completed. Resetting active spot to 1.")
+    #                 self.last_active_spot = 1
+    #                 self.settings.set_setting("set_active_spot", requested=0)
+    #                 self.settings.set_actual("set_active_spot", 0)
+
+    #             self.last_cal_routine = current_cal
+
+    #             # Core Sampling Logic
+    #             state_obj = self.settings.get_setting("sampling_state")
+    #             state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
+    #             state_str = str(state).lower()
+
+    #             if self.sampling() and state_str == "sampling":
+    #                 target_spot_obj = self.settings.get_setting("set_active_spot")
+    #                 target_spot = target_spot_obj.get("requested", 0) if isinstance(target_spot_obj, dict) else 0
+    #                 spot_to_request = int(target_spot) if int(target_spot) > 0 else self.last_active_spot
+                    
+    #                 if need_start or spot_to_request != self.current_requested_spot:
+    #                     await self.interface_send_data(data={"data": f"spot={spot_to_request}\r"})
+    #                     self.current_requested_spot = spot_to_request
+    #                     need_start = False
+    #             else:
+    #                 if not need_start:
+    #                     await self.interface_send_data(data={"data": "spot=0\r"})
+    #                     self.current_requested_spot = 0
+    #                     need_start = True
+    #         except Exception as e:
+    #             self.logger.error("sampling_monitor error", extra={"error": str(e)})
+    #         await asyncio.sleep(1)
+
     async def sampling_monitor(self):
         need_start = True
         if not hasattr(self, 'current_requested_spot'):
@@ -175,8 +218,13 @@ class TAP(Sensor):
 
                 if self.sampling() and state_str == "sampling":
                     target_spot_obj = self.settings.get_setting("set_active_spot")
-                    target_spot = target_spot_obj.get("requested", 0) if isinstance(target_spot_obj, dict) else 0
-                    spot_to_request = int(target_spot) if int(target_spot) > 0 else self.last_active_spot
+                    
+                    # --- FIX: SAFE EXTRACTION TO PREVENT TypeError ---
+                    req = target_spot_obj.get("requested") if isinstance(target_spot_obj, dict) else None
+                    target_spot = int(req) if req is not None else 0
+                    
+                    # Cast last_active_spot to int as well, just in case config loaded it as a string
+                    spot_to_request = target_spot if target_spot > 0 else int(self.last_active_spot)
                     
                     if need_start or spot_to_request != self.current_requested_spot:
                         await self.interface_send_data(data={"data": f"spot={spot_to_request}\r"})
