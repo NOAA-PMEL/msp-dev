@@ -722,20 +722,83 @@ class PWMClient(LabJackClient):
             self.logger.error("send_to_client", extra={"reason": e})
             # Trigger re-configuration if a hardware error occurs
             self.config_required = True
+# class CounterClient(LabJackClient):
+#     """docstring for self.LabJackClient."""
+
+#     def __init__(self, config: DAQClientConfig = None, **kwargs):
+#         # print("mock_client: 1")
+#         super(CounterClient, self).__init__(config=config)
+#         self.counter_started = False
+#         # asyncio.create_task(self.run_counter())
+#         # --- FIX: STRONG TASK REFERENCE ---
+#         # Bind the background counter loop to the instance
+#         self._counter_task = asyncio.create_task(self.run_counter())
+#         # ----------------------------------
+
+#     # --- FIX: OVERRIDE CLEANUP ---
+#     async def shutdown(self):
+#         """Cancel the counter loop, then call the parent shutdown."""
+#         self.logger.info("Shutting down CounterClient tasks")
+#         if self._counter_task and not self._counter_task.done():
+#             self._counter_task.cancel()
+        
+#         # Ensure the parent sample_task is also cancelled
+#         await super().shutdown()
+
+#     async def run_counter(self):
+#         while True:
+#             try:
+#                 clock_channel = self.config.properties["channel"]["data"]
+
+#                 # TODO check for clock mode: "interrupt" (8) vs "high-speed" (7)
+#                 counter_mode = 8
+#                 if self.config.properties["counter_mode"]["data"].lower() == "high-speed":
+#                     counter_mode = 7
+#                 if not self.counter_started:
+#                     ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_ENABLE", 0)
+#                     self.counter_started = True  # Enable the High-Speed Counter.
+#                     ljm.eWriteName(
+#                         self.labjack, f"DIO{clock_channel}_EF_INDEX", counter_mode
+#                     )  # Set DIO#_EF_INDEX to 7 - High-Speed Counter.
+#                     ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_ENABLE", 1)
+#                     self.counter_started = True  # Enable the High-Speed Counter.
+#             # --- FIX: GRACEFUL CANCELLATION ---
+#             except asyncio.CancelledError:
+#                 # This catches the specific exception thrown when you call task.cancel()
+#                 self.logger.info("Counter task cancelled. Exiting loop.")
+#                 self.counter_started = False
+#                 break  # Breaks the 'while True' loop so the task can die cleanly
+#             # ----------------------------------
+#             except Exception as e:
+#                 self.logger.error("start_counter", extra={"handle": self.labjack, "reason": e})
+#                 self.counter_started = False
+#             await asyncio.sleep(1)
+
+#     async def send_to_client(self, data):
+#         try:
+#             # client_config = self.client_map[client_id]["client_config"]
+#             # data_buffer = self.client_map[client_id]["data_buffer"]
+#             # get i2c commands
+#             self.logger.debug("send_to_client", extra={"send-data": data})
+#             self.logger.debug("send_to_client", extra={"handle": self.labjack, "config": self.config})
+#             clock_channel = self.config.properties["channel"]["data"]
+#             dataRead = ljm.eReadName(self.labjack, f"DIO{clock_channel}_EF_READ_A")
+#             output = {"data": dataRead}
+#             await self.data_buffer.put(output)
+
+#         except Exception as e:
+#             self.logger.error("send_to_client", extra={"reason": e})
+
 class CounterClient(LabJackClient):
-    """docstring for self.LabJackClient."""
+    """docstring for CounterClient."""
 
     def __init__(self, config: DAQClientConfig = None, **kwargs):
-        # print("mock_client: 1")
         super(CounterClient, self).__init__(config=config)
         self.counter_started = False
-        # asyncio.create_task(self.run_counter())
-        # --- FIX: STRONG TASK REFERENCE ---
+        
         # Bind the background counter loop to the instance
         self._counter_task = asyncio.create_task(self.run_counter())
-        # ----------------------------------
 
-    # --- FIX: OVERRIDE CLEANUP ---
     async def shutdown(self):
         """Cancel the counter loop, then call the parent shutdown."""
         self.logger.info("Shutting down CounterClient tasks")
@@ -748,47 +811,58 @@ class CounterClient(LabJackClient):
     async def run_counter(self):
         while True:
             try:
+                # --- SAFE EXECUTION GUARD ---
+                # Wait patiently for tx.py to pass down the hardware handle
+                if self.labjack is None:
+                    await asyncio.sleep(1)
+                    continue
+                # ---------------------------------
+
                 clock_channel = self.config.properties["channel"]["data"]
 
-                # TODO check for clock mode: "interrupt" (8) vs "high-speed" (7)
                 counter_mode = 8
                 if self.config.properties["counter_mode"]["data"].lower() == "high-speed":
                     counter_mode = 7
+                    
                 if not self.counter_started:
                     ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_ENABLE", 0)
-                    self.counter_started = True  # Enable the High-Speed Counter.
-                    ljm.eWriteName(
-                        self.labjack, f"DIO{clock_channel}_EF_INDEX", counter_mode
-                    )  # Set DIO#_EF_INDEX to 7 - High-Speed Counter.
+                    ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_INDEX", counter_mode)  
                     ljm.eWriteName(self.labjack, f"DIO{clock_channel}_EF_ENABLE", 1)
-                    self.counter_started = True  # Enable the High-Speed Counter.
-            # --- FIX: GRACEFUL CANCELLATION ---
+                    
+                    # ONLY mark as started after successful hardware setup
+                    self.counter_started = True  
+                    
             except asyncio.CancelledError:
-                # This catches the specific exception thrown when you call task.cancel()
                 self.logger.info("Counter task cancelled. Exiting loop.")
                 self.counter_started = False
-                break  # Breaks the 'while True' loop so the task can die cleanly
-            # ----------------------------------
+                break  
             except Exception as e:
-                self.logger.error("start_counter", extra={"handle": self.labjack, "reason": e})
+                self.logger.error("start_counter", extra={"handle": self.labjack, "reason": str(e)})
                 self.counter_started = False
+                
             await asyncio.sleep(1)
 
     async def send_to_client(self, data):
         try:
-            # client_config = self.client_map[client_id]["client_config"]
-            # data_buffer = self.client_map[client_id]["data_buffer"]
-            # get i2c commands
+            # --- SAFE EXECUTION GUARD ---
+            if self.labjack is None:
+                self.logger.warning("CounterClient: Labjack handle is None. Waiting for connection.")
+                return
+            # ---------------------------------
+
             self.logger.debug("send_to_client", extra={"send-data": data})
             self.logger.debug("send_to_client", extra={"handle": self.labjack, "config": self.config})
+            
             clock_channel = self.config.properties["channel"]["data"]
-            dataRead = ljm.eReadName(self.labjack, f"DIO{clock_channel}_EF_READ_A")
+            
+            # --- OFFLOAD BLOCKING C-CALL TO THREAD ---
+            dataRead = await asyncio.to_thread(ljm.eReadName, self.labjack, f"DIO{clock_channel}_EF_READ_A")
+            
             output = {"data": dataRead}
             await self.data_buffer.put(output)
 
         except Exception as e:
-            self.logger.error("send_to_client", extra={"reason": e})
-
+            self.logger.error("send_to_client", extra={"reason": str(e)})
 
 # class I2CClient(LabJackClient):
 #     """docstring for self.LabJackClient."""

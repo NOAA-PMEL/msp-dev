@@ -253,7 +253,7 @@ class BTXConnect(Operational):
             
             if elapsed_time > 0:
                 # Assuming 2 pulses per revolution for standard tachometer
-                revs = (dataRead - self.last_read_count) / 2.0
+                revs = (dataRead - self.last_read_count) / 4.0
                 speed = 60.0 * revs / elapsed_time
                 
                 record["timestamp"] = timestamp
