@@ -296,41 +296,96 @@ class Tx(Interface):
             
     #     self.logger.info("Tx Interface shutdown complete.")
         
+    # async def connection_monitor(self):
+    #     while True:
+    #         try:
+    #             host = self.host
+    #             self.logger.debug("connection_monitor", extra={"host": host, "self.labjack": self.labjack})
+    #             if not self.labjack:
+    #                 self.labjack = ljm.openS("ANY", "ANY", host)
+    #                 info = ljm.getHandleInfo(self.labjack)
+    #                 self.logger.info(
+    #                     "connection_monitor: labjack info",
+    #                     extra={
+    #                         "device_type": info[0],
+    #                         "connection_type": info[1],
+    #                         "serial_number": info[2],
+    #                         "ip_address": ljm.numberToIP(info[3]),
+    #                         "port": info[4],
+    #                         "max_bytes_per_mb": info[5],
+    #                     },
+    #                 )
+
+    #                 # deviceType = info[0]
+
+    #         except Exception as e:
+    #             self.logger.error("connection_monitor", extra={"reason": e})
+    #             self.labjack = None
+
+    #         for client_id,_ in self.client_map.items():
+    #             try:
+    #                 client = self.client_map[client_id]["client"]
+    #                 self.logger.debug("connection_monitor", extra={"labjack_handle": self.labjack, "client-id": client_id, "client": client})
+    #                 client.set_labjack_handle(self.labjack)
+    #             except Exception as e:
+    #                 self.logger.error("connection_monitor", extra={"reason": e})
+    #         await asyncio.sleep(5)
+
     async def connection_monitor(self):
         while True:
             try:
-                host = self.host
-                self.logger.debug("connection_monitor", extra={"host": host, "self.labjack": self.labjack})
                 if not self.labjack:
-                    self.labjack = ljm.openS("ANY", "ANY", host)
-                    info = ljm.getHandleInfo(self.labjack)
-                    self.logger.info(
-                        "connection_monitor: labjack info",
-                        extra={
-                            "device_type": info[0],
-                            "connection_type": info[1],
-                            "serial_number": info[2],
-                            "ip_address": ljm.numberToIP(info[3]),
-                            "port": info[4],
-                            "max_bytes_per_mb": info[5],
-                        },
-                    )
+                    self.logger.debug("connection_monitor: Attempting connection...", extra={"host": self.host})
+                    
+                    self.labjack = await asyncio.to_thread(ljm.openS, "ANY", "ANY", self.host)
+                    
+                    if self.labjack:
+                        info = await asyncio.to_thread(ljm.getHandleInfo, self.labjack)
+                        
+                        # --- 1. KILL GHOST STREAMS ---
+                        try:
+                            # If a stream is active, stop it. If not, this throws a harmless error we just ignore.
+                            await asyncio.to_thread(ljm.eStreamStop, self.labjack)
+                        except Exception:
+                            pass 
 
-                    # deviceType = info[0]
-
+                        # --- 2. COMPLETE CLOCK WIPE & I/O RESET ---
+                        # We use eWriteNames (plural) to send all these resets in one network packet
+                        reset_names = [
+                            "DIO_EF_CLOCK0_ENABLE", 
+                            "DIO_EF_CLOCK1_ENABLE", 
+                            "DIO_EF_CLOCK2_ENABLE",
+                            # Force flexible pins (FIO4-7) back to Digital mode (clears Analog lockouts)
+                            "FIO4", "FIO5", "FIO6", "FIO7" 
+                        ]
+                        reset_values = [0, 0, 0, 0, 0, 0, 0]
+                        
+                        await asyncio.to_thread(ljm.eWriteNames, self.labjack, len(reset_names), reset_names, reset_values)
+                        
+                        self.logger.info(
+                            "connection_monitor: Connected and Hardware Reset Complete!",
+                            extra={
+                                "device_type": info[0],
+                                "ip_address": ljm.numberToIP(info[3]),
+                                "port": info[4],
+                            }
+                        )
             except Exception as e:
-                self.logger.error("connection_monitor", extra={"reason": e})
+                self.logger.error("connection_monitor: Failed to connect", extra={"reason": str(e)})
                 self.labjack = None
 
-            for client_id,_ in self.client_map.items():
-                try:
-                    client = self.client_map[client_id]["client"]
-                    self.logger.debug("connection_monitor", extra={"labjack_handle": self.labjack, "client-id": client_id, "client": client})
-                    client.set_labjack_handle(self.labjack)
-                except Exception as e:
-                    self.logger.error("connection_monitor", extra={"reason": e})
-            await asyncio.sleep(5)
+            # Safely distribute the handle to all connected clients
+            if hasattr(self, 'client_map') and isinstance(self.client_map, dict):
+                for client_id, client_info in self.client_map.items():
+                    try:
+                        client = client_info.get("client")
+                        if client is not None and self.labjack is not None:
+                            client.set_labjack_handle(self.labjack)
+                    except Exception as e:
+                        self.logger.error("connection_monitor: Client update error", extra={"client_id": client_id, "reason": str(e)})
 
+            await asyncio.sleep(5)
+            
     # async def recv_data_loop(self, client_id: str):
         
     #     # self.logger.debug("recv_data_loop", extra={"client_id": client_id})

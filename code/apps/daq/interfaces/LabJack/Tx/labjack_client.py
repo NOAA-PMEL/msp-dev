@@ -650,22 +650,25 @@ class PWMClient(LabJackClient):
 
     def _sync_pwm_setup(self, clock_channel, clock_divisor, clockRollValue, pwm_channel, pwmConfigA):
         """Synchronous helper for initial PWM setup to prevent threading overhead on multi-writes"""
-        if clock_channel != 0:
-            ljm.eWriteName(self.labjack, "DIO_EF_CLOCK0_ENABLE", 0) 
-
+        
+        # --- FIX: REMOVED CLOCK0 INTERFERENCE ---
+        # Do not disable CLOCK0, because doing so instantly kills all other active PWM channels!
+        # Just disable the specific clock channel we are configuring.
         ljm.eWriteName(self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 0)
-        ljm.eWriteName(self.labjack, f"DIO_EF_CLOCK{clock_channel}_DIVISOR", int(clock_divisor))
+        
+        # Set the Roll Value specific to this clock channel
         ljm.eWriteName(self.labjack, f"DIO_EF_CLOCK{clock_channel}_ROLL_VALUE", int(clockRollValue))
+        
+        # Enable this specific clock
         ljm.eWriteName(self.labjack, f"DIO_EF_CLOCK{clock_channel}_ENABLE", 1)
 
+        # Configure the PWM output pin
         ljm.eWriteName(self.labjack, f"DIO{pwm_channel}_EF_ENABLE", 0)  
         ljm.eWriteName(self.labjack, f"DIO{pwm_channel}_EF_INDEX", 0)  
         ljm.eWriteName(self.labjack, f"DIO{pwm_channel}_EF_CLOCK_SOURCE", clock_channel)  
-        
-        # Write initial duty cycle
         ljm.eWriteName(self.labjack, f"DIO{pwm_channel}_EF_CONFIG_A", pwmConfigA)
         ljm.eWriteName(self.labjack, f"DIO{pwm_channel}_EF_ENABLE", 1)
-
+        
     async def send_to_client(self, data):
         try:
             max_attempts = 30
