@@ -1,108 +1,24 @@
 import asyncio
-import binascii
 import signal
-from struct import unpack 
-
-# import uvicorn
-# from uvicorn.config import LOGGING_CONFIG
 import sys
 import os
 import logging
 import traceback
-
-# from logfmter import Logfmter
-import logging.config
-
-# from pydantic import BaseSettings, Field
 import json
 import yaml
-import random
-from envds.core import envdsLogger  # , envdsBase, envdsStatus
-from envds.util.util import (
-    # get_datetime_format,
-    time_to_next,
-    get_datetime,
-    get_datetime_string,
-)
-from envds.daq.sensor import Sensor
-from envds.daq.device import DeviceConfig, DeviceVariable, DeviceMetadata
 
-# from envds.event.event import create_data_update, create_status_update
+from envds.core import envdsLogger
+from envds.daq.sensor import Sensor
+from envds.daq.device import DeviceConfig, DeviceMetadata
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
-from envds.message.message import Message
-
-# from envds.exceptions import envdsRunTransitionException
-
-# from typing import Union
 from cloudevents.http import CloudEvent
-# from cloudevents.http import CloudEvent, from_dict, from_json
-# from cloudevents.conversion import to_json, to_structured
-
 from pydantic import BaseModel
-
-# from envds.daq.db import init_sensor_type_registration, register_sensor_type
 
 task_list = []
 
-
 class TimeserverNTP(Sensor):
-    """docstring for TimeserverNTP."""
-
-    metadata = {
-        "attributes": {
-            # "name": {"type"mock1",
-            "make": {"type": "string", "data": "PhoenixContact"},
-            "model": {"type": "string", "data": "TimeserverNTP"},
-            "description": {
-                "type": "string",
-                "data": "Pyranometer",
-            },
-            "tags": {
-                "type": "char",
-                "data": "met, temperature, rh, sensor",
-            },
-            "format_version": {"type": "char", "data": "1.0.0"},
-        },
-        "dimensions": {"time": 0},
-        "variables": {
-            "time": {
-                "type": "str",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "string", "data": "Time"}
-                    },
-            },
-            "volts": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Measured voltage"},
-                    "units": {"type": "char", "data": "volts"},
-                },
-            },
-            "sensitivity": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Sensitivity of sensor (uV / W*m2)"},
-                    "units": {"type": "char", "data": "uV W-1 m2"},
-                },
-            },
-            "irradiance": {
-                "type": "float",
-                "shape": ["time"],
-                "attributes": {
-                    "variable_type": {"type": "string", "data": "main"},
-                    "long_name": {"type": "char", "data": "Irradiance of sensor (uV / W*m2)"},
-                    "units": {"type": "char", "data": "W m-2"},
-                },
-            },
-        }
-    }
+    """Driver for Phoenix Contact FL TIMESERVER NTP."""
 
     def __init__(self, config=None, **kwargs):
         super(TimeserverNTP, self).__init__(config=config, **kwargs)
@@ -119,6 +35,10 @@ class TimeserverNTP(Sensor):
         }
         
         self.collecting = False
+        
+        # Initialize timestamp for our stream watchdog
+        self.last_data_time = 0.0
+
         self.sensor_definition_file = "PhoenixContact_NTP_sensor_definition.json"
 
         try:            
@@ -130,95 +50,8 @@ class TimeserverNTP(Sensor):
 
         self.enable_task_list.append(self.default_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
-
-    # def configure(self):
-    #     super(TimeserverNTP, self).configure()
-
-    #     # get config from file
-    #     try:
-    #         with open("/app/config/sensor.conf", "r") as f:
-    #             conf = yaml.safe_load(f)
-    #     except FileNotFoundError:
-    #         conf = {"serial_number": "UNKNOWN", "interfaces": {}}
-
-    #     if "metadata_interval" in conf:
-    #         self.include_metadata_interval = conf["metadata_interval"]
-
-    #     sensor_iface_properties = {
-    #         "default": {
-    #             "device-interface-properties": {
-    #                 "connection-properties": {
-    #                 },
-    #                 "read-properties": {
-    #                     "read-method": "readline",  # readline, read-until, readbytes, readbinary
-    #                     # "read-terminator": "\r",  # only used for read_until
-    #                     "decode-errors": "strict",
-    #                     "send-method": "ascii"
-    #                 },
-    #             }
-    #         }
-    #     }
-
-    #     if "interfaces" in conf:
-    #         for name, iface in conf["interfaces"].items():
-    #             if name in sensor_iface_properties:
-    #                 for propname, prop in sensor_iface_properties[name].items():
-    #                     iface[propname] = prop
-
-    #         self.logger.debug(
-    #             "TimeserverNTP.configure", extra={"interfaces": conf["interfaces"]}
-    #         )
-
-    #         settings_def = self.get_definition_by_variable_type(self.metadata, variable_type="setting")
-    #         # for name, setting in AQT560.metadata["settings"].items():
-    #         for name, setting in settings_def["variables"].items():
-            
-    #             requested = setting["attributes"]["default_value"]["data"]
-    #             if "settings" in conf and name in conf["settings"]:
-    #                 requested = conf["settings"][name]
-
-    #             self.settings.set_setting(name, requested=requested)
-
-    #     meta = DeviceMetadata(
-    #         attributes=self.metadata["attributes"],
-    #         dimensions=self.metadata["dimensions"],
-    #         variables=self.metadata["variables"],
-    #         settings=settings_def["variables"]
-    #     )
-
-    #     self.config = DeviceConfig(
-    #         make=self.metadata["attributes"]["make"]["data"],
-    #         model=self.metadata["attributes"]["model"]["data"],
-    #         serial_number=conf["serial_number"],
-    #         metadata=meta,
-    #         interfaces=conf["interfaces"],
-    #         daq_id=conf["daq_id"],
-    #     )
-
-    #     print(f"self.config: {self.config}")
-
-    #     try:
-    #         self.device_format_version = self.config.metadata.attributes[
-    #             "format_version"
-    #         ].data
-    #     except KeyError:
-    #         pass
-
-    #     self.logger.debug(
-    #         "configure",
-    #         extra={"conf": conf, "self.config": self.config},
-    #     )
-
-    #     try:
-    #         if "interfaces" in conf:
-    #             for name, iface in conf["interfaces"].items():
-    #                 print(f"add: {name}, {iface}")
-    #                 self.add_interface(name, iface)
-    #                 # self.iface_map[name] = iface
-    #     except Exception as e:
-    #         print(e)
-
-    #     self.logger.debug("iface_map", extra={"map": self.iface_map})
+        # Add the watchdog task to the enable list
+        self.enable_task_list.append(self.stream_watchdog())
 
     def configure(self):
         super(TimeserverNTP, self).configure()
@@ -235,7 +68,7 @@ class TimeserverNTP(Sensor):
             "default": {
                 "device-interface-properties": {
                     "connection-properties": {
-                        "baudrate": 9600, # Assuming standard NMEA baudrate, update if different
+                        "baudrate": 9600, 
                         "bytesize": 8,
                         "parity": "N",
                         "stopbit": 1,
@@ -297,9 +130,46 @@ class TimeserverNTP(Sensor):
                 path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
                 if path_id == iface_path:
+                    # Update our watchdog timestamp the moment data arrives
+                    self.last_data_time = asyncio.get_event_loop().time()
                     await self.default_data_buffer.put(message)
             except KeyError:
                 pass
+
+    async def stream_watchdog(self):
+        """Monitors the data stream and sends the 'R' trigger if no data is flowing."""
+        # Wait 5 seconds on startup to let the TCP connection settle
+        await asyncio.sleep(5.0)
+        
+        while True:
+            try:
+                current_time = asyncio.get_event_loop().time()
+                
+                # If we haven't seen data in 5 seconds, assume stream is stopped/toggled off
+                if current_time - self.last_data_time > 5.0:
+                    self.logger.info("No data received recently. Sending 'R' trigger to hardware.")
+                    
+                    iface_path = self.config.interfaces["default"]["path"]
+                    iface_id = self.config.interfaces["default"]["interface_id"]
+                    
+                    # Create the event to send "R" down to the interface
+                    # Note: Adjust the event creation if your envds core uses a different pattern for sending
+                    cmd_event = DAQEvent(
+                        source=self.get_id_as_source(),
+                        type="envds.interface.data.send", 
+                        data={"data": "R\n", "path_id": iface_path}
+                    )
+                    
+                    cmd_event["destpath"] = f"{iface_id}/data/send"
+                    await self.send_message(cmd_event)
+                    
+                    # Wait 5 seconds before checking again to give the hardware time to respond
+                    await asyncio.sleep(5.0)
+                    
+            except Exception as e:
+                self.logger.error("stream_watchdog exception", extra={"error": str(e)})
+                
+            await asyncio.sleep(1.0)
 
     async def settings_check(self):
         await super().settings_check()
@@ -312,122 +182,16 @@ class TimeserverNTP(Sensor):
                         self.settings.set_actual(name, target_val)
 
     async def sampling_monitor(self):
-        """Passive monitor for UI state (GPS outputs continuously)"""
+        """Passive monitor for UI state"""
         await asyncio.sleep(2)
         while True:
             try:
                 state_obj = self.settings.get_setting("sampling_state")
                 state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
-                state_str = str(state).lower()
-                # We just update state logically here; filtering is handled in default_data_loop
+                # State handled logically in default_data_loop
             except Exception as e:
                 self.logger.error("sampling_monitor error", extra={"error": str(e)})
             await asyncio.sleep(1)
-
-
-    # async def default_data_loop(self):
-
-    #     while True:
-    #         try:
-    #             data = await self.default_data_buffer.get()
-    #             self.logger.debug("default_data_loop", extra={"data": data})
-    #             if data:
-    #                 self.collecting = True
-
-    #             if self.first_record in data.data['data']:
-    #                 record1 = self.default_parse(data)
-    #                 continue
-
-    #             elif self.last_record in data.data['data']:
-    #                 record2 = self.default_parse(data)
-    #                 for var in record2["variables"]:
-    #                     if var != 'time':
-    #                         if record2["variables"][var]["data"] is not None:
-    #                             record1["variables"][var]["data"] = record2["variables"][var]["data"]
-
-    #             else:
-    #                 record2 = self.default_parse(data)
-    #                 if not record2:
-    #                     continue
-    #                 else:
-    #                     for var in record2["variables"]:
-    #                         if var != 'time':
-    #                             if record2["variables"][var]["data"] is not None:
-    #                                 record1["variables"][var]["data"] = record2["variables"][var]["data"]
-    #                     continue
-    #             record = record1
-    #             # record = self.default_parse(data)
-    #             if record:
-    #                 self.collecting = True
-
-
-    #             if record and self.sampling():
-    #                 event = DAQEvent.create_data_update(
-    #                     source=self.get_id_as_source(),
-    #                     data=record,
-    #                 )
-    #                 destpath = f"{self.get_id_as_topic()}/data/update"
-    #                 event["destpath"] = destpath
-    #                 self.logger.debug(
-    #                     "default_data_loop",
-    #                     extra={"data": event, "destpath": destpath},
-    #                 )
-    #                 # message = Message(data=event, destpath=destpath)
-    #                 message = event
-    #                 self.logger.debug("default_data_loop", extra={"m": message})
-    #                 await self.send_message(message)
-
-    #             self.logger.debug("default_data_loop", extra={"record": record})
-    #         except Exception as e:
-    #             print(f"default_data_loop error: {e}")
-    #             print(traceback.format_exc())
-    #         await asyncio.sleep(0.001)
-
-    # async def default_data_loop(self):
-    #     record_buffer = None # FIX: Pre-initialize to prevent UnboundLocalError
-
-    #     while True:
-    #         try:
-    #             data = await self.default_data_buffer.get()
-    #             if data:
-    #                 self.collecting = True
-
-    #             raw_data = data.data if isinstance(data.data, dict) else {}
-    #             raw_str = raw_data.get('data', '')
-
-    #             # Start of a new aggregate record
-    #             if self.first_record in raw_str:
-    #                 record_buffer = self.default_parse(data)
-    #                 continue
-
-    #             # Discard fragments if we don't have a starting record
-    #             if record_buffer is None:
-    #                 continue
-
-    #             # Parse intermediate/end records
-    #             parsed_fragment = self.default_parse(data)
-    #             if parsed_fragment:
-    #                 for var, val_dict in parsed_fragment["variables"].items():
-    #                     if var != 'time' and val_dict["data"] is not None:
-    #                         record_buffer["variables"][var]["data"] = val_dict["data"]
-
-    #             # If it's the last string in the sequence, emit the event
-    #             if self.last_record in raw_str and self.sampling():
-    #                 event = DAQEvent.create_data_update(
-    #                     source=self.get_id_as_source(),
-    #                     data=record_buffer,
-    #                 )
-    #                 destpath = f"{self.get_id_as_topic()}/data/update"
-    #                 event["destpath"] = destpath
-                    
-    #                 await self.send_message(event)
-                    
-    #                 # Reset buffer for the next cycle
-    #                 record_buffer = None 
-
-    #         except Exception as e:
-    #             self.logger.error(f"default_data_loop error: {e}")
-    #             record_buffer = None  # Reset on error to prevent corrupted data
 
     async def default_data_loop(self):
         record_buffer = None
@@ -440,7 +204,6 @@ class TimeserverNTP(Sensor):
                 raw_data = data.data if isinstance(data.data, dict) else {}
                 raw_str = raw_data.get('data', '')
 
-                # Start of a new aggregate record
                 if self.first_record in raw_str:
                     record_buffer = self.default_parse(data)
                     continue
@@ -448,14 +211,12 @@ class TimeserverNTP(Sensor):
                 if record_buffer is None:
                     continue
 
-                # Parse intermediate/end records
                 parsed_fragment = self.default_parse(data)
                 if parsed_fragment:
                     for var, val_dict in parsed_fragment["variables"].items():
                         if var != 'time' and val_dict.get("data") is not None:
                             record_buffer["variables"][var]["data"] = val_dict["data"]
 
-                # If it's the last string in the sequence AND we're actively sampling, emit the event
                 if self.last_record in raw_str and self.sampling():
                     event = DAQEvent.create_data_update(
                         source=self.get_id_as_source(),
@@ -468,173 +229,6 @@ class TimeserverNTP(Sensor):
             except Exception as e:
                 self.logger.error("default_data_loop error", extra={"error": str(e)})
                 record_buffer = None
-
-    # def default_parse(self, data):
-    #     if data:
-    #         try:
-    #             variables = list(self.config.metadata.variables.keys())
-    #             variables.remove("time")
-    #             print(f"variables: \n{variables}")
-
-    #             record = self.build_data_record(meta=self.include_metadata)
-    #             self.include_metadata = False
-
-    #             try:
-    #                 record["timestamp"] = data.data["timestamp"]
-    #                 record["variables"]["time"]["data"] = data.data["timestamp"]
-    #                 parts = data.data["data"].split(",")
-
-    #                 if (datavar := 'RMC') in data.data["data"]:
-    #                     parts = parts[1:7]
-    #                 elif (datavar := 'VTG') in data.data["data"]:
-    #                     parts = parts[7:8]
-    #                 elif (datavar := 'GGA') in data.data["data"]:
-    #                     parts = parts[7:8]
-    #                 else:
-    #                     return None
-                                        
-    #                 self.var_name = []
-    #                 for key, value in self.config.metadata.variables.items():
-    #                     try:
-    #                         if value.attributes["description"].data:
-    #                             if datavar in value.attributes["description"].data:
-    #                                 self.var_name.append(key)
-    #                     except Exception as e:
-    #                         continue
-
-    #                 for index, name in enumerate(self.var_name):
-    #                     if name in record["variables"]:
-    #                         instvar = self.config.metadata.variables[name]
-    #                         try:
-    #                             if instvar.type == "int":
-    #                                 if isinstance(parts[index], list):
-    #                                     record["variables"][name]["data"] = [int(item) for item in parts[index]]
-    #                                 else:
-    #                                     record["variables"][name]["data"] = int(parts[index])
-
-    #                             elif instvar.type == "float":
-    #                                 if isinstance(parts[index], list):
-    #                                     record["variables"][name]["data"] = [float(item) for item in parts[index]]
-    #                                 else:
-    #                                     record["variables"][name]["data"] = float(parts[index])
-                                        
-    #                             else:
-    #                                 record["variables"][name]["data"] = parts[index]
-
-    #                         except ValueError:
-    #                             if instvar.type == "str" or instvar.type == "char":
-    #                                 record["variables"][name]["data"] = ""
-    #                             else:
-    #                                 record["variables"][name]["data"] = None
-    #                 # convert lat/lon to decimal
-    #                 if record["variables"]["lat"]["data"]:
-    #                     deg = int(record["variables"]["lat"]["data"]/100)
-    #                     mm_mm = ((record["variables"]["lat"]["data"]/100) - deg)*100.0
-    #                     dec_deg = deg + (mm_mm/60.0)
-    #                     if record["variables"]["lat_dir"]["data"] == "S":
-    #                         dec_deg *= -1.0
-    #                     record["variables"]["lat"]["data"] = round(dec_deg, 5)
-
-    #                 if record["variables"]["lon"]["data"]:
-    #                     deg = int(record["variables"]["lon"]["data"]/100)
-    #                     mm_mm = ((record["variables"]["lon"]["data"]/100) - deg)*100.0
-    #                     dec_deg = deg + (mm_mm/60.0)
-    #                     if record["variables"]["lon_dir"]["data"] == "W":
-    #                         dec_deg *= -1.0
-    #                     record["variables"]["lon"]["data"] = round(dec_deg, 5)
-
-    #                 return record
-    #             except KeyError:
-    #                 pass
-    #         except Exception as e:
-    #             print(f"default_parse error: {e}")
-    #             print(traceback.format_exc())
-    #     # else:
-    #     return None
-
-    # def default_parse(self, data):
-    #     if not data:
-    #         return None
-
-    #     try:
-    #         record = self.build_data_record(meta=self.include_metadata)
-    #         self.include_metadata = False
-
-    #         # Safely handle dict vs CloudEvent
-    #         raw_payload = data.data if isinstance(data.data, dict) else {}
-    #         record["timestamp"] = raw_payload.get("timestamp")
-    #         record["variables"]["time"]["data"] = raw_payload.get("timestamp")
-    #         raw_str = raw_payload.get("data", "")
-            
-    #         parts = raw_str.split(",")
-
-    #         # Fast O(1) lookup using the map initialized in __init__
-    #         datavar = None
-    #         for key in self.nmea_map.keys():
-    #             if key in raw_str:
-    #                 datavar = key
-    #                 break
-
-    #         if not datavar:
-    #             return None
-
-    #         # Slice the parts array depending on the NMEA sentence type
-    #         if datavar == 'RMC':
-    #             parts = parts[1:7]
-    #         elif datavar == 'VTG':
-    #             parts = parts[7:8]
-    #         elif datavar == 'GGA':
-    #             parts = parts[7:8]
-
-    #         # Map parts to variables directly based on our lookup table
-    #         var_names = self.nmea_map[datavar]
-    #         for index, name in enumerate(var_names):
-    #             if name in record["variables"] and index < len(parts):
-    #                 instvar = self.config.metadata.variables[name]
-    #                 val = parts[index]
-    #                 try:
-    #                     if instvar.type == "int":
-    #                         record["variables"][name]["data"] = [int(item) for item in val] if isinstance(val, list) else int(val)
-    #                     elif instvar.type == "float":
-    #                         record["variables"][name]["data"] = [float(item) for item in val] if isinstance(val, list) else float(val)
-    #                     else:
-    #                         record["variables"][name]["data"] = val
-    #                 except ValueError:
-    #                     # Handle empty strings when no GPS fix is available
-    #                     record["variables"][name]["data"] = "" if instvar.type in ("str", "char") else None
-
-    #         # Safely convert lat/lon to decimal (checking if they exist in the record first)
-    #         if "lat" in record["variables"]:
-    #             lat_data = record["variables"]["lat"]["data"]
-    #             if lat_data is not None and lat_data != "":
-    #                 try:
-    #                     deg = int(lat_data / 100)
-    #                     mm_mm = ((lat_data / 100) - deg) * 100.0
-    #                     dec_deg = deg + (mm_mm / 60.0)
-    #                     if record["variables"].get("lat_dir", {}).get("data") == "S":
-    #                         dec_deg *= -1.0
-    #                     record["variables"]["lat"]["data"] = round(dec_deg, 5)
-    #                 except Exception as e:
-    #                     self.logger.debug(f"Lat conversion warning: {e}")
-
-    #         if "lon" in record["variables"]:
-    #             lon_data = record["variables"]["lon"]["data"]
-    #             if lon_data is not None and lon_data != "":
-    #                 try:
-    #                     deg = int(lon_data / 100)
-    #                     mm_mm = ((lon_data / 100) - deg) * 100.0
-    #                     dec_deg = deg + (mm_mm / 60.0)
-    #                     if record["variables"].get("lon_dir", {}).get("data") == "W":
-    #                         dec_deg *= -1.0
-    #                     record["variables"]["lon"]["data"] = round(dec_deg, 5)
-    #                 except Exception as e:
-    #                     self.logger.debug(f"Lon conversion warning: {e}")
-
-    #         return record
-            
-    #     except Exception as e:
-    #         self.logger.error(f"default_parse error: {e}")
-    #         return None
 
     def default_parse(self, data):
         if not data: return None
@@ -676,7 +270,6 @@ class TimeserverNTP(Sensor):
                     except ValueError:
                         record["variables"][name]["data"] = "" if instvar.type in ("str", "char") else None
 
-            # Convert lat/lon to decimal
             if "lat" in record["variables"]:
                 lat_data = record["variables"]["lat"]["data"]
                 if lat_data is not None and lat_data != "":
@@ -714,30 +307,18 @@ class ServerConfig(BaseModel):
     port: int = 9080
     log_level: str = "info"
 
-
 async def shutdown(sensor):
     print("shutting down")
     if sensor:
         await sensor.shutdown()
-
     for task in task_list:
-        print(f"cancel: {task}")
         if task:
             task.cancel()
 
-
 async def main(server_config: ServerConfig = None):
-    # uiconfig = UIConfig(**config)
     if server_config is None:
         server_config = ServerConfig()
-    print(server_config)
-
-    # print("starting mock1 test task")
-
-    # test = envdsBase()
-    # task_list.append(asyncio.create_task(test_task()))
-
-    # get config from file
+    
     sn = "9999"
     try:
         with open("/app/config/sensor.conf", "r") as f:
@@ -754,35 +335,9 @@ async def main(server_config: ServerConfig = None):
 
     logger.debug("Starting TimeserverNTP")
     inst = TimeserverNTP()
-    # print(inst)
-    # await asyncio.sleep(2)
     inst.run()
-    # print("running")
-    # task_list.append(asyncio.create_task(inst.run()))
-    # await asyncio.sleep(2)
     await asyncio.sleep(2)
     inst.start()
-    # logger.debug("Starting Mock1")
-
-    # remove fastapi ----
-    # root_path = f"/envds/sensor/MockCo/Mock1/{sn}"
-    # # print(f"root_path: {root_path}")
-
-    # # TODO: get serial number from config file
-    # config = uvicorn.Config(
-    #     "main:app",
-    #     host=server_config.host,
-    #     port=server_config.port,
-    #     log_level=server_config.log_level,
-    #     root_path=f"/envds/sensor/MockCo/Mock1/{sn}",
-    #     # log_config=dict_config,
-    # )
-
-    # server = uvicorn.Server(config)
-    # # test = logging.getLogger()
-    # # test.info("test")
-    # await server.serve()
-    # ----
 
     event_loop = asyncio.get_event_loop()
     global do_run
@@ -803,18 +358,10 @@ async def main(server_config: ServerConfig = None):
     await shutdown(inst)
     logger.info("done.")
 
-
 if __name__ == "__main__":
-
-    BASE_DIR = os.path.dirname(
-        # os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        os.path.dirname(os.path.abspath(__file__))
-    )
-    # insert BASE at beginning of paths
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, BASE_DIR)
-    print(sys.path, BASE_DIR)
-
-    print(sys.argv)
+    
     config = ServerConfig()
     try:
         index = sys.argv.index("--host")
