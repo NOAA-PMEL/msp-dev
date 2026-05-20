@@ -137,6 +137,15 @@ class envdsEvent(object):
         )
 
     @staticmethod
+    def create_operations_log(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.operations_log(), 
+            source=source, 
+            data=data, 
+            extra_header=extra_header
+        )
+    
+    @staticmethod
     def create_ping(
         source: str, data: dict = {"data": "ping"}, extra_header: dict = None
     ):
