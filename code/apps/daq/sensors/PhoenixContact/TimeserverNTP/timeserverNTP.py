@@ -149,19 +149,8 @@ class TimeserverNTP(Sensor):
                 if current_time - self.last_data_time > 5.0:
                     self.logger.info("No data received recently. Sending 'R' trigger to hardware.")
                     
-                    iface_path = self.config.interfaces["default"]["path"]
-                    iface_id = self.config.interfaces["default"]["interface_id"]
-                    
-                    # Create the event to send "R" down to the interface
-                    # Note: Adjust the event creation if your envds core uses a different pattern for sending
-                    cmd_event = DAQEvent(
-                        source=self.get_id_as_source(),
-                        type="envds.interface.data.send", 
-                        data={"data": "R\n", "path_id": iface_path}
-                    )
-                    
-                    cmd_event["destpath"] = f"{iface_id}/data/send"
-                    await self.send_message(cmd_event)
+                    # Use the cleaner wrapper method to send the payload
+                    await self.interface_send_data(data={"data": "R"})
                     
                     # Wait 5 seconds before checking again to give the hardware time to respond
                     await asyncio.sleep(5.0)
@@ -204,6 +193,7 @@ class TimeserverNTP(Sensor):
                 raw_data = data.data if isinstance(data.data, dict) else {}
                 raw_str = raw_data.get('data', '')
 
+                # Start of a new aggregate record
                 if self.first_record in raw_str:
                     record_buffer = self.default_parse(data)
                     continue
@@ -211,12 +201,14 @@ class TimeserverNTP(Sensor):
                 if record_buffer is None:
                     continue
 
+                # Parse intermediate/end records
                 parsed_fragment = self.default_parse(data)
                 if parsed_fragment:
                     for var, val_dict in parsed_fragment["variables"].items():
                         if var != 'time' and val_dict.get("data") is not None:
                             record_buffer["variables"][var]["data"] = val_dict["data"]
 
+                # If it's the last string in the sequence AND we're actively sampling, emit the event
                 if self.last_record in raw_str and self.sampling():
                     event = DAQEvent.create_data_update(
                         source=self.get_id_as_source(),
@@ -270,6 +262,7 @@ class TimeserverNTP(Sensor):
                     except ValueError:
                         record["variables"][name]["data"] = "" if instvar.type in ("str", "char") else None
 
+            # Convert lat/lon to decimal
             if "lat" in record["variables"]:
                 lat_data = record["variables"]["lat"]["data"]
                 if lat_data is not None and lat_data != "":
