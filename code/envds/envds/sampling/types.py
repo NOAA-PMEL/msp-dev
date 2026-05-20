@@ -7,6 +7,8 @@ class SamplingEventType(BaseEventType):
 
     TYPE_PROJECT_DEFINITION = "project-definition"
     TYPE_PLATFORM_DEFINITION = "platform-definition"
+    TYPE_DEPLOYMENT_DEFINITION = "deployment-definition"
+    TYPE_CONTACT_DEFINITION = "contact-definition"
     TYPE_VARIABLEMAP_DEFINITION = "variablemap-definition"
     TYPE_VARIABLESET_DEFINITION = "variableset-definition"
     TYPE_SYSTEMMODE_DEFINITION = "systemmode-definition"
