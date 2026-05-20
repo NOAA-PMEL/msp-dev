@@ -183,6 +183,8 @@ class RedisClient(DBClient):
                     TagField("$.record.variableset_id", as_name="variableset_id"),
                     TagField("$.record.variablemap_id", as_name="variablemap_id"),
                     TagField("$.record.variableset", as_name="variableset"),
+                    TagField("$.record.attributes.project_ref.data", as_name="project_ref"),
+                    TagField("$.record.attributes.deployment_ref.data", as_name="deployment_ref"),
                     NumericField("$.record.timestamp", as_name="timestamp"),
                 )
                 definition = IndexDefinition(prefix=["data:variableset:"], index_type=IndexType.JSON)
@@ -694,6 +696,8 @@ class RedisClient(DBClient):
         if request.variableset_id: query_args.append(f"@variableset_id:{{{self.escape_query(request.variableset_id)}}}")
         if request.variablemap_id: query_args.append(f"@variablemap_id:{{{self.escape_query(request.variablemap_id)}}}")
         if request.variableset: query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
+        if request.project_ref: query_args.append(f"@project_ref:{{{self.escape_query(request.project_ref)}}}")
+        if request.deployment_ref: query_args.append(f"@deployment_ref:{{{self.escape_query(request.deployment_ref)}}}")
         # if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
         # if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
 

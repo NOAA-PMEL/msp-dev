@@ -203,6 +203,65 @@ class SamplingSystem:
 
         self.logger.debug("configure", extra={"self.config": self.config})
 
+        # --- 1. JIT MISSION CONTEXT LOADING ---
+        self.active_deployment_ref = "unknown"
+        self.active_project_ref = "unknown"
+        self.deployments = []
+
+        deployments_path = "/app/config/deployments.json"
+        if os.path.exists(deployments_path):
+            try:
+                with open(deployments_path, "r") as f:
+                    self.deployments = json.load(f)
+                
+                # We only expect one deployment in the JIT GitOps file!
+                if self.deployments and len(self.deployments) > 0:
+                    active_dep = self.deployments[0]
+                    self.active_deployment_ref = active_dep.get("metadata", {}).get("name", "unknown")
+                    self.active_project_ref = active_dep.get("data", {}).get("project_ref", "unknown")
+                    
+                    self.logger.info("JIT Mission context loaded.", extra={
+                        "deployment": self.active_deployment_ref, 
+                        "project": self.active_project_ref
+                    })
+            except Exception as e:
+                self.logger.error("Failed to parse deployments.json", extra={"reason": str(e)})
+        else:
+            self.logger.info("configure", extra={"mesg": f"{deployments_path} not found. Operating without deployment context."})
+        # --------------------------------------
+
+        # --- NEW: UNIVERSAL METADATA LOADING ---
+        self.platforms = []
+        platforms_path = "/app/config/platform_defs.json"
+        if os.path.exists(platforms_path):
+            try:
+                with open(platforms_path, "r") as f:
+                    self.platforms = json.load(f)
+                self.logger.info(f"Loaded {len(self.platforms)} platform definitions.")
+            except Exception as e:
+                self.logger.error("Failed to parse platform_defs.json", extra={"reason": str(e)})
+
+        self.projects = []
+        projects_path = "/app/config/projects.json"
+        if os.path.exists(projects_path):
+            try:
+                with open(projects_path, "r") as f:
+                    self.projects = json.load(f)
+                self.logger.info(f"Loaded {len(self.projects)} project definitions.")
+            except Exception as e:
+                self.logger.error("Failed to parse projects.json", extra={"reason": str(e)})
+
+        self.contacts = []
+        contacts_path = "/app/config/contacts.json"
+        if os.path.exists(contacts_path):
+            try:
+                with open(contacts_path, "r") as f:
+                    self.contacts = json.load(f)
+                self.logger.info(f"Loaded {len(self.contacts)} contact definitions.")
+            except Exception as e:
+                self.logger.error("Failed to parse contacts.json", extra={"reason": str(e)})
+        # ---------------------------------------
+
         try:
             # load resource configmaps
             #   load payloads
@@ -1390,6 +1449,47 @@ class SamplingSystem:
         
         while True:
             try:
+
+                # --- 2. PUSH LOCAL JIT DEPLOYMENT ---
+                for dep in getattr(self, "deployments", []):
+                    dep_event = SamplingEvent.create_definition_registry_update(
+                        resource="deployment",
+                        source=f"envds.{self.config.daq_id}.sampling-system",
+                        data={"deployment-definition": dep}
+                    )
+                    dep_event["destpath"] = f"envds/{self.config.daq_id}/deployment-definition/registry/update"
+                    await self.send_event(dep_event)
+                # ------------------------------------
+
+                # --- NEW: PUSH UNIVERSAL DEFINITIONS ---
+                for plat in getattr(self, "platforms", []):
+                    plat_event = SamplingEvent.create_definition_registry_update(
+                        resource="platform",
+                        source=f"envds.{self.config.daq_id}.sampling-system",
+                        data={"platform-definition": plat}
+                    )
+                    plat_event["destpath"] = f"envds/{self.config.daq_id}/platform-definition/registry/update"
+                    await self.send_event(plat_event)
+
+                for proj in getattr(self, "projects", []):
+                    proj_event = SamplingEvent.create_definition_registry_update(
+                        resource="project",
+                        source=f"envds.{self.config.daq_id}.sampling-system",
+                        data={"project-definition": proj}
+                    )
+                    proj_event["destpath"] = f"envds/{self.config.daq_id}/project-definition/registry/update"
+                    await self.send_event(proj_event)
+
+                for contact in getattr(self, "contacts", []):
+                    contact_event = SamplingEvent.create_definition_registry_update(
+                        resource="contact",
+                        source=f"envds.{self.config.daq_id}.sampling-system",
+                        data={"contact-definition": contact}
+                    )
+                    contact_event["destpath"] = f"envds/{self.config.daq_id}/contact-definition/registry/update"
+                    await self.send_event(contact_event)
+                # ---------------------------------------
+
                 for platform, vm_dict in self.variablemaps.get("platform", {}).items():
                     for vm_name, time_dict in vm_dict.items():
                         for valid_time, vm_obj in time_dict.items():
@@ -1439,6 +1539,35 @@ class SamplingSystem:
             # await asyncio.sleep(300)    
             await asyncio.sleep(60) # just to start
     
+    def resolve_context_for_varmap(self, variablemap: dict, target_time: str) -> tuple:
+        """Returns (deployment_ref, project_ref) for a given VariableMap and time."""
+        
+        # 1. Edge Node Fast-Path (raz1): If we loaded a single JIT deployment on boot, use it!
+        if getattr(self, "active_deployment_ref", "unknown") != "unknown":
+            return self.active_deployment_ref, getattr(self, "active_project_ref", "unknown")
+            
+        # 2. Central Server Path (mspbase01): Dynamically look it up.
+        platform_ref = variablemap.get("variablemap", {}).get("data", {}).get("attributes", {}).get("platform")
+        
+        if not platform_ref:
+            return "unknown", "unknown"
+            
+        # Scan the loaded deployments (which mspbase01 got from GitOps)
+        for dep in getattr(self, "deployments", []):
+            dep_data = dep.get("data", {})
+            if dep_data.get("platform_ref") == platform_ref:
+                # Check if this deployment was active at the target_time
+                start = dep_data.get("planned_start_time", "0000-00-00")
+                end = dep_data.get("planned_end_time", "9999-99-99")
+                actual_end = dep_data.get("actual_end_time", end)
+                
+                if start <= target_time <= actual_end:
+                    dep_ref = dep.get("metadata", {}).get("name", "unknown")
+                    proj_ref = dep_data.get("project_ref", "unknown")
+                    return dep_ref, proj_ref
+                    
+        return "unknown", "unknown"
+
     async def get_from_mqtt_loop(self):
         reconnect = 10
         while True:
@@ -1508,6 +1637,8 @@ class SamplingSystem:
                     await self.device_data_update(ce)
                 elif ce["type"] == "envds.controller.data.update":
                     await self.controller_data_update(ce)
+                elif ce["type"] == "envds.operations.log":
+                    await self.handle_operations_log(ce)
 
                 self.mqtt_buffer.task_done()
 
@@ -3428,6 +3559,15 @@ class SamplingSystem:
                 if "time" not in variableset["variables"]:
                     variableset["variables"]["time"] = {"shape": ["time"], "type": "string", "data": ""}
                 variableset["variables"]["time"]["data"] = target_time
+
+                # --- 3. DYNAMIC MULTI-TENANT CONTEXT RESOLUTION ---
+                dep_ref, proj_ref = self.resolve_context_for_varmap(variablemap, target_time)
+                
+                if "attributes" not in variableset:
+                    variableset["attributes"] = {}
+                variableset["attributes"]["project_ref"] = {"type": "string", "data": proj_ref}
+                variableset["attributes"]["deployment_ref"] = {"type": "string", "data": dep_ref}
+                # --------------------------------------------------
                 
                 varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
                 varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
@@ -3440,6 +3580,11 @@ class SamplingSystem:
                 event["samplingnamespace"] = varmap_ns
                 event["variablesetid"] = varset_id
                 event["variablesetfullid"] = varset_full_id
+
+                # --- 4. INJECT EXTENSIONS FOR EASY KNATIVE ROUTING ---
+                event["projectref"] = getattr(self, "active_project_ref", "unknown")
+                event["deploymentref"] = getattr(self, "active_deployment_ref", "unknown")
+                # -----------------------------------------------------
 
                 self.logger.error(f"PUBLISHING: {vs_name} via MQTT")
                 await self.send_to_mqtt(event["destpath"], event)
@@ -3768,6 +3913,42 @@ class SamplingSystem:
 
         except Exception as e:
             self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
+
+    async def log_operational_event(self, event_type: str, description: str, subject: str = None):
+        """Generates and publishes an immutable operational log with mission context."""
+        try:
+            # 1. Resolve context (Edge fast-path or default to unknown if no specific varmap)
+            dep_ref = getattr(self, "active_deployment_ref", "unknown")
+            proj_ref = getattr(self, "active_project_ref", "unknown")
+
+            payload = {
+                "event_type": event_type,
+                "description": description,
+                "deployment_ref": dep_ref,
+                "project_ref": proj_ref
+            }
+
+            # 2. Use the new factory method you just added to envdsEvent!
+            event = sampet.create_operations_log(
+                source=f"envds.{self.config.daq_id}.sampling-system",
+                data=payload
+            )
+            
+            if subject:
+                event["subject"] = subject
+                
+            event["destpath"] = f"envds/{self.config.daq_id}/operations/log"
+            
+            # Inject extensions for Knative routing
+            event["deploymentref"] = dep_ref
+            event["projectref"] = proj_ref
+
+            # 3. Publish to the MQTT broker
+            await self.send_to_mqtt(event["destpath"], event)
+            self.logger.info(f"Operational event logged: {event_type}")
+
+        except Exception as e:
+            self.logger.error("Failed to log operational event", extra={"reason": str(e)})
 
     async def index_monitor(self):
         while True: 

@@ -328,13 +328,45 @@ class Datastore:
                     await self.controller_data_update(ce)
                 elif ce["type"] == sampet.variableset_data_update():
                     self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
-                    await self.variableset_data_update(ce)           
+                    await self.variableset_data_update(ce)        
+                # --- ADD THIS BLOCK ---
+                elif ce["type"] == "envds.operations.log":
+                    self.logger.debug("handle_mqtt_buffer: operations.log", extra={"source": ce.get("source")})
+                    await self.operations_log_update(ce)
+                # ----------------------   
 
                 # Crucial queue management matching sampling_system
                 self.mqtt_buffer.task_done()
 
             except Exception as e:
                 self.logger.error("handle_mqtt_buffer", extra={"reason": e})
+
+    async def operations_log_update(self, ce: CloudEvent):
+        try:
+            database = "data"
+            collection = "operations-log"
+            data = ce.data
+            
+            # Use the time from the CloudEvent envelope as the source of truth
+            timestamp = string_to_timestamp(ce.get("time"))
+            
+            # We can use the generic DB Client insert for logs 
+            # (assuming redis_client.py implements a basic set command for this)
+            if self.db_client:
+                document = data.copy()
+                document["timestamp"] = timestamp
+                document["source"] = ce.get("source")
+                
+                key = f"{database}:{collection}:{ce.get('id')}"
+                
+                # Directly write it to Redis
+                await self.db_client.client.json().set(key, "$", {"record": document})
+                
+                self.logger.debug("operations_log_update stored successfully", extra={"id": ce.get("id")})
+                
+        except Exception as e:
+            self.logger.error("operations_log_update", extra={"reason": str(e)})
+            
     def find_one(self):  
         return None
 
