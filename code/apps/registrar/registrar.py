@@ -96,7 +96,11 @@ class Registrar:
         # self.task_list.append(self.get_project_definitions_loop())
         self.task_list.append(self.get_variablemap_definitions_loop())        
         self.task_list.append(self.get_variableset_definitions_loop())
-        for resource in ["platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
+        for resource in [
+            "platform", "project", "deployment", "contact", 
+            "systemmode", "samplingmode", "samplingstate", 
+            "samplingcondition", "action"
+        ]:
             self.task_list.append(self.create_sampling_sync_loop(resource))
         for task in self.task_list:
             asyncio.create_task(task)
