@@ -516,10 +516,13 @@ async def variableset_instance_registry_get(
     L.debug("variableset_instance_registry_get", extra={"results": results})
     return results
 
+# SAMPLING_RESOURCE_TYPES = [
+#     "platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"
+# ]
 SAMPLING_RESOURCE_TYPES = [
-    "platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"
+    "platform", "project", "deployment", "contact", 
+    "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"
 ]
-
 def create_sampling_routes(resource: str):
     @app.get(f"/{resource}-definition/registry/ids/get/")
     async def get_ids():

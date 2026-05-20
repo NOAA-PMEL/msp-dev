@@ -67,7 +67,6 @@ logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
 L.setLevel(logging.INFO)
 
-
 class DatastoreConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
@@ -366,7 +365,7 @@ class Datastore:
                 
         except Exception as e:
             self.logger.error("operations_log_update", extra={"reason": str(e)})
-            
+
     def find_one(self):  
         return None
 

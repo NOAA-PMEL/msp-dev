@@ -74,7 +74,6 @@ class Settings(BaseSettings):
 # app = Flask(__name__)
 config = Settings()
 
-
 class Registrar:
     """docstring for Registrar."""
 
