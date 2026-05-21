@@ -1,0 +1,62 @@
+/* assets/sidebar.css */
+#sidebar {
+  text-align: center;
+  padding: 2rem 1rem;
+  background-color: #212529; /* Dark theme */
+  color: white;
+  transition: all 0.3s;
+}
+
+#sidebar h4 {
+  text-align: left;
+  margin-bottom: 0;
+  color: white;
+}
+
+#sidebar .nav-link {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+#sidebar .nav-link.active {
+  background-color: #0d6efd;
+  color: white;
+}
+
+#sidebar .nav-link:hover {
+  color: white;
+}
+
+/* Hide the toggle on a large screen */
+#toggle {
+  display: none;
+}
+
+@media (min-width: 48em) {
+  #sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 18rem;
+    text-align: left;
+    z-index: 1000;
+  }
+
+  #page-content {
+    margin-left: 18rem;
+    padding: 2rem;
+  }
+}
+
+@media (max-width: 48em) {
+  #toggle {
+    display: block;
+    margin-bottom: 1rem;
+  }
+  #sidebar {
+    width: 100%;
+  }
+  #page-content {
+    padding: 1rem;
+  }
+}
