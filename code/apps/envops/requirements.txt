@@ -5,3 +5,4 @@ dash-bootstrap-components
 dash-extensions
 dash-ag-grid
 logfmter
+aiomqtt
