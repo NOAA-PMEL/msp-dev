@@ -1382,6 +1382,41 @@ class SamplingSystem:
     async def sync_sampling_definitions_loop(self):
         while True:
             try:
+                
+                # ---------------------------------------------------------
+                # 1. FETCH ALL FLEET GITOPS METADATA
+                # ---------------------------------------------------------
+                gitops_resources = ["deployment", "project", "platform", "contact"]
+                
+                for resource in gitops_resources:
+                    try:
+                        # Get the list of all active IDs for this resource type
+                        ids_resp = await self.submit_get(path=f"{resource}-definition/registry/ids/get")
+                        if ids_resp and "results" in ids_resp:
+                            
+                            # Helper to fetch the full JSON document by name
+                            async def fetch_doc(doc_id, res_type=resource):
+                                return await self.submit_request(
+                                    path=f"{res_type}-definition/registry/get", 
+                                    query={"name": doc_id}  # <-- Matches the 'name' parameter in main.py
+                                )
+
+                            # Fetch them all concurrently
+                            doc_responses = await asyncio.gather(*(fetch_doc(did) for did in ids_resp["results"]))
+                            
+                            active_docs = []
+                            for resp in doc_responses:
+                                if resp and "results" in resp and resp["results"]:
+                                    active_docs.append(resp["results"][0])
+                            
+                            # Dynamically update self.deployments, self.projects, etc.
+                            if active_docs:
+                                setattr(self, f"{resource}s", active_docs)
+                                
+                    except Exception as e:
+                        self.logger.error(f"sync_sampling_definitions: failed to sync {resource}", extra={"reason": str(e)})
+                # ---------------------------------------------------------
+
                 vmap_ids_resp = await self.submit_get(path="variablemap-definition/registry/ids/get")
                 if vmap_ids_resp and "results" in vmap_ids_resp:
                     
@@ -1540,21 +1575,18 @@ class SamplingSystem:
     def resolve_context_for_varmap(self, variablemap: dict, target_time: str) -> tuple:
         """Returns (deployment_ref, project_ref) for a given VariableMap and time."""
         
-        # 1. Edge Node Fast-Path (raz1): If we loaded a single JIT deployment on boot, use it!
-        if getattr(self, "active_deployment_ref", "unknown") != "unknown":
-            return self.active_deployment_ref, getattr(self, "active_project_ref", "unknown")
-            
-        # 2. Central Server Path (mspbase01): Dynamically look it up.
+        # 1. Extract the platform this data is coming from
         platform_ref = variablemap.get("variablemap", {}).get("data", {}).get("attributes", {}).get("platform")
         
         if not platform_ref:
             return "unknown", "unknown"
             
-        # Scan the loaded deployments (which mspbase01 got from GitOps)
+        # 2. Universal Lookup: Scan all loaded deployments (Edge or Server)
         for dep in getattr(self, "deployments", []):
             dep_data = dep.get("data", {})
             if dep_data.get("platform_ref") == platform_ref:
-                # Check if this deployment was active at the target_time
+                
+                # Check if this deployment covers the target_time
                 start = dep_data.get("planned_start_time", "0000-00-00")
                 end = dep_data.get("planned_end_time", "9999-99-99")
                 actual_end = dep_data.get("actual_end_time", end)
@@ -1564,6 +1596,11 @@ class SamplingSystem:
                     proj_ref = dep_data.get("project_ref", "unknown")
                     return dep_ref, proj_ref
                     
+        # 3. Graceful Fallback: If no time bounds matched but we have an active deployment, use it.
+        # This protects against edge cases where the clock is wrong, or the user forgot to set dates.
+        if getattr(self, "active_deployment_ref", "unknown") != "unknown":
+            return self.active_deployment_ref, getattr(self, "active_project_ref", "unknown")
+            
         return "unknown", "unknown"
 
     async def get_from_mqtt_loop(self):
