@@ -39,12 +39,15 @@ class SamplingEventType(BaseEventType):
         """Dynamically build registry update types for various sampling resources
            e.g. returns 'envds.project-definition.registry.update'
         """
-        return ".".join([BaseEventType.get_type(resource), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_UPDATE])
+        # FIX: Force '-definition' suffix if it's not already there!
+        res = resource if resource.endswith("-definition") else f"{resource}-definition"
+        return ".".join([BaseEventType.get_type(res), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_UPDATE])
     
     @staticmethod
     def definition_registry_request(resource: str):
-        return ".".join([BaseEventType.get_type(resource), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_REQUEST])
-
+        res = resource if resource.endswith("-definition") else f"{resource}-definition"
+        return ".".join([BaseEventType.get_type(res), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_REQUEST])
+    
     @staticmethod
     def variablemap_definition_registry_request():
         return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_VARIABLEMAP_DEFINITION), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_REQUEST])
