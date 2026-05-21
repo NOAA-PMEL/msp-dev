@@ -1,16 +1,15 @@
 import dash
-from dash import html, dcc
+from dash import html
 import dash_bootstrap_components as dbc
 
-# Initialize the Dash app with Pages support and Bootstrap styling
+# By removing requests_pathname_prefix, we allow Uvicorn to dynamically 
+# tell Dash what the base URL is. This is much more robust behind Traefik.
 app = dash.Dash(
     __name__,
     use_pages=True,
-    requests_pathname_prefix="/msp/envops/", 
     external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP],
 )
 
-# A sleek, modern shell layout
 app.layout = html.Div([
     dbc.NavbarSimple(
         brand="EnvOps Dashboard",

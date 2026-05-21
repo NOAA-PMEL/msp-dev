@@ -8,14 +8,13 @@ WORKDIR $APP_HOME
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy application files
 COPY VERSION .
 COPY envops_app.py main.py ./
 COPY pages/ ./pages/
 
-# Set ownership
 RUN chown -R envops:envops $APP_HOME
 USER envops
 
-# Run Uvicorn via the FastAPI wrapper
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# --root-path tells Uvicorn that Traefik already stripped /msp/envops, 
+# ensuring Dash builds its internal links correctly.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--root-path", "/msp/envops"]
