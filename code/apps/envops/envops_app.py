@@ -2,11 +2,12 @@ import dash
 from dash import html
 import dash_bootstrap_components as dbc
 
-# By removing requests_pathname_prefix, we allow Uvicorn to dynamically 
-# tell Dash what the base URL is. This is much more robust behind Traefik.
+# Tell Dash how to bridge the gap between the browser's URL and Traefik's stripped URL
 app = dash.Dash(
     __name__,
     use_pages=True,
+    requests_pathname_prefix="/msp/envops/",  # What the browser requests
+    routes_pathname_prefix="/",               # What Dash sees after Traefik strips it
     external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP],
 )
 
