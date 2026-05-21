@@ -5,22 +5,17 @@ import httpx
 import logging
 from pydantic import BaseSettings
 
-dash.register_page(__name__, path='/', title="EnvOps - Fleet Overview", order=0)
+dash.register_page(__name__, path='/', title="EnvOps - Active Deployments", order=0)
 
 L = logging.getLogger(__name__)
 
-# -----------------------------------------------------------------------------
-# 1. Configuration & API Setup
-# -----------------------------------------------------------------------------
 class Settings(BaseSettings):
     daq_id: str = "default"
-    
     class Config:
         env_prefix = "ENVOPS_"
         case_sensitive = False
 
 config = Settings()
-# Build the internal Kubernetes DNS path to the datastore service
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 def get_registry_data(endpoint: str):
@@ -38,135 +33,135 @@ def get_registry_data(endpoint: str):
     return []
 
 # -----------------------------------------------------------------------------
-# 2. Helper Functions for UI Components
+# UI Component Generators
 # -----------------------------------------------------------------------------
-def get_health_badge(status):
-    if status == "Healthy":
-        return dbc.Badge("Healthy", color="success", className="ms-2")
-    elif status == "Warning":
-        return dbc.Badge("Warning", color="warning", text_color="dark", className="ms-2")
-    elif status == "Offline":
-        return dbc.Badge("Offline", color="danger", className="ms-2")
-    return dbc.Badge("Unknown", color="secondary", className="ms-2")
+def get_status_badge(status):
+    status = str(status).lower()
+    if status == "active":
+        return dbc.Badge("Active", color="success", className="ms-2")
+    elif status == "planned":
+        return dbc.Badge("Planned", color="info", className="ms-2")
+    elif status == "completed":
+        return dbc.Badge("Completed", color="secondary", className="ms-2")
+    return dbc.Badge(status.capitalize(), color="warning", text_color="dark", className="ms-2")
 
-def create_platform_card(platform_def, project_name="Unknown Project"):
-    # Extract data safely based on the platform_defs.json schema
-    meta_name = platform_def.get("metadata", {}).get("name", "unknown_id")
-    data = platform_def.get("data", {})
-    display_name = data.get("display_name", meta_name)
-    platform_type = data.get("platform_type", "Unknown Type")
+def create_deployment_card(deployment, project_info, platform_info):
+    dep_meta = deployment.get("metadata", {})
+    dep_data = deployment.get("data", {})
     
-    # Placeholder operational states (to be wired to MQTT later)
-    health = "Unknown"
-    system_mode = "Awaiting Telemetry..."
-    active_alarms = 0
-    last_comms = "--"
-
+    dep_id = dep_meta.get("name", "Unknown ID")
+    status = dep_data.get("deployment_status", "unknown")
+    start_time = dep_data.get("start_time", "TBD")[:10]  # Just grab the YYYY-MM-DD
+    
+    # Extract friendly names from the mapped dictionaries
+    project_name = project_info.get("data", {}).get("display_name", dep_data.get("project_id", "Unknown Project"))
+    platform_name = platform_info.get("data", {}).get("display_name", dep_data.get("platform_id", "Unknown Platform"))
+    
     return dbc.Card([
         dbc.CardHeader([
-            html.H5(display_name, className="mb-0 d-inline-block text-truncate", style={"maxWidth": "70%"}),
-            get_health_badge(health)
+            html.H5(platform_name, className="mb-0 d-inline-block text-truncate", style={"maxWidth": "75%"}),
+            get_status_badge(status)
         ], className="d-flex justify-content-between align-items-center bg-dark text-white"),
         
         dbc.CardBody([
-            html.H6(f"Project: {project_name}", className="card-subtitle text-muted mb-3 text-truncate"),
+            html.H6(project_name, className="card-subtitle text-primary fw-bold mb-3 text-truncate"),
+            
+            html.P(dep_data.get("description", "No description available."), className="small text-muted mb-4", style={"height": "40px", "overflow": "hidden"}),
             
             dbc.Row([
-                dbc.Col(html.B("Type:"), width=5),
-                dbc.Col(platform_type)
+                dbc.Col(html.B("Deployment ID:"), width=5),
+                dbc.Col(html.Span(dep_id, className="text-muted small"), className="text-truncate")
             ], className="mb-1"),
 
             dbc.Row([
-                dbc.Col(html.B("System Mode:"), width=5),
-                dbc.Col(system_mode, className="fst-italic text-muted")
-            ], className="mb-1"),
-            
-            dbc.Row([
-                dbc.Col(html.B("Active Alarms:"), width=5),
-                dbc.Col(
-                    dbc.Badge(active_alarms, color="secondary", pill=True)
-                )
-            ], className="mb-1"),
-            
-            dbc.Row([
-                dbc.Col(html.B("Last Comms:"), width=5),
-                dbc.Col(last_comms, className="small text-muted")
+                dbc.Col(html.B("Start Date:"), width=5),
+                dbc.Col(start_time, className="text-muted small")
             ], className="mb-3"),
             
-            # Button for drilling down into the platform operations
-            dbc.Button(
-                "View Operations", 
-                color="primary", 
-                className="w-100 mt-auto shadow-sm",
-                href=f"/msp/envops/platform/{meta_name}/ops" 
-            )
+            # Action Buttons
+            dbc.Row([
+                dbc.Col(
+                    dbc.Button(
+                        "Ops Dashboard", 
+                        color="primary", 
+                        className="w-100 shadow-sm",
+                        href=f"/msp/envops/deployment/{dep_id}/ops" 
+                    ), width=6, className="pe-1"
+                ),
+                dbc.Col(
+                    dbc.Button(
+                        "Platform Details", 
+                        color="outline-secondary", 
+                        className="w-100 shadow-sm",
+                        href=f"/msp/envops/platform/{dep_data.get('platform_id')}" 
+                    ), width=6, className="ps-1"
+                )
+            ])
         ])
     ], className="shadow-sm h-100 border-0")
 
 # -----------------------------------------------------------------------------
-# 3. Main Layout Shell
+# Main Layout Shell
 # -----------------------------------------------------------------------------
 layout = html.Div([
-    # Page Header
     dbc.Row([
         dbc.Col([
-            html.H2("Fleet Overview", className="fw-bold"),
-            html.P("Real-time status of all deployed platforms and projects.", className="text-muted")
+            html.H2("Active Deployments", className="fw-bold"),
+            html.P("Overview of current missions, projects, and active field operations.", className="text-muted")
         ])
     ], className="mb-4"),
     
-    # Dynamic Containers
-    html.Div(id="fleet-metrics-container"),
-    html.Div(id="fleet-grid-container"),
-
-    # Interval timer to refresh the page data automatically
-    dcc.Interval(id="fleet-refresh-interval", interval=30000, n_intervals=0)
+    html.Div(id="home-metrics-container"),
+    html.Div(id="home-grid-container"),
+    
+    dcc.Interval(id="home-refresh-interval", interval=30000, n_intervals=0)
 ], className="mt-2")
 
 
 # -----------------------------------------------------------------------------
-# 4. Callbacks
+# Callbacks
 # -----------------------------------------------------------------------------
 @callback(
-    Output("fleet-metrics-container", "children"),
-    Output("fleet-grid-container", "children"),
-    Input("fleet-refresh-interval", "n_intervals")
+    Output("home-metrics-container", "children"),
+    Output("home-grid-container", "children"),
+    Input("home-refresh-interval", "n_intervals")
 )
-def update_fleet_dashboard(n):
-    # Fetch actual data from Datastore
-    # Adjust these endpoints if your datastore exposes them differently!
-    platforms = get_registry_data("platform-definition/registry/get/")
+def update_home_dashboard(n):
+    # 1. Fetch the necessary data
+    deployments = get_registry_data("deployment/registry/get/")
     projects = get_registry_data("project/registry/get/")
+    platforms = get_registry_data("platform-definition/registry/get/")
 
-    # If the datastore is unreachable or empty, show a warning
-    if not platforms:
-        metrics = dbc.Alert("No platforms found or Datastore unreachable.", color="warning")
-        return metrics, html.Div()
+    if not deployments:
+        return dbc.Alert("No deployments found or Datastore unreachable.", color="warning"), html.Div()
 
-    # Build a quick lookup for project names
-    project_map = {}
-    for p in projects:
-        p_name = p.get("metadata", {}).get("name")
-        p_display = p.get("data", {}).get("display_name", p_name)
-        if p_name:
-            project_map[p_name] = p_display
+    # 2. Build quick-lookup dictionaries for cross-referencing IDs to friendly names
+    project_map = {p.get("metadata", {}).get("name"): p for p in projects}
+    platform_map = {p.get("metadata", {}).get("name"): p for p in platforms}
 
-    # Calculate Top Level Metrics
-    total_platforms = len(platforms)
-    
+    # 3. Calculate Metrics
+    total_deps = len(deployments)
+    active_deps = sum(1 for d in deployments if str(d.get("data", {}).get("deployment_status")).lower() == "active")
+    planned_deps = sum(1 for d in deployments if str(d.get("data", {}).get("deployment_status")).lower() == "planned")
+
     metrics_row = dbc.Row([
-        dbc.Col(dbc.Card(dbc.CardBody([html.H4("Total Platforms"), html.H2(str(total_platforms))]), className="shadow-sm border-0 bg-light text-center"), width=4),
-        dbc.Col(dbc.Card(dbc.CardBody([html.H4("Healthy"), html.H2("--", className="text-secondary")]), className="shadow-sm border-0 bg-light text-center"), width=4),
-        dbc.Col(dbc.Card(dbc.CardBody([html.H4("Critical Alerts"), html.H2("--", className="text-secondary")]), className="shadow-sm border-0 bg-light text-center"), width=4),
+        dbc.Col(dbc.Card(dbc.CardBody([html.H4("Total Deployments"), html.H2(str(total_deps))]), className="shadow-sm border-0 bg-light text-center"), width=4),
+        dbc.Col(dbc.Card(dbc.CardBody([html.H4("Active"), html.H2(str(active_deps), className="text-success")]), className="shadow-sm border-0 bg-light text-center"), width=4),
+        dbc.Col(dbc.Card(dbc.CardBody([html.H4("Planned"), html.H2(str(planned_deps), className="text-info")]), className="shadow-sm border-0 bg-light text-center"), width=4),
     ], className="mb-5")
 
-    # Render Platform Grid
-    # For now, we will assign the first project to the platforms if a hard link isn't established in the schema yet.
-    default_project = projects[0].get("data", {}).get("display_name", "Unknown Project") if projects else "Unknown Project"
-
+    # 4. Build the Deployment Grid
+    # We pass the mapped project and platform data into the card generator so it can display the friendly names.
     grid_row = dbc.Row([
-        dbc.Col(create_platform_card(p, project_name=default_project), width=12, md=6, lg=4, className="mb-4")
-        for p in platforms
+        dbc.Col(
+            create_deployment_card(
+                deployment=dep,
+                project_info=project_map.get(dep.get("data", {}).get("project_id"), {}),
+                platform_info=platform_map.get(dep.get("data", {}).get("platform_id"), {})
+            ), 
+            width=12, md=6, lg=4, className="mb-4"
+        )
+        for dep in deployments
     ])
 
     return metrics_row, grid_row
