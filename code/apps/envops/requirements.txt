@@ -1,8 +1,21 @@
 fastapi
 uvicorn[standard]
 dash
-dash-bootstrap-components
-dash-extensions
-dash-ag-grid
+cloudevents>=1.6.0,<1.7.0
+flask
+pydantic>=1.8.0,<2.0.0
+uvicorn>=0.15.0,<0.16.0
+httpx
 logfmter
 aiomqtt
+python-ulid
+# pymongo
+dash
+dash_daq
+dash_extensions
+dash-bootstrap-components
+dash_ag_grid
+dash_ace
+pandas
+websockets
+datetime
