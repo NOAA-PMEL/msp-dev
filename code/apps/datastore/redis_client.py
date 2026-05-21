@@ -203,7 +203,7 @@ class RedisClient(DBClient):
                 await self.client.ft(self.registry_variableset_instance_index_name).create_index(schema, definition=definition)
 
             # Sampling Generic Resource Indexes
-            for resource in ["platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
+            for resource in ["platform", "project", "deployment", "contact", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
                 index_name = f"idx:registry-{resource}-definition"
                 prefix = f"registry:{resource}-definition:"
                 try:
@@ -792,6 +792,7 @@ class RedisClient(DBClient):
             name = request.get("metadata", {}).get("name", "unknown")
             # valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z").replace(":", "")
             valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z")
+            
             id = f"{name}::{valid_time}"
             key = f"{database}:{collection}:{id}"
             

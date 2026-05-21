@@ -1571,7 +1571,14 @@ class Datastore:
                 )
 
                 # FIX: Safely extract 'valid_config_time' using the helper, cascading through all possible locations
+                # valid_time = (
+                #     self._extract_val(resource_def, "valid_config_time", None) or 
+                #     self._extract_val(metadata, "valid_config_time", None) or 
+                #     self._extract_val(attributes, "valid_config_time", "2020-01-01T00:00:00Z")
+                # )
                 valid_time = (
+                    self._extract_val(resource_def, "revision-time", None) or
+                    self._extract_val(metadata, "revision-time", None) or
                     self._extract_val(resource_def, "valid_config_time", None) or 
                     self._extract_val(metadata, "valid_config_time", None) or 
                     self._extract_val(attributes, "valid_config_time", "2020-01-01T00:00:00Z")
