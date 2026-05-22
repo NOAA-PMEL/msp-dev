@@ -155,12 +155,23 @@ def update_state_store(msg, current_state):
         raise PreventUpdate
 
     try:
-        payload = json.loads(msg["data"])
-        event_data = payload.get("data", {})
+        # 1. Unwrap the WebSocket envelope we built in main.py
+        ws_payload = json.loads(msg["data"])
         
-        id_block = event_data.get("id", {})
-        state_block = event_data.get("state", {})
+        # 2. Extract the CloudEvent from the WebSocket payload
+        cloud_event = ws_payload.get("data", {})
         
+        # 3. Extract your actual business payload from inside the CloudEvent!
+        status_data = cloud_event.get("data", {})
+        
+        # 4. NOW we can safely grab your custom id and state dictionaries
+        id_block = status_data.get("id", {})
+        state_block = status_data.get("state", {})
+        
+        # Use isinstance to be completely bulletproof against malformed data
+        if not isinstance(id_block, dict):
+            return no_update
+            
         app_group = id_block.get("app_group", "")
         name = id_block.get("app_uid")
         
@@ -187,7 +198,7 @@ def update_state_store(msg, current_state):
             
             current_state[kind][name] = {
                 "status": is_active,
-                "time": event_data.get("timestamp", "N/A")
+                "time": status_data.get("timestamp", "N/A")
             }
             return current_state
             
