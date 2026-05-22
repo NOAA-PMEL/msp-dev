@@ -17,6 +17,12 @@ L = logging.getLogger(__name__)
 L.setLevel(logging.INFO)
 
 class EnvOpsSettings(BaseSettings):
+    daq_id: str = "default"
+    external_hostname: str = "localhost"
+    port: int = 8080
+    ws_port: int = 8080
+    ws_use_tls: bool = False
+    
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
     # Subscribe to status events emitted by the sampling-system managers
