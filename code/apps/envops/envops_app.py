@@ -10,12 +10,13 @@ L = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     daq_id: str = "mspbase01"
+    datastore_port: int = 8080
     class Config:
         env_prefix = "ENVOPS_"
         case_sensitive = False
 
 config = Settings()
-datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
+datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local:{config.datastore_port}"
 
 def get_registry_data(endpoint: str):
     """Safely fetches data using synchronous requests."""
@@ -40,16 +41,18 @@ app = dash.Dash(
 # -----------------------------------------------------------------------------
 def serve_layout():
     sidebar_header = dbc.Row([
-        dbc.Col(html.H4("EnvOps", className="display-6 fw-bold")),
-        dbc.Col(
-            html.Button(
-                html.Span(className="navbar-toggler-icon"),
-                className="navbar-toggler",
-                id="sidebar-toggle",
-            ),
-            width="auto", align="center",
+    dbc.Col(html.H4("EnvOps", className="display-6 fw-bold mb-0")),
+    dbc.Col(
+        # Swapped to a standard button with a list icon so it never hides
+        dbc.Button(
+            html.I(className="bi bi-list fs-3"), 
+            color="link", 
+            className="p-0 text-dark",
+            id="sidebar-toggle",
         ),
-    ], className="mb-4")
+        width="auto", align="center",
+    ),
+], className="mb-4 align-items-center")
 
     sidebar = html.Div([
         sidebar_header,
