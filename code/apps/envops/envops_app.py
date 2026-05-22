@@ -7,7 +7,7 @@ import dash_bootstrap_components as dbc
 app = dash.Dash(
     __name__,
     use_pages=True,
-    requests_pathname_prefix="/msp/envops/", 
+    requests_pathname_prefix="/envds/envops/", 
 )
 
 # 1. Define the Sidebar Header

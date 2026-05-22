@@ -16,4 +16,4 @@ COPY assets/ ./assets/
 RUN chown -R envops:envops $APP_HOME
 USER envops
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--root-path", "/msp/envops"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--root-path", "/envds/envops"]

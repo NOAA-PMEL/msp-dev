@@ -85,7 +85,7 @@ def create_deployment_card(deployment, project_info, platform_info):
                         "Ops Dashboard", 
                         color="primary", 
                         className="w-100 shadow-sm",
-                        href=f"/msp/envops/deployment/{dep_id}/ops" 
+                        href=f"/envds/envops/deployment/{dep_id}/ops" 
                     ), width=6, className="pe-1"
                 ),
                 dbc.Col(
@@ -93,7 +93,7 @@ def create_deployment_card(deployment, project_info, platform_info):
                         "Platform Details", 
                         color="outline-secondary", 
                         className="w-100 shadow-sm",
-                        href=f"/msp/envops/platform/{dep_data.get('platform_id')}" 
+                        href=f"/envds/envops/platform/{dep_data.get('platform_id')}" 
                     ), width=6, className="ps-1"
                 )
             ])
