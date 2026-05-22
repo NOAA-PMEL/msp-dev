@@ -126,10 +126,15 @@ layout = html.Div([
     Output("home-grid-container", "children"),
     Input("home-refresh-interval", "n_intervals")
 )
+@callback(
+    Output("home-metrics-container", "children"),
+    Output("home-grid-container", "children"),
+    Input("home-refresh-interval", "n_intervals")
+)
 def update_home_dashboard(n):
-    # 1. Fetch the necessary data
-    deployments = get_registry_data("deployment/registry/get/")
-    projects = get_registry_data("project/registry/get/")
+    # 1. Fetch the necessary data using the STRICT dynamically generated endpoints
+    deployments = get_registry_data("deployment-definition/registry/get/")
+    projects = get_registry_data("project-definition/registry/get/")
     platforms = get_registry_data("platform-definition/registry/get/")
 
     if not deployments:
@@ -141,8 +146,8 @@ def update_home_dashboard(n):
 
     # 3. Calculate Metrics
     total_deps = len(deployments)
-    active_deps = sum(1 for d in deployments if str(d.get("data", {}).get("deployment_status")).lower() == "active")
-    planned_deps = sum(1 for d in deployments if str(d.get("data", {}).get("deployment_status")).lower() == "planned")
+    active_deps = sum(1 for d in deployments if str(d.get("data", {}).get("deployment_status", d.get("data", {}).get("status", ""))).lower() == "active")
+    planned_deps = sum(1 for d in deployments if str(d.get("data", {}).get("deployment_status", d.get("data", {}).get("status", ""))).lower() == "planned")
 
     metrics_row = dbc.Row([
         dbc.Col(dbc.Card(dbc.CardBody([html.H4("Total Deployments"), html.H2(str(total_deps))]), className="shadow-sm border-0 bg-light text-center"), width=4),
@@ -151,13 +156,12 @@ def update_home_dashboard(n):
     ], className="mb-5")
 
     # 4. Build the Deployment Grid
-    # We pass the mapped project and platform data into the card generator so it can display the friendly names.
     grid_row = dbc.Row([
         dbc.Col(
             create_deployment_card(
                 deployment=dep,
-                project_info=project_map.get(dep.get("data", {}).get("project_id"), {}),
-                platform_info=platform_map.get(dep.get("data", {}).get("platform_id"), {})
+                project_info=project_map.get(dep.get("data", {}).get("project_ref"), {}),
+                platform_info=platform_map.get(dep.get("data", {}).get("platform_ref"), {})
             ), 
             width=12, md=6, lg=4, className="mb-4"
         )
