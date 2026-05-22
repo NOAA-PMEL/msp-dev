@@ -808,9 +808,11 @@ class RedisClient(DBClient):
         # ---------------------------------------------------------
         # FAST PATH: Exact ID Lookup for Registrar Syncs
         # ---------------------------------------------------------
+        self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"q": query})
         if "name" in query and "::" in query["name"]:
             key = f"registry:{resource}-definition:{query['name']}"
             try:
+                self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"qkey": key})
                 doc = await self.client.json().get(key)
                 if doc:
                     return {"results": [doc.get("registration", doc)]}
