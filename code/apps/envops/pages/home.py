@@ -208,28 +208,32 @@ def update_home_dashboard(n):
                 root_deployments.append(d)
 
         # Build cards recursively
-        def build_cards(deployments_list):
+        def build_cards(deployments_list, is_child=False):
             cards = []
             for d in deployments_list:
                 plat_ref = d.get("data", {}).get("platform_ref")
                 children = child_deployments.get(plat_ref, [])
-                child_ui = build_cards(children) if children else None
+                # Pass is_child=True to the next level down
+                child_ui = build_cards(children, is_child=True) if children else None
                 
-                cards.append(
-                    dbc.Col(
-                        create_deployment_card(
-                            deployment=d,
-                            platform_info=platform_map.get(plat_ref, {}),
-                            host_info=platform_map.get(d.get("data", {}).get("host_platform_ref"), {}),
-                            child_cards=child_ui
-                        ), 
-                        width=12, lg=6, xl=4 # Adjust grid sizing as needed
-                    )
+                card_component = create_deployment_card(
+                    deployment=d,
+                    platform_info=platform_map.get(plat_ref, {}),
+                    host_info=platform_map.get(d.get("data", {}).get("host_platform_ref"), {}),
+                    child_cards=child_ui
                 )
+                
+                if is_child:
+                    # Child cards should take 100% of their parent's width and stack vertically
+                    cards.append(html.Div(card_component, className="mb-2"))
+                else:
+                    # Root cards get the grid treatment
+                    cards.append(dbc.Col(card_component, width=12, lg=6, xl=4, className="mb-4"))
+                    
             return cards
 
-        root_cards_ui = dbc.Row(build_cards(root_deployments))
-
+        root_cards_ui = dbc.Row(build_cards(root_deployments, is_child=False))
+        
         # Add the project section to the accordion
         project_accordions.append(
             dbc.AccordionItem(

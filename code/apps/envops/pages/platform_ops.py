@@ -128,7 +128,7 @@ def layout(deployment_id=None, **kwargs):
         # 5. Behind-the-Scenes Components
         WebSocket(
             id="ws-platform-ops",
-            url=f"{ws_url_base}/ws/system-ops/main" 
+            url=f"{ws_url_base}/envds/envops/ws/system-ops/main" 
         ),
         
         # Centralized State Store mapped from MQTT via WebSocket
