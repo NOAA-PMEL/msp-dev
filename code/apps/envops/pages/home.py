@@ -1,5 +1,6 @@
 import dash
 from dash import html, dcc, callback, Input, Output, State, no_update
+from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import requests
@@ -120,7 +121,7 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
 layout = html.Div([
     dcc.Store(id="home-telemetry-cache", data={}),
     # The WebSocket that feeds the telemetry cache
-    dash.websocket.WebSocket(id="ws-home-telemetry", url=ws_url),
+    WebSocket(id="ws-home-telemetry", url=ws_url),
     
     dbc.Row([
         dbc.Col([
