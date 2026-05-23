@@ -18,4 +18,3 @@ dash_ace
 pandas
 websockets
 datetime
-logfmter==1.5.0
