@@ -1,6 +1,8 @@
+import os
 import asyncio
 import json
 import logging
+from logfmter import Logfmter
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -13,8 +15,22 @@ from ulid import ULID
 # Import the Dash app instance
 from envops_app import app as dash_app
 
+# 1. Read environmental visibility configurations
+LOG_LEVEL = os.getenv("ENVOPS_LOG_LEVEL", "INFO").upper()
+
+# 2. Bind the logfmt handler to standard out
+handler = logging.StreamHandler()
+handler.setFormatter(Logfmter(
+    keys=["at", "logger", "msg"], 
+    mapping={"at": "levelname", "logger": "name"}
+))
+
+logging.basicConfig(
+    level=LOG_LEVEL,
+    handlers=[handler]
+)
 L = logging.getLogger(__name__)
-L.setLevel(logging.INFO)
+L.setLevel(LOG_LEVEL)
 
 class EnvOpsSettings(BaseSettings):
     daq_id: str = "default"
@@ -22,7 +38,7 @@ class EnvOpsSettings(BaseSettings):
     port: int = 8080
     ws_port: int = 8080
     ws_use_tls: bool = False
-    
+
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
     # Subscribe to status events emitted by the sampling-system managers
@@ -82,6 +98,13 @@ async def mqtt_to_websocket_bridge():
                     try:
                         payload = message.payload.decode("utf-8")
                         # You can inject the topic if your frontend needs it for routing
+                        L.debug(
+                            "Processing incoming telemetry packet", 
+                            extra={
+                                "mqtt_topic": message.topic.value,
+                                "packet_len": len(payload)
+                            }
+                        )
                         ws_payload = json.dumps({
                             "topic": message.topic.value,
                             "data": json.loads(payload)

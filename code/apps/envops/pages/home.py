@@ -183,6 +183,14 @@ def ingest_live_telemetry(msg, current_cache):
         # 1. Unwrap the websocket package from main.py
         ws_payload = json.loads(msg["data"])
         
+        L.debug(
+            "Ingested fresh dashboard websocket packet", 
+            extra={
+                "stream_topic": ws_payload.get("topic", "unknown_topic"),
+                "stream_len": len(msg["data"])
+            }
+        )
+
         # 2. Unwrap the CloudEvent
         cloud_event = ws_payload.get("data", {})
         
