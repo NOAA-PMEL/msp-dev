@@ -203,64 +203,32 @@ L = logging.getLogger(__name__)
     State("home-telemetry-cache", "data")
 )
 def ingest_live_telemetry(msg, current_cache):
-    """Parses standard CloudEvents and caches point-in-time data for the Home map."""
+    """Parses lightweight fleet location updates from the middleware."""
     if not msg or "data" not in msg: 
         return no_update
     
     try:
-        # 1. msg["data"] is the raw JSON string of the CloudEvent
-        ce = json.loads(msg["data"])
+        # Parse the stringified JSON from the WebSocket
+        payload = json.loads(msg["data"])
         
-        # 2. Extract the topic directly from the CloudEvent metadata
-        current_topic = ce.get("destpath", "") or ce.get("sourcepath", "")
-        parts = current_topic.split("/")
-        
-        # 3. Strictly filter for Variablesets
-        if len(parts) < 4 or parts[2] != "variableset":
-            return no_update
-            
-        # 4. Extract the payload (Layer 2)
-        payload = ce.get("data", {})
-        if not payload:
+        # Only process the micro-payloads we specifically designed for this page
+        if payload.get("type") != "fleet.location.update":
             return no_update
 
-        # 5. Extract the TRUE Platform ID from the payload attributes
-        attributes = payload.get("attributes", {})
-        platform_id = attributes.get("platform", {}).get("data")
+        platform_id = payload["platform"]
         
-        # Fallback to the topic map name if attribute is missing
-        if not platform_id:
-            platform_id = parts[3].split("::")[0]
-            
-        # L.debug("Processing Home map telemetry", extra={"resolved_platform": platform_id, "vset": parts[3]})
-
-        # 6. Prevent Dictionary Mutation Traps
         new_cache = current_cache.copy() if current_cache else {}
         if platform_id not in new_cache:
             new_cache[platform_id] = {"lat": None, "lon": None, "alarms": {}, "last_seen": None}
             
-        new_cache[platform_id]["last_seen"] = datetime.now().isoformat()
-        
-        # 7. Map Standardized Coordinates
-        variables = payload.get("variables", {})
-        if "latitude" in variables:
-            val = variables["latitude"].get("data")
-            if val is not None: new_cache[platform_id]["lat"] = val
-            
-        if "longitude" in variables:
-            val = variables["longitude"].get("data")
-            if val is not None: new_cache[platform_id]["lon"] = val
-            
-        # 8. Track Alarms (Using variableset full name as the alarm source)
-        if "alarm" in str(payload).lower() or "error" in str(payload).lower():
-            new_cache[platform_id]["alarms"][parts[3]] = 1
-        else:
-            new_cache[platform_id]["alarms"].pop(parts[3], None)
+        new_cache[platform_id]["last_seen"] = payload["time"] or datetime.now().isoformat()
+        new_cache[platform_id]["lat"] = payload["lat"]
+        new_cache[platform_id]["lon"] = payload["lon"]
             
         return new_cache
         
     except Exception as e:
-        L.debug("Home Variableset parse failure", extra={"failure_detail": str(e)})
+        L.debug("Home location parse failure", extra={"failure_detail": str(e)})
         return no_update
 
 @callback(

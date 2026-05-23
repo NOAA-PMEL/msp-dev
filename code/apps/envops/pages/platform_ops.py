@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State, no_update, MATCH, ALL
+from dash import html, dcc, callback, Input, Output, State, no_update, MATCH, ALL, ctx
 from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -89,6 +89,9 @@ def create_empty_dual_plot(title, y1_name, y2_name, y1_color="#1f77b4", y2_color
 # -----------------------------------------------------------------------------
 # Layout Generator (Runs once per page load)
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Layout Generator (Runs once per page load)
+# -----------------------------------------------------------------------------
 def layout(deployment_id=None, **kwargs):
     if not deployment_id:
         return dbc.Alert("No Deployment ID provided.", color="danger", className="m-4")
@@ -140,24 +143,6 @@ def layout(deployment_id=None, **kwargs):
             dbc.Button([html.I(className="bi bi-sliders me-2"), "Command & Control"], color="dark", className="w-100 shadow-sm fw-bold h-100")
         ], width=3)
     ])), className="shadow-sm border-0 mb-4 bg-light")
-
-    # # --- UI: Telemetry Grid ---
-    # telemetry_grid = dbc.Row([
-    #     dbc.Col(dbc.Card([
-    #         dbc.CardHeader("Navigation & Attitude", className="fw-bold bg-white"),
-    #         dbc.CardBody(html.Pre("Awaiting Nav Data...", id="ops-nav-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
-    #     ], className="shadow-sm border-0 h-100"), width=4),
-        
-    #     dbc.Col(dbc.Card([
-    #         dbc.CardHeader("Meteorology", className="fw-bold bg-white"),
-    #         dbc.CardBody(html.Pre("Awaiting Met Data...", id="ops-met-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
-    #     ], className="shadow-sm border-0 h-100"), width=4),
-        
-    #     dbc.Col(dbc.Card([
-    #         dbc.CardHeader("Air Quality & Aerosols", className="fw-bold bg-white"),
-    #         dbc.CardBody(html.Pre("Awaiting AQ Data...", id="ops-aq-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
-    #     ], className="shadow-sm border-0 h-100"), width=4),
-    # ], className="mb-4 align-items-stretch")
     
     # --- UI: Live Operational Plots ---
     plots_accordion = dbc.Accordion([
@@ -201,11 +186,29 @@ def layout(deployment_id=None, **kwargs):
         dbc.ListGroup(child_links, flush=True) if child_links else dbc.CardBody(html.P("No attached payloads.", className="text-muted mb-0"))
     ], className="shadow-sm border-0")
 
+    # --- NEW DYNAMIC WEBSOCKET PIPES ---
+    ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
+    ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}"
+
+    ws_connections = [
+        # 1. Subscribe to system health, states, and alarms (The smart-routed global channel)
+        WebSocket(id="ws-ops-system", url=f"{ws_base}/ws/system-ops/main")
+    ]
+    
+    # 2. Subscribe to the heavy telemetry for every platform in this deployment group
+    for p_id in group_platforms:
+        if p_id:  # Ensure we don't accidentally spawn empty endpoints
+            ws_connections.append(
+                WebSocket(id={"type": "ws-ops-platform", "index": p_id}, url=f"{ws_base}/ws/platform/{p_id}")
+            )
+
     return html.Div([
         # Hidden stores for real-time state management
         dcc.Store(id="ops-group-platforms", data=group_platforms),
         dcc.Store(id="ops-telemetry-cache", data={}),
-        WebSocket(id="ws-ops-telemetry", url=ws_url),
+        
+        # Inject the dynamically generated WebSockets into the DOM
+        html.Div(ws_connections),
         
         header, ops_ribbon, plots_accordion, sub_systems
     ], className="container-fluid mt-3")
@@ -216,51 +219,49 @@ def layout(deployment_id=None, **kwargs):
 # -----------------------------------------------------------------------------
 @callback(
     Output("ops-telemetry-cache", "data"),
-    Input("ws-ops-telemetry", "message"),
-    State("ops-group-platforms", "data"),
+    Input({"type": "ws-ops-platform", "index": ALL}, "message"),
     State("ops-telemetry-cache", "data")
 )
-def ingest_live_telemetry(msg, group_platforms, current_cache):
-    """Parses standard CloudEvents and buffers them into a sliding window cache."""
+def ingest_live_telemetry(messages, current_cache):
+    """Parses deeply nested CloudEvents from multiple platform streams into a sliding window cache."""
+    if not ctx.triggered:
+        return no_update
+
+    # Get the specific message that triggered this callback iteration
+    msg = ctx.triggered[0].get("value")
     if not msg or "data" not in msg: 
         return no_update
 
     try:
-        # 1. msg["data"] is the raw JSON string of the CloudEvent
-        ce = json.loads(msg["data"])
+        # Layer 1: Unwrap Dash's WebSocket string
+        ws_wrapper = json.loads(msg["data"])
         
-        # 2. Extract the topic directly from the CloudEvent metadata!
-        current_topic = ce.get("destpath", "") or ce.get("sourcepath", "")
-        parts = current_topic.split("/")
-        
-        # 3. Strictly filter for Variablesets
-        if len(parts) < 4 or parts[2] != "variableset":
+        # Layer 2: Extract the CloudEvent from main.py's wrapper
+        cloud_event = ws_wrapper.get("data-update", ws_wrapper.get("data", {}))
+        if not cloud_event:
             return no_update
             
-        # 4. Extract the payload (Layer 2)
-        payload = ce.get("data", {})
+        # Extract the topic safely
+        current_topic = ws_wrapper.get("topic") or cloud_event.get("destpath", "") or cloud_event.get("sourcepath", "")
+        parts = current_topic.split("/")
+        
+        # Layer 3: Extract the actual telemetry payload (Layer 3)
+        payload = cloud_event.get("data", {})
         if not payload:
             return no_update
 
-        # 5. Extract the TRUE Platform ID from the payload attributes
+        # Layer 4: Extract the Platform ID
         attributes = payload.get("attributes", {})
         platform_id = attributes.get("platform", {}).get("data")
-        
         if not platform_id:
-            platform_id = parts[3].split("::")[0]
+            platform_id = parts[3].split("::")[0] if len(parts) > 3 else "unknown"
             
-        # 6. FILTER: Drop data if it belongs to a different deployment group
-        if group_platforms and platform_id not in group_platforms:
-            return no_update
-            
-        # 7. --- SLIDING WINDOW CACHE LOGIC ---
+        # --- SLIDING WINDOW CACHE LOGIC ---
         new_cache = current_cache.copy() if current_cache else {}
         if platform_id not in new_cache:
             new_cache[platform_id] = {"variables": {}, "state": {}}
             
         incoming_vars = payload.get("variables", {})
-        
-        # Determine the timestamp for this data tick
         current_time = incoming_vars.get("time", {}).get("data") or datetime.now().isoformat()
         
         for var_name, var_data in incoming_vars.items():
@@ -271,11 +272,10 @@ def ingest_live_telemetry(msg, group_platforms, current_cache):
             if var_name not in new_cache[platform_id]["variables"]:
                 new_cache[platform_id]["variables"][var_name] = {"x": [], "y": []}
                 
-            # Append the new coordinates
             new_cache[platform_id]["variables"][var_name]["x"].append(current_time)
             new_cache[platform_id]["variables"][var_name]["y"].append(val)
             
-            # Cap the array to a rolling window (e.g., 300 points = 5 minutes at 1Hz)
+            # Cap the rolling window (e.g., 300 points)
             if len(new_cache[platform_id]["variables"][var_name]["x"]) > 300:
                 new_cache[platform_id]["variables"][var_name]["x"].pop(0)
                 new_cache[platform_id]["variables"][var_name]["y"].pop(0)
