@@ -28,7 +28,8 @@ from logfmter import Logfmter
 from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
 
-from dashapp import app as dash_app
+# from dashapp import app as dash_app
+from envops_app import app as dash_app
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
 from envds.message.message import Message
@@ -258,7 +259,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/dash", WSGIMiddleware(dash_app.server))
+# app.mount("/dash", WSGIMiddleware(dash_app.server))
+app.mount("/envds/envops", WSGIMiddleware(dash_app.server))
 
 @app.get("/")
 async def root():
@@ -487,4 +489,3 @@ async def platform_ws_endpoint(websocket: WebSocket, client_id: str):
             await websocket.receive_text() # Just keep the pipe open
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
-        
