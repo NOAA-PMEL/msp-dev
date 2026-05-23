@@ -10,13 +10,12 @@ L = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     daq_id: str = "mspbase01"
-    datastore_port: int = 8080
     class Config:
         env_prefix = "ENVOPS_"
         case_sensitive = False
 
 config = Settings()
-datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local:{config.datastore_port}"
+datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 def get_registry_data(endpoint: str):
     """Safely fetches data using synchronous requests."""
