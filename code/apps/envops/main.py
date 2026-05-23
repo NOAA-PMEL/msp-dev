@@ -259,12 +259,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# app.mount("/dash", WSGIMiddleware(dash_app.server))
-app.mount("/envds/envops", WSGIMiddleware(dash_app.server))
+# # app.mount("/dash", WSGIMiddleware(dash_app.server))
+# app.mount("/envds/envops", WSGIMiddleware(dash_app.server))
 
-@app.get("/")
-async def root():
-    return {"message": "EnvOps Middleware Online"}
+# @app.get("/")
+# async def root():
+#     return {"message": "EnvOps Middleware Online"}
 
 # --- WEBSOCKET ENDPOINTS ---
 
@@ -489,3 +489,9 @@ async def platform_ws_endpoint(websocket: WebSocket, client_id: str):
             await websocket.receive_text() # Just keep the pipe open
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
+
+# -----------------------------------------------------------------------------
+# Mount the Dash app inside FastAPI (Catch-all for UI routes)
+# NOTE: This MUST be the very last line in the file!
+# -----------------------------------------------------------------------------
+app.mount("/", WSGIMiddleware(dash_app.server))
