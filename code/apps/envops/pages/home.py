@@ -175,67 +175,74 @@ layout = html.Div([
     State("home-telemetry-cache", "data")
 )
 def ingest_live_telemetry(msg, current_cache):
-    """Parses repackaged MQTT messages from main.py for the Home overview."""
+    """Parses repackaged MQTT messages with deep structural tracing."""
     if not msg or "data" not in msg: 
         return no_update
     
     try:
-        # 1. Unwrap the websocket package from main.py
-        ws_payload = json.loads(msg["data"])
+        raw_data = msg["data"]
+        ws_payload = json.loads(raw_data)
+        current_topic = ws_payload.get("topic", "unknown_topic")
         
+        # Layer 1: The CloudEvent
+        cloud_event = ws_payload.get("data", {})
         L.debug(
-            "Ingested fresh dashboard websocket packet", 
+            "WS Unpack Layer 1 (CloudEvent)", 
             extra={
-                "stream_topic": ws_payload.get("topic", "unknown_topic"),
-                "stream_len": len(msg["data"])
+                "stream_topic": current_topic,
+                "ce_keys": str(list(cloud_event.keys()))
             }
         )
-
-        # 2. Unwrap the CloudEvent
-        cloud_event = ws_payload.get("data", {})
         
-        # 3. Extract the core device payload
+        # Layer 2: The Core Payload
         payload = cloud_event.get("data", {})
         if not payload:
+            L.debug("Bailing out: No 'data' block found inside CloudEvent", extra={"stream_topic": current_topic})
             return no_update
+            
+        L.debug(
+            "WS Unpack Layer 2 (Payload)", 
+            extra={
+                "stream_topic": current_topic,
+                "payload_keys": str(list(payload.keys()))
+            }
+        )
         
-        # 4. Find the App UID
+        # Layer 3: The App UID
         app_uid = payload.get("id", {}).get("app_uid")
         if not app_uid:
-            topic = ws_payload.get("topic", "")
-            parts = topic.split("/")
+            parts = current_topic.split("/")
             if len(parts) > 3: 
                 app_uid = parts[3] 
             
         if not app_uid:
+            L.debug("Bailing out: Could not resolve app_uid", extra={"stream_topic": current_topic})
             return no_update
             
-        # 5. Prevent Dictionary Mutation Traps (Force a new dictionary reference)
+        L.debug("Successfully resolved identifier, updating cache", extra={"sys_id": app_uid})
+            
+        # Prevent Dictionary Mutation Traps
         new_cache = current_cache.copy() if current_cache else {}
         if app_uid not in new_cache:
             new_cache[app_uid] = {"lat": None, "lon": None, "issues": 0, "last_seen": None}
             
         new_cache[app_uid]["last_seen"] = datetime.now().isoformat()
         
-        # 6. Extract Map Coordinates
         variables = payload.get("variables", {})
         if "latitude" in variables:
             new_cache[app_uid]["lat"] = variables["latitude"].get("data")
         if "longitude" in variables:
             new_cache[app_uid]["lon"] = variables["longitude"].get("data")
             
-        # 7. Extract Health / Issues
-        # Simple flag: check if the stringified payload contains error indicators
         if "alarm" in str(payload).lower() or "error" in str(payload).lower():
             new_cache[app_uid]["issues"] = 1
-        elif "systemmode" in ws_payload.get("topic", "").lower():
-            # You can add logic here to explicitly clear the issue if a nominal state is received
+        else:
             new_cache[app_uid]["issues"] = 0
             
         return new_cache
         
     except Exception as e:
-        L.debug(f"[Home WS Error] {e}")
+        L.debug("Failed to evaluate incoming dashboard stream event", extra={"failure_detail": str(e)})
         return no_update
 
 @callback(

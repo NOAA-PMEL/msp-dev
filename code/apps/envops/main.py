@@ -25,9 +25,11 @@ handler.setFormatter(Logfmter(
     mapping={"at": "levelname", "logger": "name"}
 ))
 
+# Add force=True so nothing else can override our logfmtr!
 logging.basicConfig(
     level=LOG_LEVEL,
-    handlers=[handler]
+    handlers=[handler],
+    force=True 
 )
 L = logging.getLogger(__name__)
 L.setLevel(LOG_LEVEL)
@@ -97,13 +99,15 @@ async def mqtt_to_websocket_bridge():
                 async for message in client.messages:
                     try:
                         payload = message.payload.decode("utf-8")
+                        parsed_data = json.loads(payload)
                         # You can inject the topic if your frontend needs it for routing
-                        
+
                         L.debug(
                             "Processing incoming telemetry packet", 
                             extra={
                                 "mqtt_topic": message.topic.value,
-                                "packet_len": len(payload)
+                                "packet_len": len(payload),
+                                "ce_keys": str(list(parsed_data.keys()))
                             }
                         )
                         ws_payload = json.dumps({

@@ -6,8 +6,6 @@ import logging
 import traceback
 from pydantic import BaseSettings
 
-# Force logging to INFO so we see our debug statements
-logging.basicConfig(level=logging.INFO)
 L = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
