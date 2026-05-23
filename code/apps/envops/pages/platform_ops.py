@@ -1,284 +1,213 @@
 import dash
 from dash import html, dcc, callback, Input, Output, State, no_update
-from dash.exceptions import PreventUpdate
-import dash_bootstrap_components as dbc
 from dash_extensions import WebSocket
-import dash_ag_grid as dag
-import json
+import dash_bootstrap_components as dbc
+import requests
 import logging
-from logfmter import Logfmter
 import traceback
+import json
 from pydantic import BaseSettings
 
-# Configure structured logging
-handler = logging.StreamHandler()
-handler.setFormatter(Logfmter())
-logging.basicConfig(handlers=[handler])
-L = logging.getLogger(__name__)
-L.setLevel(logging.INFO)
+# Register with dynamic routing!
+dash.register_page(__name__, path_template='/deployment/<deployment_id>/ops', title="Group Ops", nav_bar=False)
 
-# Register the page with a dynamic path variable matching home.py's routing
-dash.register_page(
-    __name__,
-    path_template="/deployment/<deployment_id>/ops",
-    title="Platform Operations",
-    nav_bar=False # Hidden from sidebar since it requires a deployment_id context
-)
+L = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
-    external_hostname: str = "localhost" # Fallback, recommend setting via env vars
-    ws_use_tls: bool = False
-    ws_port: int = 8080
-    wss_port: int = 443
-
+    daq_id: str = "mspbase01"
+    external_hostname: str = "mspbase01.pmel.noaa.gov"
+    ws_port: str = "8080"
+    ws_use_tls: str = "false"
     class Config:
         env_prefix = "ENVOPS_"
         case_sensitive = False
 
 config = Settings()
+datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
+ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
+ws_url = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops/ws/system-ops/main"
 
-# Standardized WebSocket URL construction
-ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
-if config.ws_use_tls:
-    ws_url_base = f"wss://{config.external_hostname}:{config.wss_port}"
+def get_registry_data(endpoint: str):
+    url = f"http://{datastore_url}/{endpoint}"
+    try:
+        response = requests.get(url, timeout=5.0)
+        if response.status_code == 200:
+            return response.json().get("results", [])
+    except Exception as e:
+        L.error(f"Fetch failed for {endpoint}: {e}")
+    return []
 
 # -----------------------------------------------------------------------------
-# Layout Definition
+# Layout Generator (Runs once per page load)
 # -----------------------------------------------------------------------------
 def layout(deployment_id=None, **kwargs):
-    """Dynamic layout that accepts the deployment_id from the URL."""
+    if not deployment_id:
+        return dbc.Alert("No Deployment ID provided.", color="danger", className="m-4")
+
+    # 1. Fetch all deployments to build relationships
+    all_deployments = get_registry_data("deployment-definition/registry/get/")
     
-    return html.Div([
-        # 1. Header Section
-        dbc.Row([
-            dbc.Col([
-                html.H2(f"Operations: {deployment_id}", className="fw-bold mb-1"),
-                html.P("Real-time telemetry, mode management, and state evaluation.", className="text-muted")
-            ]),
-            dbc.Col([
-                dbc.Button(
-                    [html.I(className="bi bi-arrow-left me-2"), "Back to Fleet"], 
-                    color="outline-secondary", 
-                    href="/envds/envops/",
-                    className="float-end shadow-sm"
-                )
-            ], width="auto", align="center")
-        ], className="mb-4"),
+    # 2. Find the requested host deployment
+    host_dep = next((d for d in all_deployments if d.get("metadata", {}).get("name") == deployment_id), None)
+    if not host_dep:
+        return dbc.Alert(f"Deployment {deployment_id} not found.", color="warning", className="m-4")
+        
+    host_data = host_dep.get("data", {})
+    host_plat_ref = host_data.get("platform_ref", "")
+    host_name = host_data.get("display_name", host_plat_ref)
+    
+    # 3. Gather all child payloads attached to this host
+    child_deps = [d for d in all_deployments if d.get("data", {}).get("host_platform_ref") == host_plat_ref and d.get("metadata", {}).get("name") != deployment_id]
+    
+    # 4. Create a list of all platform IDs in this group (to filter WebSocket traffic)
+    group_platforms = [host_plat_ref.split(".")[-1]] + [c.get("data", {}).get("platform_ref", "").split(".")[-1] for c in child_deps]
 
-        # 2. Overall System Health / Mode
-        dbc.Card([
-            dbc.CardBody(id="platform-ops-health-display", children=[
-                dbc.Alert("Awaiting System Mode Status...", color="secondary", className="mb-0 text-center fw-bold shadow-sm")
-            ])
-        ], className="shadow-sm mb-4 border-0 bg-transparent"),
-
-        # 3. Main Modes and States Grid
-        dbc.Row([
-            # System Modes
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader("System Modes", className="fw-bold bg-dark text-white"),
-                    dbc.CardBody(id="platform-ops-system-modes", children=[
-                        html.P("Waiting for telemetry...", className="text-muted small fst-italic mb-0")
-                    ], className="p-0")
-                ], className="shadow-sm h-100 border-0")
-            ], width=12, md=4, className="mb-4"),
-            
-            # Sampling Modes
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader("Sampling Modes", className="fw-bold bg-primary text-white"),
-                    dbc.CardBody(id="platform-ops-sampling-modes", children=[
-                        html.P("Waiting for telemetry...", className="text-muted small fst-italic mb-0")
-                    ], className="p-0")
-                ], className="shadow-sm h-100 border-0")
-            ], width=12, md=4, className="mb-4"),
-
-            # Sampling States
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader("Sampling States", className="fw-bold bg-info text-white"),
-                    dbc.CardBody(id="platform-ops-sampling-states", children=[
-                        html.P("Waiting for telemetry...", className="text-muted small fst-italic mb-0")
-                    ], className="p-0")
-                ], className="shadow-sm h-100 border-0")
-            ], width=12, md=4, className="mb-4"),
+    # --- UI: Header ---
+    header = dbc.Row([
+        dbc.Col([
+            html.H2([html.I(className="bi bi-hdd-network me-2"), host_name], className="fw-bold mb-0"),
+            html.P(f"ID: {deployment_id} | Attached Payloads: {len(child_deps)}", className="text-muted mb-0")
         ]),
+        dbc.Col([
+            dbc.Badge("Group Health: Pending", id="ops-health-badge", color="secondary", className="fs-5 shadow-sm rounded-pill px-3 py-2")
+        ], width="auto", className="text-end align-self-center")
+    ], className="mb-4 align-items-center border-bottom pb-3")
 
-        # 4. Comprehensive Conditions Table
-        dbc.Card([
-            dbc.CardHeader("Active Conditions Tracker", className="fw-bold bg-secondary text-white"),
-            dbc.CardBody([
-                dag.AgGrid(
-                    id="platform-ops-conditions-grid",
-                    columnDefs=[
-                        {"field": "name", "headerName": "Condition Node", "flex": 2},
-                        {"field": "status", "headerName": "Evaluation Status", "flex": 1, "cellRenderer": "markdown"},
-                        {"field": "time", "headerName": "Last Updated", "flex": 1},
-                    ],
-                    rowData=[],
-                    defaultColDef={"sortable": True, "filter": True},
-                    columnSizeOptions="autoSize",
-                    dashGridOptions={"domLayout": "autoHeight", "rowSelection": "single", "animateRows": True},
-                    className="ag-theme-alpine"
-                )
-            ], className="p-2")
-        ], className="shadow-sm border-0"),
+    # --- UI: Operations Ribbon ---
+    ops_ribbon = dbc.Card(dbc.CardBody(dbc.Row([
+        dbc.Col([
+            html.H6("System Mode", className="text-muted mb-1 small text-uppercase"),
+            html.H5("STANDBY", id="ops-sys-mode", className="fw-bold mb-0")
+        ], width=3, className="border-end"),
+        dbc.Col([
+            html.H6("Sampling State", className="text-muted mb-1 small text-uppercase"),
+            html.H5("IDLE", id="ops-samp-state", className="fw-bold mb-0")
+        ], width=3, className="border-end"),
+        dbc.Col([
+            html.H6("Active Alarms", className="text-muted mb-1 small text-uppercase"),
+            html.H5("0", id="ops-alarm-count", className="text-success fw-bold mb-0")
+        ], width=3),
+        dbc.Col([
+            dbc.Button([html.I(className="bi bi-sliders me-2"), "Command & Control"], color="dark", className="w-100 shadow-sm fw-bold h-100")
+        ], width=3)
+    ])), className="shadow-sm border-0 mb-4 bg-light")
 
-        # 5. Behind-the-Scenes Components
-        WebSocket(
-            id="ws-platform-ops",
-            url=f"{ws_url_base}/envds/envops/ws/system-ops/main" 
-        ),
+    # --- UI: Telemetry Grid ---
+    # We will expand these categories later using your varmaps.json
+    telemetry_grid = dbc.Row([
+        dbc.Col(dbc.Card([
+            dbc.CardHeader("Navigation & Attitude", className="fw-bold bg-white"),
+            dbc.CardBody(html.Pre("Awaiting Nav Data...", id="ops-nav-data", className="small text-muted mb-0"))
+        ], className="shadow-sm border-0 h-100"), width=4),
         
-        # Centralized State Store mapped from MQTT via WebSocket
-        dcc.Store(id="platform-ops-state-store", data={
-            "SystemMode": {},
-            "SamplingMode": {},
-            "SamplingState": {},
-            "SamplingCondition": {}
-        })
+        dbc.Col(dbc.Card([
+            dbc.CardHeader("Meteorology", className="fw-bold bg-white"),
+            dbc.CardBody(html.Pre("Awaiting Met Data...", id="ops-met-data", className="small text-muted mb-0"))
+        ], className="shadow-sm border-0 h-100"), width=4),
         
-    ], className="container-fluid mt-2")
+        dbc.Col(dbc.Card([
+            dbc.CardHeader("Air Quality & Aerosols", className="fw-bold bg-white"),
+            dbc.CardBody(html.Pre("Awaiting AQ Data...", id="ops-aq-data", className="small text-muted mb-0"))
+        ], className="shadow-sm border-0 h-100"), width=4),
+    ], className="mb-4 align-items-stretch")
+    
+    # --- UI: Sub-system Drill Downs ---
+    child_links = [
+        dbc.ListGroupItem([
+            html.Div([
+                html.Span(c.get("data", {}).get("display_name", "Unknown Payload"), className="fw-bold"),
+                dbc.Button("Device Details", size="sm", color="outline-primary", href=f"/envds/envops/platform/{c.get('data', {}).get('platform_ref')}", className="float-end")
+            ], className="w-100")
+        ]) for c in child_deps
+    ]
+    sub_systems = dbc.Card([
+        dbc.CardHeader("Attached Sub-Systems (Level 3 Pathways)", className="fw-bold bg-dark text-white"),
+        dbc.ListGroup(child_links, flush=True) if child_links else dbc.CardBody(html.P("No attached payloads.", className="text-muted mb-0"))
+    ], className="shadow-sm border-0")
+
+    return html.Div([
+        # Hidden stores for real-time state management
+        dcc.Store(id="ops-group-platforms", data=group_platforms),
+        dcc.Store(id="ops-telemetry-cache", data={}),
+        WebSocket(id="ws-ops-telemetry", url=ws_url),
+        
+        header, ops_ribbon, telemetry_grid, sub_systems
+    ], className="container-fluid mt-3")
+
 
 # -----------------------------------------------------------------------------
 # Callbacks
 # -----------------------------------------------------------------------------
 @callback(
-    Output("platform-ops-state-store", "data"),
-    Input("ws-platform-ops", "message"),
-    State("platform-ops-state-store", "data")
+    Output("ops-telemetry-cache", "data"),
+    Input("ws-ops-telemetry", "message"),
+    State("ops-group-platforms", "data"),
+    State("ops-telemetry-cache", "data")
 )
-def update_state_store(msg, current_state):
-    """Processes incoming WebSocket telemetry and maps it to the component store."""
-    if not msg or "data" not in msg:
-        raise PreventUpdate
+def update_group_cache(msg, group_platforms, current_cache):
+    """Listens to WebSocket, drops irrelevant data, caches group data."""
+    if not msg or "data" not in msg or not group_platforms: 
+        return no_update
 
     try:
-        # 1. Unwrap the WebSocket envelope we built in main.py
         ws_payload = json.loads(msg["data"])
-        
-        # 2. Extract the CloudEvent from the WebSocket payload
         cloud_event = ws_payload.get("data", {})
+        payload = cloud_event.get("data", {})
         
-        # 3. Extract your actual business payload from inside the CloudEvent!
-        status_data = cloud_event.get("data", {})
-        
-        # 4. NOW we can safely grab your custom id and state dictionaries
-        id_block = status_data.get("id", {})
-        state_block = status_data.get("state", {})
-        
-        # Use isinstance to be completely bulletproof against malformed data
-        if not isinstance(id_block, dict):
+        app_uid = payload.get("id", {}).get("app_uid", "")
+        if not app_uid:
+            parts = ws_payload.get("topic", "").split("/")
+            if len(parts) > 3: app_uid = parts[3]
+            
+        # FILTER: Only process telemetry if it belongs to this host or its children!
+        if app_uid not in group_platforms:
             return no_update
             
-        app_group = id_block.get("app_group", "")
-        name = id_block.get("app_uid")
+        # Update our specific group cache
+        if app_uid not in current_cache:
+            current_cache[app_uid] = {"variables": {}, "state": {}}
+            
+        current_cache[app_uid]["variables"].update(payload.get("variables", {}))
+        current_cache[app_uid]["state"].update(payload.get("state", {}))
         
-        # Map the ontology back to the UI's store keys
-        kind_map = {
-            "condition": "SamplingCondition",
-            "state": "SamplingState",
-            "mode": "SamplingMode",
-            "system": "SystemMode"
-        }
-        kind = kind_map.get(app_group)
-        
-        if kind and name and kind in current_state:
-            state_key = {
-                "condition": "condition_met",
-                "state": "state_active",
-                "mode": "mode_active",
-                "system": "system_active"
-            }.get(app_group, "")
-            
-            # Extract boolean actual status (defaults to false)
-            actual_str = state_block.get(state_key, {}).get("actual", "false")
-            is_active = (str(actual_str).lower() == "true")
-            
-            current_state[kind][name] = {
-                "status": is_active,
-                "time": status_data.get("timestamp", "N/A")
-            }
-            return current_state
-            
+        return current_cache
     except Exception as e:
-        L.error(f"Store update error: {e}")
-        L.error(traceback.format_exc())
-        
-    return no_update
+        L.debug(f"Ops parse error: {e}")
+        return no_update
 
 @callback(
-    Output("platform-ops-health-display", "children"),
-    Output("platform-ops-system-modes", "children"),
-    Output("platform-ops-sampling-modes", "children"),
-    Output("platform-ops-sampling-states", "children"),
-    Output("platform-ops-conditions-grid", "rowData"),
-    Input("platform-ops-state-store", "data")
+    Output("ops-health-badge", "children"),
+    Output("ops-health-badge", "color"),
+    Output("ops-sys-mode", "children"),
+    Output("ops-sys-mode", "className"),
+    Output("ops-alarm-count", "children"),
+    Input("ops-telemetry-cache", "data")
 )
-def render_ui(state):
-    """Renders the UI components based on the centralized state store."""
+def update_ribbon_ui(cache):
+    """Reads the group cache and updates the top operations ribbon."""
+    if not cache: return no_update
     
-    # 1. System Health / Top Banner
-    sys_modes = state.get("SystemMode", {})
-    active_sys_modes = [name for name, d in sys_modes.items() if d["status"]]
+    # 1. Evaluate alarms across the whole group
+    total_alarms = 0
+    sys_mode = "STANDBY"
+    sys_mode_color = "fw-bold text-muted mb-0"
     
-    if active_sys_modes:
-        sys_status = active_sys_modes[0]
-        health_ui = dbc.Alert(
-            [html.I(className="bi bi-activity me-2"), f"Active System Mode: {sys_status.upper()}"], 
-            color="success", className="mb-0 text-center fw-bold fs-5 shadow-sm"
-        )
+    for uid, data in cache.items():
+        state = data.get("state", {})
+        if "alarm" in str(state).lower() or "error" in str(state).lower():
+            total_alarms += 1
+            
+        # Just an example of pulling system mode
+        if "system_active" in state:
+            sys_mode = "ACTIVE" if str(state["system_active"].get("actual", "")).lower() == "true" else "STANDBY"
+            sys_mode_color = "fw-bold text-success mb-0" if sys_mode == "ACTIVE" else "fw-bold text-muted mb-0"
+            
+    # Roll up Health
+    if total_alarms > 0:
+        health_badge = f"{total_alarms} Critical Alarms"
+        health_color = "danger"
     else:
-        health_ui = dbc.Alert("No Active System Mode detected.", color="warning", className="mb-0 text-center fw-bold fs-5 shadow-sm")
+        health_badge = "Group Nominal"
+        health_color = "success"
 
-    # 2. System Modes List
-    sys_list = [
-        dbc.ListGroupItem([
-            html.Span(name, className="fw-bold"),
-            dbc.Badge("ACTIVE", color="success", className="float-end") if data["status"] 
-            else dbc.Badge("STANDBY", color="light", text_color="dark", className="float-end")
-        ], className="border-0 border-bottom") for name, data in state.get("SystemMode", {}).items()
-    ]
-    sys_ui = dbc.ListGroup(sys_list, flush=True) if sys_list else html.P("No System Modes detected.", className="text-muted p-3 mb-0")
-
-    # 3. Sampling Modes List
-    samp_modes = state.get("SamplingMode", {})
-    samp_mode_list = [
-        dbc.ListGroupItem([
-            html.Span(name, className="fw-bold"),
-            dbc.Badge("ENGAGED", color="primary", className="float-end") if data["status"] 
-            else dbc.Badge("INACTIVE", color="light", text_color="dark", className="float-end")
-        ], className="border-0 border-bottom") for name, data in samp_modes.items()
-    ]
-    samp_modes_ui = dbc.ListGroup(samp_mode_list, flush=True) if samp_mode_list else html.P("No Sampling Modes detected.", className="text-muted p-3 mb-0")
-
-    # 4. Sampling States List
-    samp_states = state.get("SamplingState", {})
-    samp_state_list = [
-        dbc.ListGroupItem([
-            html.Span(name, className="fw-bold text-dark small"),
-            html.I(className="bi bi-check-circle-fill text-success float-end fs-5") if data["status"] 
-            else html.I(className="bi bi-dash-circle text-muted float-end fs-5")
-        ], className="border-0 border-bottom d-flex justify-content-between align-items-center") for name, data in samp_states.items()
-    ]
-    samp_states_ui = dbc.ListGroup(samp_state_list, flush=True) if samp_state_list else html.P("No Sampling States detected.", className="text-muted p-3 mb-0")
-
-    # 5. Conditions AG Grid
-    samp_conditions = state.get("SamplingCondition", {})
-    grid_data = [
-        {
-            "name": k, 
-            "status": "🟢 **MET**" if v["status"] else "🔴 **UNMET**", 
-            "time": v["time"]
-        }
-        for k, v in samp_conditions.items()
-    ]
-
-    return (
-        health_ui,
-        sys_ui,
-        samp_modes_ui,
-        samp_states_ui,
-        grid_data
-    )
+    return health_badge, health_color, sys_mode, sys_mode_color, str(total_alarms)
