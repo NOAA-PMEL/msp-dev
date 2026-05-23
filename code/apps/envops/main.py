@@ -1,3 +1,4 @@
+import os
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -35,11 +36,30 @@ from envds.daq.event import DAQEvent
 from envds.message.message import Message
 from envds.core import envdsBase, envdsAppID, envdsStatus
 
+# handler = logging.StreamHandler()
+# handler.setFormatter(Logfmter())
+# logging.basicConfig(handlers=[handler])
+# L = logging.getLogger(__name__)
+# L.setLevel(logging.DEBUG)
+
+# 1. Read environmental visibility configurations
+LOG_LEVEL = os.getenv("ENVOPS_LOG_LEVEL", "INFO").upper()
+
+# 2. Bind the logfmt handler to standard out
 handler = logging.StreamHandler()
-handler.setFormatter(Logfmter())
-logging.basicConfig(handlers=[handler])
+handler.setFormatter(Logfmter(
+    keys=["at", "logger", "msg"], 
+    mapping={"at": "levelname", "logger": "name"}
+))
+
+# Add force=True so nothing else can override our logfmtr!
+logging.basicConfig(
+    level=LOG_LEVEL,
+    handlers=[handler],
+    force=True 
+)
 L = logging.getLogger(__name__)
-L.setLevel(logging.DEBUG)
+L.setLevel(LOG_LEVEL)
 
 class Settings(BaseSettings):
     host: str = "0.0.0.0" 
