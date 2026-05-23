@@ -56,12 +56,13 @@ def determine_deployment_status(dep_data):
 
 def get_status_badge(status):
     status = str(status).lower()
-    if status == "active": return dbc.Badge("Active", color="success", className="ms-2 shadow-sm")
+    # "Active" is now primary (blue) to avoid conflicting with the green health badge
+    if status == "active": return dbc.Badge("Active", color="primary", className="ms-2 shadow-sm")
     elif status == "planned": return dbc.Badge("Planned", color="info", className="ms-2 shadow-sm")
     elif status == "completed": return dbc.Badge("Completed", color="secondary", className="ms-2 shadow-sm")
     return dbc.Badge(status.capitalize(), color="warning", text_color="dark", className="ms-2 shadow-sm")
 
-def create_deployment_card(deployment, platform_info, host_info, child_cards=None, telemetry_cache=None):
+def create_deployment_card(deployment, platform_info, host_info, child_cards=None, telemetry_cache=None, is_child=False):
     if telemetry_cache is None: telemetry_cache = {}
     dep_meta = deployment.get("metadata", {})
     dep_data = deployment.get("data", {})
@@ -80,11 +81,35 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
     plat_ref = dep_data.get("platform_ref", "")
     plat_id = plat_ref.split(".")[-1] if "." in plat_ref else plat_ref
     live_data = telemetry_cache.get(plat_id, {})
-    live_indicator = html.Span([html.I(className="bi bi-activity text-success me-1"), "Live"], className="small text-muted") if live_data.get("last_seen") else html.Span("Awaiting Data...", className="small text-muted")
+    
+    has_telemetry = bool(live_data.get("last_seen"))
+    issues = live_data.get("issues", 0)
+    
+    # 1. Evaluate specific health status based on telemetry cache
+    if not has_telemetry:
+        health_badge = dbc.Badge("Unknown", color="secondary", className="ms-2 shadow-sm")
+        live_indicator = html.Span("Awaiting Data...", className="small text-muted")
+    elif issues > 0:
+        health_badge = dbc.Badge(f"{issues} Alarms", color="danger", className="ms-2 shadow-sm")
+        live_indicator = html.Span([html.I(className="bi bi-exclamation-triangle-fill text-danger me-1"), "Issues Detected"], className="small text-danger fw-bold")
+    else:
+        health_badge = dbc.Badge("Healthy", color="success", className="ms-2 shadow-sm")
+        live_indicator = html.Span([html.I(className="bi bi-activity text-success me-1"), "Live & Nominal"], className="small text-success")
+    
+    # 2. Assign buttons based on hierarchical level (Host vs Child)
+    if not is_child:
+        buttons_row = dbc.Row([
+            dbc.Col(dbc.Button("Group Ops Dashboard", color="primary", size="sm", className="w-100 shadow-sm fw-bold", href=f"/envds/envops/deployment/{dep_id}/ops"), width=6, className="pe-1"),
+            dbc.Col(dbc.Button("Platform Details", color="outline-secondary", size="sm", className="w-100 shadow-sm", href=f"/envds/envops/platform/{plat_ref}"), width=6, className="ps-1")
+        ])
+    else:
+        buttons_row = dbc.Row([
+            dbc.Col(dbc.Button("Platform Details", color="outline-secondary", size="sm", className="w-100 shadow-sm", href=f"/envds/envops/platform/{plat_ref}"), width=12)
+        ])
     
     card_body_content = [
         html.H6(f"Hosted on: {host_name}", className="card-subtitle text-muted mb-3 text-truncate"),
-        html.P(dep_data.get("description", "No description available."), className="small text-secondary mb-4"),
+        html.P(dep_data.get("description", "No description available."), className="small text-secondary mb-3"),
         
         dbc.Row([
             dbc.Col(html.B("Start Date:", className="small"), width=4),
@@ -94,12 +119,9 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
         dbc.Row([
             dbc.Col(html.B("Telemetry:", className="small"), width=4),
             dbc.Col(live_indicator)
-        ], className="mb-3"),
+        ], className="mb-4"),
         
-        dbc.Row([
-            dbc.Col(dbc.Button("Ops Dashboard", color="primary", size="sm", className="w-100 shadow-sm", href=f"/envds/envops/deployment/{dep_id}/ops"), width=6, className="pe-1"),
-            dbc.Col(dbc.Button("Platform Details", color="outline-secondary", size="sm", className="w-100 shadow-sm", href=f"/envds/envops/platform/{plat_ref}"), width=6, className="ps-1")
-        ])
+        buttons_row
     ]
 
     if child_cards:
@@ -109,8 +131,9 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
 
     return dbc.Card([
         dbc.CardHeader([
-            html.H5(platform_name, className="mb-0 d-inline-block text-truncate fw-bold", style={"maxWidth": "75%"}),
-            get_status_badge(status)
+            html.H5(platform_name, className="mb-0 d-inline-block text-truncate fw-bold", style={"maxWidth": "65%"}),
+            # Inject both badges into the header
+            html.Div([get_status_badge(status), health_badge], className="text-end")
         ], className="d-flex justify-content-between align-items-center bg-dark text-white"),
         dbc.CardBody(card_body_content)
     ], className="shadow-sm mb-3 border-0")
@@ -120,7 +143,6 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
 # -----------------------------------------------------------------------------
 layout = html.Div([
     dcc.Store(id="home-telemetry-cache", data={}),
-    # The WebSocket that feeds the telemetry cache
     WebSocket(id="ws-home-telemetry", url=ws_url),
     
     dbc.Row([
@@ -131,8 +153,14 @@ layout = html.Div([
     ], className="mb-4"),
     
     html.Div(id="home-metrics-container"),
-    dbc.Card(dbc.CardBody(dcc.Loading(html.Div(id="home-map-container"))), className="shadow-sm border-0 mb-4"),
-    html.Div(id="home-projects-container"),
+    
+    # 1. Target the Map Figure directly (no dcc.Loading, prevents flashing)
+    dbc.Card(dbc.CardBody(
+        dcc.Graph(id="home-map", config={"displayModeBar": False}, style={"height": "350px"})
+    ), className="shadow-sm border-0 mb-4"),
+    
+    # 2. Define the Accordion statically so Dash can track its state
+    dbc.Accordion(id="home-projects-accordion", always_open=True, flush=True),
     
     dcc.Interval(id="home-refresh-interval", interval=60000, n_intervals=0)
 ], className="mt-2 container-fluid")
@@ -155,12 +183,9 @@ def ingest_live_telemetry(msg, current_cache):
         cloud_event = ws_payload.get("data", {})
         payload = cloud_event.get("data", {})
         
-        # Determine which platform this data belongs to
         id_block = payload.get("id", {})
-        # Assuming app_uid contains the platform identifier like 'payload_03' or 'raz1'
         app_uid = id_block.get("app_uid")
         
-        # If we couldn't find an ID, try to extract it from the topic
         if not app_uid:
             topic = ws_payload.get("topic", "")
             parts = topic.split("/")
@@ -173,20 +198,16 @@ def ingest_live_telemetry(msg, current_cache):
             
         current_cache[app_uid]["last_seen"] = datetime.now().isoformat()
         
-        # 1. Update Map Coordinates (if present in the variableset update)
         variables = payload.get("variables", {})
         if "latitude" in variables:
             current_cache[app_uid]["lat"] = variables["latitude"].get("data")
         if "longitude" in variables:
             current_cache[app_uid]["lon"] = variables["longitude"].get("data")
             
-        # 2. Update Health/Issues (Look for alarms or false actual states)
         state_block = payload.get("state", {})
-        # Example logic: if any actual state reports false or an alarm flag triggers
         if "alarm" in str(payload).lower() or "error" in str(payload).lower():
             current_cache[app_uid]["issues"] = 1
         else:
-            # We will reset issues to 0 for this simple mockup if nominal
             current_cache[app_uid]["issues"] = 0
             
         return current_cache
@@ -196,19 +217,21 @@ def ingest_live_telemetry(msg, current_cache):
 
 @callback(
     Output("home-metrics-container", "children"),
-    Output("home-map-container", "children"),
-    Output("home-projects-container", "children"),
+    Output("home-map", "figure"),
+    Output("home-projects-accordion", "children"),
+    Output("home-projects-accordion", "active_item"),
     Input("home-refresh-interval", "n_intervals"),
-    Input("home-telemetry-cache", "data")
+    Input("home-telemetry-cache", "data"),
+    State("home-projects-accordion", "active_item")
 )
-def update_home_dashboard(n, telemetry_cache):
+def update_home_dashboard(n, telemetry_cache, current_active_items):
     try:
         deployments = get_registry_data("deployment-definition/registry/get/")
         projects = get_registry_data("project-definition/registry/get/")
         platforms = get_registry_data("platform-definition/registry/get/")
 
         if not deployments:
-            return dbc.Alert("No data found.", color="warning"), html.Div(), html.Div()
+            return dbc.Alert("No data found.", color="warning"), go.Figure(), [], current_active_items
 
         project_map = {p.get("metadata", {}).get("name"): p for p in projects}
         platform_map = {p.get("metadata", {}).get("name"): p for p in platforms}
@@ -219,7 +242,7 @@ def update_home_dashboard(n, telemetry_cache):
         
         metrics_row = dbc.Row([
             dbc.Col(dbc.Card(dbc.CardBody([html.H5("Deployments", className="text-muted"), html.H2(str(len(deployments)), className="fw-bold")]), className="shadow-sm border-0 text-center"), width=4),
-            dbc.Col(dbc.Card(dbc.CardBody([html.H5("Active", className="text-muted"), html.H2(str(active_deps), className="text-success fw-bold")]), className="shadow-sm border-0 text-center"), width=4),
+            dbc.Col(dbc.Card(dbc.CardBody([html.H5("Active", className="text-muted"), html.H2(str(active_deps), className="text-primary fw-bold")]), className="shadow-sm border-0 text-center"), width=4),
             dbc.Col(dbc.Card(dbc.CardBody([html.H5("Live Issues", className="text-muted"), html.H2(str(total_issues), className="text-danger fw-bold")]), className="shadow-sm border-0 text-center"), width=4),
         ], className="mb-4")
 
@@ -232,30 +255,55 @@ def update_home_dashboard(n, telemetry_cache):
             "default": {"lat": 47.6, "lon": -122.3}
         }
 
+        # First, build relationships to aggregate map markers by Host
+        platform_to_dep = {d.get("data", {}).get("platform_ref"): d for d in deployments}
+        host_to_children = {}
+        root_deployments = []
         projects_grouped = {}
-        for dep in deployments:
-            dep_data = dep.get("data", {})
-            proj_ref = dep_data.get("project_ref", "unassigned")
-            projects_grouped.setdefault(proj_ref, []).append(dep)
+        
+        for d in deployments:
+            # Group by project for the accordions later
+            proj_ref = d.get("data", {}).get("project_ref", "unassigned")
+            projects_grouped.setdefault(proj_ref, []).append(d)
             
-            # Map Logic
-            dep_name = dep_data.get("display_name", dep.get("metadata", {}).get("name", "Unknown"))
-            plat_ref = dep_data.get("platform_ref", "")
-            plat_id = plat_ref.split(".")[-1] if "." in plat_ref else plat_ref
+            # Group by host for the map
+            plat_ref = d.get("data", {}).get("platform_ref")
+            host_ref = d.get("data", {}).get("host_platform_ref")
             
-            live_lat = telemetry_cache.get(plat_id, {}).get("lat")
-            live_lon = telemetry_cache.get(plat_id, {}).get("lon")
+            if host_ref in platform_to_dep and host_ref != plat_ref:
+                host_to_children.setdefault(host_ref, []).append(d)
+            else:
+                root_deployments.append(d)
+
+        # Build Map Markers using ONLY Root (Host) Deployments
+        for root in root_deployments:
+            root_data = root.get("data", {})
+            root_name = root_data.get("display_name", root.get("metadata", {}).get("name", "Unknown"))
+            root_plat_ref = root_data.get("platform_ref", "")
+            
+            # Look for telemetry in the host OR any of its children
+            platforms_to_check = [root_plat_ref] + [c.get("data", {}).get("platform_ref") for c in host_to_children.get(root_plat_ref, [])]
+            
+            live_lat, live_lon = None, None
+            for p_ref in platforms_to_check:
+                p_id = p_ref.split(".")[-1] if "." in p_ref else p_ref
+                lat = telemetry_cache.get(p_id, {}).get("lat")
+                lon = telemetry_cache.get(p_id, {}).get("lon")
+                if lat is not None and lon is not None:
+                    live_lat, live_lon = lat, lon
+                    break # Found a GPS lock in this deployment group!
             
             if live_lat is not None and live_lon is not None:
                 live_lats.append(live_lat)
                 live_lons.append(live_lon)
-                live_texts.append(f"<b>{dep_name}</b><br>Live: {live_lat}, {live_lon}")
+                # The text now guarantees it is the Host's name!
+                live_texts.append(f"<b>{root_name}</b><br>Live: {live_lat}, {live_lon}")
             else:
-                cov_str = dep_data.get("planned_spatial_coverage", "default")
+                cov_str = root_data.get("planned_spatial_coverage", "default")
                 est = coverage_map.get(cov_str, coverage_map["default"])
                 est_lats.append(est["lat"])
                 est_lons.append(est["lon"])
-                est_texts.append(f"<b>{dep_name}</b><br><i>Est: {cov_str}</i>")
+                est_texts.append(f"<b>{root_name}</b><br><i>Est: {cov_str}</i>")
 
         fig = go.Figure()
         if live_lats:
@@ -263,12 +311,17 @@ def update_home_dashboard(n, telemetry_cache):
         if est_lats:
             fig.add_trace(go.Scattermapbox(lat=est_lats, lon=est_lons, mode='markers', marker=dict(size=20, color='gray', opacity=0.5), text=est_texts, hoverinfo="text", name="Estimated Region"))
 
-        fig.update_layout(mapbox_style="carto-positron", margin={"r":0,"t":0,"l":0,"b":0}, height=350, showlegend=True, legend=dict(yanchor="top", y=0.95, xanchor="left", x=0.05, bgcolor="rgba(255,255,255,0.8)"))
+        fig.update_layout(
+            mapbox_style="carto-positron", 
+            margin={"r":0,"t":0,"l":0,"b":0}, 
+            showlegend=True, 
+            legend=dict(yanchor="top", y=0.95, xanchor="left", x=0.05, bgcolor="rgba(255,255,255,0.8)"),
+            uirevision="constant" # Prevents map zoom/pan resetting when data updates
+        )
         if live_lats or est_lats:
             all_lats, all_lons = live_lats + est_lats, live_lons + est_lons
+            # Only automatically center if there wasn't a previous pan/zoom state
             fig.update_layout(mapbox_center={"lat": sum(all_lats)/len(all_lats), "lon": sum(all_lons)/len(all_lons)})
-
-        map_ui = dcc.Graph(figure=fig, config={"displayModeBar": False})
 
         # --- 3. Projects & Health Rollups ---
         project_accordions = []
@@ -289,13 +342,12 @@ def update_home_dashboard(n, telemetry_cache):
                     plat_ref = d.get("data", {}).get("platform_ref")
                     children = child_deployments.get(plat_ref, [])
                     child_ui = build_cards(children, is_child=True) if children else None
-                    card = create_deployment_card(d, platform_map.get(plat_ref, {}), platform_map.get(d.get("data", {}).get("host_platform_ref"), {}), child_ui, telemetry_cache)
+                    card = create_deployment_card(d, platform_map.get(plat_ref, {}), platform_map.get(d.get("data", {}).get("host_platform_ref"), {}), child_ui, telemetry_cache, is_child=is_child)
                     cards.append(html.Div(card, className="mb-2") if is_child else dbc.Col(card, width=12, lg=6, xl=4, className="mb-4"))
                 return cards
 
             root_cards_ui = dbc.Row(build_cards(root_deployments, is_child=False))
             
-            # Check telemetry cache for issues within this project's deployments
             proj_issues = sum(telemetry_cache.get(d.get("data", {}).get("platform_ref", "").split(".")[-1], {}).get("issues", 0) for d in deps)
             
             if proj_issues > 0:
@@ -314,10 +366,11 @@ def update_home_dashboard(n, telemetry_cache):
 
             project_accordions.append(dbc.AccordionItem(root_cards_ui, title=custom_title, item_id=proj_ref, class_name=bg_class))
 
-        projects_ui = dbc.Accordion(project_accordions, start_collapsed=False, always_open=True, flush=True)
+        if current_active_items is None:
+            current_active_items = []
 
-        return metrics_row, map_ui, projects_ui
+        return metrics_row, fig, project_accordions, current_active_items
 
     except Exception as e:
         L.error(f"Home dashboard crash: {traceback.format_exc()}")
-        return dbc.Alert(f"Error: {e}", color="danger"), html.Div(), html.Div()
+        return dbc.Alert(f"Error: {e}", color="danger"), go.Figure(), [], current_active_items
