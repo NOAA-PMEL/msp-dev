@@ -6,9 +6,10 @@ import requests
 import logging
 import traceback
 import json
+from datetime import datetime
 from pydantic import BaseSettings
 
-# Register with dynamic routing!
+# Register with dynamic routing so the URL passes the deployment_id directly!
 dash.register_page(__name__, path_template='/deployment/<deployment_id>/ops', title="Group Ops", nav_bar=False)
 
 L = logging.getLogger(__name__)
@@ -93,21 +94,20 @@ def layout(deployment_id=None, **kwargs):
     ])), className="shadow-sm border-0 mb-4 bg-light")
 
     # --- UI: Telemetry Grid ---
-    # We will expand these categories later using your varmaps.json
     telemetry_grid = dbc.Row([
         dbc.Col(dbc.Card([
             dbc.CardHeader("Navigation & Attitude", className="fw-bold bg-white"),
-            dbc.CardBody(html.Pre("Awaiting Nav Data...", id="ops-nav-data", className="small text-muted mb-0"))
+            dbc.CardBody(html.Pre("Awaiting Nav Data...", id="ops-nav-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
         ], className="shadow-sm border-0 h-100"), width=4),
         
         dbc.Col(dbc.Card([
             dbc.CardHeader("Meteorology", className="fw-bold bg-white"),
-            dbc.CardBody(html.Pre("Awaiting Met Data...", id="ops-met-data", className="small text-muted mb-0"))
+            dbc.CardBody(html.Pre("Awaiting Met Data...", id="ops-met-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
         ], className="shadow-sm border-0 h-100"), width=4),
         
         dbc.Col(dbc.Card([
             dbc.CardHeader("Air Quality & Aerosols", className="fw-bold bg-white"),
-            dbc.CardBody(html.Pre("Awaiting AQ Data...", id="ops-aq-data", className="small text-muted mb-0"))
+            dbc.CardBody(html.Pre("Awaiting AQ Data...", id="ops-aq-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
         ], className="shadow-sm border-0 h-100"), width=4),
     ], className="mb-4 align-items-stretch")
     
@@ -144,35 +144,57 @@ def layout(deployment_id=None, **kwargs):
     State("ops-group-platforms", "data"),
     State("ops-telemetry-cache", "data")
 )
-def update_group_cache(msg, group_platforms, current_cache):
-    """Listens to WebSocket, drops irrelevant data, caches group data."""
+def ingest_live_telemetry(msg, group_platforms, current_cache):
+    """Parses repackaged MQTT messages, filtering ONLY for this specific deployment group."""
     if not msg or "data" not in msg or not group_platforms: 
         return no_update
 
     try:
+        # 1. Unwrap the websocket package from main.py
         ws_payload = json.loads(msg["data"])
-        cloud_event = ws_payload.get("data", {})
-        payload = cloud_event.get("data", {})
         
-        app_uid = payload.get("id", {}).get("app_uid", "")
+        # 2. Unwrap the CloudEvent
+        cloud_event = ws_payload.get("data", {})
+        
+        # 3. Extract the core device payload
+        payload = cloud_event.get("data", {})
+        if not payload:
+            return no_update
+        
+        # 4. Find the App UID
+        app_uid = payload.get("id", {}).get("app_uid")
         if not app_uid:
-            parts = ws_payload.get("topic", "").split("/")
-            if len(parts) > 3: app_uid = parts[3]
+            topic = ws_payload.get("topic", "")
+            parts = topic.split("/")
+            if len(parts) > 3: 
+                app_uid = parts[3] 
             
-        # FILTER: Only process telemetry if it belongs to this host or its children!
+        if not app_uid:
+            return no_update
+            
+        # 5. FILTER: Drop data if it's from a completely different boat/group!
         if app_uid not in group_platforms:
             return no_update
             
-        # Update our specific group cache
-        if app_uid not in current_cache:
-            current_cache[app_uid] = {"variables": {}, "state": {}}
+        # 6. Prevent Dictionary Mutation Traps
+        new_cache = current_cache.copy() if current_cache else {}
+        if app_uid not in new_cache:
+            new_cache[app_uid] = {"variables": {}, "state": {}}
             
-        current_cache[app_uid]["variables"].update(payload.get("variables", {}))
-        current_cache[app_uid]["state"].update(payload.get("state", {}))
+        # 7. Safely merge new variables and state into the cached dictionary
+        incoming_vars = payload.get("variables", {})
+        incoming_state = payload.get("state", {})
         
-        return current_cache
+        if incoming_vars:
+            new_cache[app_uid]["variables"].update(incoming_vars)
+        
+        if incoming_state:
+            new_cache[app_uid]["state"].update(incoming_state)
+            
+        return new_cache
+        
     except Exception as e:
-        L.debug(f"Ops parse error: {e}")
+        L.debug(f"[Ops WS Error] {e}")
         return no_update
 
 @callback(
@@ -185,9 +207,9 @@ def update_group_cache(msg, group_platforms, current_cache):
 )
 def update_ribbon_ui(cache):
     """Reads the group cache and updates the top operations ribbon."""
-    if not cache: return no_update
+    if not cache: 
+        return no_update
     
-    # 1. Evaluate alarms across the whole group
     total_alarms = 0
     sys_mode = "STANDBY"
     sys_mode_color = "fw-bold text-muted mb-0"
@@ -197,10 +219,10 @@ def update_ribbon_ui(cache):
         if "alarm" in str(state).lower() or "error" in str(state).lower():
             total_alarms += 1
             
-        # Just an example of pulling system mode
+        # Mockup system mode logic based on potential incoming state variables
         if "system_active" in state:
             sys_mode = "ACTIVE" if str(state["system_active"].get("actual", "")).lower() == "true" else "STANDBY"
-            sys_mode_color = "fw-bold text-success mb-0" if sys_mode == "ACTIVE" else "fw-bold text-muted mb-0"
+            sys_mode_color = "fw-bold text-primary mb-0" if sys_mode == "ACTIVE" else "fw-bold text-muted mb-0"
             
     # Roll up Health
     if total_alarms > 0:
@@ -211,3 +233,57 @@ def update_ribbon_ui(cache):
         health_color = "success"
 
     return health_badge, health_color, sys_mode, sys_mode_color, str(total_alarms)
+
+@callback(
+    Output("ops-nav-data", "children"),
+    Output("ops-met-data", "children"),
+    Output("ops-aq-data", "children"),
+    Input("ops-telemetry-cache", "data")
+)
+def update_telemetry_grid(cache):
+    """Parses the variables from the group cache and populates the UI cards."""
+    if not cache: 
+        return no_update
+
+    # 1. Pool all variables from all devices in the deployment group
+    all_vars = {}
+    for uid, data in cache.items():
+        all_vars.update(data.get("variables", {}))
+
+    # 2. Helper function to safely extract and format a value
+    def get_val(key, unit=""):
+        var_obj = all_vars.get(key, {})
+        val = var_obj.get("data")
+        
+        if val is None:
+            return "Waiting..."
+            
+        # Clean up floating point math for presentation
+        if isinstance(val, float):
+            val = f"{val:.2f}"
+            
+        return f"{val} {unit}".strip()
+
+    # 3. Map the exact variable keys from your varmaps.json
+    nav_text = (
+        f"Latitude:  {get_val('latitude', '°')}\n"
+        f"Longitude: {get_val('longitude', '°')}\n"
+        f"Heading:   {get_val('platform_heading', '°')}\n"
+        f"Speed:     {get_val('platform_speed', 'kts')}"
+    )
+
+    met_text = (
+        f"Temperature: {get_val('air_temperature', '°C')}\n"
+        f"Humidity:    {get_val('relative_humidity', '%')}\n"
+        f"Pressure:    {get_val('air_pressure', 'hPa')}\n"
+        f"Wind Speed:  {get_val('true_wind_speed', 'm/s')}"
+    )
+
+    aq_text = (
+        f"PM2.5: {get_val('pm2_5_concentration', 'µg/m³')}\n"
+        f"PM10:  {get_val('pm10_concentration', 'µg/m³')}\n"
+        f"Ozone: {get_val('o3_concentration', 'ppb')}\n"
+        f"NO2:   {get_val('no2_concentration', 'ppb')}"
+    )
+
+    return nav_text, met_text, aq_text

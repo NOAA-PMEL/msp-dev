@@ -175,44 +175,59 @@ layout = html.Div([
     State("home-telemetry-cache", "data")
 )
 def ingest_live_telemetry(msg, current_cache):
-    """Listens to WebSocket, parses CloudEvents, and updates the live data cache."""
-    if not msg or "data" not in msg: return no_update
+    """Parses repackaged MQTT messages from main.py for the Home overview."""
+    if not msg or "data" not in msg: 
+        return no_update
     
     try:
+        # 1. Unwrap the websocket package from main.py
         ws_payload = json.loads(msg["data"])
+        
+        # 2. Unwrap the CloudEvent
         cloud_event = ws_payload.get("data", {})
+        
+        # 3. Extract the core device payload
         payload = cloud_event.get("data", {})
+        if not payload:
+            return no_update
         
-        id_block = payload.get("id", {})
-        app_uid = id_block.get("app_uid")
-        
+        # 4. Find the App UID
+        app_uid = payload.get("id", {}).get("app_uid")
         if not app_uid:
             topic = ws_payload.get("topic", "")
             parts = topic.split("/")
-            if len(parts) > 3: app_uid = parts[3] 
+            if len(parts) > 3: 
+                app_uid = parts[3] 
             
-        if not app_uid: return no_update
+        if not app_uid:
+            return no_update
             
-        if app_uid not in current_cache:
-            current_cache[app_uid] = {"lat": None, "lon": None, "issues": 0, "last_seen": None}
+        # 5. Prevent Dictionary Mutation Traps (Force a new dictionary reference)
+        new_cache = current_cache.copy() if current_cache else {}
+        if app_uid not in new_cache:
+            new_cache[app_uid] = {"lat": None, "lon": None, "issues": 0, "last_seen": None}
             
-        current_cache[app_uid]["last_seen"] = datetime.now().isoformat()
+        new_cache[app_uid]["last_seen"] = datetime.now().isoformat()
         
+        # 6. Extract Map Coordinates
         variables = payload.get("variables", {})
         if "latitude" in variables:
-            current_cache[app_uid]["lat"] = variables["latitude"].get("data")
+            new_cache[app_uid]["lat"] = variables["latitude"].get("data")
         if "longitude" in variables:
-            current_cache[app_uid]["lon"] = variables["longitude"].get("data")
+            new_cache[app_uid]["lon"] = variables["longitude"].get("data")
             
-        state_block = payload.get("state", {})
+        # 7. Extract Health / Issues
+        # Simple flag: check if the stringified payload contains error indicators
         if "alarm" in str(payload).lower() or "error" in str(payload).lower():
-            current_cache[app_uid]["issues"] = 1
-        else:
-            current_cache[app_uid]["issues"] = 0
+            new_cache[app_uid]["issues"] = 1
+        elif "systemmode" in ws_payload.get("topic", "").lower():
+            # You can add logic here to explicitly clear the issue if a nominal state is received
+            new_cache[app_uid]["issues"] = 0
             
-        return current_cache
+        return new_cache
+        
     except Exception as e:
-        L.debug(f"Telemetry parse error (non-fatal): {e}")
+        L.debug(f"[Home WS Error] {e}")
         return no_update
 
 @callback(
