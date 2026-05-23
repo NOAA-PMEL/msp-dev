@@ -3,42 +3,63 @@ from dash import html, dcc, callback, Input, Output, State, no_update
 from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
-import requests
+import httpx
+# from cachetools import cached, TTLCache
 import logging
 import traceback
 import json
 from datetime import datetime, timezone
 from pydantic import BaseSettings
 
+from utils import get_registry_data, config
+
 dash.register_page(__name__, path='/', title="EnvOps - Active Deployments", order=0)
 
 L = logging.getLogger(__name__)
 
-class Settings(BaseSettings):
-    daq_id: str = "mspbase01"
-    external_hostname: str = "mspbase01.pmel.noaa.gov"
-    ws_port: str = "8080"
-    ws_use_tls: str = "false"
-    class Config:
-        env_prefix = "ENVOPS_"
-        case_sensitive = False
+# class Settings(BaseSettings):
+#     daq_id: str = "mspbase01"
+#     external_hostname: str = "mspbase01.pmel.noaa.gov"
+#     ws_port: str = "8080"
+#     ws_use_tls: str = "false"
+#     class Config:
+#         env_prefix = "ENVOPS_"
+#         case_sensitive = False
 
-config = Settings()
-datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
+# config = Settings()
+# datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
 ws_url = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops/ws/system-ops/main"
+# ws_url = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/ws/system-ops/main"
 
-def get_registry_data(endpoint: str):
-    url = f"http://{datastore_url}/{endpoint}"
-    try:
-        response = requests.get(url, timeout=5.0)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("results", [])
-    except Exception as e:
-        L.error(f"Failed to fetch {endpoint}: {e}")
-    return []
+# registry_cache = TTLCache(maxsize=128, ttl=300)
+
+# @cached(cache=registry_cache)
+# def get_registry_data(endpoint: str):
+#     """Safely fetches data using httpx, heavily cached to protect the datastore."""
+#     url = f"http://{datastore_url}/{endpoint}"
+#     L.debug("Cache miss! Re-fetching registry data from datastore", extra={"fetch_url": url})
+    
+#     try:
+#         with httpx.Client() as client:
+#             response = client.get(url, timeout=5.0)
+            
+#         if response.status_code == 200:
+#             data = response.json()
+#             results = data.get("results", [])
+#             L.debug("Successfully parsed registry items", extra={"endpoint": endpoint, "count": len(results)})
+#             return results
+#         else:
+#             L.error("API returned non-200 code", extra={"status": response.status_code, "body": response.text})
+            
+#     except httpx.RequestError as e:
+#         L.error("CONNECTION ERROR during fetch", extra={"fetch_url": url, "failure_detail": str(e)})
+#     except Exception as e:
+#         L.error("Unexpected fetch failure", extra={"endpoint": endpoint, "failure_detail": str(e)})
+        
+#     return []
+
 
 def determine_deployment_status(dep_data):
     now = datetime.now(timezone.utc)
