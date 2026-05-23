@@ -164,62 +164,59 @@ def layout(deployment_id=None, **kwargs):
 @callback(
     Output("ops-telemetry-cache", "data"),
     Input("ws-ops-telemetry", "message"),
-    State("ops-group-platforms", "data"),
+    State("ops-group-platforms", "data"), # <-- Active!
     State("ops-telemetry-cache", "data")
 )
 def ingest_live_telemetry(msg, group_platforms, current_cache):
-    """Parses repackaged MQTT messages, filtering ONLY for this specific deployment group."""
+    """Parses mapped variablesets and filters cleanly by TRUE Platform ID."""
     if not msg or "data" not in msg or not group_platforms: 
         return no_update
 
     try:
-        # 1. Unwrap the websocket package from main.py
-        ws_payload = json.loads(msg["data"])
+        # 1. Unpack the WebSocket wrapper
+        raw_data = msg["data"]
+        ws_payload = json.loads(raw_data)
+        current_topic = ws_payload.get("topic", "")
+        parts = current_topic.split("/")
         
-        # 2. Unwrap the CloudEvent
+        # 2. Strictly filter for Variablesets
+        if len(parts) < 4 or parts[2] != "variableset":
+            return no_update
+            
+        # 3. Unpack the CloudEvent
         cloud_event = ws_payload.get("data", {})
-        
-        # 3. Extract the core device payload
         payload = cloud_event.get("data", {})
         if not payload:
             return no_update
+
+        # --- 4. THE TRICK: Extract the TRUE Platform ID ---
+        attributes = payload.get("attributes", {})
+        platform_id = attributes.get("platform", {}).get("data")
         
-        # 4. Find the App UID
-        app_uid = payload.get("id", {}).get("app_uid")
-        if not app_uid:
-            topic = ws_payload.get("topic", "")
-            parts = topic.split("/")
-            if len(parts) > 3: 
-                app_uid = parts[3] 
+        # Fallback to the topic map name just in case
+        if not platform_id:
+            platform_id = parts[3].split("::")[0]
             
-        if not app_uid:
-            return no_update
-            
-        # 5. FILTER: Drop data if it's from a completely different boat/group!
-        if app_uid not in group_platforms:
+        # 5. THE FILTER: Safely drop data from other deployments!
+        if platform_id not in group_platforms:
             return no_update
             
         # 6. Prevent Dictionary Mutation Traps
         new_cache = current_cache.copy() if current_cache else {}
-        if app_uid not in new_cache:
-            new_cache[app_uid] = {"variables": {}, "state": {}}
+        if platform_id not in new_cache:
+            new_cache[platform_id] = {"variables": {}, "state": {}}
             
-        # 7. Safely merge new variables and state into the cached dictionary
+        # 7. Safely merge all the clean, mapped variables into the cache
         incoming_vars = payload.get("variables", {})
-        incoming_state = payload.get("state", {})
-        
         if incoming_vars:
-            new_cache[app_uid]["variables"].update(incoming_vars)
-        
-        if incoming_state:
-            new_cache[app_uid]["state"].update(incoming_state)
+            new_cache[platform_id]["variables"].update(incoming_vars)
             
         return new_cache
         
     except Exception as e:
-        L.debug(f"[Ops WS Error] {e}")
+        L.debug("Ops Variableset parse failure", extra={"failure_detail": str(e)})
         return no_update
-
+    
 @callback(
     Output("ops-health-badge", "children"),
     Output("ops-health-badge", "color"),

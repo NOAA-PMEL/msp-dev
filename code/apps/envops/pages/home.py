@@ -196,74 +196,64 @@ layout = html.Div([
     State("home-telemetry-cache", "data")
 )
 def ingest_live_telemetry(msg, current_cache):
-    """Parses repackaged MQTT messages with deep structural tracing."""
+    """Parses mapped variablesets and caches them by TRUE Platform ID."""
     if not msg or "data" not in msg: 
         return no_update
     
     try:
         raw_data = msg["data"]
         ws_payload = json.loads(raw_data)
-        current_topic = ws_payload.get("topic", "unknown_topic")
+        current_topic = ws_payload.get("topic", "")
+        parts = current_topic.split("/")
         
-        # Layer 1: The CloudEvent
+        # 1. Strictly filter for Variablesets
+        if len(parts) < 4 or parts[2] != "variableset":
+            return no_update
+            
         cloud_event = ws_payload.get("data", {})
-        L.debug(
-            "WS Unpack Layer 1 (CloudEvent)", 
-            extra={
-                "stream_topic": current_topic,
-                "ce_keys": str(list(cloud_event.keys()))
-            }
-        )
-        
-        # Layer 2: The Core Payload
         payload = cloud_event.get("data", {})
         if not payload:
-            L.debug("Bailing out: No 'data' block found inside CloudEvent", extra={"stream_topic": current_topic})
             return no_update
-            
-        L.debug(
-            "WS Unpack Layer 2 (Payload)", 
-            extra={
-                "stream_topic": current_topic,
-                "payload_keys": str(list(payload.keys()))
-            }
-        )
+
+        # 2. Extract the TRUE Platform ID from the payload attributes!
+        attributes = payload.get("attributes", {})
         
-        # Layer 3: The App UID
-        app_uid = payload.get("id", {}).get("app_uid")
-        if not app_uid:
-            parts = current_topic.split("/")
-            if len(parts) > 3: 
-                app_uid = parts[3] 
+        # Safely navigate {"platform": {"data": "MSPPayload03"}}
+        platform_id = attributes.get("platform", {}).get("data")
+        
+        # Fallback to the topic map name (e.g., 'raz1') if the attribute is missing
+        if not platform_id:
+            platform_id = parts[3].split("::")[0]
             
-        if not app_uid:
-            L.debug("Bailing out: Could not resolve app_uid", extra={"stream_topic": current_topic})
-            return no_update
-            
-        L.debug("Successfully resolved identifier, updating cache", extra={"sys_id": app_uid})
-            
-        # Prevent Dictionary Mutation Traps
+        L.debug("Processing Home map telemetry", extra={"resolved_platform": platform_id, "vset": parts[3]})
+
+        # 3. Prevent Dictionary Mutation Traps
         new_cache = current_cache.copy() if current_cache else {}
-        if app_uid not in new_cache:
-            new_cache[app_uid] = {"lat": None, "lon": None, "issues": 0, "last_seen": None}
+        if platform_id not in new_cache:
+            new_cache[platform_id] = {"lat": None, "lon": None, "alarms": {}, "last_seen": None}
             
-        new_cache[app_uid]["last_seen"] = datetime.now().isoformat()
+        new_cache[platform_id]["last_seen"] = datetime.now().isoformat()
         
+        # 4. Map Standardized Coordinates
         variables = payload.get("variables", {})
         if "latitude" in variables:
-            new_cache[app_uid]["lat"] = variables["latitude"].get("data")
-        if "longitude" in variables:
-            new_cache[app_uid]["lon"] = variables["longitude"].get("data")
+            val = variables["latitude"].get("data")
+            if val is not None: new_cache[platform_id]["lat"] = val
             
+        if "longitude" in variables:
+            val = variables["longitude"].get("data")
+            if val is not None: new_cache[platform_id]["lon"] = val
+            
+        # 5. Track Alarms (Using variableset full name as the alarm source)
         if "alarm" in str(payload).lower() or "error" in str(payload).lower():
-            new_cache[app_uid]["issues"] = 1
+            new_cache[platform_id]["alarms"][parts[3]] = 1
         else:
-            new_cache[app_uid]["issues"] = 0
+            new_cache[platform_id]["alarms"].pop(parts[3], None)
             
         return new_cache
         
     except Exception as e:
-        L.debug("Failed to evaluate incoming dashboard stream event", extra={"failure_detail": str(e)})
+        L.debug("Home Variableset parse failure", extra={"failure_detail": str(e)})
         return no_update
 
 @callback(
