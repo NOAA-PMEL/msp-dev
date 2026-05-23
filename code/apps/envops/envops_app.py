@@ -6,6 +6,8 @@ import logging
 import traceback
 from pydantic import BaseSettings
 
+# Force logging to INFO so we see our debug statements
+logging.basicConfig(level=logging.INFO)
 L = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
@@ -18,15 +20,24 @@ config = Settings()
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 def get_registry_data(endpoint: str):
-    """Safely fetches data using synchronous requests."""
+    """Safely fetches data using synchronous requests with heavy debugging."""
     url = f"http://{datastore_url}/{endpoint}"
+    L.info(f"[DEBUG SIDEBAR] Attempting to fetch: {url}")
     try:
         response = requests.get(url, timeout=5.0)
+        L.info(f"[DEBUG SIDEBAR] Response Status for {endpoint}: {response.status_code}")
+        
         if response.status_code == 200:
             data = response.json()
-            return data.get("results", [])
+            results = data.get("results", [])
+            L.info(f"[DEBUG SIDEBAR] Successfully parsed {len(results)} items from {endpoint}.")
+            return results
+        else:
+            L.error(f"[DEBUG SIDEBAR] API returned non-200 code: {response.text}")
+    except requests.exceptions.ConnectionError as e:
+        L.error(f"[DEBUG SIDEBAR] CONNECTION ERROR to {url} - Details: {e}")
     except Exception as e:
-        L.error(f"Sidebar fetch failed for {endpoint}: {e}")
+        L.error(f"[DEBUG SIDEBAR] Fetch failed for {endpoint}: {e}")
     return []
 
 app = dash.Dash(
@@ -36,29 +47,30 @@ app = dash.Dash(
 )
 
 # -----------------------------------------------------------------------------
-# Layout Generator (Fixes the empty navbar issue)
+# Layout Generator
 # -----------------------------------------------------------------------------
 def serve_layout():
+    registered_pages = list(dash.page_registry.keys())
+    L.info(f"[DEBUG SIDEBAR] Building layout. Registered pages found: {registered_pages}")
+    
     sidebar_header = dbc.Row([
-    dbc.Col(html.H4("EnvOps", className="display-6 fw-bold mb-0")),
-    dbc.Col(
-        # Swapped to a standard button with a list icon so it never hides
-        dbc.Button(
-            html.I(className="bi bi-list fs-3"), 
-            color="link", 
-            className="p-0 text-dark",
-            id="sidebar-toggle",
+        dbc.Col(html.H4("EnvOps", className="display-6 fw-bold mb-0")),
+        dbc.Col(
+            dbc.Button(
+                html.I(className="bi bi-list fs-3"), 
+                color="link", 
+                className="p-0 text-dark",
+                id="sidebar-toggle",
+            ),
+            width="auto", align="center",
         ),
-        width="auto", align="center",
-    ),
-], className="mb-4 align-items-center")
+    ], className="mb-4 align-items-center")
 
     sidebar = html.Div([
         sidebar_header,
         dbc.Collapse([
             dbc.Nav(
                 [
-                    # Dynamically generate links from the page registry
                     dbc.NavLink(
                         [html.I(className="bi bi-grid-1x2-fill me-2"), page["title"]],
                         href=page["relative_path"], active="exact", className="mb-2 rounded shadow-sm"
@@ -71,7 +83,7 @@ def serve_layout():
             html.H6("Active Missions", className="text-muted small text-uppercase fw-bold px-2 mb-3"),
             html.Div(id="sidebar-mission-hierarchy"),
             dcc.Interval(id="sidebar-refresh-interval", interval=60000, n_intervals=0)
-        ], id="sidebar-collapse"),
+        ], id="sidebar-collapse", is_open=True), # <-- FIX: Forces menu open on load!
     ], id="sidebar")
 
     return html.Div([
@@ -80,7 +92,6 @@ def serve_layout():
         html.Div([dash.page_container], id="page-content")
     ])
 
-# Assign the function, not the evaluated result!
 app.layout = serve_layout
 
 # -----------------------------------------------------------------------------
@@ -100,13 +111,16 @@ def toggle_collapse(n, is_open):
     Input("sidebar-refresh-interval", "n_intervals")
 )
 def update_sidebar_hierarchy(n):
+    L.info(f"[DEBUG SIDEBAR] Callback triggered for Active Missions (n_intervals={n})")
     try:
         deployments = get_registry_data("deployment-definition/registry/get/")
         projects = get_registry_data("project-definition/registry/get/")
         
         if not deployments or not projects:
+            L.warning("[DEBUG SIDEBAR] Missing deployments or projects. Rendering 'No active missions'.")
             return html.P("No active missions found.", className="text-muted small px-2")
             
+        L.info(f"[DEBUG SIDEBAR] Grouping {len(deployments)} deployments into {len(projects)} projects...")
         project_map = {p.get("metadata", {}).get("name"): p for p in projects}
         
         projects_grouped = {}
@@ -140,9 +154,13 @@ def update_sidebar_hierarchy(n):
                     title=proj_name, class_name="bg-transparent border-0 px-0",
                 )
             )
-            
+        
+        L.info("[DEBUG SIDEBAR] Successfully built Accordion items.")    
         return dbc.Accordion(accordion_items, flush=True, start_collapsed=False, className="sidebar-accordion")
         
     except Exception as e:
-        L.error(f"Sidebar crash: {traceback.format_exc()}")
+        L.error(f"[DEBUG SIDEBAR] Sidebar crash: {traceback.format_exc()}")
         return html.P("Sidebar Error", className="text-danger small px-2")
+
+if __name__ == "__main__":
+    app.run_server(debug=True)
