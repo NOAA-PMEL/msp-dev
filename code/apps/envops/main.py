@@ -98,6 +98,7 @@ async def mqtt_to_websocket_bridge():
                     try:
                         payload = message.payload.decode("utf-8")
                         # You can inject the topic if your frontend needs it for routing
+                        
                         L.debug(
                             "Processing incoming telemetry packet", 
                             extra={
