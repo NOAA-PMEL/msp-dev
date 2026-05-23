@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     mqtt_client_id: str = Field(str(ULID()))
 
     class Config:
-        env_prefix = "DASHBOARD_"
+        env_prefix = "ENVOPS_"
         case_sensitive = False
 
 config = Settings()
