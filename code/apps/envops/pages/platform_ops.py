@@ -1,7 +1,9 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State, no_update
+from dash import html, dcc, callback, Input, Output, State, no_update, MATCH, ALL
 from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import httpx
 # from cachetools import cached, TTLCache
 import logging
@@ -60,6 +62,29 @@ ws_url = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops
         
 #     return []
 
+def create_empty_dual_plot(title, y1_name, y2_name, y1_color="#1f77b4", y2_color="#d62728"):
+    """Generates a highly stylized, empty dual-axis plot skeleton."""
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Initialize empty traces so `extendData` has a target
+    fig.add_trace(go.Scatter(x=[], y=[], name=y1_name, mode="lines", line=dict(color=y1_color, width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(x=[], y=[], name=y2_name, mode="lines", line=dict(color=y2_color, width=2)), secondary_y=True)
+    
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=14), y=0.95),
+        margin=dict(l=40, r=40, t=40, b=20),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        uirevision="constant" # Prevents zoom/pan resets when new data arrives!
+    )
+    
+    # Subtle gridlines
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="LightGray", secondary_y=False)
+    fig.update_yaxes(showgrid=False, secondary_y=True)
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
+    
+    return fig
 
 # -----------------------------------------------------------------------------
 # Layout Generator (Runs once per page load)
@@ -116,24 +141,52 @@ def layout(deployment_id=None, **kwargs):
         ], width=3)
     ])), className="shadow-sm border-0 mb-4 bg-light")
 
-    # --- UI: Telemetry Grid ---
-    telemetry_grid = dbc.Row([
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("Navigation & Attitude", className="fw-bold bg-white"),
-            dbc.CardBody(html.Pre("Awaiting Nav Data...", id="ops-nav-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
-        ], className="shadow-sm border-0 h-100"), width=4),
+    # # --- UI: Telemetry Grid ---
+    # telemetry_grid = dbc.Row([
+    #     dbc.Col(dbc.Card([
+    #         dbc.CardHeader("Navigation & Attitude", className="fw-bold bg-white"),
+    #         dbc.CardBody(html.Pre("Awaiting Nav Data...", id="ops-nav-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
+    #     ], className="shadow-sm border-0 h-100"), width=4),
         
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("Meteorology", className="fw-bold bg-white"),
-            dbc.CardBody(html.Pre("Awaiting Met Data...", id="ops-met-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
-        ], className="shadow-sm border-0 h-100"), width=4),
+    #     dbc.Col(dbc.Card([
+    #         dbc.CardHeader("Meteorology", className="fw-bold bg-white"),
+    #         dbc.CardBody(html.Pre("Awaiting Met Data...", id="ops-met-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
+    #     ], className="shadow-sm border-0 h-100"), width=4),
         
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("Air Quality & Aerosols", className="fw-bold bg-white"),
-            dbc.CardBody(html.Pre("Awaiting AQ Data...", id="ops-aq-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
-        ], className="shadow-sm border-0 h-100"), width=4),
-    ], className="mb-4 align-items-stretch")
+    #     dbc.Col(dbc.Card([
+    #         dbc.CardHeader("Air Quality & Aerosols", className="fw-bold bg-white"),
+    #         dbc.CardBody(html.Pre("Awaiting AQ Data...", id="ops-aq-data", className="small text-muted mb-0", style={"whiteSpace": "pre-wrap"}))
+    #     ], className="shadow-sm border-0 h-100"), width=4),
+    # ], className="mb-4 align-items-stretch")
     
+    # --- UI: Live Operational Plots ---
+    plots_accordion = dbc.Accordion([
+        # 1. Meteorology Group
+        dbc.AccordionItem([
+            dbc.Row([
+                dbc.Col(dcc.Graph(id="ops-plot-wind", figure=create_empty_dual_plot("Wind", "True Speed (m/s)", "True Dir (°)", "#1f77b4", "#7f7f7f"), style={"height": "300px"}), width=4),
+                dbc.Col(dcc.Graph(id="ops-plot-atm", figure=create_empty_dual_plot("Atmosphere", "Temp (°C)", "RH (%)", "#ff7f0e", "#17becf"), style={"height": "300px"}), width=4),
+                dbc.Col(dcc.Graph(id="ops-plot-precip", figure=create_empty_dual_plot("Precip & Pressure", "Rain (mm/h)", "Pressure (hPa)", "#2ca02c", "#8c564b"), style={"height": "300px"}), width=4),
+            ])
+        ], title=html.B([html.I(className="bi bi-cloud-sun me-2"), "Meteorology"]), item_id="met"),
+
+        # 2. Gas Phase Group
+        dbc.AccordionItem([
+            dbc.Row([
+                dbc.Col(dcc.Graph(id="ops-plot-o3-co", figure=create_empty_dual_plot("Ozone & CO", "O3 (ppb)", "CO (ppb)", "#9467bd", "#e377c2"), style={"height": "300px"}), width=6),
+                dbc.Col(dcc.Graph(id="ops-plot-no-no2", figure=create_empty_dual_plot("Nitrogen Oxides", "NO (ppb)", "NO2 (ppb)", "#1f77b4", "#ff7f0e"), style={"height": "300px"}), width=6),
+            ])
+        ], title=html.B([html.I(className="bi bi-wind me-2"), "Gas Phase Chemistry"]), item_id="gas"),
+
+        # 3. Sampling Operations Group
+        dbc.AccordionItem([
+            dbc.Row([
+                dbc.Col(dcc.Graph(id="ops-plot-rel-wind", figure=create_empty_dual_plot("Platform Relative Wind", "Rel Speed (m/s)", "Rel Dir (°)", "#bcbd22", "#7f7f7f"), style={"height": "300px"}), width=6),
+                dbc.Col(dcc.Graph(id="ops-plot-flow", figure=create_empty_dual_plot("Inlet Flow & Particulates", "Inlet Flow (LPM)", "PM 2.5 (µg/m³)", "#17becf", "#d62728"), style={"height": "300px"}), width=6),
+            ])
+        ], title=html.B([html.I(className="bi bi-sliders me-2"), "Sampling Operations"]), item_id="ops")
+    ], always_open=True, active_item=["met", "gas", "ops"], className="mb-4 shadow-sm")
+
     # --- UI: Sub-system Drill Downs ---
     child_links = [
         dbc.ListGroupItem([
@@ -154,7 +207,7 @@ def layout(deployment_id=None, **kwargs):
         dcc.Store(id="ops-telemetry-cache", data={}),
         WebSocket(id="ws-ops-telemetry", url=ws_url),
         
-        header, ops_ribbon, telemetry_grid, sub_systems
+        header, ops_ribbon, plots_accordion, sub_systems
     ], className="container-fluid mt-3")
 
 
@@ -164,52 +217,68 @@ def layout(deployment_id=None, **kwargs):
 @callback(
     Output("ops-telemetry-cache", "data"),
     Input("ws-ops-telemetry", "message"),
-    State("ops-group-platforms", "data"), # <-- Active!
+    State("ops-group-platforms", "data"),
     State("ops-telemetry-cache", "data")
 )
 def ingest_live_telemetry(msg, group_platforms, current_cache):
-    """Parses mapped variablesets and filters cleanly by TRUE Platform ID."""
-    if not msg or "data" not in msg or not group_platforms: 
+    """Parses standard CloudEvents and buffers them into a sliding window cache."""
+    if not msg or "data" not in msg: 
         return no_update
 
     try:
-        # 1. Unpack the WebSocket wrapper
-        raw_data = msg["data"]
-        ws_payload = json.loads(raw_data)
-        current_topic = ws_payload.get("topic", "")
+        # 1. msg["data"] is the raw JSON string of the CloudEvent
+        ce = json.loads(msg["data"])
+        
+        # 2. Extract the topic directly from the CloudEvent metadata!
+        current_topic = ce.get("destpath", "") or ce.get("sourcepath", "")
         parts = current_topic.split("/")
         
-        # 2. Strictly filter for Variablesets
+        # 3. Strictly filter for Variablesets
         if len(parts) < 4 or parts[2] != "variableset":
             return no_update
             
-        # 3. Unpack the CloudEvent
-        cloud_event = ws_payload.get("data", {})
-        payload = cloud_event.get("data", {})
+        # 4. Extract the payload (Layer 2)
+        payload = ce.get("data", {})
         if not payload:
             return no_update
 
-        # --- 4. THE TRICK: Extract the TRUE Platform ID ---
+        # 5. Extract the TRUE Platform ID from the payload attributes
         attributes = payload.get("attributes", {})
         platform_id = attributes.get("platform", {}).get("data")
         
-        # Fallback to the topic map name just in case
         if not platform_id:
             platform_id = parts[3].split("::")[0]
             
-        # 5. THE FILTER: Safely drop data from other deployments!
-        if platform_id not in group_platforms:
+        # 6. FILTER: Drop data if it belongs to a different deployment group
+        if group_platforms and platform_id not in group_platforms:
             return no_update
             
-        # 6. Prevent Dictionary Mutation Traps
+        # 7. --- SLIDING WINDOW CACHE LOGIC ---
         new_cache = current_cache.copy() if current_cache else {}
         if platform_id not in new_cache:
             new_cache[platform_id] = {"variables": {}, "state": {}}
             
-        # 7. Safely merge all the clean, mapped variables into the cache
         incoming_vars = payload.get("variables", {})
-        if incoming_vars:
-            new_cache[platform_id]["variables"].update(incoming_vars)
+        
+        # Determine the timestamp for this data tick
+        current_time = incoming_vars.get("time", {}).get("data") or datetime.now().isoformat()
+        
+        for var_name, var_data in incoming_vars.items():
+            val = var_data.get("data")
+            if val is None:
+                continue
+                
+            if var_name not in new_cache[platform_id]["variables"]:
+                new_cache[platform_id]["variables"][var_name] = {"x": [], "y": []}
+                
+            # Append the new coordinates
+            new_cache[platform_id]["variables"][var_name]["x"].append(current_time)
+            new_cache[platform_id]["variables"][var_name]["y"].append(val)
+            
+            # Cap the array to a rolling window (e.g., 300 points = 5 minutes at 1Hz)
+            if len(new_cache[platform_id]["variables"][var_name]["x"]) > 300:
+                new_cache[platform_id]["variables"][var_name]["x"].pop(0)
+                new_cache[platform_id]["variables"][var_name]["y"].pop(0)
             
         return new_cache
         
@@ -307,3 +376,71 @@ def update_telemetry_grid(cache):
     )
 
     return nav_text, met_text, aq_text
+
+@callback(
+    Output("ops-plot-wind", "extendData"),
+    Output("ops-plot-atm", "extendData"),
+    Output("ops-plot-precip", "extendData"),
+    Output("ops-plot-o3-co", "extendData"),
+    Output("ops-plot-no-no2", "extendData"),
+    Output("ops-plot-rel-wind", "extendData"),
+    Output("ops-plot-flow", "extendData"),
+    Input("ops-telemetry-cache", "data"),
+    prevent_initial_call=True
+)
+def update_operational_plots(cache):
+    if not cache:
+        return [no_update] * 7
+
+    # 1. Flatten all available variables across the entire deployment group
+    all_vars = {}
+    for uid, data in cache.items():
+        all_vars.update(data.get("variables", {}))
+
+    # Fallback to local system time if the instruments aren't providing a timestamp
+    current_time = all_vars.get("time", {}).get("data")
+    if not current_time:
+        current_time = datetime.now().isoformat()
+
+    def get_val(key):
+        """Safely extracts a float value from the variable mapping."""
+        val = all_vars.get(key, {}).get("data")
+        try:
+            return float(val) if val is not None else None
+        except (ValueError, TypeError):
+            return None
+
+    def build_extend_payload(var1_name, var2_name, max_points=300):
+        """Constructs the Plotly extendData tuple dynamically based on available data."""
+        v1 = get_val(var1_name)
+        v2 = get_val(var2_name)
+        
+        x_data, y_data, traces = [], [], []
+        
+        # Left Y-Axis (Trace 0)
+        if v1 is not None:
+            x_data.append([current_time])
+            y_data.append([v1])
+            traces.append(0)
+            
+        # Right Y-Axis (Trace 1)
+        if v2 is not None:
+            x_data.append([current_time])
+            y_data.append([v2])
+            traces.append(1)
+            
+        if not traces:
+            return no_update
+            
+        return ({"x": x_data, "y": y_data}, traces, max_points)
+
+    # 2. Map the incoming variable keys to their respective graphs
+    return [
+        build_extend_payload("true_wind_speed", "true_wind_direction"),
+        build_extend_payload("air_temperature", "relative_humidity"),
+        build_extend_payload("pressure", "rain_intensity"),
+        build_extend_payload("O3", "CO"),
+        build_extend_payload("NO", "NO2"),
+        build_extend_payload("relative_wind_speed", "relative_wind_direction"),
+        build_extend_payload("inlet_flow", "PM2_5") # Replace PM2_5 with CN concentration key when available
+    ]

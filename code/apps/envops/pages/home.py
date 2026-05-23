@@ -190,51 +190,58 @@ layout = html.Div([
 # Callbacks
 # -----------------------------------------------------------------------------
 
+from dash import callback, Input, Output, State, no_update
+import json
+from datetime import datetime
+import logging
+
+L = logging.getLogger(__name__)
+
 @callback(
     Output("home-telemetry-cache", "data"),
     Input("ws-home-telemetry", "message"),
     State("home-telemetry-cache", "data")
 )
 def ingest_live_telemetry(msg, current_cache):
-    """Parses mapped variablesets and caches them by TRUE Platform ID."""
+    """Parses standard CloudEvents and caches point-in-time data for the Home map."""
     if not msg or "data" not in msg: 
         return no_update
     
     try:
-        raw_data = msg["data"]
-        ws_payload = json.loads(raw_data)
-        current_topic = ws_payload.get("topic", "")
+        # 1. msg["data"] is the raw JSON string of the CloudEvent
+        ce = json.loads(msg["data"])
+        
+        # 2. Extract the topic directly from the CloudEvent metadata
+        current_topic = ce.get("destpath", "") or ce.get("sourcepath", "")
         parts = current_topic.split("/")
         
-        # 1. Strictly filter for Variablesets
+        # 3. Strictly filter for Variablesets
         if len(parts) < 4 or parts[2] != "variableset":
             return no_update
             
-        cloud_event = ws_payload.get("data", {})
-        payload = cloud_event.get("data", {})
+        # 4. Extract the payload (Layer 2)
+        payload = ce.get("data", {})
         if not payload:
             return no_update
 
-        # 2. Extract the TRUE Platform ID from the payload attributes!
+        # 5. Extract the TRUE Platform ID from the payload attributes
         attributes = payload.get("attributes", {})
-        
-        # Safely navigate {"platform": {"data": "MSPPayload03"}}
         platform_id = attributes.get("platform", {}).get("data")
         
-        # Fallback to the topic map name (e.g., 'raz1') if the attribute is missing
+        # Fallback to the topic map name if attribute is missing
         if not platform_id:
             platform_id = parts[3].split("::")[0]
             
-        L.debug("Processing Home map telemetry", extra={"resolved_platform": platform_id, "vset": parts[3]})
+        # L.debug("Processing Home map telemetry", extra={"resolved_platform": platform_id, "vset": parts[3]})
 
-        # 3. Prevent Dictionary Mutation Traps
+        # 6. Prevent Dictionary Mutation Traps
         new_cache = current_cache.copy() if current_cache else {}
         if platform_id not in new_cache:
             new_cache[platform_id] = {"lat": None, "lon": None, "alarms": {}, "last_seen": None}
             
         new_cache[platform_id]["last_seen"] = datetime.now().isoformat()
         
-        # 4. Map Standardized Coordinates
+        # 7. Map Standardized Coordinates
         variables = payload.get("variables", {})
         if "latitude" in variables:
             val = variables["latitude"].get("data")
@@ -244,7 +251,7 @@ def ingest_live_telemetry(msg, current_cache):
             val = variables["longitude"].get("data")
             if val is not None: new_cache[platform_id]["lon"] = val
             
-        # 5. Track Alarms (Using variableset full name as the alarm source)
+        # 8. Track Alarms (Using variableset full name as the alarm source)
         if "alarm" in str(payload).lower() or "error" in str(payload).lower():
             new_cache[platform_id]["alarms"][parts[3]] = 1
         else:
