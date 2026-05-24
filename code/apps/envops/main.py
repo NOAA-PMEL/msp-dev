@@ -251,7 +251,9 @@ async def handle_mqtt_buffer():
 
                 # C. SMART ROUTING: Extract lightweight GPS data for the fleet map (Caught by home.py)
                 variables = ce.data.get("variables", {})
+                L.debug("handle_mqtt_buffer: mini", extra={"varkeys": variables.keys()})
                 if "latitude" in variables and "longitude" in variables:
+                    L.debug("handle_mqtt_buffer: lat/lon", extra={"latitude": variables["latitude"].get("data"), "longitude": variables["longitude"].get("data")})
                     mini_msg = {
                         "type": "fleet.location.update",
                         "platform": platform_id, 
@@ -259,6 +261,7 @@ async def handle_mqtt_buffer():
                         "lon": variables["longitude"].get("data"),
                         "time": variables.get("time", {}).get("data")
                     }
+                    L.debug("handle_mqtt_buffer: mini", extra={"mini_msg": mini_msg})
                     await manager.broadcast(json.dumps(mini_msg), "system-ops", "main")
             
             # 4. SYSTEM OPS ROUTING (Modes, States, Logs)
