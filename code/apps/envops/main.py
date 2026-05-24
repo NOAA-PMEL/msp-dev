@@ -236,27 +236,29 @@ async def handle_mqtt_buffer():
                     "variablesetfullid": ce.get("variablesetfullid")
                 }
                 
-                # Send the heavy payload to specific variableset subscribers (system_data.py)
+                # A. Send to the strict variableset channel (Caught by system_data.py)
                 await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
                 
-                # ---> ADD THIS: 2. Platform Pub/Sub (Groups all variablesets for a specific instrument platform)
-                platform_id = ce.data.get("attributes", {}).get("platform", {}).get("data", variableset_id)
+                # B. Extract the TRUE platform ID directly from the payload attributes
+                # sampling_system.py guarantees this is populated during load_variablemap
+                platform_id = ce.data.get("attributes", {}).get("platform", {}).get("data")
+                
+                if not platform_id:
+                    platform_id = variableset_id.split("::")[0]
+                    
+                # Send to the strict platform channel (Caught by platform_ops.py)
                 await manager.broadcast(json.dumps(msg), "platform", platform_id)
-                # <---
 
-                # --- SMART ROUTING: Extract lightweight GPS data for the fleet map ---
+                # C. SMART ROUTING: Extract lightweight GPS data for the fleet map (Caught by home.py)
                 variables = ce.data.get("variables", {})
                 if "latitude" in variables and "longitude" in variables:
-                    platform_id = ce.data.get("attributes", {}).get("platform", {}).get("data", variableset_id)
-                    
                     mini_msg = {
                         "type": "fleet.location.update",
-                        "platform": platform_id,
+                        "platform": platform_id, 
                         "lat": variables["latitude"].get("data"),
                         "lon": variables["longitude"].get("data"),
                         "time": variables.get("time", {}).get("data")
                     }
-                    # Push just the coordinates to the global system-ops channel
                     await manager.broadcast(json.dumps(mini_msg), "system-ops", "main")
             
             # 4. SYSTEM OPS ROUTING (Modes, States, Logs)
