@@ -208,14 +208,20 @@ def ingest_live_telemetry(msg, current_cache):
         return no_update
     
     try:
+        # 1. Log the raw stringified receipt (truncated to prevent log flooding)
+        L.debug(f"[HOME WS] Raw data received: {str(msg['data'])[:150]}...")
+        
         # Parse the stringified JSON from the WebSocket
         payload = json.loads(msg["data"])
         
         # Only process the micro-payloads we specifically designed for this page
         if payload.get("type") != "fleet.location.update":
+            # 2. Log if we are actively dropping a message because of a type mismatch
+            L.debug(f"[HOME WS] Dropping ignored payload type: {payload.get('type')}")
             return no_update
 
         platform_id = payload["platform"]
+        L.info(f"[HOME WS] Successfully parsed GPS for platform: {platform_id}")
         
         new_cache = current_cache.copy() if current_cache else {}
         if platform_id not in new_cache:
@@ -228,7 +234,7 @@ def ingest_live_telemetry(msg, current_cache):
         return new_cache
         
     except Exception as e:
-        L.debug("Home location parse failure", extra={"failure_detail": str(e)})
+        L.error(f"[HOME WS] Location parse failure: {e}")
         return no_update
 
 @callback(

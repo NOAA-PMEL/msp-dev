@@ -188,7 +188,7 @@ def layout(deployment_id=None, **kwargs):
 
     # --- NEW DYNAMIC WEBSOCKET PIPES ---
     ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
-    ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}"
+    ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
 
     ws_connections = [
         # 1. Subscribe to system health, states, and alarms (The smart-routed global channel)
@@ -233,21 +233,26 @@ def ingest_live_telemetry(messages, current_cache):
         return no_update
 
     try:
+        # 1. Log the raw receipt and its trigger ID
+        L.debug(f"[OPS WS] Triggered by {ctx.triggered_id}. Raw Data: {str(msg['data'])[:150]}...")
+        
         # Layer 1: Unwrap Dash's WebSocket string
         ws_wrapper = json.loads(msg["data"])
         
         # Layer 2: Extract the CloudEvent from main.py's wrapper
         cloud_event = ws_wrapper.get("data-update", ws_wrapper.get("data", {}))
         if not cloud_event:
+            L.debug("[OPS WS] Dropped: No 'data-update' or 'data' envelope found.")
             return no_update
             
         # Extract the topic safely
         current_topic = ws_wrapper.get("topic") or cloud_event.get("destpath", "") or cloud_event.get("sourcepath", "")
         parts = current_topic.split("/")
         
-        # Layer 3: Extract the actual telemetry payload (Layer 3)
+        # Layer 3: Extract the actual telemetry payload
         payload = cloud_event.get("data", {})
         if not payload:
+            L.debug("[OPS WS] Dropped: CloudEvent lacked inner 'data' variables block.")
             return no_update
 
         # Layer 4: Extract the Platform ID
@@ -256,6 +261,8 @@ def ingest_live_telemetry(messages, current_cache):
         if not platform_id:
             platform_id = parts[3].split("::")[0] if len(parts) > 3 else "unknown"
             
+        L.info(f"[OPS WS] Successfully caching variables for platform: {platform_id}")
+
         # --- SLIDING WINDOW CACHE LOGIC ---
         new_cache = current_cache.copy() if current_cache else {}
         if platform_id not in new_cache:
@@ -281,6 +288,10 @@ def ingest_live_telemetry(messages, current_cache):
                 new_cache[platform_id]["variables"][var_name]["y"].pop(0)
             
         return new_cache
+        
+    except Exception as e:
+        L.error(f"[OPS WS] Variableset parse failure: {e}")
+        return no_update
         
     except Exception as e:
         L.debug("Ops Variableset parse failure", extra={"failure_detail": str(e)})
