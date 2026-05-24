@@ -308,7 +308,10 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
             
             live_lat, live_lon = None, None
             for p_ref in platforms_to_check:
+                # FIX: Force lowercase extraction to match the cache
                 p_id = p_ref.split(".")[-1] if "." in p_ref else p_ref
+                p_id = str(p_id).lower()
+                
                 lat = telemetry_cache.get(p_id, {}).get("lat")
                 lon = telemetry_cache.get(p_id, {}).get("lon")
                 if lat is not None and lon is not None:
@@ -318,7 +321,6 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
             if live_lat is not None and live_lon is not None:
                 live_lats.append(live_lat)
                 live_lons.append(live_lon)
-                # The text now guarantees it is the Host's name!
                 live_texts.append(f"<b>{root_name}</b><br>Live: {live_lat}, {live_lon}")
             else:
                 cov_str = root_data.get("planned_spatial_coverage", "default")
@@ -329,22 +331,23 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
 
         fig = go.Figure()
         if live_lats:
-            fig.add_trace(go.Scattermapbox(lat=live_lats, lon=live_lons, mode='markers', marker=dict(size=12, color='blue'), text=live_texts, hoverinfo="text", name="Live Telemetry"))
+            # FIX: Updated to Scattermap
+            fig.add_trace(go.Scattermap(lat=live_lats, lon=live_lons, mode='markers', marker=dict(size=12, color='blue'), text=live_texts, hoverinfo="text", name="Live Telemetry"))
         if est_lats:
-            fig.add_trace(go.Scattermapbox(lat=est_lats, lon=est_lons, mode='markers', marker=dict(size=20, color='gray', opacity=0.5), text=est_texts, hoverinfo="text", name="Estimated Region"))
+            # FIX: Updated to Scattermap
+            fig.add_trace(go.Scattermap(lat=est_lats, lon=est_lons, mode='markers', marker=dict(size=20, color='gray', opacity=0.5), text=est_texts, hoverinfo="text", name="Estimated Region"))
 
         fig.update_layout(
-            mapbox_style="carto-positron", 
+            map_style="carto-positron", # FIX: Updated layout properties
             margin={"r":0,"t":0,"l":0,"b":0}, 
             showlegend=True, 
             legend=dict(yanchor="top", y=0.95, xanchor="left", x=0.05, bgcolor="rgba(255,255,255,0.8)"),
-            uirevision="constant" # Prevents map zoom/pan resetting when data updates
+            uirevision="constant" 
         )
         if live_lats or est_lats:
             all_lats, all_lons = live_lats + est_lats, live_lons + est_lons
-            # Only automatically center if there wasn't a previous pan/zoom state
-            fig.update_layout(mapbox_center={"lat": sum(all_lats)/len(all_lats), "lon": sum(all_lons)/len(all_lons)})
-
+            fig.update_layout(map_center={"lat": sum(all_lats)/len(all_lats), "lon": sum(all_lons)/len(all_lons)})
+            
         # --- 3. Projects & Health Rollups ---
         project_accordions = []
         for proj_ref, deps in projects_grouped.items():
