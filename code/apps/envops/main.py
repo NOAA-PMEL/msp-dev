@@ -18,7 +18,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.wsgi import WSGIMiddleware
-
+import uvicorn
 from cloudevents.http import CloudEvent, from_http, from_json, to_json
 from cloudevents.conversion import to_structured, to_json  
 from cloudevents.exceptions import InvalidStructuredJSON
@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     debug: bool = False
     daq_id: str = "default"
 
+    log_level: str = "info"
     external_hostname: str = "localhost" 
     http_use_tls: bool = False
     http_port: int = 80
@@ -81,7 +82,7 @@ class Settings(BaseSettings):
 
     mqtt_broker: str = 'mosquitto.default'
     mqtt_port: int = 1883
-    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#', 'envds/+/+/status/#' 
+    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#, envds/+/+/status/#' 
     mqtt_client_id: str = Field(str(ULID()))
 
     class Config:
@@ -515,3 +516,6 @@ async def platform_ws_endpoint(websocket: WebSocket, client_id: str):
 # NOTE: This MUST be the very last line in the file!
 # -----------------------------------------------------------------------------
 app.mount("/", WSGIMiddleware(dash_app.server))
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
