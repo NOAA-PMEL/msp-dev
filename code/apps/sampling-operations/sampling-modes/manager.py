@@ -112,8 +112,8 @@ class SamplingMode:
         Evaluates the mode status based on requirements.
         Triggers an update immediately on change or every 30s as a heartbeat.
         """
-        if not self.active:
-            return
+        # if not self.active:
+        #     return
 
         # 1. Calculate current status based on requirements
         mode_status = [
