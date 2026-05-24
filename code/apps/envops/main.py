@@ -167,10 +167,15 @@ async def get_from_mqtt_loop():
     while True:
         try:
             client_id = str(ULID())
+            L.debug(f"Attempting to connect to MQTT Broker: {config.mqtt_broker} on port {config.mqtt_port}")
+            
             async with Client(config.mqtt_broker, port=config.mqtt_port, identifier=client_id) as client:
+                L.info(f"Successfully connected to MQTT Broker as {client_id}")
+                
                 for topic in config.mqtt_topic_subscriptions.split(","):
                     if topic.strip():
                         await client.subscribe(f"{topic.strip()}")
+                        L.debug(f"Subscribed to topic: {topic.strip()}")
 
                 async for message in client.messages: 
                     try:
@@ -178,15 +183,19 @@ async def get_from_mqtt_loop():
                         topic = message.topic.value
                         ce["sourcepath"] = topic
                         await mqtt_buffer.put(ce)
+                        
+                        L.debug("MQTT Message Buffered", extra={"topic": topic, "type": ce.get("type", "unknown")})
                     except Exception as e:
-                        L.error("get_from_mqtt_loop inner", extra={"reason": str(e)})
+                        L.error("get_from_mqtt_loop inner message parse error", extra={"reason": str(e)})
+                        
         except MqttError as error:
-            L.error(f'{error}. Trying again in {reconnect} seconds')
+            L.error(f'MQTT Broker Error: {error}. Trying again in {reconnect} seconds')
             await asyncio.sleep(reconnect)
+            
         except Exception as e:
-            L.error("get_from_mqtt_loop outer", extra={"reason": str(e)})
-        finally:
-            await asyncio.sleep(0.0001)
+            # A real, deliberate sleep to prevent CPU thrashing if a generic bug causes a crash loop
+            L.error("Critical get_from_mqtt_loop outer failure. Restarting in 5 seconds.", extra={"reason": str(e)})
+            await asyncio.sleep(5)
 
 async def handle_mqtt_buffer():
     while True:
