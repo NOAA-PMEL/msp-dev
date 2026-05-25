@@ -17,23 +17,30 @@ class Settings(BaseSettings):
 
 config = Settings()
 
-# FIX: Explicitly append :8080 to hit the Uvicorn service port!
-datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local:8080"
+# FIX: Remove port 8080. Let it hit the standard cluster port 80 handled by the K8s Service
+datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 # Shared memory cache: up to 128 unique endpoints, stored for 5 minutes (300s)
 registry_cache = TTLCache(maxsize=128, ttl=300)
 
 @cached(cache=registry_cache)
-def get_registry_data(endpoint: str):
-    """Safely fetches data using httpx, heavily cached to protect the datastore."""
-    url = f"http://{datastore_url}/{endpoint}"
+def get_registry_data(endpoint_or_resource: str):
+    """
+    Safely fetches data using httpx. Automatically translates shorthand 
+    resource strings to unified registry API paths.
+    """
+    # FIX: Smart URL Builder translation
+    if "/" not in endpoint_or_resource:
+        url = f"http://{datastore_url}/{endpoint_or_resource}-definition/registry/get/"
+    else:
+        url = f"http://{datastore_url}/{endpoint_or_resource}"
     
     L.info(f"[TIMING] Cache miss! Initiating fetch to {url}")
     start_time = time.time()
     
     try:
-        # 10 second timeout so we fail gracefully and log it, rather than hanging Dash forever
-        with httpx.Client(timeout=10.0) as client:
+        # 5 second timeout is plenty for internal cluster traffic
+        with httpx.Client(timeout=5.0) as client:
             L.info(f"[TIMING] HTTPX Client opened, sending GET request...")
             response = client.get(url)
             
