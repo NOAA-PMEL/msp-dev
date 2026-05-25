@@ -531,12 +531,18 @@ async def platform_ws_endpoint(websocket: WebSocket, client_id: str):
 # -----------------------------------------------------------------------------
 from home_app import app as home_dash
 from ops_app import app as ops_dash
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
-# 1. Mount the Ops app at /ops
-app.mount("/ops", WSGIMiddleware(ops_dash.server))
+# 1. Combine the two Flask servers natively using Werkzeug.
+# Since Traefik already stripped /envds/envops, the paths arriving are /ops/... and /...
+dash_dispatcher = DispatcherMiddleware(
+    home_dash.server,           # The default app (handles requests to /)
+    {'/ops': ops_dash.server}   # The sub-app (handles requests to /ops)
+)
 
-# 2. Mount the Home app at the root / 
-app.mount("/", WSGIMiddleware(home_dash.server))
+# 2. Mount the single, unified WSGI dispatcher to FastAPI's root.
+# This prevents Starlette from attempting to strip or mangle the paths!
+app.mount("/", WSGIMiddleware(dash_dispatcher))
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)

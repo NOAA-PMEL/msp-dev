@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+httpx
+cloudevents
+aiomqtt
+pydantic
+python-ulid
+logfmter
