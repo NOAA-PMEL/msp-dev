@@ -135,22 +135,15 @@ def register_sidebar_callbacks(app: dash.Dash):
                     dep_id = d.get("metadata", {}).get("name")
                     dep_name = d.get("data", {}).get("display_name", dep_id)
                     
-                    nav_links.append(
-                        dbc.NavLink(
-                            [html.I(className="bi bi-hdd-network me-2"), dep_name],
-                            href=f"/envds/envops/ops/deployment/{dep_id}", # Target the ops_app mount!
-                            active="exact", className="small py-1 text-truncate rounded"
-                        )
-                    )
+                    nav_links.append(html.Div([
+                        html.Span(dep_name, className="fw-bold small d-block mb-1 text-dark"),
+                        dbc.NavLink([html.I(className="bi bi-sliders me-2"), "Operations"], href=f"/envds/envops/ops/deployment/{dep_id}", active="exact", className="small py-1 text-truncate rounded ps-3"),
+                        dbc.NavLink([html.I(className="bi bi-graph-up me-2"), "Analytics & Plots"], href=f"/envds/envops/plots/deployment/{dep_id}", active="exact", className="small py-1 text-truncate rounded ps-3"),
+                        # --- NEW DEVICE TELEMETRY LINK ---
+                        dbc.NavLink([html.I(className="bi bi-cpu me-2"), "Device Telemetry"], href=f"/envds/envops/devices/deployment/{dep_id}", active="exact", className="small py-1 text-truncate rounded ps-3 mb-3")
+                    ]))
                     
-                accordion_items.append(
-                    dbc.AccordionItem(
-                        dbc.Nav(nav_links, vertical=True, pills=True),
-                        title=proj_name, class_name="bg-transparent border-0 px-0",
-                    )
-                )
+                accordion_items.append(dbc.AccordionItem(dbc.Nav(nav_links, vertical=True, pills=True), title=proj_name, class_name="bg-transparent border-0 px-0"))
             return dbc.Accordion(accordion_items, flush=True, start_collapsed=False, className="sidebar-accordion")
-            
         except Exception as e:
-            L.error(f"[SIDEBAR] Crash: {traceback.format_exc()}")
             return html.P("Sidebar Error", className="text-danger small px-2")

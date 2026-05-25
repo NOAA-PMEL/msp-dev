@@ -108,7 +108,7 @@ def build_plot_layout(deployment_id):
     ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
 
-    # --- FIX: ISOLATED MEMORY CACHES ---
+    # --- ISOLATED MEMORY CACHES (Prevents WebSockets from overwriting each other) ---
     ws_connections = []
     platform_stores = []
     

@@ -50,10 +50,10 @@ def build_ops_layout(deployment_id):
     header = dbc.Row([
         dbc.Col([
             html.H2([html.I(className="bi bi-hdd-network me-2"), host_name], className="fw-bold mb-0"),
-            html.P(f"ID: {deployment_id} | Attached Payloads: {len(child_deps)}", className="text-muted mb-0")
+            html.P(f"ID: {deployment_id} | Tactical Quick Look", className="text-muted mb-0")
         ]),
         dbc.Col([
-            dbc.Button([html.I(className="bi bi-graph-up me-2"), "View Analytics & Plots"], 
+            dbc.Button([html.I(className="bi bi-graph-up me-2"), "View Full Analytics"], 
                        href=f"/envds/envops/plots/deployment/{deployment_id}", 
                        color="primary", className="fw-bold shadow-sm me-3"),
             dbc.Badge("Group Health: Pending", id="ops-health-badge", color="secondary", className="fs-5 shadow-sm rounded-pill px-3 py-2")
@@ -67,38 +67,22 @@ def build_ops_layout(deployment_id):
         dbc.Col([dbc.Button([html.I(className="bi bi-sliders me-2"), "Command & Control"], color="dark", className="w-100 shadow-sm fw-bold h-100")], width=3)
     ])), className="shadow-sm border-0 mb-4 bg-light")
     
-    child_links = [
-        dbc.ListGroupItem([
-            html.Div([
-                html.Span(c.get("data", {}).get("display_name", "Unknown Payload"), className="fw-bold"),
-                dbc.Button("Device Details", size="sm", color="outline-primary", href=f"/envds/envops/platform/{c.get('data', {}).get('platform_ref')}", className="float-end")
-            ], className="w-100")
-        ]) for c in child_deps
-    ]
-    sub_systems = dbc.Card([
-        dbc.CardHeader("Attached Sub-Systems (Level 3 Pathways)", className="fw-bold bg-dark text-white"),
-        dbc.ListGroup(child_links, flush=True) if child_links else dbc.CardBody(html.P("No attached payloads.", className="text-muted mb-0"))
-    ], className="shadow-sm border-0 mb-4")
-
     ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
 
-    # --- FIX: ISOLATED MEMORY CACHES ---
     ws_connections = [WebSocket(id="ws-ops-system", url=f"{ws_base}/ws/system-ops/main")]
     platform_stores = []
     
     for p_id in group_platforms:
         if p_id: 
             ws_connections.append(WebSocket(id={"type": "ws-ops-platform", "index": p_id}, url=f"{ws_base}/ws/platform/{p_id}"))
-            # Each WebSocket gets its own dedicated memory block
             platform_stores.append(dcc.Store(id={"type": "platform-cache", "index": p_id}, data={"variables": {}, "state": {}}))
 
     return html.Div([
         html.Div(ws_connections),
         html.Div(platform_stores),
         header, ops_ribbon, 
-        html.Div(id="dynamic-metrics-container", children=[dbc.Spinner(color="primary")]),
-        sub_systems
+        html.Div(id="tactical-metrics-container", children=[dbc.Spinner(color="primary", className="mt-4")]),
     ], className="container-fluid mt-3")
 
 # --- Callbacks ---
@@ -109,7 +93,6 @@ def build_ops_layout(deployment_id):
     State({"type": "platform-cache", "index": MATCH}, "data")
 )
 def ingest_live_telemetry(msg, current_cache):
-    """Safely updates a SINGLE platform's cache, completely immune to race conditions."""
     if not msg or "data" not in msg: return no_update
 
     try:
@@ -117,14 +100,11 @@ def ingest_live_telemetry(msg, current_cache):
         payload = ws_wrapper.get("data-update")
         if not payload: return no_update
             
-        # current_cache is specific to ONE platform (e.g., msp_enclosure_01)
         new_cache = current_cache.copy() if current_cache else {"variables": {}, "state": {}}
         incoming_vars = payload.get("variables", {})
         current_time = incoming_vars.get("time", {}).get("data") or datetime.now(timezone.utc).isoformat()
         
-        # We must copy the variables dict so Dash detects the React state change
         new_vars = new_cache.get("variables", {}).copy()
-        
         for var_name, var_data in incoming_vars.items():
             if var_name == "time": continue
             val = var_data.get("data")
@@ -156,97 +136,183 @@ def update_ribbon_ui(caches):
     if total_alarms > 0: return f"{total_alarms} Critical Alarms", "danger", sys_mode, sys_mode_color, str(total_alarms)
     return "Group Nominal", "success", sys_mode, sys_mode_color, str(total_alarms)
 
-CATEGORY_MAP = {
-    "latitude": "Navigation & Position", "longitude": "Navigation & Position", 
-    "platform_heading": "Navigation & Position", "platform_speed": "Navigation & Position",
-    "air_temperature": "Meteorology", "relative_humidity": "Meteorology", 
-    "air_pressure": "Meteorology", "true_wind_speed": "Meteorology", 
-    "true_wind_direction": "Meteorology", "rain_intensity": "Meteorology",
-    "O3": "Gas Phase Chemistry", "CO": "Gas Phase Chemistry", "NO": "Gas Phase Chemistry", "NO2": "Gas Phase Chemistry",
-    "inlet_flow": "Sampling & Aerosols", "PM2_5": "Sampling & Aerosols", "PM10": "Sampling & Aerosols"
-}
 
+# -----------------------------------------------------------------------------
+# TACTICAL QUICK LOOK RENDERER
+# -----------------------------------------------------------------------------
 @app.callback(
-    Output("dynamic-metrics-container", "children"),
+    Output("tactical-metrics-container", "children"),
     Input({"type": "platform-cache", "index": ALL}, "data"),
     State({"type": "platform-cache", "index": ALL}, "id")
 )
-def update_dynamic_metrics(caches, cache_ids):
-    """Aggregates all isolated platform caches downstream and builds the UI grid."""
-    # Rebuild the master dictionary
-    cache = {c_id["index"]: c_data for c_data, c_id in zip(caches, cache_ids) if c_data}
-    
-    if not cache: return dbc.Alert("Awaiting telemetry...", color="info")
+def update_tactical_quick_look(caches, cache_ids):
+    # 1. Flatten the cache so we can find variables across ALL payloads
+    flat_vars = {}
+    for c_data, c_id in zip(caches, cache_ids):
+        if not c_data: continue
+        plat_id = c_id["index"]
+        for v_name, v_data in c_data.get("variables", {}).items():
+            flat_vars[v_name] = {**v_data, "platform": plat_id}
+            
+    if not flat_vars: return dbc.Alert("Awaiting telemetry...", color="info")
 
     now = datetime.now(timezone.utc)
-    STALE_SECONDS = 120 # Over 2 minutes = Stale
+    STALE_SECONDS = 120
 
+    # Custom Health Thresholds for the Quick Look page
     thresholds = {
         "platform_speed": {"hi_warn": 25.0, "hi_crit": 35.0},
         "air_temperature": {"low_crit": -10.0, "low_warn": 0.0, "hi_warn": 38.0, "hi_crit": 45.0},
         "relative_humidity": {"low_crit": 5.0, "hi_warn": 95.0},
-        "air_pressure": {"low_warn": 960.0, "hi_warn": 1040.0},
-        "true_wind_speed": {"hi_warn": 15.0, "hi_crit": 22.0},
-        "O3": {"hi_warn": 70.0, "hi_crit": 100.0},
-        "inlet_flow": {"low_crit": 14.0, "low_warn": 15.5, "hi_warn": 17.5, "hi_crit": 19.0},
-        "PM2_5": {"hi_warn": 35.0, "hi_crit": 55.0}
+        "inlet_flow": {"low_crit": 14.0, "low_warn": 15.5, "hi_warn": 17.5, "hi_crit": 19.0}
     }
 
-    def evaluate_metric(var_name, var_dict):
-        raw_val = var_dict.get("value")
-        last_time_str = var_dict.get("timestamp")
-        unit = var_dict.get("unit", "")
+    def get_var_status(var_name):
+        """Helper to extract a variable, check its staleness, and evaluate its health color."""
+        v = flat_vars.get(var_name)
+        if not v: return None, "Waiting...", "border-0 shadow-sm mb-3 bg-white border-start border-4 border-secondary", False, ""
+        
+        raw_val = v["value"]
+        unit = v.get("unit", "")
+        plat = v.get("platform", "")
         
         is_stale = False
         try:
-            last_time = datetime.fromisoformat(str(last_time_str).replace("Z", "+00:00"))
+            last_time = datetime.fromisoformat(str(v["timestamp"]).replace("Z", "+00:00"))
             if (now - last_time).total_seconds() > STALE_SECONDS: is_stale = True
         except Exception: pass
 
-        if raw_val is None: return "Waiting...", "border-0 shadow-sm mb-3 bg-white border-start border-4 border-secondary", False
-            
-        try:
-            val = float(raw_val)
-            formatted_text = f"{val:.2f} {unit}".strip()
-            if is_stale: return formatted_text, "border-0 shadow-sm mb-3 bg-light border-start border-4 border-secondary opacity-75", True
+        css_class = "border-0 shadow-sm mb-3 bg-white border-start border-4 border-success"
+        if is_stale:
+            css_class = "border-0 shadow-sm mb-3 bg-light border-start border-4 border-secondary opacity-75"
+        else:
+            try:
+                val_float = float(raw_val)
+                bounds = thresholds.get(var_name, {})
+                if bounds.get("low_crit") is not None and val_float <= bounds["low_crit"]: css_class = "border-0 shadow-sm mb-3 bg-soft-danger border-start border-4 border-danger animate-pulse"
+                elif bounds.get("low_warn") is not None and val_float <= bounds["low_warn"]: css_class = "border-0 shadow-sm mb-3 bg-soft-warning border-start border-4 border-warning"
+                elif bounds.get("hi_crit") is not None and val_float >= bounds["hi_crit"]: css_class = "border-0 shadow-sm mb-3 bg-soft-danger border-start border-4 border-danger animate-pulse"
+                elif bounds.get("hi_warn") is not None and val_float >= bounds["hi_warn"]: css_class = "border-0 shadow-sm mb-3 bg-soft-warning border-start border-4 border-warning"
+            except (ValueError, TypeError): pass
 
-            bounds = thresholds.get(var_name, {})
-            low_crit, low_warn = bounds.get("low_crit"), bounds.get("low_warn")
-            hi_crit, hi_warn = bounds.get("hi_crit"), bounds.get("hi_warn")
-            
-            if low_crit is not None and val <= low_crit: return formatted_text, "border-0 shadow-sm mb-3 bg-soft-danger border-start border-4 border-danger animate-pulse", False
-            if low_warn is not None and val <= low_warn: return formatted_text, "border-0 shadow-sm mb-3 bg-soft-warning border-start border-4 border-warning", False
-            if hi_crit is not None and val >= hi_crit: return formatted_text, "border-0 shadow-sm mb-3 bg-soft-danger border-start border-4 border-danger animate-pulse", False
-            if hi_warn is not None and val >= hi_warn: return formatted_text, "border-0 shadow-sm mb-3 bg-soft-warning border-start border-4 border-warning", False
-                
-            return formatted_text, "border-0 shadow-sm mb-3 bg-white border-start border-4 border-success", False
-            
-        except (ValueError, TypeError):
-            css = "border-0 shadow-sm mb-3 bg-light border-start border-4 border-secondary opacity-75" if is_stale else "border-0 shadow-sm mb-3 bg-white border-start border-4 border-success"
-            return f"{raw_val} {unit}".strip(), css, is_stale
+        try: formatted_val = f"{float(raw_val):.2f}"
+        except: formatted_val = str(raw_val)
 
-    grouped_cards = {}
-    for platform_id, p_data in cache.items():
-        for var_name, var_dict in p_data.get("variables", {}).items():
-            category = CATEGORY_MAP.get(var_name, "Other Variables")
-            formatted_text, css_class, is_stale = evaluate_metric(var_name, var_dict)
-            
-            display_name = var_name.replace("_", " ").title()
-            label_components = [display_name, html.Br(), html.Span(f"({platform_id})", className="text-secondary opacity-50")]
-            if is_stale: label_components.append(html.Span(" STALE", className="ms-2 text-danger fw-bold"))
+        return raw_val, formatted_val, css_class, is_stale, unit
 
-            card = dbc.Col(dbc.Card(dbc.CardBody([
-                    html.Div([html.Span(label_components, className="text-muted small fw-bold text-uppercase d-block mb-1 text-truncate"),
-                              html.H3(formatted_text, className="fw-bold mb-0 text-dark transition-all")], className="position-relative")
-                ], className="p-3"), className=css_class), width=12, md=4, lg=3)
-            grouped_cards.setdefault(category, []).append(card)
+    # --- CARD COMPONENT BUILDERS ---
+    def standard_card(title, var_name):
+        _, fmt_val, css, is_stale, unit = get_var_status(var_name)
+        val_display = f"{fmt_val} {unit}".strip() if fmt_val != "Waiting..." else fmt_val
+        stale_badge = html.Span(" STALE", className="text-danger fw-bold ms-2") if is_stale else ""
+        
+        return dbc.Col(dbc.Card(dbc.CardBody([
+            html.Span([title, stale_badge], className="text-muted small fw-bold text-uppercase d-block mb-1 text-truncate"),
+            html.H3(val_display, className="fw-bold mb-0 text-dark")
+        ], className="p-3"), className=css), width=12, md=3)
 
-    sections = []
-    for cat_name, cards in grouped_cards.items():
-        section = html.Div([
-            html.H5([html.I(className="bi bi-collection me-2"), cat_name], className="fw-bold mb-3 mt-4 border-bottom pb-2 text-secondary"),
-            dbc.Row(cards, className="mb-2")
-        ])
-        sections.append(section)
+    def wind_card(title, spd_var, dir_var):
+        _, spd_fmt, spd_css, spd_stale, spd_unit = get_var_status(spd_var)
+        _, dir_fmt, _, _, dir_unit = get_var_status(dir_var)
+        
+        stale_badge = html.Span(" STALE", className="text-danger fw-bold ms-2") if spd_stale else ""
+        if spd_fmt == "Waiting...": val_display = "Waiting..."
+        else: val_display = html.Div([html.Span(f"{spd_fmt} {spd_unit}"), html.Span(f" @ {dir_fmt}{dir_unit}", className="text-secondary ms-2 fs-5")])
 
-    return html.Div(sections)
+        return dbc.Col(dbc.Card(dbc.CardBody([
+            html.Span([title, stale_badge], className="text-muted small fw-bold text-uppercase d-block mb-1 text-truncate"),
+            html.H3(val_display, className="fw-bold mb-0 text-dark")
+        ], className="p-3"), className=spd_css), width=12, md=3)
+
+    def flow_card(title, flow_var, sp_var):
+        _, flow_fmt, flow_css, is_stale, flow_unit = get_var_status(flow_var)
+        sp_raw, sp_fmt, _, _, _ = get_var_status(sp_var)
+        
+        stale_badge = html.Span(" STALE", className="text-danger fw-bold ms-2") if is_stale else ""
+        
+        if flow_fmt == "Waiting...": 
+            val_display = "Waiting..."
+        else: 
+            sp_display = f" (SP: {sp_fmt})" if sp_raw is not None else ""
+            val_display = html.Div([html.Span(f"{flow_fmt} {flow_unit}"), html.Span(sp_display, className="text-secondary ms-2 fs-6")])
+
+        return dbc.Col(dbc.Card(dbc.CardBody([
+            html.Span([title, stale_badge], className="text-muted small fw-bold text-uppercase d-block mb-1 text-truncate"),
+            html.H3(val_display, className="fw-bold mb-0 text-dark")
+        ], className="p-3"), className=flow_css), width=12, md=3)
+
+    def optics_card(title, b_var, g_var, r_var):
+        b_raw, b_fmt, css, is_stale, b_unit = get_var_status(b_var)
+        g_raw, g_fmt, _, _, g_unit = get_var_status(g_var)
+        r_raw, r_fmt, _, _, r_unit = get_var_status(r_var)
+        
+        stale_badge = html.Span(" STALE", className="text-danger fw-bold ms-2") if is_stale else ""
+        
+        if b_raw is None and g_raw is None and r_raw is None:
+            content = html.H3("Waiting...", className="fw-bold mb-0 text-dark")
+        else:
+            content = html.Div([
+                html.Div([html.I(className="bi bi-circle-fill text-primary me-2"), html.Span(f"Blue: {b_fmt} {b_unit}" if b_raw else "Blue: N/A", className="fw-bold fs-5")]),
+                html.Div([html.I(className="bi bi-circle-fill text-success me-2"), html.Span(f"Green: {g_fmt} {g_unit}" if g_raw else "Green: N/A", className="fw-bold fs-5")]),
+                html.Div([html.I(className="bi bi-circle-fill text-danger me-2"), html.Span(f"Red: {r_fmt} {r_unit}" if r_raw else "Red: N/A", className="fw-bold fs-5")])
+            ])
+
+        return dbc.Col(dbc.Card(dbc.CardBody([
+            html.Span([title, stale_badge], className="text-muted small fw-bold text-uppercase d-block mb-2 text-truncate"),
+            content
+        ], className="p-3"), className=css), width=12, md=4)
+
+    # --- ASSEMBLE THE GROUPS ---
+    
+    group_nav = html.Div([
+        html.H5([html.I(className="bi bi-compass me-2"), "Navigation"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
+        dbc.Row([
+            standard_card("Latitude", "latitude"),
+            standard_card("Longitude", "longitude"),
+            standard_card("Heading", "platform_heading"),
+            standard_card("Speed", "platform_speed"),
+        ], className="mb-4")
+    ])
+
+    group_met = html.Div([
+        html.H5([html.I(className="bi bi-cloud-sun me-2"), "Meteorology & Solar"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
+        dbc.Row([
+            wind_card("True Wind", "true_wind_speed", "true_wind_direction"),
+            standard_card("Temperature", "air_temperature"),
+            standard_card("Rel. Humidity", "relative_humidity"),
+            standard_card("Pressure", "pressure"), 
+            standard_card("Insolation", "insolation"),
+            standard_card("Rain Rate", "rain_intensity"),
+        ], className="mb-4")
+    ])
+
+    # Renamed from Physics to Aerosols
+    group_aerosols = html.Div([
+        html.H5([html.I(className="bi bi-brightness-high me-2"), "Aerosols & Optics"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
+        dbc.Row([
+            standard_card("CN Concentration", "cn_concentration"),
+            optics_card("Scattering (Mm⁻¹)", "scatter_blue", "scatter_green", "scatter_red"),
+            optics_card("Absorption (Mm⁻¹)", "absorption_blue", "absorption_green", "absorption_red"),
+        ], className="mb-4")
+    ])
+
+    # Added Gas Phase Chemistry Group
+    group_gas = html.Div([
+        html.H5([html.I(className="bi bi-wind me-2"), "Gas Phase Chemistry"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
+        dbc.Row([
+            standard_card("Ozone (O3)", "O3"),
+            standard_card("Carbon Monoxide (CO)", "CO"),
+            standard_card("Nitric Oxide (NO)", "NO"),
+            standard_card("Nitrogen Dioxide (NO2)", "NO2"),
+        ], className="mb-4")
+    ])
+
+    group_ops = html.Div([
+        html.H5([html.I(className="bi bi-sliders me-2"), "Operational States"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
+        dbc.Row([
+            flow_card("Inlet Flow", "inlet_flow", "inlet_flow_sp"),
+            wind_card("Relative Wind", "relative_wind_speed", "relative_wind_direction"),
+        ], className="mb-4")
+    ])
+
+    return html.Div([group_nav, group_met, group_physics, group_ops])
