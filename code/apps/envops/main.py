@@ -30,14 +30,11 @@ from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
 
 # from dashapp import app as dash_app
-from code.apps.envops.old.envops_app import app as dash_app
+# from code.apps.envops.old.envops_app import app as dash_app
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
 from envds.message.message import Message
 from envds.core import envdsBase, envdsAppID, envdsStatus
-
-from home_app import app as home_dash
-from ops_app import app as ops_dash
 
 # handler = logging.StreamHandler()
 # handler.setFormatter(Logfmter())
@@ -532,6 +529,8 @@ async def platform_ws_endpoint(websocket: WebSocket, client_id: str):
 # Mount the Isolated Dash Apps inside FastAPI
 # NOTE: Mount the most specific paths first!
 # -----------------------------------------------------------------------------
+from home_app import app as home_dash
+from ops_app import app as ops_dash
 
 # 1. Mount the Ops app at /ops
 app.mount("/ops", WSGIMiddleware(ops_dash.server))
