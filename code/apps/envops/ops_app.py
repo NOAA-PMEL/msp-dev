@@ -4,7 +4,7 @@ from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Import shared tools from our utility layer
 from utils import get_registry_data, config, create_unified_shell, register_sidebar_callbacks
@@ -15,7 +15,6 @@ L = logging.getLogger(__name__)
 app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/ops/", routes_pathname_prefix="/")
 register_sidebar_callbacks(app)
 
-# --- Core Shell and URL Router ---
 app.layout = create_unified_shell(html.Div([
     dcc.Location(id="ops-url", refresh=False),
     html.Div(id="ops-page-content") 
@@ -28,7 +27,6 @@ app.layout = create_unified_shell(html.Div([
 def render_deployment_ops(pathname):
     if not pathname or "deployment/" not in pathname:
         return dbc.Alert("Select a deployment from the sidebar.", color="info", className="m-4")
-        
     deployment_id = pathname.split("/")[-1]
     return build_ops_layout(deployment_id)
 
@@ -50,12 +48,16 @@ def build_ops_layout(deployment_id):
     group_platforms = list(set(raw_targets + short_targets))
     group_platforms = [p for p in group_platforms if p]
 
+    # --- Header with the new PLOTS link ---
     header = dbc.Row([
         dbc.Col([
             html.H2([html.I(className="bi bi-hdd-network me-2"), host_name], className="fw-bold mb-0"),
             html.P(f"ID: {deployment_id} | Attached Payloads: {len(child_deps)}", className="text-muted mb-0")
         ]),
         dbc.Col([
+            dbc.Button([html.I(className="bi bi-graph-up me-2"), "View Analytics & Plots"], 
+                       href=f"/envds/envops/plots/deployment/{deployment_id}", 
+                       color="primary", className="fw-bold shadow-sm me-3"),
             dbc.Badge("Group Health: Pending", id="ops-health-badge", color="secondary", className="fs-5 shadow-sm rounded-pill px-3 py-2")
         ], width="auto", className="text-end align-self-center")
     ], className="mb-4 align-items-center border-bottom pb-3")
@@ -83,27 +85,18 @@ def build_ops_layout(deployment_id):
     ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
 
-    ws_connections = [
-        WebSocket(id="ws-ops-system", url=f"{ws_base}/ws/system-ops/main")
-    ]
-    
+    ws_connections = [WebSocket(id="ws-ops-system", url=f"{ws_base}/ws/system-ops/main")]
     for p_id in group_platforms:
-        if p_id: 
-            ws_connections.append(WebSocket(id={"type": "ws-ops-platform", "index": p_id}, url=f"{ws_base}/ws/platform/{p_id}"))
+        if p_id: ws_connections.append(WebSocket(id={"type": "ws-ops-platform", "index": p_id}, url=f"{ws_base}/ws/platform/{p_id}"))
 
     return html.Div([
         dcc.Store(id="ops-group-platforms", data=group_platforms),
         dcc.Store(id="ops-telemetry-cache", data={}),
         html.Div(ws_connections),
-        header, 
-        ops_ribbon, 
-        
-        # --- NEW: Dynamic Metrics Container ---
+        header, ops_ribbon, 
         html.Div(id="dynamic-metrics-container", children=[dbc.Spinner(color="primary")]),
-        
         sub_systems
     ], className="container-fluid mt-3")
-
 
 # --- Callbacks ---
 
@@ -113,18 +106,22 @@ def build_ops_layout(deployment_id):
     State("ops-telemetry-cache", "data")
 )
 def ingest_live_telemetry(messages, current_cache):
-    if not ctx.triggered:
-        return no_update
-
+    if not ctx.triggered: return no_update
+    
     msg = ctx.triggered[0].get("value")
+    # Log the raw text string arriving from the browser's websocket
+    L.info(f"[DEBUG DASH] 📩 WS Message Received. Raw preview: {str(msg)[:250]}...")
+
     if not msg or "data" not in msg: 
+        L.warning("[DEBUG DASH] ❌ Dropped: No 'data' key found in the websocket message envelope.")
         return no_update
 
     try:
         ws_wrapper = json.loads(msg["data"])
-        
         payload = ws_wrapper.get("data-update")
-        if not payload:
+        
+        if not payload: 
+            L.warning(f"[DEBUG DASH] ❌ Dropped: No 'data-update' key. Keys found: {list(ws_wrapper.keys())}")
             return no_update
 
         attributes = payload.get("attributes", {})
@@ -134,73 +131,77 @@ def ingest_live_telemetry(messages, current_cache):
             current_topic = ws_wrapper.get("topic") or payload.get("destpath", "") or payload.get("sourcepath", "")
             parts = current_topic.split("/")
             platform_id = parts[3].split("::")[0] if len(parts) > 3 else "unknown"
+            L.info(f"[DEBUG DASH] ⚠️ Platform ID derived from path: {platform_id}")
+        else:
+            L.info(f"[DEBUG DASH] ✅ Platform ID derived from attributes: {platform_id}")
             
         new_cache = current_cache.copy() if current_cache else {}
-        if platform_id not in new_cache:
+        if platform_id not in new_cache: 
             new_cache[platform_id] = {"variables": {}, "state": {}}
+            L.info(f"[DEBUG DASH] 🆕 Created new cache entry for platform: {platform_id}")
             
         incoming_vars = payload.get("variables", {})
+        L.info(f"[DEBUG DASH] 📊 Found {len(incoming_vars)} variables: {list(incoming_vars.keys())}")
+        
+        current_time = incoming_vars.get("time", {}).get("data") or datetime.now(timezone.utc).isoformat()
         
         for var_name, var_data in incoming_vars.items():
+            if var_name == "time": continue
             val = var_data.get("data")
             if val is not None:
-                # We save the entire var_data dictionary so we can extract units and metadata later if needed
-                new_cache[platform_id]["variables"][var_name] = {"value": val, "unit": var_data.get("unit", "")}
-            
+                new_cache[platform_id]["variables"][var_name] = {"value": val, "unit": var_data.get("unit", ""), "timestamp": current_time}
+        
+        L.info(f"[DEBUG DASH] 🚀 Returning populated cache to the UI.")
         return new_cache
+        
     except Exception as e:
-        L.error(f"[OPS WS] Parse error: {e}")
+        L.error(f"[DEBUG DASH] 💥 CRITICAL PARSE ERROR: {e}", exc_info=True)
         return no_update
     
 @app.callback(
-    Output("ops-health-badge", "children"),
-    Output("ops-health-badge", "color"),
-    Output("ops-sys-mode", "children"),
-    Output("ops-sys-mode", "className"),
+    Output("ops-health-badge", "children"), Output("ops-health-badge", "color"),
+    Output("ops-sys-mode", "children"), Output("ops-sys-mode", "className"),
     Output("ops-alarm-count", "children"),
     Input("ops-telemetry-cache", "data")
 )
 def update_ribbon_ui(cache):
-    if not cache: 
-        return no_update
-    
+    if not cache: return no_update
     total_alarms = 0
-    sys_mode = "STANDBY"
-    sys_mode_color = "fw-bold text-muted mb-0"
-    
+    sys_mode, sys_mode_color = "STANDBY", "fw-bold text-muted mb-0"
     for uid, data in cache.items():
         state = data.get("state", {})
-        if "alarm" in str(state).lower() or "error" in str(state).lower():
-            total_alarms += 1
-            
+        if "alarm" in str(state).lower() or "error" in str(state).lower(): total_alarms += 1
         if "system_active" in state:
             sys_mode = "ACTIVE" if str(state["system_active"].get("actual", "")).lower() == "true" else "STANDBY"
             sys_mode_color = "fw-bold text-primary mb-0" if sys_mode == "ACTIVE" else "fw-bold text-muted mb-0"
             
-    if total_alarms > 0:
-        health_badge = f"{total_alarms} Critical Alarms"
-        health_color = "danger"
-    else:
-        health_badge = "Group Nominal"
-        health_color = "success"
+    if total_alarms > 0: return f"{total_alarms} Critical Alarms", "danger", sys_mode, sys_mode_color, str(total_alarms)
+    return "Group Nominal", "success", sys_mode, sys_mode_color, str(total_alarms)
 
-    return health_badge, health_color, sys_mode, sys_mode_color, str(total_alarms)
-
+CATEGORY_MAP = {
+    "latitude": "Navigation & Position", "longitude": "Navigation & Position", 
+    "platform_heading": "Navigation & Position", "platform_speed": "Navigation & Position",
+    "air_temperature": "Meteorology", "relative_humidity": "Meteorology", 
+    "air_pressure": "Meteorology", "true_wind_speed": "Meteorology", 
+    "true_wind_direction": "Meteorology", "rain_intensity": "Meteorology",
+    "O3": "Gas Phase Chemistry", "CO": "Gas Phase Chemistry", "NO": "Gas Phase Chemistry", "NO2": "Gas Phase Chemistry",
+    "inlet_flow": "Sampling & Aerosols", "PM2_5": "Sampling & Aerosols", "PM10": "Sampling & Aerosols"
+}
 
 @app.callback(
     Output("dynamic-metrics-container", "children"),
     Input("ops-telemetry-cache", "data")
 )
 def update_dynamic_metrics(cache):
-    """
-    Dynamically generates UI cards for EVERY variable found in the cache, 
-    grouped by the subsystem that provided them.
-    """
-    if not cache:
-        return dbc.Alert("Awaiting telemetry...", color="info")
+    if not cache: return dbc.Alert("Awaiting telemetry...", color="info")
 
-    # A helper dictionary containing health thresholds for known variables. 
-    # If a variable isn't in here, it just defaults to "Nominal/Green".
+    L.info(f"[DEBUG UI] 🎨 UI Grid triggered. Cache contains platforms: {list(cache.keys()) if cache else 'EMPTY'}")
+    
+    if not cache: return dbc.Alert("Awaiting telemetry...", color="info")
+    
+    now = datetime.now(timezone.utc)
+    STALE_SECONDS = 120 # Over 2 minutes = Stale
+
     thresholds = {
         "platform_speed": {"hi_warn": 25.0, "hi_crit": 35.0},
         "air_temperature": {"low_crit": -10.0, "low_warn": 0.0, "hi_warn": 38.0, "hi_crit": 45.0},
@@ -208,91 +209,68 @@ def update_dynamic_metrics(cache):
         "air_pressure": {"low_warn": 960.0, "hi_warn": 1040.0},
         "true_wind_speed": {"hi_warn": 15.0, "hi_crit": 22.0},
         "O3": {"hi_warn": 70.0, "hi_crit": 100.0},
-        "CO": {"hi_warn": 900.0, "hi_crit": 2000.0},
-        "NO": {"hi_warn": 50.0},
-        "NO2": {"hi_warn": 40.0},
         "inlet_flow": {"low_crit": 14.0, "low_warn": 15.5, "hi_warn": 17.5, "hi_crit": 19.0},
-        "PM2_5": {"hi_warn": 35.0, "hi_crit": 55.0},
-        "rain_intensity": {"hi_warn": 5.0, "hi_crit": 20.0}
+        "PM2_5": {"hi_warn": 35.0, "hi_crit": 55.0}
     }
 
-    def evaluate_metric(var_name, var_data):
-        """Formats the reading and determines CSS styling based on thresholds."""
-        raw_val = var_data.get("value")
-        unit = var_data.get("unit", "")
+    def evaluate_metric(var_name, var_dict):
+        raw_val = var_dict.get("value")
+        last_time_str = var_dict.get("timestamp")
+        unit = var_dict.get("unit", "")
         
-        if raw_val is None:
-            return "Waiting...", "border-0 shadow-sm mb-3 bg-white border-start border-4 border-secondary"
+        # 1. Evaluate Staleness
+        is_stale = False
+        try:
+            last_time = datetime.fromisoformat(str(last_time_str).replace("Z", "+00:00"))
+            if (now - last_time).total_seconds() > STALE_SECONDS:
+                is_stale = True
+        except Exception: pass
+
+        if raw_val is None: return "Waiting...", "border-0 shadow-sm mb-3 bg-white border-start border-4 border-secondary", False
             
         try:
             val = float(raw_val)
             formatted_text = f"{val:.2f} {unit}".strip()
             
-            # Fetch thresholds if this is a known variable
+            if is_stale: return formatted_text, "border-0 shadow-sm mb-3 bg-light border-start border-4 border-secondary opacity-75", True
+
             bounds = thresholds.get(var_name, {})
             low_crit, low_warn = bounds.get("low_crit"), bounds.get("low_warn")
             hi_crit, hi_warn = bounds.get("hi_crit"), bounds.get("hi_warn")
             
-            # Threshold verification
-            if low_crit is not None and val <= low_crit:
-                return formatted_text, "border-0 shadow-sm mb-3 bg-soft-danger border-start border-4 border-danger animate-pulse"
-            if low_warn is not None and val <= low_warn:
-                return formatted_text, "border-0 shadow-sm mb-3 bg-soft-warning border-start border-4 border-warning"
-            if hi_crit is not None and val >= hi_crit:
-                return formatted_text, "border-0 shadow-sm mb-3 bg-soft-danger border-start border-4 border-danger animate-pulse"
-            if hi_warn is not None and val >= hi_warn:
-                return formatted_text, "border-0 shadow-sm mb-3 bg-soft-warning border-start border-4 border-warning"
+            if low_crit is not None and val <= low_crit: return formatted_text, "border-0 shadow-sm mb-3 bg-soft-danger border-start border-4 border-danger animate-pulse", False
+            if low_warn is not None and val <= low_warn: return formatted_text, "border-0 shadow-sm mb-3 bg-soft-warning border-start border-4 border-warning", False
+            if hi_crit is not None and val >= hi_crit: return formatted_text, "border-0 shadow-sm mb-3 bg-soft-danger border-start border-4 border-danger animate-pulse", False
+            if hi_warn is not None and val >= hi_warn: return formatted_text, "border-0 shadow-sm mb-3 bg-soft-warning border-start border-4 border-warning", False
                 
-            # Nominal State
-            return formatted_text, "border-0 shadow-sm mb-3 bg-white border-start border-4 border-success"
+            return formatted_text, "border-0 shadow-sm mb-3 bg-white border-start border-4 border-success", False
             
         except (ValueError, TypeError):
-            # Non-float values (like strings or states) just display normally
-            return f"{raw_val} {unit}".strip(), "border-0 shadow-sm mb-3 bg-white border-start border-4 border-success"
+            css = "border-0 shadow-sm mb-3 bg-light border-start border-4 border-secondary opacity-75" if is_stale else "border-0 shadow-sm mb-3 bg-white border-start border-4 border-success"
+            return f"{raw_val} {unit}".strip(), css, is_stale
 
-
-    # Build the dynamic layout
-    sections = []
-    
-    # Iterate through every platform in the cache
+    grouped_cards = {}
     for platform_id, p_data in cache.items():
-        variables = p_data.get("variables", {})
-        if not variables:
-            continue # Skip platforms that haven't sent variable data yet
+        for var_name, var_dict in p_data.get("variables", {}).items():
+            category = CATEGORY_MAP.get(var_name, "Other Variables")
+            formatted_text, css_class, is_stale = evaluate_metric(var_name, var_dict)
             
-        # Ignore timestamps as standalone cards
-        if "time" in variables:
-            del variables["time"]
-
-        cards = []
-        # Generate a card for every single variable this platform is sending
-        for var_name, var_data in variables.items():
-            formatted_text, css_class = evaluate_metric(var_name, var_data)
-            
-            # Clean up the variable name for display (e.g. "air_temperature" -> "Air Temperature")
             display_name = var_name.replace("_", " ").title()
-            
-            card = dbc.Col(
-                dbc.Card([
-                    dbc.CardBody([
-                        html.Div([
-                            html.Span(display_name, className="text-muted small fw-bold text-uppercase d-block mb-1 text-truncate"),
-                            html.H3(formatted_text, className="fw-bold mb-0 text-dark transition-all"),
-                        ], className="position-relative")
-                    ], className="p-3")
-                ], className=css_class), 
-                width=12, md=4, lg=3
-            )
-            cards.append(card)
+            label_components = [display_name, html.Br(), html.Span(f"({platform_id})", className="text-secondary opacity-50")]
+            if is_stale: label_components.append(html.Span(" STALE", className="ms-2 text-danger fw-bold"))
 
-        # Create a visually grouped section for this platform
+            card = dbc.Col(dbc.Card(dbc.CardBody([
+                    html.Div([html.Span(label_components, className="text-muted small fw-bold text-uppercase d-block mb-1 text-truncate"),
+                              html.H3(formatted_text, className="fw-bold mb-0 text-dark transition-all")], className="position-relative")
+                ], className="p-3"), className=css_class), width=12, md=4, lg=3)
+            grouped_cards.setdefault(category, []).append(card)
+
+    sections = []
+    for cat_name, cards in grouped_cards.items():
         section = html.Div([
-            html.H5([html.I(className="bi bi-cpu me-2"), f"Source: {platform_id}"], className="fw-bold mb-3 text-secondary mt-4"),
+            html.H5([html.I(className="bi bi-collection me-2"), cat_name], className="fw-bold mb-3 mt-4 border-bottom pb-2 text-secondary"),
             dbc.Row(cards, className="mb-2")
         ])
         sections.append(section)
-
-    if not sections:
-        return dbc.Alert("Listening for data streams...", color="info")
 
     return html.Div(sections)

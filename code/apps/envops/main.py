@@ -518,11 +518,13 @@ async def variableset_data_update(request: Request):
 
 @app.websocket("/ws/platform/{client_id}")
 async def platform_ws_endpoint(websocket: WebSocket, client_id: str):
+    L.info(f"[DEBUG FASTAPI] 🟢 Browser successfully connected to Platform WS: {client_id}")
     await manager.connect(websocket, client_type="platform", client_id=client_id)
     try:
         while True:
             await websocket.receive_text() # Just keep the pipe open
     except WebSocketDisconnect:
+        L.warning(f"[DEBUG FASTAPI] 🔴 Browser disconnected from Platform WS: {client_id}")
         await manager.disconnect(websocket)
 
 # -----------------------------------------------------------------------------
