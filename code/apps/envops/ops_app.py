@@ -14,7 +14,7 @@ from utils import get_registry_data, config, create_unified_shell, register_side
 L = logging.getLogger(__name__)
 
 # --- Initialize Isolated Dash App ---
-app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/ops/")
+app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/ops/", routes_pathname_prefix="/")
 register_sidebar_callbacks(app)
 
 
