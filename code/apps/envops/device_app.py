@@ -9,7 +9,6 @@ import logging
 import json
 import httpx
 import traceback
-from datetime import datetime
 
 from utils import get_registry_data, config, create_unified_shell, register_sidebar_callbacks
 
@@ -21,15 +20,21 @@ register_sidebar_callbacks(app)
 
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
-# --- Helper Functions (Adapted from sensor.py) ---
-def get_all_sensors():
-    url = f"http://{datastore_url}/device-instance/registry/get/"
-    try:
-        response = httpx.get(url, params={"device_type": "sensor"}, timeout=5.0)
-        return response.json().get("results", [])
-    except Exception as e:
-        L.error(f"get_all_sensors error: {e}")
-        return []
+# --- Helper Functions ---
+def get_all_devices():
+    """Fetches both Sensors and Controllers from the registry and tags them."""
+    devices = []
+    for d_type in ["sensor", "controller"]:
+        url = f"http://{datastore_url}/device-instance/registry/get/"
+        try:
+            response = httpx.get(url, params={"device_type": d_type}, timeout=5.0)
+            items = response.json().get("results", [])
+            for item in items:
+                item["_device_type"] = d_type # Tag it so the UI knows how to route it
+            devices.extend(items)
+        except Exception as e:
+            L.error(f"get_all_devices error for {d_type}: {e}")
+    return devices
 
 def get_device_data(device_id: str, device_type: str="sensor"):
     query = {"device_type": device_type, "device_id": device_id}
@@ -70,7 +75,7 @@ def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"
         except Exception: pass
     return {}
 
-# --- Dynamic Builders (Adapted from sensor.py) ---
+# --- Dynamic Builders ---
 def build_tables(layout_options):
     table_list = []
     for ltype, dims in layout_options.items():
@@ -98,7 +103,7 @@ def build_tables(layout_options):
 
 def build_graph_1d(dropdown_list, xaxis="time"):
     return dbc.Card([
-        dbc.CardHeader([dcc.Dropdown(id={"type": "sensor-graph-1d-dropdown", "index": xaxis}, options=dropdown_list, value="")]),
+        dbc.CardHeader([dcc.Dropdown(id={"type": "sensor-graph-1d-dropdown", "index": xaxis}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
         dcc.Graph(id={"type": "sensor-graph-1d", "index": xaxis}, figure=go.Figure(data=go.Scatter(x=[], y=[], type="scatter")), style={"height": 300}),
     ])
 
@@ -110,7 +115,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
     ])
     axes_settings = dbc.Accordion([dbc.AccordionItem([dbc.Card(children=[content])], title="Axes Settings")], start_collapsed=True)
     return dbc.Card([
-        dbc.CardHeader([dcc.Dropdown(id={"type": "graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="")]),
+        dbc.CardHeader([dcc.Dropdown(id={"type": "graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
         dbc.Row([
             axes_settings,
             dbc.Col(dcc.Graph(id={"type": "graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
@@ -122,7 +127,7 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
     content = dbc.Row([dbc.Button("Submit", {"type": "graph-3d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}), dbc.Label("z-axis min:")])
     axes_settings = dbc.Accordion([dbc.AccordionItem([dbc.Card(children=[content])], title="Axes Settings")], start_collapsed=True)
     return dbc.Card([
-        dbc.CardHeader([dcc.Dropdown(id={"type": "graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="")]),
+        dbc.CardHeader([dcc.Dropdown(id={"type": "graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
         dbc.Row([
             axes_settings,
             dbc.Col(dcc.Graph(id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
@@ -148,49 +153,74 @@ def build_graphs(layout_options):
 app.layout = create_unified_shell(html.Div([
     dcc.Location(id="device-url", refresh=False),
     html.Div(id="device-page-content") 
-]), active_item="ops")
+]), active_item="devices")
 
 @app.callback(
     Output("device-page-content", "children"),
     Input("device-url", "pathname")
 )
-def render_deployment_devices(pathname):
-    if not pathname or "deployment/" not in pathname:
-        return dbc.Alert("Select a deployment from the sidebar.", color="info", className="m-4")
-    deployment_id = pathname.split("/")[-1]
-    
-    # Generate Dropdown with all available sensors
-    sensors = get_all_sensors()
-    sensor_options = [{"label": s.get("metadata", {}).get("name", "Unknown"), "value": s.get("metadata", {}).get("name")} for s in sensors if s.get("metadata", {}).get("name")]
-    
-    return html.Div([
-        dbc.Row([
-            dbc.Col([
-                html.H2([html.I(className="bi bi-cpu me-2"), "Raw Device Telemetry"], className="fw-bold mb-0"),
-                html.P(f"Deployment: {deployment_id}", className="text-muted mb-0")
-            ]),
-            dbc.Col([
-                html.Label("Select an Instrument:", className="fw-bold text-muted small"),
-                dcc.Dropdown(id="sensor-selector", options=sensor_options, placeholder="Select a device to view...", className="shadow-sm")
-            ], width=4)
-        ], className="mb-4 align-items-center border-bottom pb-3"),
+def render_global_devices(pathname):
+    try:
+        devices = get_all_devices()
+        device_options = []
         
-        # Container for the dynamically generated sensor UI
-        html.Div(id="sensor-ui-container")
-    ], className="container-fluid mt-3")
+        for d in devices:
+            make = d.get("make")
+            model = d.get("model")
+            sn = d.get("serial_number")
+            
+            if not make or not model or not sn: continue
+            
+            dtype = d.get("_device_type", "sensor")
+            device_id = f"{make}::{model}::{sn}"
+            
+            # Embed the device type into the value so the UI knows how to route it
+            dropdown_val = f"{dtype}::{device_id}"
+            label = f"{make} {model} (SN: {sn}) [{dtype.capitalize()}]"
+            
+            device_options.append({"label": label, "value": dropdown_val})
 
+        device_options = sorted(device_options, key=lambda d: d['label'])
+        
+        return html.Div([
+            dbc.Row([
+                dbc.Col([
+                    html.H2([html.I(className="bi bi-cpu me-2"), "Fleet Device Diagnostics"], className="fw-bold mb-0"),
+                    html.P("Global registry of all active sensors and controllers.", className="text-muted mb-0")
+                ]),
+                dbc.Col([
+                    html.Label("Select an Instrument:", className="fw-bold text-muted small"),
+                    dcc.Dropdown(id="device-selector", options=device_options, placeholder="Select a device to view...", className="shadow-sm")
+                ], width=5)
+            ], className="mb-4 align-items-center border-bottom pb-3"),
+            
+            html.Div(id="device-ui-container")
+        ], className="container-fluid mt-3")
+        
+    except Exception as e:
+        L.error(f"[DEVICE UI] Layout Crash: {traceback.format_exc()}")
+        return html.Div([
+            dbc.Alert([
+                html.H4("🚨 Internal Server Error", className="alert-heading"),
+                html.P("The dashboard encountered a fatal Python exception while building the layout:")
+            ], color="danger", className="m-4 shadow-sm"),
+            html.Pre(traceback.format_exc(), className="bg-dark text-danger p-3 mx-4 rounded shadow-sm border border-danger", style={"overflowX": "auto"})
+        ])
 
 @app.callback(
-    Output("sensor-ui-container", "children"),
-    Input("sensor-selector", "value")
+    Output("device-ui-container", "children"),
+    Input("device-selector", "value")
 )
-def generate_sensor_ui(sensor_id):
-    if not sensor_id:
-        return html.Div(html.H5("Please select an instrument from the dropdown.", className="text-muted text-center mt-5"))
+def generate_device_ui(dropdown_val):
+    if not dropdown_val:
+        return html.Div(html.H5("Please select an instrument from the dropdown to load its UI and variable plots.", className="text-muted text-center mt-5"))
         
-    parts = sensor_id.split("::")
-    sensor_meta = {"device_id": sensor_id, "make": parts[0] if len(parts)>0 else "", "model": parts[1] if len(parts)>1 else "", "serial_number": parts[2] if len(parts)>2 else ""}
-    sensor_definition = get_device_definition_by_device_id(device_id=sensor_id, device_type="sensor")
+    parts = dropdown_val.split("::")
+    device_type = parts[0]
+    device_id = f"{parts[1]}::{parts[2]}::{parts[3]}"
+    
+    device_meta = {"device_id": device_id, "device_type": device_type, "make": parts[1], "model": parts[2], "serial_number": parts[3]}
+    device_definition = get_device_definition_by_device_id(device_id=device_id, device_type=device_type)
 
     layout_options = {
         "layout-settings": {"time": {"table-column-defs": [], "variable-list": [], "row-data-skeletons": []}},
@@ -199,12 +229,12 @@ def generate_sensor_ui(sensor_id):
     }
     calibration_vars = []
 
-    if sensor_definition:
+    if device_definition:
         try:
-            dimensions = sensor_definition.get("dimensions", {})
+            dimensions = device_definition.get("dimensions", {})
             multi_dim = len(dimensions.keys()) > 1
 
-            for name, var in sensor_definition.get("variables", {}).items():
+            for name, var in device_definition.get("variables", {}).items():
                 var_type = var.get("attributes", {}).get("variable_type", {}).get("data")
                 
                 if var_type == "setting":
@@ -252,38 +282,42 @@ def generate_sensor_ui(sensor_id):
         except Exception as e:
             L.error(f"build layout error: {e}")
 
+    # Set up the correct API payload for the settings buffer based on device type
+    id_field = "controllerid" if device_type == "controller" else "deviceid"
     initial_request = {
         "source": f"envds.{config.daq_id}.dashboard",
-        "data": {}, "destpath": "envds/sensor/settings/request", "deviceid": sensor_id
+        "data": {}, "destpath": f"envds/{device_type}/settings/request", 
+        id_field: device_id
     }
 
-    ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
+    ws_protocol = "wss://" if str(config.ws_use_tls).lower() == "true" else "ws://"
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
 
     return html.Div([
-        dbc.Accordion(build_tables(layout_options), id="sensor-data-accordion", className="mb-4"),
-        dbc.Accordion(build_graphs(layout_options), id="sensor-plot-accordion", className="mb-4"),
-        dbc.Accordion([dbc.AccordionItem(html.Pre(id="calibration-display", children="Waiting for data...", style={"whiteSpace": "pre-wrap", "wordBreak": "break-all"}), title="Calibration Values")], id="sensor-calibration-accordion", start_collapsed=True),
+        dbc.Accordion(build_tables(layout_options), id="device-data-accordion", className="mb-4"),
+        dbc.Accordion(build_graphs(layout_options), id="device-plot-accordion", className="mb-4"),
+        dbc.Accordion([dbc.AccordionItem(html.Pre(id="calibration-display", children="Waiting for data...", style={"whiteSpace": "pre-wrap", "wordBreak": "break-all"}), title="Calibration Values")], id="device-calibration-accordion", start_collapsed=True),
         
-        WebSocket(id="ws-sensor-instance", url=f"{ws_base}/ws/sensor/{sensor_id}"),
+        # Route to the correct WebSocket endpoint dynamically
+        WebSocket(id="ws-device-instance", url=f"{ws_base}/ws/{device_type}/{device_id}"),
         html.Div(id="ws-send-instance-buffer", children=json.dumps(initial_request), style={"display": "none"}),
         
         dcc.Store(id="calibration-vars", data=calibration_vars),
-        dcc.Store(id="sensor-definition", data=sensor_definition),
-        dcc.Store(id="sensor-meta", data=sensor_meta),
+        dcc.Store(id="device-definition", data=device_definition),
+        dcc.Store(id="device-meta", data=device_meta),
         dcc.Store(id="graph-axes", data={}),
-        dcc.Store(id="sensor-data-buffer", data={}),
-        dcc.Store(id="sensor-settings-buffer", data={})
+        dcc.Store(id="device-data-buffer", data={}),
+        dcc.Store(id="device-settings-buffer", data={})
     ])
 
 
-# --- Sub-Callbacks (Adapted from sensor.py) ---
+# --- Sub-Callbacks ---
 
 @app.callback(
-    Output("sensor-data-buffer", "data"), Output("sensor-settings-buffer", "data"),
-    Input("ws-sensor-instance", "message")
+    Output("device-data-buffer", "data"), Output("device-settings-buffer", "data"),
+    Input("ws-device-instance", "message")
 )
-def update_sensor_buffers(event):
+def update_device_buffers(event):
     if event and "data" in event:
         try:
             event_data = json.loads(event["data"])
@@ -295,15 +329,15 @@ def update_sensor_buffers(event):
 @app.callback(
     Output({"type": "sensor-graph-1d", "index": MATCH}, "figure"),
     Input({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "value"),
-    [State("sensor-meta", "data"), State("graph-axes", "data"), State("sensor-definition", "data"), State({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "id")]
+    [State("device-meta", "data"), State("graph-axes", "data"), State("device-definition", "data"), State({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "id")]
 )
-def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
+def select_graph_1d(y_axis, device_meta, graph_axes, device_definition, graph_id):
     default_fig = go.Figure(layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}, "template": "simple_white"})
     if not y_axis: return default_fig
 
     try:
         x, y = [], []
-        results = get_device_data(device_id=sensor_meta.get("device_id"), device_type="sensor")
+        results = get_device_data(device_id=device_meta.get("device_id"), device_type=device_meta.get("device_type", "sensor"))
         if results:
             for doc in results:
                 try:
@@ -312,7 +346,7 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
                 except KeyError: pass
 
         units = ""
-        try: units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
+        try: units = f'({device_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
         except Exception: pass
 
         return go.Figure(data=go.Scatter(x=x, y=y, type="scatter", mode="lines+markers"), layout={"xaxis": {"title": "Time"}, "yaxis": {"title": f"{y_axis} {units}".strip()}, "template": "simple_white"})
@@ -320,18 +354,18 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
 
 @app.callback(
     Output({"type": "sensor-graph-1d", "index": ALL}, "extendData"),
-    Input("sensor-data-buffer", "data"),
+    Input("device-data-buffer", "data"),
     State({"type": "sensor-graph-1d-dropdown", "index": ALL}, "value"),
     prevent_initial_call=True
 )
-def update_graph_1d(sensor_data, y_axis_list):
-    if not sensor_data: raise PreventUpdate
+def update_graph_1d(device_data, y_axis_list):
+    if not device_data: raise PreventUpdate
     figs_to_update = []
     for y_axis in y_axis_list:
         if not y_axis:
             figs_to_update.append(no_update)
             continue
-        variables = sensor_data.get("variables", {})
+        variables = device_data.get("variables", {})
         if "time" not in variables or y_axis not in variables:
             figs_to_update.append(no_update)
             continue
@@ -348,18 +382,18 @@ def update_graph_1d(sensor_data, y_axis_list):
 
 @app.callback(
     Output("calibration-display", "children"),
-    Input("sensor-data-buffer", "data"),
+    Input("device-data-buffer", "data"),
     [State("calibration-display", "children"), State("calibration-vars", "data")]
 )
-def update_calibration_display(sensor_data, current_display, cal_vars):
-    if not sensor_data or not cal_vars: raise PreventUpdate
+def update_calibration_display(device_data, current_display, cal_vars):
+    if not device_data or not cal_vars: raise PreventUpdate
     try: cal_data = json.loads(current_display)
     except: cal_data = {}
 
     has_updates = False
     for name in cal_vars:
-        if name in sensor_data.get("variables", {}):
-            new_val = sensor_data["variables"][name].get("data")
+        if name in device_data.get("variables", {}):
+            new_val = device_data["variables"][name].get("data")
             if cal_data.get(name) != new_val:
                 cal_data[name] = new_val
                 has_updates = True
@@ -370,14 +404,14 @@ def update_calibration_display(sensor_data, current_display, cal_vars):
 
 @app.callback(
     Output({"type": "data-table-1d", "index": ALL}, "rowTransaction"),
-    Input("sensor-data-buffer", "data"),
+    Input("device-data-buffer", "data"),
     State({"type": "data-table-1d", "index": ALL}, "columnDefs")
 )
-def update_table_1d(sensor_data, col_defs_list):
-    if not sensor_data: raise PreventUpdate
+def update_table_1d(device_data, col_defs_list):
+    if not device_data: raise PreventUpdate
     transactions = []
     for col_defs in col_defs_list:
-        data = {col["field"]: sensor_data.get("variables", {}).get(col["field"], {}).get("data", "") for col in col_defs}
+        data = {col["field"]: device_data.get("variables", {}).get(col["field"], {}).get("data", "") for col in col_defs}
         transactions.append({"add": [data], "addIndex": 0})
     if not transactions: raise PreventUpdate
     return transactions
@@ -386,10 +420,10 @@ def update_table_1d(sensor_data, col_defs_list):
     Output("ws-send-instance-buffer", "children", allow_duplicate=True),
     Input({"type": "submit-setting-btn", "index": ALL}, "n_clicks"),
     State({"type": "settings-table", "index": ALL}, "selectedRows"),
-    State("sensor-meta", "data"),
+    State("device-meta", "data"),
     prevent_initial_call=True
 )
-def submit_setting_change(n_clicks_list, selected_rows_list, sensor_meta):
+def submit_setting_change(n_clicks_list, selected_rows_list, device_meta):
     if not any(n for n in n_clicks_list if n): raise PreventUpdate
     selected_row = next((rows[0] for rows in selected_rows_list if rows), None)
     if not selected_row: raise PreventUpdate
@@ -404,12 +438,62 @@ def submit_setting_change(n_clicks_list, selected_rows_list, sensor_meta):
         else: requested_val = str(raw_val)
     except: requested_val = raw_val
 
+    # Route settings explicitly to either 'sensor' or 'controller'
+    dtype = device_meta.get("device_type", "sensor")
+    id_field = "controllerid" if dtype == "controller" else "deviceid"
+
     return json.dumps({
         "source": f"envds.{config.daq_id}.dashboard",
         "data": {"settings": {selected_row["parameter"]: {"requested": requested_val}}},
-        "destpath": "envds/sensor/settings/request",
-        "deviceid": sensor_meta["device_id"]
+        "destpath": f"envds/{dtype}/settings/request",
+        id_field: device_meta["device_id"]
     })
 
-@app.callback(Output("ws-sensor-instance", "send"), Input("ws-send-instance-buffer", "children"))
+@app.callback(Output("ws-device-instance", "send"), Input("ws-send-instance-buffer", "children"))
 def send_to_instance(value): return value
+
+@app.callback(
+    Output({"type": "data-table-2d", "index": ALL}, "rowData"), 
+    Input("device-data-buffer", "data"),
+    [State({"type": "data-table-2d", "index": ALL}, "rowData"), State({"type": "data-table-2d", "index": ALL}, "columnDefs"), State("device-definition", "data")]
+)
+def update_table_2d(device_data, row_data_list, col_defs_list, device_definition):
+    if not device_data: raise PreventUpdate
+    new_row_data_list = []
+    for col_defs in col_defs_list:
+        if not col_defs:
+            new_row_data_list.append(dash.no_update)
+            continue
+        dim_2d = col_defs[0]["field"]
+        dim_2d_is_coord = device_definition and dim_2d in device_definition.get("variables", {}) and device_definition["variables"][dim_2d].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate"
+        
+        if dim_2d_is_coord: dim_data = device_definition["variables"][dim_2d].get("data", [])
+        else:
+            if dim_2d not in device_data.get("variables", {}):
+                new_row_data_list.append(dash.no_update)
+                continue
+            dim_data = device_data["variables"][dim_2d].get("data")
+            if not dim_data:
+                new_row_data_list.append(dash.no_update)
+                continue
+
+        row_data = []
+        for index in range(0, len(dim_data)):
+            data = {dim_2d: dim_data[index]}
+            for col in col_defs[1:]:
+                try: data[col["field"]] = device_data["variables"][col["field"]]["data"][index]
+                except (KeyError, IndexError, TypeError): data[col["field"]] = None
+            row_data.append(data)
+        new_row_data_list.append(row_data)
+        
+    if all(r == dash.no_update for r in new_row_data_list): raise PreventUpdate
+    return new_row_data_list
+
+@app.callback(
+    Output({"type": "graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True),
+    [Input({"type": "graph-2d-z-axis-submit", "index": MATCH}, "n_clicks")],
+    [State({"type": "graph-2d-z-axis-min", "index": MATCH}, "value"), State({"type": "graph-2d-z-axis-max", "index": MATCH}, "value"), State({"type": "graph-2d-heatmap", "index": MATCH}, "figure")],
+    prevent_initial_call=True
+)
+def set_2d_z_axis_range(n, axis_min, axis_max, heatmap):
+    return go.Figure(heatmap).update_layout(coloraxis=dict(cauto=False, cmax=axis_max, cmin=axis_min))

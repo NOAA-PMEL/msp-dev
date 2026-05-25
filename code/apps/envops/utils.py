@@ -114,15 +114,27 @@ def register_sidebar_callbacks(app: dash.Dash):
     )
     def update_sidebar(n):
         try:
-            deployments = get_registry_data("deployment")
-            projects = get_registry_data("project")
+            # --- GLOBAL NAV LINKS ---
+            global_links = html.Div([
+                dbc.NavLink([html.I(className="bi bi-cpu me-2"), "Fleet Device Diagnostics"], 
+                            href="/envds/envops/devices/", 
+                            active="exact", className="fw-bold py-2 rounded mb-3 bg-light text-dark shadow-sm")
+            ])
+
+            deployments = get_registry_data("deployment") or []
+            projects = get_registry_data("project") or []
             
             if not deployments or not projects:
-                return html.P("No active missions found.", className="text-muted small px-2")
+                return html.Div([global_links, html.P("No active missions found.", className="text-muted small px-2")])
                 
             project_map = {p.get("metadata", {}).get("name"): p for p in projects}
+            
+            # Root Deployment Filter
+            platform_to_dep = {d.get("data", {}).get("platform_ref"): d for d in deployments}
+            root_deps = [d for d in deployments if not d.get("data", {}).get("host_platform_ref") or d.get("data", {}).get("host_platform_ref") == d.get("data", {}).get("platform_ref") or d.get("data", {}).get("host_platform_ref") not in platform_to_dep]
+
             projects_grouped = {}
-            for dep in deployments:
+            for dep in root_deps:
                 proj_ref = dep.get("data", {}).get("project_ref", "unassigned")
                 projects_grouped.setdefault(proj_ref, []).append(dep)
                 
@@ -138,12 +150,11 @@ def register_sidebar_callbacks(app: dash.Dash):
                     nav_links.append(html.Div([
                         html.Span(dep_name, className="fw-bold small d-block mb-1 text-dark"),
                         dbc.NavLink([html.I(className="bi bi-sliders me-2"), "Operations"], href=f"/envds/envops/ops/deployment/{dep_id}", active="exact", className="small py-1 text-truncate rounded ps-3"),
-                        dbc.NavLink([html.I(className="bi bi-graph-up me-2"), "Analytics & Plots"], href=f"/envds/envops/plots/deployment/{dep_id}", active="exact", className="small py-1 text-truncate rounded ps-3"),
-                        # --- NEW DEVICE TELEMETRY LINK ---
-                        dbc.NavLink([html.I(className="bi bi-cpu me-2"), "Device Telemetry"], href=f"/envds/envops/devices/deployment/{dep_id}", active="exact", className="small py-1 text-truncate rounded ps-3 mb-3")
+                        dbc.NavLink([html.I(className="bi bi-graph-up me-2"), "Analytics & Plots"], href=f"/envds/envops/plots/deployment/{dep_id}", active="exact", className="small py-1 text-truncate rounded ps-3 mb-3"),
                     ]))
                     
                 accordion_items.append(dbc.AccordionItem(dbc.Nav(nav_links, vertical=True, pills=True), title=proj_name, class_name="bg-transparent border-0 px-0"))
-            return dbc.Accordion(accordion_items, flush=True, start_collapsed=False, className="sidebar-accordion")
+            
+            return html.Div([global_links, dbc.Accordion(accordion_items, flush=True, start_collapsed=False, className="sidebar-accordion")])
         except Exception as e:
             return html.P("Sidebar Error", className="text-danger small px-2")

@@ -15,6 +15,8 @@ L = logging.getLogger(__name__)
 app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/ops/", routes_pathname_prefix="/", suppress_callback_exceptions=True)
 register_sidebar_callbacks(app)
 
+SERVER_CACHE = {}
+
 app.layout = create_unified_shell(html.Div([
     dcc.Location(id="ops-url", refresh=False),
     html.Div(id="ops-page-content") 
@@ -112,36 +114,42 @@ def build_ops_layout(deployment_id):
 
 @app.callback(
     Output({"type": "platform-cache", "index": MATCH}, "data"),
-    Input({"type": "ws-ops-platform", "index": MATCH}, "message"),
-    # Notice: We no longer need State! Patch() handles it all client-side.
+    Input({"type": "ws-ops-platform", "index": MATCH}, "message") # <-- No State needed!
 )
 def ingest_live_telemetry(msg):
-    if not msg or "data" not in msg: 
-        return no_update
+    if not msg or "data" not in msg: return no_update
+
+    plat_id = ctx.triggered_id.get("index") if ctx.triggered_id else "Unknown"
+    
+    # Initialize the server memory for this platform if it doesn't exist yet
+    if plat_id not in SERVER_CACHE:
+        SERVER_CACHE[plat_id] = {"variables": {}, "state": {}}
 
     try:
         ws_wrapper = json.loads(msg["data"])
         payload = ws_wrapper.get("data-update")
-        if not payload: 
-            return no_update
+        if not payload: return no_update
             
         incoming_vars = payload.get("variables", {})
-        current_time = incoming_vars.get("time", {}).get("data") or datetime.now(timezone.utc).isoformat()
         
-        # Initialize a surgical Patch object
-        patched_cache = Patch()
+        # --- DEBUGGING ---
+        L.info(f"[[DEBUG INGEST]] 📩 WS hit for {plat_id}. Processing {len(incoming_vars)} vars...")
+        
+        current_time = incoming_vars.get("time", {}).get("data") or datetime.now(timezone.utc).isoformat()
         has_updates = False
         
+        # Write directly to the persistent Python memory
         for var_name, var_data in incoming_vars.items():
             if var_name == "time": continue
             val = var_data.get("data")
             if val is not None:
-                # Tell the browser to ONLY update this specific variable's key
-                patched_cache["variables"][var_name] = {"value": val, "unit": var_data.get("unit", ""), "timestamp": current_time}
+                SERVER_CACHE[plat_id]["variables"][var_name] = {"value": val, "unit": var_data.get("unit", ""), "timestamp": current_time}
                 has_updates = True
         
         if has_updates:
-            return patched_cache
+            # We must return a dict() copy so Dash realizes the data changed and triggers the UI!
+            L.info(f"[[DEBUG INGEST]] ✅ Cache for {plat_id} now holds {len(SERVER_CACHE[plat_id]['variables'])} total merged variables.")
+            return dict(SERVER_CACHE[plat_id])
             
         return no_update
     except Exception as e:
@@ -318,7 +326,7 @@ def update_tactical_quick_look(caches, cache_ids):
             standard_card("Temperature", "air_temperature"),
             standard_card("Rel. Humidity", "relative_humidity"),
             standard_card("Pressure", "pressure"), 
-            standard_card("Insolation", "insolation"),
+            standard_card("Solar Irradiance", "irradiance"),
             standard_card("Rain Rate", "rain_intensity"),
         ], className="mb-4")
     ])
