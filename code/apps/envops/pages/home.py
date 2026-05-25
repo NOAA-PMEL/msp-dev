@@ -10,6 +10,7 @@ import traceback
 import json
 from datetime import datetime, timezone
 from pydantic import BaseSettings
+import time
 
 from utils import get_registry_data, config
 
@@ -247,15 +248,31 @@ def ingest_live_telemetry(msg, current_cache):
     State("home-projects-accordion", "active_item")
 )
 def update_home_dashboard(n, telemetry_cache, current_active_items):
+    
+    cb_start_time = time.time() 
+    L.info(f"========== [HOME DASH] CALLBACK START (Interval {n}) ==========")
+    
     try:
         # 1. Fetch registry data using the updated 2-step utils.py function
+        t0 = time.time()
         deployments = get_registry_data("deployment")
+        L.info(f"[HOME DASH] Deployments fetched in {time.time() - t0:.3f}s. Count: {len(deployments) if deployments else 0}")
+        
+        t1 = time.time()
         projects = get_registry_data("project")
+        L.info(f"[HOME DASH] Projects fetched in {time.time() - t1:.3f}s. Count: {len(projects) if projects else 0}")
+        
+        t2 = time.time()
         platforms = get_registry_data("platform")
+        L.info(f"[HOME DASH] Platforms fetched in {time.time() - t2:.3f}s. Count: {len(platforms) if platforms else 0}")
 
         if not deployments:
+            L.warning("[HOME DASH] ABORTING: Deployments list is empty. Returning 'No data found'.")
             return dbc.Alert("No data found.", color="warning"), go.Figure(), [], current_active_items
 
+        L.info("[HOME DASH] Data successfully loaded. Beginning UI processing (Metrics, Map, Accordion)...")
+        ui_process_start = time.time()
+        
         project_map = {p.get("metadata", {}).get("name"): p for p in projects}
         platform_map = {p.get("metadata", {}).get("name"): p for p in platforms}
 
@@ -381,7 +398,7 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
                 cache_hit = telemetry_cache.get(p_ref) or telemetry_cache.get(s_ref) or {}
                 proj_issues += cache_hit.get("issues", 0)
             # ------------------------------------------------------------------------
-            
+
             if proj_issues > 0:
                 health_badge = dbc.Badge([html.I(className="bi bi-exclamation-triangle-fill me-2"), f"{proj_issues} Issues"], color="danger", className="rounded-pill shadow-sm px-3 py-2")
                 title_class = "text-danger"
@@ -401,6 +418,9 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
         if current_active_items is None:
             current_active_items = []
 
+        L.info(f"[HOME DASH] UI processing completed in {time.time() - ui_process_start:.3f}s.")
+        L.info(f"========== [HOME DASH] CALLBACK END (Total Duration: {time.time() - cb_start_time:.3f}s) ==========")
+        
         return metrics_row, fig, project_accordions, current_active_items
 
     except Exception as e:
