@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, Input, Output, State, no_update, ALL, MATCH, ctx
+from dash import html, dcc, Input, Output, State, no_update, ALL, MATCH, ctx, Patch
 from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
 import logging
@@ -113,9 +113,9 @@ def build_ops_layout(deployment_id):
 @app.callback(
     Output({"type": "platform-cache", "index": MATCH}, "data"),
     Input({"type": "ws-ops-platform", "index": MATCH}, "message"),
-    State({"type": "platform-cache", "index": MATCH}, "data")
+    # Notice: We no longer need State! Patch() handles it all client-side.
 )
-def ingest_live_telemetry(msg, current_cache):
+def ingest_live_telemetry(msg):
     if not msg or "data" not in msg: 
         return no_update
 
@@ -125,24 +125,25 @@ def ingest_live_telemetry(msg, current_cache):
         if not payload: 
             return no_update
             
-        new_cache = current_cache.copy() if current_cache else {"variables": {}, "state": {}}
         incoming_vars = payload.get("variables", {})
-        
-        # --- DEBUGGING INJECTED HERE ---
-        plat_id = ctx.triggered_id.get("index") if ctx.triggered_id else "Unknown"
-        L.info(f"[[DEBUG INGEST]] 📩 WS hit for {plat_id}. Found {len(incoming_vars)} vars: {list(incoming_vars.keys())[:5]}...")
-        
         current_time = incoming_vars.get("time", {}).get("data") or datetime.now(timezone.utc).isoformat()
         
-        new_vars = new_cache.get("variables", {}).copy()
+        # Initialize a surgical Patch object
+        patched_cache = Patch()
+        has_updates = False
+        
         for var_name, var_data in incoming_vars.items():
             if var_name == "time": continue
             val = var_data.get("data")
             if val is not None:
-                new_vars[var_name] = {"value": val, "unit": var_data.get("unit", ""), "timestamp": current_time}
+                # Tell the browser to ONLY update this specific variable's key
+                patched_cache["variables"][var_name] = {"value": val, "unit": var_data.get("unit", ""), "timestamp": current_time}
+                has_updates = True
         
-        new_cache["variables"] = new_vars
-        return new_cache
+        if has_updates:
+            return patched_cache
+            
+        return no_update
     except Exception as e:
         L.error(f"[[DEBUG INGEST]] 💥 Parse error: {e}")
         return no_update
