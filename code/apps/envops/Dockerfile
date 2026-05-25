@@ -9,8 +9,9 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY VERSION .
-COPY envops_app.py main.py utils.py ./
-COPY pages/ ./pages/
+COPY home_app.py ops_app.py main.py utils.py ./
+# COPY envops_app.py main.py utils.py ./
+# COPY pages/ ./pages/
 COPY assets/ ./assets/   
 
 RUN chown -R envops:envops $APP_HOME

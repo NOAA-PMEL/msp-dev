@@ -1,65 +1,25 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State, no_update
+from dash import html, dcc, Input, Output, State, no_update
 from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
-import httpx
-# from cachetools import cached, TTLCache
 import logging
 import traceback
 import json
 from datetime import datetime, timezone
-from pydantic import BaseSettings
 import time
 
-from utils import get_registry_data, config
-
-dash.register_page(__name__, path='/', title="EnvOps - Active Deployments", order=0)
+# Import shared tools from our utility layer
+from utils import get_registry_data, config, create_unified_shell, register_sidebar_callbacks
 
 L = logging.getLogger(__name__)
 
-# class Settings(BaseSettings):
-#     daq_id: str = "mspbase01"
-#     external_hostname: str = "mspbase01.pmel.noaa.gov"
-#     ws_port: str = "8080"
-#     ws_use_tls: str = "false"
-#     class Config:
-#         env_prefix = "ENVOPS_"
-#         case_sensitive = False
-
-# config = Settings()
-# datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
+# --- Initialize Isolated Dash App ---
+app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/")
+register_sidebar_callbacks(app)
 
 ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
 ws_url = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops/ws/system-ops/main"
-# ws_url = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/ws/system-ops/main"
-
-# registry_cache = TTLCache(maxsize=128, ttl=300)
-
-# @cached(cache=registry_cache)
-# def get_registry_data(endpoint: str):
-#     """Safely fetches data using httpx, heavily cached to protect the datastore."""
-#     url = f"http://{datastore_url}/{endpoint}"
-#     L.debug("Cache miss! Re-fetching registry data from datastore", extra={"fetch_url": url})
-    
-#     try:
-#         with httpx.Client() as client:
-#             response = client.get(url, timeout=5.0)
-            
-#         if response.status_code == 200:
-#             data = response.json()
-#             results = data.get("results", [])
-#             L.debug("Successfully parsed registry items", extra={"endpoint": endpoint, "count": len(results)})
-#             return results
-#         else:
-#             L.error("API returned non-200 code", extra={"status": response.status_code, "body": response.text})
-            
-#     except httpx.RequestError as e:
-#         L.error("CONNECTION ERROR during fetch", extra={"fetch_url": url, "failure_detail": str(e)})
-#     except Exception as e:
-#         L.error("Unexpected fetch failure", extra={"endpoint": endpoint, "failure_detail": str(e)})
-        
-#     return []
 
 
 def determine_deployment_status(dep_data):
@@ -78,13 +38,12 @@ def determine_deployment_status(dep_data):
 
 def get_status_badge(status):
     status = str(status).lower()
-    # "Active" is now primary (blue) to avoid conflicting with the green health badge
     if status == "active": return dbc.Badge("Active", color="primary", className="ms-2 shadow-sm")
     elif status == "planned": return dbc.Badge("Planned", color="info", className="ms-2 shadow-sm")
     elif status == "completed": return dbc.Badge("Completed", color="secondary", className="ms-2 shadow-sm")
     return dbc.Badge(status.capitalize(), color="warning", text_color="dark", className="ms-2 shadow-sm")
 
-def create_deployment_card(deployment, platform_info, host_info, child_cards=None, telemetry_cache=None, is_child=False):
+def create_deployment_card(deployment, platform_info, host_info, child_cards=None, telemetry_cache=None, is_child=False, child_plat_refs=None):
     if telemetry_cache is None: telemetry_cache = {}
     dep_meta = deployment.get("metadata", {})
     dep_data = deployment.get("data", {})
@@ -99,16 +58,23 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
     h_data = host_info.get("data") or {}
     host_name = h_data.get("display_name", dep_data.get("host_platform_ref", "Unknown Host"))
     
-    # --- FIX: Check BOTH the full reference and short reference ---
     plat_ref = dep_data.get("platform_ref", "")
     short_ref = plat_ref.split(".")[-1] if "." in plat_ref else plat_ref
     live_data = telemetry_cache.get(plat_ref) or telemetry_cache.get(short_ref) or {}
-    # --------------------------------------------------------------
     
     has_telemetry = bool(live_data.get("last_seen"))
     issues = live_data.get("issues", 0)
     
-    # 1. Evaluate specific health status based on telemetry cache
+    # Hierarchical Health Rollup: Check if children are alive if host is silent
+    if not has_telemetry and child_plat_refs:
+        for c_ref in child_plat_refs:
+            c_short = c_ref.split(".")[-1] if "." in c_ref else c_ref
+            c_hit = telemetry_cache.get(c_ref) or telemetry_cache.get(c_short) or {}
+            if c_hit.get("last_seen"):
+                has_telemetry = True
+                issues = max(issues, c_hit.get("issues", 0))
+                break
+
     if not has_telemetry:
         health_badge = dbc.Badge("Unknown", color="secondary", className="ms-2 shadow-sm")
         live_indicator = html.Span("Awaiting Data...", className="small text-muted")
@@ -119,10 +85,9 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
         health_badge = dbc.Badge("Healthy", color="success", className="ms-2 shadow-sm")
         live_indicator = html.Span([html.I(className="bi bi-activity text-success me-1"), "Live & Nominal"], className="small text-success")
     
-    # 2. Assign buttons based on hierarchical level (Host vs Child)
     if not is_child:
         buttons_row = dbc.Row([
-            dbc.Col(dbc.Button("Group Ops Dashboard", color="primary", size="sm", className="w-100 shadow-sm fw-bold", href=f"/envds/envops/deployment/{dep_id}/ops"), width=6, className="pe-1"),
+            dbc.Col(dbc.Button("Group Ops Dashboard", color="primary", size="sm", className="w-100 shadow-sm fw-bold", href=f"/envds/envops/ops/deployment/{dep_id}"), width=6, className="pe-1"),
             dbc.Col(dbc.Button("Platform Details", color="outline-secondary", size="sm", className="w-100 shadow-sm", href=f"/envds/envops/platform/{plat_ref}"), width=6, className="ps-1")
         ])
     else:
@@ -133,17 +98,8 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
     card_body_content = [
         html.H6(f"Hosted on: {host_name}", className="card-subtitle text-muted mb-3 text-truncate"),
         html.P(dep_data.get("description", "No description available."), className="small text-secondary mb-3"),
-        
-        dbc.Row([
-            dbc.Col(html.B("Start Date:", className="small"), width=4),
-            dbc.Col(html.Span(start_time, className="text-muted small"))
-        ], className="mb-1"),
-        
-        dbc.Row([
-            dbc.Col(html.B("Telemetry:", className="small"), width=4),
-            dbc.Col(live_indicator)
-        ], className="mb-4"),
-        
+        dbc.Row([dbc.Col(html.B("Start Date:", className="small"), width=4), dbc.Col(html.Span(start_time, className="text-muted small"))], className="mb-1"),
+        dbc.Row([dbc.Col(html.B("Telemetry:", className="small"), width=4), dbc.Col(live_indicator)], className="mb-4"),
         buttons_row
     ]
 
@@ -160,10 +116,8 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
         dbc.CardBody(card_body_content)
     ], className="shadow-sm mb-3 border-0")
 
-# -----------------------------------------------------------------------------
-# Main Layout Shell
-# -----------------------------------------------------------------------------
-layout = html.Div([
+# --- Core Layout Content ---
+home_content = html.Div([
     dcc.Store(id="home-telemetry-cache", data={}),
     WebSocket(id="ws-home-telemetry", url=ws_url),
     
@@ -176,53 +130,34 @@ layout = html.Div([
     
     html.Div(id="home-metrics-container"),
     
-    # 1. Target the Map Figure directly (no dcc.Loading, prevents flashing)
     dbc.Card(dbc.CardBody(
-        dcc.Graph(id="home-map", config={"displayModeBar": False}, style={"height": "350px"})
+        dcc.Graph(id="home-map", config={"displayModeBar": True, "scrollZoom": True}, style={"height": "350px"})
     ), className="shadow-sm border-0 mb-4"),
     
-    # 2. Define the Accordion statically so Dash can track its state
     dbc.Accordion(id="home-projects-accordion", always_open=True, flush=True),
-    
     dcc.Interval(id="home-refresh-interval", interval=60000, n_intervals=0)
 ], className="mt-2 container-fluid")
 
-# -----------------------------------------------------------------------------
-# Callbacks
-# -----------------------------------------------------------------------------
+# Lock the core layout inside the unified app shell
+app.layout = create_unified_shell(home_content, active_item="home")
 
-from dash import callback, Input, Output, State, no_update
-import json
-from datetime import datetime
-import logging
 
-L = logging.getLogger(__name__)
-
-@callback(
+# --- Callbacks ---
+@app.callback(
     Output("home-telemetry-cache", "data"),
     Input("ws-home-telemetry", "message"),
     State("home-telemetry-cache", "data")
 )
 def ingest_live_telemetry(msg, current_cache):
-    """Parses lightweight fleet location updates from the middleware."""
     if not msg or "data" not in msg: 
         return no_update
     
     try:
-        # 1. Log the raw stringified receipt (truncated to prevent log flooding)
-        L.debug(f"[HOME WS] Raw data received: {str(msg['data'])[:150]}...")
-        
-        # Parse the stringified JSON from the WebSocket
         payload = json.loads(msg["data"])
-        
-        # Only process the micro-payloads we specifically designed for this page
         if payload.get("type") != "fleet.location.update":
-            # 2. Log if we are actively dropping a message because of a type mismatch
-            L.debug(f"[HOME WS] Dropping ignored payload type: {payload.get('type')}")
             return no_update
 
         platform_id = payload["platform"]
-        L.info(f"[HOME WS] Successfully parsed GPS for platform: {platform_id}")
         
         new_cache = current_cache.copy() if current_cache else {}
         if platform_id not in new_cache:
@@ -233,12 +168,11 @@ def ingest_live_telemetry(msg, current_cache):
         new_cache[platform_id]["lon"] = payload["lon"]
             
         return new_cache
-        
     except Exception as e:
         L.error(f"[HOME WS] Location parse failure: {e}")
         return no_update
 
-@callback(
+@app.callback(
     Output("home-metrics-container", "children"),
     Output("home-map", "figure"),
     Output("home-projects-accordion", "children"),
@@ -248,31 +182,15 @@ def ingest_live_telemetry(msg, current_cache):
     State("home-projects-accordion", "active_item")
 )
 def update_home_dashboard(n, telemetry_cache, current_active_items):
-    
-    cb_start_time = time.time() 
-    L.info(f"========== [HOME DASH] CALLBACK START (Interval {n}) ==========")
-    
+    cb_start_time = time.time()
     try:
-        # 1. Fetch registry data using the updated 2-step utils.py function
-        t0 = time.time()
         deployments = get_registry_data("deployment")
-        L.info(f"[HOME DASH] Deployments fetched in {time.time() - t0:.3f}s. Count: {len(deployments) if deployments else 0}")
-        
-        t1 = time.time()
         projects = get_registry_data("project")
-        L.info(f"[HOME DASH] Projects fetched in {time.time() - t1:.3f}s. Count: {len(projects) if projects else 0}")
-        
-        t2 = time.time()
         platforms = get_registry_data("platform")
-        L.info(f"[HOME DASH] Platforms fetched in {time.time() - t2:.3f}s. Count: {len(platforms) if platforms else 0}")
 
         if not deployments:
-            L.warning("[HOME DASH] ABORTING: Deployments list is empty. Returning 'No data found'.")
             return dbc.Alert("No data found.", color="warning"), go.Figure(), [], current_active_items
 
-        L.info("[HOME DASH] Data successfully loaded. Beginning UI processing (Metrics, Map, Accordion)...")
-        ui_process_start = time.time()
-        
         project_map = {p.get("metadata", {}).get("name"): p for p in projects}
         platform_map = {p.get("metadata", {}).get("name"): p for p in platforms}
 
@@ -295,7 +213,6 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
             "default": {"lat": 47.6, "lon": -122.3}
         }
 
-        # Build relationships to aggregate map markers by Host
         platform_to_dep = {d.get("data", {}).get("platform_ref"): d for d in deployments}
         host_to_children = {}
         root_deployments = []
@@ -313,7 +230,6 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
             else:
                 root_deployments.append(d)
 
-        # Build Map Markers using ONLY Root (Host) Deployments
         for root in root_deployments:
             root_data = root.get("data", {})
             root_name = root_data.get("display_name", root.get("metadata", {}).get("name", "Unknown"))
@@ -323,7 +239,6 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
             
             live_lat, live_lon = None, None
             for p_ref in platforms_to_check:
-                # FIX: Check the cache for both the full registry name and the short name
                 short_ref = p_ref.split(".")[-1] if "." in p_ref else p_ref
                 cache_hit = telemetry_cache.get(p_ref) or telemetry_cache.get(short_ref) or {}
                 
@@ -332,7 +247,7 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
                 
                 if lat is not None and lon is not None:
                     live_lat, live_lon = lat, lon
-                    break # Found a GPS lock in this deployment group!
+                    break 
             
             if live_lat is not None and live_lon is not None:
                 live_lats.append(live_lat)
@@ -347,13 +262,10 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
 
         fig = go.Figure()
         if live_lats:
-            # FIX: Updated to Scattermap
             fig.add_trace(go.Scattermap(lat=live_lats, lon=live_lons, mode='markers', marker=dict(size=12, color='blue'), text=live_texts, hoverinfo="text", name="Live Telemetry"))
         if est_lats:
-            # FIX: Updated to Scattermap
             fig.add_trace(go.Scattermap(lat=est_lats, lon=est_lons, mode='markers', marker=dict(size=20, color='gray', opacity=0.5), text=est_texts, hoverinfo="text", name="Estimated Region"))
 
-        # FIX: Updated Layout properties for Scattermap
         fig.update_layout(
             map_style="carto-positron", 
             margin={"r":0,"t":0,"l":0,"b":0}, 
@@ -384,20 +296,20 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
                     plat_ref = d.get("data", {}).get("platform_ref")
                     children = child_deployments.get(plat_ref, [])
                     child_ui = build_cards(children, is_child=True) if children else None
-                    card = create_deployment_card(d, platform_map.get(plat_ref, {}), platform_map.get(d.get("data", {}).get("host_platform_ref"), {}), child_ui, telemetry_cache, is_child=is_child)
+                    child_plat_refs = [c.get("data", {}).get("platform_ref") for c in children]
+                    
+                    card = create_deployment_card(d, platform_map.get(plat_ref, {}), platform_map.get(d.get("data", {}).get("host_platform_ref"), {}), child_ui, telemetry_cache, is_child=is_child, child_plat_refs=child_plat_refs)
                     cards.append(html.Div(card, className="mb-2") if is_child else dbc.Col(card, width=12, lg=6, xl=4, className="mb-4"))
                 return cards
 
             root_cards_ui = dbc.Row(build_cards(root_deployments, is_child=False))
             
-            # --- FIX: Check BOTH full and short references for the project rollup ---
             proj_issues = 0
             for d in deps:
                 p_ref = d.get("data", {}).get("platform_ref", "")
                 s_ref = p_ref.split(".")[-1] if "." in p_ref else p_ref
                 cache_hit = telemetry_cache.get(p_ref) or telemetry_cache.get(s_ref) or {}
                 proj_issues += cache_hit.get("issues", 0)
-            # ------------------------------------------------------------------------
 
             if proj_issues > 0:
                 health_badge = dbc.Badge([html.I(className="bi bi-exclamation-triangle-fill me-2"), f"{proj_issues} Issues"], color="danger", className="rounded-pill shadow-sm px-3 py-2")
@@ -418,9 +330,6 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
         if current_active_items is None:
             current_active_items = []
 
-        L.info(f"[HOME DASH] UI processing completed in {time.time() - ui_process_start:.3f}s.")
-        L.info(f"========== [HOME DASH] CALLBACK END (Total Duration: {time.time() - cb_start_time:.3f}s) ==========")
-        
         return metrics_row, fig, project_accordions, current_active_items
 
     except Exception as e:

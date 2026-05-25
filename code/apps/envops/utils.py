@@ -1,11 +1,16 @@
 import httpx
 import logging
 import time
+import traceback
+import dash
+from dash import html, dcc, Input, Output
+import dash_bootstrap_components as dbc
 from cachetools import cached, TTLCache
 from pydantic import BaseSettings
 
 L = logging.getLogger(__name__)
 
+# --- Configuration ---
 class Settings(BaseSettings):
     daq_id: str = "mspbase01"
     external_hostname: str = "mspbase01.pmel.noaa.gov"
@@ -17,9 +22,10 @@ class Settings(BaseSettings):
 
 config = Settings()
 
-# FIX: Remove port 8080. Let it hit the standard cluster port 80 handled by the K8s Service
+# Base Datastore URL (Relies on standard K8s internal port 80 routing to 8080)
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
+# --- Network & Data Layer ---
 # Shared memory cache: up to 128 unique endpoints, stored for 5 minutes (300s)
 registry_cache = TTLCache(maxsize=128, ttl=300)
 
@@ -29,7 +35,7 @@ def get_registry_data(endpoint_or_resource: str):
     Safely fetches data using httpx. Automatically translates shorthand 
     resource strings to unified registry API paths.
     """
-    # FIX: Smart URL Builder translation
+    # Smart URL Builder translation
     if "/" not in endpoint_or_resource:
         url = f"http://{datastore_url}/{endpoint_or_resource}-definition/registry/get/"
     else:
@@ -66,3 +72,85 @@ def get_registry_data(endpoint_or_resource: str):
         L.error(f"[TIMING] Unexpected fetch failure after {elapsed:.3f} seconds. Detail: {str(e)}")
         
     return []
+
+
+# --- Shared UI Layout Shell ---
+def create_unified_shell(page_content, active_item="home"):
+    """Wraps any isolated Dash app layout with the unified global sidebar."""
+    sidebar_header = dbc.Row([
+        dbc.Col(html.H4("EnvOps", className="display-6 fw-bold mb-0")),
+    ], className="mb-4 align-items-center")
+
+    sidebar = html.Div([
+        sidebar_header,
+        dbc.Nav([
+            # Standard hrefs navigate between completely separate FastAPI mounted apps
+            dbc.NavLink(
+                [html.I(className="bi bi-grid-1x2-fill me-2"), "Fleet Map"], 
+                href="/envds/envops/", 
+                active=(active_item=="home"), 
+                className="mb-2 rounded shadow-sm"
+            ),
+        ], vertical=True, pills=True, className="mb-3"),
+        
+        html.Hr(className="text-secondary"),
+        html.H6("Active Missions", className="text-muted small text-uppercase fw-bold px-2 mb-3"),
+        
+        # This container gets populated dynamically by register_sidebar_callbacks()
+        html.Div(id="sidebar-mission-hierarchy"),
+        dcc.Interval(id="sidebar-refresh-interval", interval=60000, n_intervals=0)
+    ], id="sidebar")
+
+    return html.Div([
+        sidebar,
+        html.Div(page_content, id="page-content")
+    ])
+
+def register_sidebar_callbacks(app: dash.Dash):
+    """Registers the dynamic deployment sidebar logic onto an isolated Dash app."""
+    @app.callback(
+        Output("sidebar-mission-hierarchy", "children"),
+        Input("sidebar-refresh-interval", "n_intervals")
+    )
+    def update_sidebar(n):
+        try:
+            deployments = get_registry_data("deployment")
+            projects = get_registry_data("project")
+            
+            if not deployments or not projects:
+                return html.P("No active missions found.", className="text-muted small px-2")
+                
+            project_map = {p.get("metadata", {}).get("name"): p for p in projects}
+            projects_grouped = {}
+            for dep in deployments:
+                proj_ref = dep.get("data", {}).get("project_ref", "unassigned")
+                projects_grouped.setdefault(proj_ref, []).append(dep)
+                
+            accordion_items = []
+            for proj_ref, deps in projects_grouped.items():
+                proj_name = project_map.get(proj_ref, {}).get("data", {}).get("display_name", proj_ref)
+                nav_links = []
+                
+                for d in deps:
+                    dep_id = d.get("metadata", {}).get("name")
+                    dep_name = d.get("data", {}).get("display_name", dep_id)
+                    
+                    nav_links.append(
+                        dbc.NavLink(
+                            [html.I(className="bi bi-hdd-network me-2"), dep_name],
+                            href=f"/envds/envops/ops/deployment/{dep_id}", # Target the ops_app mount!
+                            active="exact", className="small py-1 text-truncate rounded"
+                        )
+                    )
+                    
+                accordion_items.append(
+                    dbc.AccordionItem(
+                        dbc.Nav(nav_links, vertical=True, pills=True),
+                        title=proj_name, class_name="bg-transparent border-0 px-0",
+                    )
+                )
+            return dbc.Accordion(accordion_items, flush=True, start_collapsed=False, className="sidebar-accordion")
+            
+        except Exception as e:
+            L.error(f"[SIDEBAR] Crash: {traceback.format_exc()}")
+            return html.P("Sidebar Error", className="text-danger small px-2")

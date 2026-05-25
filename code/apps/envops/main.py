@@ -30,11 +30,14 @@ from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
 
 # from dashapp import app as dash_app
-from envops_app import app as dash_app
+from code.apps.envops.old.envops_app import app as dash_app
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
 from envds.message.message import Message
 from envds.core import envdsBase, envdsAppID, envdsStatus
+
+from home_app import app as home_dash
+from ops_app import app as ops_dash
 
 # handler = logging.StreamHandler()
 # handler.setFormatter(Logfmter())
@@ -526,10 +529,15 @@ async def platform_ws_endpoint(websocket: WebSocket, client_id: str):
         await manager.disconnect(websocket)
 
 # -----------------------------------------------------------------------------
-# Mount the Dash app inside FastAPI (Catch-all for UI routes)
-# NOTE: This MUST be the very last line in the file!
+# Mount the Isolated Dash Apps inside FastAPI
+# NOTE: Mount the most specific paths first!
 # -----------------------------------------------------------------------------
-app.mount("/", WSGIMiddleware(dash_app.server))
+
+# 1. Mount the Ops app at /ops
+app.mount("/ops", WSGIMiddleware(ops_dash.server))
+
+# 2. Mount the Home app at the root / 
+app.mount("/", WSGIMiddleware(home_dash.server))
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
