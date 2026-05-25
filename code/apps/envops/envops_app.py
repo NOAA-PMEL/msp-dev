@@ -50,7 +50,8 @@ L = logging.getLogger(__name__)
 app = dash.Dash(
     __name__,
     use_pages=True,
-    requests_pathname_prefix="/envds/envops/", 
+    requests_pathname_prefix="/envds/envops/",
+    suppress_callback_exceptions=True 
 )
 
 # -----------------------------------------------------------------------------

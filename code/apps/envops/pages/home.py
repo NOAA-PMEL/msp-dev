@@ -98,10 +98,11 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
     h_data = host_info.get("data") or {}
     host_name = h_data.get("display_name", dep_data.get("host_platform_ref", "Unknown Host"))
     
-    # Extract live telemetry for this specific platform
+    # --- FIX: Check BOTH the full reference and short reference ---
     plat_ref = dep_data.get("platform_ref", "")
-    plat_id = plat_ref.split(".")[-1] if "." in plat_ref else plat_ref
-    live_data = telemetry_cache.get(plat_id, {})
+    short_ref = plat_ref.split(".")[-1] if "." in plat_ref else plat_ref
+    live_data = telemetry_cache.get(plat_ref) or telemetry_cache.get(short_ref) or {}
+    # --------------------------------------------------------------
     
     has_telemetry = bool(live_data.get("last_seen"))
     issues = live_data.get("issues", 0)
@@ -153,7 +154,6 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
     return dbc.Card([
         dbc.CardHeader([
             html.H5(platform_name, className="mb-0 d-inline-block text-truncate fw-bold", style={"maxWidth": "65%"}),
-            # Inject both badges into the header
             html.Div([get_status_badge(status), health_badge], className="text-end")
         ], className="d-flex justify-content-between align-items-center bg-dark text-white"),
         dbc.CardBody(card_body_content)
@@ -248,9 +248,10 @@ def ingest_live_telemetry(msg, current_cache):
 )
 def update_home_dashboard(n, telemetry_cache, current_active_items):
     try:
-        deployments = get_registry_data("deployment-definition/registry/get/")
-        projects = get_registry_data("project-definition/registry/get/")
-        platforms = get_registry_data("platform-definition/registry/get/")
+        # 1. Fetch registry data using the updated 2-step utils.py function
+        deployments = get_registry_data("deployment")
+        projects = get_registry_data("project")
+        platforms = get_registry_data("platform")
 
         if not deployments:
             return dbc.Alert("No data found.", color="warning"), go.Figure(), [], current_active_items
@@ -277,18 +278,16 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
             "default": {"lat": 47.6, "lon": -122.3}
         }
 
-        # First, build relationships to aggregate map markers by Host
+        # Build relationships to aggregate map markers by Host
         platform_to_dep = {d.get("data", {}).get("platform_ref"): d for d in deployments}
         host_to_children = {}
         root_deployments = []
         projects_grouped = {}
         
         for d in deployments:
-            # Group by project for the accordions later
             proj_ref = d.get("data", {}).get("project_ref", "unassigned")
             projects_grouped.setdefault(proj_ref, []).append(d)
             
-            # Group by host for the map
             plat_ref = d.get("data", {}).get("platform_ref")
             host_ref = d.get("data", {}).get("host_platform_ref")
             
@@ -303,17 +302,17 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
             root_name = root_data.get("display_name", root.get("metadata", {}).get("name", "Unknown"))
             root_plat_ref = root_data.get("platform_ref", "")
             
-            # Look for telemetry in the host OR any of its children
             platforms_to_check = [root_plat_ref] + [c.get("data", {}).get("platform_ref") for c in host_to_children.get(root_plat_ref, [])]
             
             live_lat, live_lon = None, None
             for p_ref in platforms_to_check:
-                # FIX: Force lowercase extraction to match the cache
-                p_id = p_ref.split(".")[-1] if "." in p_ref else p_ref
-                p_id = str(p_id).lower()
+                # FIX: Check the cache for both the full registry name and the short name
+                short_ref = p_ref.split(".")[-1] if "." in p_ref else p_ref
+                cache_hit = telemetry_cache.get(p_ref) or telemetry_cache.get(short_ref) or {}
                 
-                lat = telemetry_cache.get(p_id, {}).get("lat")
-                lon = telemetry_cache.get(p_id, {}).get("lon")
+                lat = cache_hit.get("lat")
+                lon = cache_hit.get("lon")
+                
                 if lat is not None and lon is not None:
                     live_lat, live_lon = lat, lon
                     break # Found a GPS lock in this deployment group!
@@ -337,8 +336,9 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
             # FIX: Updated to Scattermap
             fig.add_trace(go.Scattermap(lat=est_lats, lon=est_lons, mode='markers', marker=dict(size=20, color='gray', opacity=0.5), text=est_texts, hoverinfo="text", name="Estimated Region"))
 
+        # FIX: Updated Layout properties for Scattermap
         fig.update_layout(
-            map_style="carto-positron", # FIX: Updated layout properties
+            map_style="carto-positron", 
             margin={"r":0,"t":0,"l":0,"b":0}, 
             showlegend=True, 
             legend=dict(yanchor="top", y=0.95, xanchor="left", x=0.05, bgcolor="rgba(255,255,255,0.8)"),
@@ -347,7 +347,7 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
         if live_lats or est_lats:
             all_lats, all_lons = live_lats + est_lats, live_lons + est_lons
             fig.update_layout(map_center={"lat": sum(all_lats)/len(all_lats), "lon": sum(all_lons)/len(all_lons)})
-            
+
         # --- 3. Projects & Health Rollups ---
         project_accordions = []
         for proj_ref, deps in projects_grouped.items():
@@ -373,7 +373,14 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
 
             root_cards_ui = dbc.Row(build_cards(root_deployments, is_child=False))
             
-            proj_issues = sum(telemetry_cache.get(d.get("data", {}).get("platform_ref", "").split(".")[-1], {}).get("issues", 0) for d in deps)
+            # --- FIX: Check BOTH full and short references for the project rollup ---
+            proj_issues = 0
+            for d in deps:
+                p_ref = d.get("data", {}).get("platform_ref", "")
+                s_ref = p_ref.split(".")[-1] if "." in p_ref else p_ref
+                cache_hit = telemetry_cache.get(p_ref) or telemetry_cache.get(s_ref) or {}
+                proj_issues += cache_hit.get("issues", 0)
+            # ------------------------------------------------------------------------
             
             if proj_issues > 0:
                 health_badge = dbc.Badge([html.I(className="bi bi-exclamation-triangle-fill me-2"), f"{proj_issues} Issues"], color="danger", className="rounded-pill shadow-sm px-3 py-2")
