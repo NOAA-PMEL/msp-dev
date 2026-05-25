@@ -2,8 +2,6 @@ import dash
 from dash import html, dcc, Input, Output, State, no_update, ALL, ctx
 from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import logging
 import json
 from datetime import datetime
@@ -16,28 +14,6 @@ L = logging.getLogger(__name__)
 # --- Initialize Isolated Dash App ---
 app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/ops/", routes_pathname_prefix="/")
 register_sidebar_callbacks(app)
-
-
-def create_empty_dual_plot(title, y1_name, y2_name, y1_color="#1f77b4", y2_color="#d62728"):
-    """Generates a highly stylized, empty dual-axis plot skeleton."""
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    
-    fig.add_trace(go.Scatter(x=[], y=[], name=y1_name, mode="lines", line=dict(color=y1_color, width=2)), secondary_y=False)
-    fig.add_trace(go.Scatter(x=[], y=[], name=y2_name, mode="lines", line=dict(color=y2_color, width=2)), secondary_y=True)
-    
-    fig.update_layout(
-        title=dict(text=title, font=dict(size=14), y=0.95),
-        margin=dict(l=40, r=40, t=40, b=20),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        uirevision="constant" # Prevents zoom/pan resets when new data arrives
-    )
-    
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="LightGray", secondary_y=False)
-    fig.update_yaxes(showgrid=False, secondary_y=True)
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="LightGray")
-    return fig
 
 # --- Core Shell and URL Router ---
 app.layout = create_unified_shell(html.Div([
@@ -56,6 +32,16 @@ def render_deployment_ops(pathname):
     deployment_id = pathname.split("/")[-1]
     return build_ops_layout(deployment_id)
 
+def create_metric_card(label, element_id, default_val="Awaiting..."):
+    """Generates a reusable, clean readout item with an integrated status indicator."""
+    return dbc.Card([
+        dbc.CardBody([
+            html.Div([
+                html.Span(label, className="text-muted small fw-bold text-uppercase d-block mb-1"),
+                html.H3(default_val, id=element_id, className="fw-bold mb-0 text-dark transition-all"),
+            ], className="position-relative")
+        ], className="p-3")
+    ], id=f"card-{element_id}", className="border-0 shadow-sm mb-3 bg-white border-start border-4 border-secondary")
 
 def build_ops_layout(deployment_id):
     all_deployments = get_registry_data("deployment")
@@ -88,29 +74,43 @@ def build_ops_layout(deployment_id):
         dbc.Col([dbc.Button([html.I(className="bi bi-sliders me-2"), "Command & Control"], color="dark", className="w-100 shadow-sm fw-bold h-100")], width=3)
     ])), className="shadow-sm border-0 mb-4 bg-light")
     
-    plots_accordion = dbc.Accordion([
-        dbc.AccordionItem([
-            dbc.Row([
-                dbc.Col(dcc.Graph(id="ops-plot-wind", figure=create_empty_dual_plot("Wind", "True Speed (m/s)", "True Dir (°)", "#1f77b4", "#7f7f7f"), style={"height": "300px"}), width=4),
-                dbc.Col(dcc.Graph(id="ops-plot-atm", figure=create_empty_dual_plot("Atmosphere", "Temp (°C)", "RH (%)", "#ff7f0e", "#17becf"), style={"height": "300px"}), width=4),
-                dbc.Col(dcc.Graph(id="ops-plot-precip", figure=create_empty_dual_plot("Precip & Pressure", "Rain (mm/h)", "Pressure (hPa)", "#2ca02c", "#8c564b"), style={"height": "300px"}), width=4),
-            ])
-        ], title=html.B([html.I(className="bi bi-cloud-sun me-2"), "Meteorology"]), item_id="met"),
+    # --- Simplified Metrics Grid ---
+    metrics_sections = html.Div([
+        # Section 1: Navigation & Context
+        html.H5("Navigation & Position", className="fw-bold mb-3 text-secondary"),
+        dbc.Row([
+            dbc.Col(create_metric_card("Latitude", "ops-val-latitude"), width=12, md=3),
+            dbc.Col(create_metric_card("Longitude", "ops-val-longitude"), width=12, md=3),
+            dbc.Col(create_metric_card("Heading", "ops-val-platform_heading"), width=12, md=3),
+            dbc.Col(create_metric_card("Platform Speed", "ops-val-platform_speed"), width=12, md=3),
+        ], className="mb-4"),
 
-        dbc.AccordionItem([
-            dbc.Row([
-                dbc.Col(dcc.Graph(id="ops-plot-o3-co", figure=create_empty_dual_plot("Ozone & CO", "O3 (ppb)", "CO (ppb)", "#9467bd", "#e377c2"), style={"height": "300px"}), width=6),
-                dbc.Col(dcc.Graph(id="ops-plot-no-no2", figure=create_empty_dual_plot("Nitrogen Oxides", "NO (ppb)", "NO2 (ppb)", "#1f77b4", "#ff7f0e"), style={"height": "300px"}), width=6),
-            ])
-        ], title=html.B([html.I(className="bi bi-wind me-2"), "Gas Phase Chemistry"]), item_id="gas"),
+        # Section 2: Meteorology Readouts
+        html.H5("Meteorological Suite", className="fw-bold mb-3 text-secondary"),
+        dbc.Row([
+            dbc.Col(create_metric_card("Air Temperature", "ops-val-air_temperature"), width=12, md=3),
+            dbc.Col(create_metric_card("Relative Humidity", "ops-val-relative_humidity"), width=12, md=3),
+            dbc.Col(create_metric_card("Atmospheric Pressure", "ops-val-air_pressure"), width=12, md=3),
+            dbc.Col(create_metric_card("True Wind Speed", "ops-val-true_wind_speed"), width=12, md=3),
+        ], className="mb-4"),
 
-        dbc.AccordionItem([
-            dbc.Row([
-                dbc.Col(dcc.Graph(id="ops-plot-rel-wind", figure=create_empty_dual_plot("Platform Relative Wind", "Rel Speed (m/s)", "Rel Dir (°)", "#bcbd22", "#7f7f7f"), style={"height": "300px"}), width=6),
-                dbc.Col(dcc.Graph(id="ops-plot-flow", figure=create_empty_dual_plot("Inlet Flow & Particulates", "Inlet Flow (LPM)", "PM 2.5 (µg/m³)", "#17becf", "#d62728"), style={"height": "300px"}), width=6),
-            ])
-        ], title=html.B([html.I(className="bi bi-sliders me-2"), "Sampling Operations"]), item_id="ops")
-    ], always_open=True, active_item=["met", "gas", "ops"], className="mb-4 shadow-sm")
+        # Section 3: Gas Phase & Environmental Chemistry
+        html.H5("Gas Phase & Sampling Environment", className="fw-bold mb-3 text-secondary"),
+        dbc.Row([
+            dbc.Col(create_metric_card("Ozone Concentration", "ops-val-O3"), width=12, md=3),
+            dbc.Col(create_metric_card("Carbon Monoxide", "ops-val-CO"), width=12, md=3),
+            dbc.Col(create_metric_card("Nitric Oxide (NO)", "ops-val-NO"), width=12, md=3),
+            dbc.Col(create_metric_card("Nitrogen Dioxide (NO2)", "ops-val-NO2"), width=12, md=3),
+        ], className="mb-4"),
+
+        # Section 4: Operational Fluid Dynamics & Particulates
+        html.H5("Inlet Diagnostics", className="fw-bold mb-3 text-secondary"),
+        dbc.Row([
+            dbc.Col(create_metric_card("Inlet Volumetric Flow", "ops-val-inlet_flow"), width=12, md=4),
+            dbc.Col(create_metric_card("Particulate Matter (PM2.5)", "ops-val-PM2_5"), width=12, md=4),
+            dbc.Col(create_metric_card("Rain Intensity", "ops-val-rain_intensity"), width=12, md=4),
+        ], className="mb-4"),
+    ])
 
     child_links = [
         dbc.ListGroupItem([
@@ -140,11 +140,12 @@ def build_ops_layout(deployment_id):
         dcc.Store(id="ops-group-platforms", data=group_platforms),
         dcc.Store(id="ops-telemetry-cache", data={}),
         html.Div(ws_connections),
-        header, ops_ribbon, plots_accordion, sub_systems
+        header, ops_ribbon, metrics_sections, sub_systems
     ], className="container-fluid mt-3")
 
 
 # --- Callbacks ---
+
 @app.callback(
     Output("ops-telemetry-cache", "data"),
     Input({"type": "ws-ops-platform", "index": ALL}, "message"),
@@ -181,22 +182,12 @@ def ingest_live_telemetry(messages, current_cache):
             new_cache[platform_id] = {"variables": {}, "state": {}}
             
         incoming_vars = payload.get("variables", {})
-        current_time = incoming_vars.get("time", {}).get("data") or datetime.now().isoformat()
         
+        # Save only the absolute freshest value for each key rather than a historical list window
         for var_name, var_data in incoming_vars.items():
             val = var_data.get("data")
-            if val is None:
-                continue
-                
-            if var_name not in new_cache[platform_id]["variables"]:
-                new_cache[platform_id]["variables"][var_name] = {"x": [], "y": []}
-                
-            new_cache[platform_id]["variables"][var_name]["x"].append(current_time)
-            new_cache[platform_id]["variables"][var_name]["y"].append(val)
-            
-            if len(new_cache[platform_id]["variables"][var_name]["x"]) > 300:
-                new_cache[platform_id]["variables"][var_name]["x"].pop(0)
-                new_cache[platform_id]["variables"][var_name]["y"].pop(0)
+            if val is not None:
+                new_cache[platform_id]["variables"][var_name] = val
             
         return new_cache
     except Exception:
@@ -236,63 +227,91 @@ def update_ribbon_ui(cache):
 
     return health_badge, health_color, sys_mode, sys_mode_color, str(total_alarms)
 
+
 @app.callback(
-    Output("ops-plot-wind", "extendData"),
-    Output("ops-plot-atm", "extendData"),
-    Output("ops-plot-precip", "extendData"),
-    Output("ops-plot-o3-co", "extendData"),
-    Output("ops-plot-no-no2", "extendData"),
-    Output("ops-plot-rel-wind", "extendData"),
-    Output("ops-plot-flow", "extendData"),
+    # Row 1: Nav
+    Output("ops-val-latitude", "children"), Output("card-ops-val-latitude", "className"),
+    Output("ops-val-longitude", "children"), Output("card-ops-val-longitude", "className"),
+    Output("ops-val-platform_heading", "children"), Output("card-ops-val-platform_heading", "className"),
+    Output("ops-val-platform_speed", "children"), Output("card-ops-val-platform_speed", "className"),
+    # Row 2: Met
+    Output("ops-val-air_temperature", "children"), Output("card-ops-val-air_temperature", "className"),
+    Output("ops-val-relative_humidity", "children"), Output("card-ops-val-relative_humidity", "className"),
+    Output("ops-val-air_pressure", "children"), Output("card-ops-val-air_pressure", "className"),
+    Output("ops-val-true_wind_speed", "children"), Output("card-ops-val-true_wind_speed", "className"),
+    # Row 3: Gas
+    Output("ops-val-O3", "children"), Output("card-ops-val-O3", "className"),
+    Output("ops-val-CO", "children"), Output("card-ops-val-CO", "className"),
+    Output("ops-val-NO", "children"), Output("card-ops-val-NO", "className"),
+    Output("ops-val-NO2", "children"), Output("card-ops-val-NO2", "className"),
+    # Row 4: Diagnostics
+    Output("ops-val-inlet_flow", "children"), Output("card-ops-val-inlet_flow", "className"),
+    Output("ops-val-PM2_5", "children"), Output("card-ops-val-PM2_5", "className"),
+    Output("ops-val-rain_intensity", "children"), Output("card-ops-val-rain_intensity", "className"),
     Input("ops-telemetry-cache", "data"),
     prevent_initial_call=True
 )
-def update_operational_plots(cache):
+def update_metrics_grid(cache):
     if not cache:
-        return [no_update] * 7
+        return [no_update] * 30 # 15 readouts + 15 border card class states
 
-    all_vars = {}
+    # Pool variables across all connected devices in the group
+    flat_vars = {}
     for uid, data in cache.items():
-        all_vars.update(data.get("variables", {}))
+        flat_vars.update(data.get("variables", {}))
 
-    current_time = all_vars.get("time", {}).get("data")
-    if not current_time:
-        current_time = datetime.now().isoformat()
-
-    def get_val(key):
-        val = all_vars.get(key, {}).get("data")
+    def evaluate_metric(key, unit="", low_crit=None, low_warn=None, hi_warn=None, hi_crit=None):
+        """Formats the reading and computes custom CSS border colors based on health parameters."""
+        raw_val = flat_vars.get(key)
+        
+        if raw_val is None:
+            return "Waiting...", "border-0 shadow-sm mb-3 bg-white border-start border-4 border-secondary"
+            
         try:
-            return float(val) if val is not None else None
+            val = float(raw_val)
+            formatted_text = f"{val:.2f} {unit}".strip()
+            
+            # Threshold verification matrix
+            if low_crit is not None and val <= low_crit:
+                return formatted_text, "border-0 shadow-sm mb-3 bg-soft-danger border-start border-4 border-danger animate-pulse"
+            if low_warn_val := low_warn if low_warn is not None else None:
+                if val <= low_warn_val:
+                    return formatted_text, "border-0 shadow-sm mb-3 bg-soft-warning border-start border-4 border-warning"
+            if hi_crit is not None and val >= hi_crit:
+                return formatted_text, "border-0 shadow-sm mb-3 bg-soft-danger border-start border-4 border-danger animate-pulse"
+            if hi_warn is not None and val >= hi_warn:
+                return formatted_text, "border-0 shadow-sm mb-3 bg-soft-warning border-start border-4 border-warning"
+                
+            # Nominal State
+            return formatted_text, "border-0 shadow-sm mb-3 bg-white border-start border-4 border-success"
+            
         except (ValueError, TypeError):
-            return None
+            # If value is text/string rather than float, treat it normally
+            return f"{raw_val} {unit}".strip(), "border-0 shadow-sm mb-3 bg-white border-start border-4 border-success"
 
-    def build_extend_payload(var1_name, var2_name, max_points=300):
-        v1 = get_val(var1_name)
-        v2 = get_val(var2_name)
-        
-        x_data, y_data, traces = [], [], []
-        
-        if v1 is not None:
-            x_data.append([current_time])
-            y_data.append([v1])
-            traces.append(0)
-            
-        if v2 is not None:
-            x_data.append([current_time])
-            y_data.append([v2])
-            traces.append(1)
-            
-        if not traces:
-            return no_update
-            
-        return ({"x": x_data, "y": y_data}, traces, max_points)
+    # Define validation thresholds for your field sensors
+    lat_txt, lat_style = evaluate_metric("latitude", "°")
+    lon_txt, lon_style = evaluate_metric("longitude", "°")
+    hdg_txt, hdg_style = evaluate_metric("platform_heading", "°")
+    spd_txt, spd_style = evaluate_metric("platform_speed", "kts", hi_warn=25.0, hi_crit=35.0) # High velocity alerts
+
+    temp_txt, temp_style = evaluate_metric("air_temperature", "°C", low_crit=-10.0, low_warn=0.0, hi_warn=38.0, hi_crit=45.0)
+    rh_txt, rh_style = evaluate_metric("relative_humidity", "%", low_crit=5.0, hi_warn=95.0) # Condensation thresholds
+    press_txt, press_style = evaluate_metric("air_pressure", "hPa", low_warn=960.0, hi_warn=1040.0)
+    wind_txt, wind_style = evaluate_metric("true_wind_speed", "m/s", hi_warn=15.0, hi_crit=22.0)
+
+    o3_txt, o3_style = evaluate_metric("O3", "ppb", hi_warn=70.0, hi_crit=100.0) # Air quality alerts
+    co_txt, co_style = evaluate_metric("CO", "ppb", hi_warn=900.0, hi_crit=2000.0)
+    no_txt, no_style = evaluate_metric("NO", "ppb", hi_warn=50.0)
+    no2_txt, no2_style = evaluate_metric("NO2", "ppb", hi_warn=40.0)
+
+    flow_txt, flow_style = evaluate_metric("inlet_flow", "LPM", low_crit=14.0, low_warn=15.5, hi_warn=17.5, hi_crit=19.0) # Critical inlet ranges (Target 16.7 LPM)
+    pm_txt, pm_style = evaluate_metric("PM2_5", "µg/m³", hi_warn=35.0, hi_crit=55.0)
+    rain_txt, rain_style = evaluate_metric("rain_intensity", "mm/h", hi_warn=5.0, hi_crit=20.0)
 
     return [
-        build_extend_payload("true_wind_speed", "true_wind_direction"),
-        build_extend_payload("air_temperature", "relative_humidity"),
-        build_extend_payload("pressure", "rain_intensity"),
-        build_extend_payload("O3", "CO"),
-        build_extend_payload("NO", "NO2"),
-        build_extend_payload("relative_wind_speed", "relative_wind_direction"),
-        build_extend_payload("inlet_flow", "PM2_5") 
+        lat_txt, lat_style, lon_txt, lon_style, hdg_txt, hdg_style, spd_txt, spd_style,
+        temp_txt, temp_style, rh_txt, rh_style, press_txt, press_style, wind_txt, wind_style,
+        o3_txt, o3_style, co_txt, co_style, no_txt, no_style, no2_txt, no2_style,
+        flow_txt, flow_style, pm_txt, pm_style, rain_txt, rain_style
     ]

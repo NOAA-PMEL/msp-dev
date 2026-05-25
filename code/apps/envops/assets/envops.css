@@ -1,0 +1,28 @@
+/* Custom Health State Overrides */
+.bg-soft-success {
+    background-color: rgba(25, 135, 84, 0.05) !important;
+}
+
+.bg-soft-warning {
+    background-color: rgba(255, 193, 7, 0.08) !important;
+}
+
+.bg-soft-danger {
+    background-color: rgba(220, 53, 69, 0.08) !important;
+}
+
+/* Pulse animation for critical sensors */
+@keyframes criticalPulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+.animate-pulse {
+    animation: criticalPulse 2s infinite ease-in-out;
+}
+
+/* Smooth color transitions */
+.transition-all {
+    transition: all 0.3s ease-in-out;
+}
