@@ -116,15 +116,22 @@ def build_ops_layout(deployment_id):
     State({"type": "platform-cache", "index": MATCH}, "data")
 )
 def ingest_live_telemetry(msg, current_cache):
-    if not msg or "data" not in msg: return no_update
+    if not msg or "data" not in msg: 
+        return no_update
 
     try:
         ws_wrapper = json.loads(msg["data"])
         payload = ws_wrapper.get("data-update")
-        if not payload: return no_update
+        if not payload: 
+            return no_update
             
         new_cache = current_cache.copy() if current_cache else {"variables": {}, "state": {}}
         incoming_vars = payload.get("variables", {})
+        
+        # --- DEBUGGING INJECTED HERE ---
+        plat_id = ctx.triggered_id.get("index") if ctx.triggered_id else "Unknown"
+        L.info(f"[[DEBUG INGEST]] 📩 WS hit for {plat_id}. Found {len(incoming_vars)} vars: {list(incoming_vars.keys())[:5]}...")
+        
         current_time = incoming_vars.get("time", {}).get("data") or datetime.now(timezone.utc).isoformat()
         
         new_vars = new_cache.get("variables", {}).copy()
@@ -136,7 +143,8 @@ def ingest_live_telemetry(msg, current_cache):
         
         new_cache["variables"] = new_vars
         return new_cache
-    except Exception:
+    except Exception as e:
+        L.error(f"[[DEBUG INGEST]] 💥 Parse error: {e}")
         return no_update
     
 @app.callback(
@@ -169,6 +177,9 @@ def update_ribbon_ui(caches):
     State({"type": "platform-cache", "index": ALL}, "id")
 )
 def update_tactical_quick_look(caches, cache_ids):
+    # --- DEBUGGING INJECTED HERE ---
+    L.info(f"[[DEBUG RENDER]] 🎨 Triggered. Processing {len(caches)} platform caches.")
+    
     flat_vars = {}
     for c_data, c_id in zip(caches, cache_ids):
         if not c_data: continue
@@ -176,7 +187,11 @@ def update_tactical_quick_look(caches, cache_ids):
         for v_name, v_data in c_data.get("variables", {}).items():
             flat_vars[v_name] = {**v_data, "platform": plat_id}
             
-    if not flat_vars: return dbc.Alert("Awaiting telemetry...", color="info")
+    L.info(f"[[DEBUG RENDER]] 📊 Flattened cache contains {len(flat_vars)} total variables.")
+            
+    if not flat_vars: 
+        L.info("[[DEBUG RENDER]] ⏳ Cache empty. Displaying 'Awaiting telemetry...'")
+        return dbc.Alert("Awaiting telemetry...", color="info")
 
     now = datetime.now(timezone.utc)
     STALE_SECONDS = 120
@@ -199,7 +214,6 @@ def update_tactical_quick_look(caches, cache_ids):
         
         raw_val = v["value"]
         unit = v.get("unit", "")
-        plat = v.get("platform", "")
         
         is_stale = False
         try:
@@ -335,4 +349,10 @@ def update_tactical_quick_look(caches, cache_ids):
         ], className="mb-4")
     ])
 
-    return html.Div([group_nav, group_met, group_aerosols, group_gas, group_ops])
+    try:
+        final_layout = html.Div([group_nav, group_met, group_aerosols, group_gas, group_ops])
+        L.info("[[DEBUG RENDER]] ✅ Layout dynamically assembled. Returning to browser.")
+        return final_layout
+    except Exception as e:
+        L.error(f"[[DEBUG RENDER]] 💥 Layout assembly failed: {e}")
+        return dbc.Alert(f"UI Build Error: {e}", color="danger")
