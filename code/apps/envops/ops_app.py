@@ -4,6 +4,7 @@ from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
 import logging
 import json
+import traceback  # <--- Essential for our error visualizer
 from datetime import datetime, timezone
 
 from utils import get_registry_data, config, create_unified_shell, register_sidebar_callbacks
@@ -24,29 +25,50 @@ app.layout = create_unified_shell(html.Div([
     Input("ops-url", "pathname")
 )
 def render_deployment_ops(pathname):
-    if not pathname or "deployment/" not in pathname:
-        return dbc.Alert("Select a deployment from the sidebar.", color="info", className="m-4")
-    deployment_id = pathname.split("/")[-1]
-    return build_ops_layout(deployment_id)
+    L.info(f"[[DEBUG OPS ROUTER]] 🚦 Callback triggered. Pathname: {pathname}")
+    try:
+        if not pathname or "deployment/" not in pathname:
+            L.info("[[DEBUG OPS ROUTER]] 🛑 Invalid path. Returning Alert.")
+            return dbc.Alert("Select a deployment from the sidebar.", color="info", className="m-4")
+        
+        deployment_id = pathname.split("/")[-1]
+        L.info(f"[[DEBUG OPS ROUTER]] ⚙️ Extracted ID: {deployment_id}. Building layout...")
+        
+        layout = build_ops_layout(deployment_id)
+        L.info("[[DEBUG OPS ROUTER]] ✅ Layout built successfully! Returning to browser.")
+        return layout
+        
+    except Exception as e:
+        # exc_info=True forces the full stack trace into your Docker/k3d logs
+        L.error(f"[[DEBUG OPS ROUTER]] 💥 CRASH: {e}", exc_info=True) 
+        # Keep the return object simple to prevent secondary Dash 500 errors
+        return dbc.Alert(f"Fatal Error: {str(e)}", color="danger", className="m-4")
 
 def build_ops_layout(deployment_id):
-    all_deployments = get_registry_data("deployment")
+    L.info(f"[[DEBUG LAYOUT]] 🔍 Starting build for {deployment_id}")
+    
+    all_deployments = get_registry_data("deployment") or []
+    L.info(f"[[DEBUG LAYOUT]] 🗄️ Datastore returned {len(all_deployments)} deployments.")
     
     host_dep = next((d for d in all_deployments if d.get("metadata", {}).get("name") == deployment_id), None)
     if not host_dep:
+        L.warning("[[DEBUG LAYOUT]] ⚠️ Host deployment not found in registry.")
         return dbc.Alert(f"Deployment {deployment_id} not found.", color="warning", className="m-4")
         
     host_data = host_dep.get("data", {})
     host_plat_ref = host_data.get("platform_ref", "")
     host_name = host_data.get("display_name", host_plat_ref)
+    L.info(f"[[DEBUG LAYOUT]] 🎯 Host platform ref: {host_plat_ref}, Display name: {host_name}")
     
     child_deps = [d for d in all_deployments if d.get("data", {}).get("host_platform_ref") == host_plat_ref and d.get("metadata", {}).get("name") != deployment_id]
-    
+    L.info(f"[[DEBUG LAYOUT]] 🔗 Found {len(child_deps)} child payloads attached.")
+
     raw_targets = [host_plat_ref] + [c.get("data", {}).get("platform_ref", "") for c in child_deps]
     short_targets = [p.split(".")[-1] for p in raw_targets if "." in p]
     group_platforms = list(set(raw_targets + short_targets))
     group_platforms = [p for p in group_platforms if p]
-
+    L.info(f"[[DEBUG LAYOUT]] 📡 Final group platforms to listen to: {group_platforms}")
+    
     header = dbc.Row([
         dbc.Col([
             html.H2([html.I(className="bi bi-hdd-network me-2"), host_name], className="fw-bold mb-0"),
@@ -67,7 +89,8 @@ def build_ops_layout(deployment_id):
         dbc.Col([dbc.Button([html.I(className="bi bi-sliders me-2"), "Command & Control"], color="dark", className="w-100 shadow-sm fw-bold h-100")], width=3)
     ])), className="shadow-sm border-0 mb-4 bg-light")
     
-    ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
+    # SAFEGUARD 2: Type cast ws_use_tls to string to prevent 'bool' has no attribute 'lower' crashes
+    ws_protocol = "wss://" if str(config.ws_use_tls).lower() == "true" else "ws://"
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
 
     ws_connections = [WebSocket(id="ws-ops-system", url=f"{ws_base}/ws/system-ops/main")]
@@ -146,7 +169,6 @@ def update_ribbon_ui(caches):
     State({"type": "platform-cache", "index": ALL}, "id")
 )
 def update_tactical_quick_look(caches, cache_ids):
-    # 1. Flatten the cache so we can find variables across ALL payloads
     flat_vars = {}
     for c_data, c_id in zip(caches, cache_ids):
         if not c_data: continue
@@ -159,16 +181,19 @@ def update_tactical_quick_look(caches, cache_ids):
     now = datetime.now(timezone.utc)
     STALE_SECONDS = 120
 
-    # Custom Health Thresholds for the Quick Look page
     thresholds = {
         "platform_speed": {"hi_warn": 25.0, "hi_crit": 35.0},
         "air_temperature": {"low_crit": -10.0, "low_warn": 0.0, "hi_warn": 38.0, "hi_crit": 45.0},
         "relative_humidity": {"low_crit": 5.0, "hi_warn": 95.0},
-        "inlet_flow": {"low_crit": 14.0, "low_warn": 15.5, "hi_warn": 17.5, "hi_crit": 19.0}
+        "inlet_flow": {"low_crit": 14.0, "low_warn": 15.5, "hi_warn": 17.5, "hi_crit": 19.0},
+        "rain_intensity": {"hi_warn": 5.0, "hi_crit": 20.0},
+        "O3": {"hi_warn": 70.0, "hi_crit": 100.0},
+        "CO": {"hi_warn": 900.0, "hi_crit": 2000.0},
+        "NO": {"hi_warn": 50.0},
+        "NO2": {"hi_warn": 40.0}
     }
 
     def get_var_status(var_name):
-        """Helper to extract a variable, check its staleness, and evaluate its health color."""
         v = flat_vars.get(var_name)
         if not v: return None, "Waiting...", "border-0 shadow-sm mb-3 bg-white border-start border-4 border-secondary", False, ""
         
@@ -229,9 +254,7 @@ def update_tactical_quick_look(caches, cache_ids):
         sp_raw, sp_fmt, _, _, _ = get_var_status(sp_var)
         
         stale_badge = html.Span(" STALE", className="text-danger fw-bold ms-2") if is_stale else ""
-        
-        if flow_fmt == "Waiting...": 
-            val_display = "Waiting..."
+        if flow_fmt == "Waiting...": val_display = "Waiting..."
         else: 
             sp_display = f" (SP: {sp_fmt})" if sp_raw is not None else ""
             val_display = html.Div([html.Span(f"{flow_fmt} {flow_unit}"), html.Span(sp_display, className="text-secondary ms-2 fs-6")])
@@ -247,7 +270,6 @@ def update_tactical_quick_look(caches, cache_ids):
         r_raw, r_fmt, _, _, r_unit = get_var_status(r_var)
         
         stale_badge = html.Span(" STALE", className="text-danger fw-bold ms-2") if is_stale else ""
-        
         if b_raw is None and g_raw is None and r_raw is None:
             content = html.H3("Waiting...", className="fw-bold mb-0 text-dark")
         else:
@@ -286,7 +308,6 @@ def update_tactical_quick_look(caches, cache_ids):
         ], className="mb-4")
     ])
 
-    # Renamed from Physics to Aerosols
     group_aerosols = html.Div([
         html.H5([html.I(className="bi bi-brightness-high me-2"), "Aerosols & Optics"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
         dbc.Row([
@@ -296,7 +317,6 @@ def update_tactical_quick_look(caches, cache_ids):
         ], className="mb-4")
     ])
 
-    # Added Gas Phase Chemistry Group
     group_gas = html.Div([
         html.H5([html.I(className="bi bi-wind me-2"), "Gas Phase Chemistry"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
         dbc.Row([
@@ -315,4 +335,4 @@ def update_tactical_quick_look(caches, cache_ids):
         ], className="mb-4")
     ])
 
-    return html.Div([group_nav, group_met, group_physics, group_ops])
+    return html.Div([group_nav, group_met, group_aerosols, group_gas, group_ops])
