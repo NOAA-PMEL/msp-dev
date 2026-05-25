@@ -68,7 +68,7 @@ def build_ops_layout(deployment_id):
     group_platforms = list(set(raw_targets + short_targets))
     group_platforms = [p for p in group_platforms if p]
     L.info(f"[[DEBUG LAYOUT]] 📡 Final group platforms to listen to: {group_platforms}")
-    
+
     header = dbc.Row([
         dbc.Col([
             html.H2([html.I(className="bi bi-hdd-network me-2"), host_name], className="fw-bold mb-0"),
@@ -105,7 +105,7 @@ def build_ops_layout(deployment_id):
         html.Div(ws_connections),
         html.Div(platform_stores),
         header, ops_ribbon, 
-        html.Div(id="tactical-metrics-container", children=[dbc.Spinner(color="primary", className="mt-4")]),
+        html.Div(id="tactical-metrics-container", children=[dbc.Spinner(color="primary")], className="mt-4"),
     ], className="container-fluid mt-3")
 
 # --- Callbacks ---
