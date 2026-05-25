@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, Input, Output, State, no_update, ALL, ctx
+from dash import html, dcc, Input, Output, State, no_update, ALL, MATCH, ctx
 from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -12,7 +12,7 @@ from utils import get_registry_data, config, create_unified_shell, register_side
 L = logging.getLogger(__name__)
 
 # --- Initialize Isolated Dash App ---
-app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/plots/", routes_pathname_prefix="/")
+app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/plots/", routes_pathname_prefix="/", suppress_callback_exceptions=True)
 register_sidebar_callbacks(app)
 
 app.layout = create_unified_shell(html.Div([
@@ -58,7 +58,6 @@ def build_plot_layout(deployment_id):
         ], width="auto")
     ], className="mb-4 align-items-center border-bottom pb-3")
 
-    # --- Analytics Accordion (Adapted from sensor.py logic) ---
     plot_sections = dbc.Accordion([
         dbc.AccordionItem([
             dbc.Row([
@@ -109,13 +108,18 @@ def build_plot_layout(deployment_id):
     ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
 
+    # --- FIX: ISOLATED MEMORY CACHES ---
     ws_connections = []
+    platform_stores = []
+    
     for p_id in group_platforms:
-        if p_id: ws_connections.append(WebSocket(id={"type": "ws-plot-platform", "index": p_id}, url=f"{ws_base}/ws/platform/{p_id}"))
+        if p_id: 
+            ws_connections.append(WebSocket(id={"type": "ws-plot-platform", "index": p_id}, url=f"{ws_base}/ws/platform/{p_id}"))
+            platform_stores.append(dcc.Store(id={"type": "plot-platform-cache", "index": p_id}, data={"variables": {}}))
 
     return html.Div([
-        dcc.Store(id="plot-telemetry-cache", data={}),
         html.Div(ws_connections),
+        html.Div(platform_stores),
         header, plot_sections
     ], className="container-fluid mt-3")
 
@@ -123,14 +127,12 @@ def build_plot_layout(deployment_id):
 # --- Callbacks ---
 
 @app.callback(
-    Output("plot-telemetry-cache", "data"),
-    Input({"type": "ws-plot-platform", "index": ALL}, "message"),
-    State("plot-telemetry-cache", "data")
+    Output({"type": "plot-platform-cache", "index": MATCH}, "data"),
+    Input({"type": "ws-plot-platform", "index": MATCH}, "message"),
+    State({"type": "plot-platform-cache", "index": MATCH}, "data")
 )
-def ingest_live_telemetry(messages, current_cache):
-    """Maintains a high-performance 300-point sliding window for all active variables."""
-    if not ctx.triggered: return no_update
-    msg = ctx.triggered[0].get("value")
+def ingest_live_telemetry(msg, current_cache):
+    """Safely updates a SINGLE platform's sliding 300-point window cache."""
     if not msg or "data" not in msg: return no_update
 
     try:
@@ -138,35 +140,34 @@ def ingest_live_telemetry(messages, current_cache):
         payload = ws_wrapper.get("data-update")
         if not payload: return no_update
 
-        attributes = payload.get("attributes", {})
-        platform_id = attributes.get("platform", {}).get("data")
-        
-        if not platform_id:
-            current_topic = ws_wrapper.get("topic") or payload.get("destpath", "") or payload.get("sourcepath", "")
-            parts = current_topic.split("/")
-            platform_id = parts[3].split("::")[0] if len(parts) > 3 else "unknown"
-            
-        new_cache = current_cache.copy() if current_cache else {}
-        if platform_id not in new_cache: new_cache[platform_id] = {"variables": {}}
-            
+        new_cache = current_cache.copy() if current_cache else {"variables": {}}
         incoming_vars = payload.get("variables", {})
         current_time = incoming_vars.get("time", {}).get("data") or datetime.now(timezone.utc).isoformat()
+        
+        new_vars = new_cache.get("variables", {}).copy()
         
         for var_name, var_data in incoming_vars.items():
             if var_name == "time": continue
             val = var_data.get("data")
             if val is not None:
-                if var_name not in new_cache[platform_id]["variables"]:
-                    new_cache[platform_id]["variables"][var_name] = {"x": [], "y": [], "unit": var_data.get("unit", "")}
+                if var_name not in new_vars:
+                    new_vars[var_name] = {"x": [], "y": [], "unit": var_data.get("unit", "")}
                 
-                new_cache[platform_id]["variables"][var_name]["x"].append(current_time)
-                new_cache[platform_id]["variables"][var_name]["y"].append(val)
-                new_cache[platform_id]["variables"][var_name]["unit"] = var_data.get("unit", "")
+                # Copy lists to trigger React updates
+                x_list = new_vars[var_name]["x"].copy()
+                y_list = new_vars[var_name]["y"].copy()
                 
-                if len(new_cache[platform_id]["variables"][var_name]["x"]) > 300:
-                    new_cache[platform_id]["variables"][var_name]["x"].pop(0)
-                    new_cache[platform_id]["variables"][var_name]["y"].pop(0)
-            
+                x_list.append(current_time)
+                y_list.append(val)
+                
+                # Capped to 300 points for performance
+                if len(x_list) > 300:
+                    x_list.pop(0)
+                    y_list.pop(0)
+                    
+                new_vars[var_name] = {"x": x_list, "y": y_list, "unit": var_data.get("unit", "")}
+        
+        new_cache["variables"] = new_vars
         return new_cache
     except Exception:
         return no_update
@@ -175,10 +176,11 @@ def ingest_live_telemetry(messages, current_cache):
     Output("dropdown-1d-y", "options"),
     Output("dropdown-2d-y", "options"), Output("dropdown-2d-z", "options"),
     Output("dropdown-3d-x", "options"), Output("dropdown-3d-y", "options"), Output("dropdown-3d-z", "options"),
-    Input("plot-telemetry-cache", "data")
+    Input({"type": "plot-platform-cache", "index": ALL}, "data"),
+    State({"type": "plot-platform-cache", "index": ALL}, "id")
 )
-def populate_dropdowns(cache):
-    """Dynamically fills the dropdowns with whatever variables arrive in the cache."""
+def populate_dropdowns(caches, cache_ids):
+    cache = {c_id["index"]: c_data for c_data, c_id in zip(caches, cache_ids) if c_data}
     if not cache: return no_update
 
     options = []
@@ -186,31 +188,30 @@ def populate_dropdowns(cache):
         for var_name in p_data.get("variables", {}).keys():
             options.append({"label": f"{var_name.replace('_', ' ').title()} ({platform_id})", "value": f"{platform_id}::{var_name}"})
             
-    # Sort alphabetically to keep it clean
     options = sorted(options, key=lambda d: d['label'])
     return options, options, options, options, options, options
 
 @app.callback(
     Output("graph-1d", "figure"),
-    Input("plot-telemetry-cache", "data"),
+    Input({"type": "plot-platform-cache", "index": ALL}, "data"),
+    State({"type": "plot-platform-cache", "index": ALL}, "id"),
     State("dropdown-1d-y", "value")
 )
-def render_1d_plot(cache, selected_var):
+def render_1d_plot(caches, cache_ids, selected_var):
     default_fig = go.Figure(layout={"xaxis_title": "Time", "yaxis_title": "Value", "template": "simple_white"})
+    cache = {c_id["index"]: c_data for c_data, c_id in zip(caches, cache_ids) if c_data}
     if not cache or not selected_var: return default_fig
 
     try:
         platform_id, var_name = selected_var.split("::")
         var_data = cache[platform_id]["variables"][var_name]
         
-        x_data, y_data = var_data["x"], var_data["y"]
-        
-        fig = go.Figure(go.Scatter(x=x_data, y=y_data, mode="lines+markers", line=dict(color="#1f77b4", width=2)))
+        fig = go.Figure(go.Scatter(x=var_data["x"], y=var_data["y"], mode="lines+markers", line=dict(color="#1f77b4", width=2)))
         fig.update_layout(
             title=f"{var_name.replace('_', ' ').title()} <br><span style='font-size:10px;color:gray;'>{platform_id}</span>",
             yaxis_title=var_data.get("unit", ""), xaxis_title="Time",
             template="simple_white", margin=dict(t=50, b=30, l=40, r=40),
-            uirevision=selected_var # Prevents zoom resetting when new data streams in
+            uirevision=selected_var 
         )
         return fig
     except KeyError:
@@ -218,11 +219,13 @@ def render_1d_plot(cache, selected_var):
 
 @app.callback(
     Output("graph-2d-heatmap", "figure"), Output("graph-2d-scatter", "figure"),
-    Input("plot-telemetry-cache", "data"),
+    Input({"type": "plot-platform-cache", "index": ALL}, "data"),
+    State({"type": "plot-platform-cache", "index": ALL}, "id"),
     State("dropdown-2d-y", "value"), State("dropdown-2d-z", "value")
 )
-def render_2d_plots(cache, y_sel, z_sel):
+def render_2d_plots(caches, cache_ids, y_sel, z_sel):
     default_fig = go.Figure(layout={"template": "simple_white"})
+    cache = {c_id["index"]: c_data for c_data, c_id in zip(caches, cache_ids) if c_data}
     if not cache or not y_sel or not z_sel: return default_fig, default_fig
 
     try:
@@ -230,13 +233,12 @@ def render_2d_plots(cache, y_sel, z_sel):
         z_plat, z_var = z_sel.split("::")
         
         x_data = cache[z_plat]["variables"][z_var]["x"]
-        y_data_raw = cache[y_plat]["variables"][y_var]["y"][-1] # Grabbing the latest bin/coordinate array
-        z_data_raw = cache[z_plat]["variables"][z_var]["y"]     # The history of the value arrays
+        y_data_raw = cache[y_plat]["variables"][y_var]["y"][-1] 
+        z_data_raw = cache[z_plat]["variables"][z_var]["y"]    
         
         heatmap = go.Figure(go.Heatmap(x=x_data, y=y_data_raw, z=z_data_raw, colorscale="Rainbow"))
         heatmap.update_layout(title="2D Time Profile", yaxis_title=y_var, xaxis_title="Time", template="simple_white", uirevision=f"{y_sel}-{z_sel}")
 
-        # Slice the very last reading for the scatter profile
         latest_z = z_data_raw[-1] if z_data_raw else []
         scatter = go.Figure(go.Scatter(x=latest_z, y=y_data_raw, mode="lines+markers"))
         scatter.update_layout(title=f"Latest Snapshot: {str(x_data[-1])[11:19]}", xaxis_title=z_var, yaxis_title=y_var, template="simple_white", uirevision=f"{y_sel}-{z_sel}")
@@ -247,11 +249,13 @@ def render_2d_plots(cache, y_sel, z_sel):
 
 @app.callback(
     Output("graph-3d-surface", "figure"),
-    Input("plot-telemetry-cache", "data"),
+    Input({"type": "plot-platform-cache", "index": ALL}, "data"),
+    State({"type": "plot-platform-cache", "index": ALL}, "id"),
     State("dropdown-3d-x", "value"), State("dropdown-3d-y", "value"), State("dropdown-3d-z", "value")
 )
-def render_3d_plots(cache, x_sel, y_sel, z_sel):
+def render_3d_plots(caches, cache_ids, x_sel, y_sel, z_sel):
     default_fig = go.Figure(layout={"template": "simple_white"})
+    cache = {c_id["index"]: c_data for c_data, c_id in zip(caches, cache_ids) if c_data}
     if not cache or not x_sel or not y_sel or not z_sel: return default_fig
 
     try:
@@ -261,7 +265,7 @@ def render_3d_plots(cache, x_sel, y_sel, z_sel):
         
         x_data = cache[x_plat]["variables"][x_var]["y"][-1]
         y_data = cache[y_plat]["variables"][y_var]["y"][-1]
-        z_data = cache[z_plat]["variables"][z_var]["y"][-1] # For a true 3D surface, Z should be a 2D matrix. We pass the latest slice here.
+        z_data = cache[z_plat]["variables"][z_var]["y"][-1] 
         
         surface = go.Figure(data=go.Surface(z=z_data, x=x_data, y=y_data, colorscale="Viridis"))
         surface.update_layout(

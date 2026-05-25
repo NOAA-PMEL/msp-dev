@@ -1,18 +1,17 @@
 import dash
-from dash import html, dcc, Input, Output, State, no_update, ALL, ctx
+from dash import html, dcc, Input, Output, State, no_update, ALL, MATCH, ctx
 from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
 import logging
 import json
 from datetime import datetime, timezone
 
-# Import shared tools from our utility layer
 from utils import get_registry_data, config, create_unified_shell, register_sidebar_callbacks
 
 L = logging.getLogger(__name__)
 
 # --- Initialize Isolated Dash App ---
-app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/ops/", routes_pathname_prefix="/")
+app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/ops/", routes_pathname_prefix="/", suppress_callback_exceptions=True)
 register_sidebar_callbacks(app)
 
 app.layout = create_unified_shell(html.Div([
@@ -48,7 +47,6 @@ def build_ops_layout(deployment_id):
     group_platforms = list(set(raw_targets + short_targets))
     group_platforms = [p for p in group_platforms if p]
 
-    # --- Header with the new PLOTS link ---
     header = dbc.Row([
         dbc.Col([
             html.H2([html.I(className="bi bi-hdd-network me-2"), host_name], className="fw-bold mb-0"),
@@ -85,14 +83,19 @@ def build_ops_layout(deployment_id):
     ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
 
+    # --- FIX: ISOLATED MEMORY CACHES ---
     ws_connections = [WebSocket(id="ws-ops-system", url=f"{ws_base}/ws/system-ops/main")]
+    platform_stores = []
+    
     for p_id in group_platforms:
-        if p_id: ws_connections.append(WebSocket(id={"type": "ws-ops-platform", "index": p_id}, url=f"{ws_base}/ws/platform/{p_id}"))
+        if p_id: 
+            ws_connections.append(WebSocket(id={"type": "ws-ops-platform", "index": p_id}, url=f"{ws_base}/ws/platform/{p_id}"))
+            # Each WebSocket gets its own dedicated memory block
+            platform_stores.append(dcc.Store(id={"type": "platform-cache", "index": p_id}, data={"variables": {}, "state": {}}))
 
     return html.Div([
-        dcc.Store(id="ops-group-platforms", data=group_platforms),
-        dcc.Store(id="ops-telemetry-cache", data={}),
         html.Div(ws_connections),
+        html.Div(platform_stores),
         header, ops_ribbon, 
         html.Div(id="dynamic-metrics-container", children=[dbc.Spinner(color="primary")]),
         sub_systems
@@ -101,74 +104,49 @@ def build_ops_layout(deployment_id):
 # --- Callbacks ---
 
 @app.callback(
-    Output("ops-telemetry-cache", "data"),
-    Input({"type": "ws-ops-platform", "index": ALL}, "message"),
-    State("ops-telemetry-cache", "data")
+    Output({"type": "platform-cache", "index": MATCH}, "data"),
+    Input({"type": "ws-ops-platform", "index": MATCH}, "message"),
+    State({"type": "platform-cache", "index": MATCH}, "data")
 )
-def ingest_live_telemetry(messages, current_cache):
-    if not ctx.triggered: return no_update
-    
-    msg = ctx.triggered[0].get("value")
-    # Log the raw text string arriving from the browser's websocket
-    L.info(f"[DEBUG DASH] 📩 WS Message Received. Raw preview: {str(msg)[:250]}...")
-
-    if not msg or "data" not in msg: 
-        L.warning("[DEBUG DASH] ❌ Dropped: No 'data' key found in the websocket message envelope.")
-        return no_update
+def ingest_live_telemetry(msg, current_cache):
+    """Safely updates a SINGLE platform's cache, completely immune to race conditions."""
+    if not msg or "data" not in msg: return no_update
 
     try:
         ws_wrapper = json.loads(msg["data"])
         payload = ws_wrapper.get("data-update")
-        
-        if not payload: 
-            L.warning(f"[DEBUG DASH] ❌ Dropped: No 'data-update' key. Keys found: {list(ws_wrapper.keys())}")
-            return no_update
-
-        attributes = payload.get("attributes", {})
-        platform_id = attributes.get("platform", {}).get("data")
-        
-        if not platform_id:
-            current_topic = ws_wrapper.get("topic") or payload.get("destpath", "") or payload.get("sourcepath", "")
-            parts = current_topic.split("/")
-            platform_id = parts[3].split("::")[0] if len(parts) > 3 else "unknown"
-            L.info(f"[DEBUG DASH] ⚠️ Platform ID derived from path: {platform_id}")
-        else:
-            L.info(f"[DEBUG DASH] ✅ Platform ID derived from attributes: {platform_id}")
+        if not payload: return no_update
             
-        new_cache = current_cache.copy() if current_cache else {}
-        if platform_id not in new_cache: 
-            new_cache[platform_id] = {"variables": {}, "state": {}}
-            L.info(f"[DEBUG DASH] 🆕 Created new cache entry for platform: {platform_id}")
-            
+        # current_cache is specific to ONE platform (e.g., msp_enclosure_01)
+        new_cache = current_cache.copy() if current_cache else {"variables": {}, "state": {}}
         incoming_vars = payload.get("variables", {})
-        L.info(f"[DEBUG DASH] 📊 Found {len(incoming_vars)} variables: {list(incoming_vars.keys())}")
-        
         current_time = incoming_vars.get("time", {}).get("data") or datetime.now(timezone.utc).isoformat()
+        
+        # We must copy the variables dict so Dash detects the React state change
+        new_vars = new_cache.get("variables", {}).copy()
         
         for var_name, var_data in incoming_vars.items():
             if var_name == "time": continue
             val = var_data.get("data")
             if val is not None:
-                new_cache[platform_id]["variables"][var_name] = {"value": val, "unit": var_data.get("unit", ""), "timestamp": current_time}
+                new_vars[var_name] = {"value": val, "unit": var_data.get("unit", ""), "timestamp": current_time}
         
-        L.info(f"[DEBUG DASH] 🚀 Returning populated cache to the UI.")
+        new_cache["variables"] = new_vars
         return new_cache
-        
-    except Exception as e:
-        L.error(f"[DEBUG DASH] 💥 CRITICAL PARSE ERROR: {e}", exc_info=True)
+    except Exception:
         return no_update
     
 @app.callback(
     Output("ops-health-badge", "children"), Output("ops-health-badge", "color"),
     Output("ops-sys-mode", "children"), Output("ops-sys-mode", "className"),
     Output("ops-alarm-count", "children"),
-    Input("ops-telemetry-cache", "data")
+    Input({"type": "platform-cache", "index": ALL}, "data")
 )
-def update_ribbon_ui(cache):
-    if not cache: return no_update
+def update_ribbon_ui(caches):
     total_alarms = 0
     sys_mode, sys_mode_color = "STANDBY", "fw-bold text-muted mb-0"
-    for uid, data in cache.items():
+    for data in caches:
+        if not data: continue
         state = data.get("state", {})
         if "alarm" in str(state).lower() or "error" in str(state).lower(): total_alarms += 1
         if "system_active" in state:
@@ -190,15 +168,16 @@ CATEGORY_MAP = {
 
 @app.callback(
     Output("dynamic-metrics-container", "children"),
-    Input("ops-telemetry-cache", "data")
+    Input({"type": "platform-cache", "index": ALL}, "data"),
+    State({"type": "platform-cache", "index": ALL}, "id")
 )
-def update_dynamic_metrics(cache):
+def update_dynamic_metrics(caches, cache_ids):
+    """Aggregates all isolated platform caches downstream and builds the UI grid."""
+    # Rebuild the master dictionary
+    cache = {c_id["index"]: c_data for c_data, c_id in zip(caches, cache_ids) if c_data}
+    
     if not cache: return dbc.Alert("Awaiting telemetry...", color="info")
 
-    L.info(f"[DEBUG UI] 🎨 UI Grid triggered. Cache contains platforms: {list(cache.keys()) if cache else 'EMPTY'}")
-    
-    if not cache: return dbc.Alert("Awaiting telemetry...", color="info")
-    
     now = datetime.now(timezone.utc)
     STALE_SECONDS = 120 # Over 2 minutes = Stale
 
@@ -218,12 +197,10 @@ def update_dynamic_metrics(cache):
         last_time_str = var_dict.get("timestamp")
         unit = var_dict.get("unit", "")
         
-        # 1. Evaluate Staleness
         is_stale = False
         try:
             last_time = datetime.fromisoformat(str(last_time_str).replace("Z", "+00:00"))
-            if (now - last_time).total_seconds() > STALE_SECONDS:
-                is_stale = True
+            if (now - last_time).total_seconds() > STALE_SECONDS: is_stale = True
         except Exception: pass
 
         if raw_val is None: return "Waiting...", "border-0 shadow-sm mb-3 bg-white border-start border-4 border-secondary", False
@@ -231,7 +208,6 @@ def update_dynamic_metrics(cache):
         try:
             val = float(raw_val)
             formatted_text = f"{val:.2f} {unit}".strip()
-            
             if is_stale: return formatted_text, "border-0 shadow-sm mb-3 bg-light border-start border-4 border-secondary opacity-75", True
 
             bounds = thresholds.get(var_name, {})
