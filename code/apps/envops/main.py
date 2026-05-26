@@ -29,18 +29,10 @@ from logfmter import Logfmter
 from pydantic import BaseModel, BaseSettings, Field
 from ulid import ULID
 
-# from dashapp import app as dash_app
-# from code.apps.envops.old.envops_app import app as dash_app
 from envds.daq.types import DAQEventType as det
 from envds.daq.event import DAQEvent
 from envds.message.message import Message
 from envds.core import envdsBase, envdsAppID, envdsStatus
-
-# handler = logging.StreamHandler()
-# handler.setFormatter(Logfmter())
-# logging.basicConfig(handlers=[handler])
-# L = logging.getLogger(__name__)
-# L.setLevel(logging.DEBUG)
 
 # 1. Read environmental visibility configurations
 LOG_LEVEL = os.getenv("ENVOPS_LOG_LEVEL", "INFO").upper()
@@ -256,14 +248,15 @@ async def handle_mqtt_buffer():
                     await manager.broadcast(json.dumps(mini_msg), "system-ops", "main")
             
             # 4. SYSTEM OPS ROUTING (Modes, States, Logs, and C2 CONDITIONS)
-            elif any(x in ce_type for x in ["systemmode", "samplingmode", "samplingstate", "samplingcondition", "operations.log"]):
+            # 🟢 UPDATED: Catching all variants of systemmode, system-mode, and system.control
+            elif any(x in ce_type for x in ["systemmode", "system-mode", "system.control", "samplingmode", "samplingstate", "samplingcondition", "operations.log"]):
                 msg = {
                     "type": ce_type,
                     "data": ce.data
                 }
                 
-                # 🟢 C2 ROUTER: Split Status Updates vs General Ops
-                if "status.update" in ce_type:
+                # 🟢 UPDATED: Explicitly route 'control' and 'status' updates to the Conditions Cache
+                if "status.update" in ce_type or "control" in ce_type:
                     L.debug(f"[C2 ROUTER] 🔀 Routing status update to 'conditions' cache: {ce_type}")
                     await manager.broadcast(json.dumps(msg), "conditions", "main")
                 else:
@@ -291,13 +284,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# # app.mount("/dash", WSGIMiddleware(dash_app.server))
-# app.mount("/envds/envops", WSGIMiddleware(dash_app.server))
-
-# @app.get("/")
-# async def root():
-#     return {"message": "EnvOps Middleware Online"}
 
 # --- WEBSOCKET ENDPOINTS ---
 
@@ -412,7 +398,6 @@ async def system_ops_ws_endpoint(websocket: WebSocket, client_id: str):
     try:
         while True:
             data = await websocket.receive_text()
-            # Loopback broadcast if the UI sends an acknowledgment or command
             await manager.broadcast(f"received: {data}", "system-ops", client_id)
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
@@ -545,7 +530,6 @@ async def conditions_ws_endpoint(websocket: WebSocket, client_id: str):
                     L.info(f"[C2 WS] 🛠️ Processing C2 Override Sequence for Host: {target}")
                     
                     # 1. SYSTEM CONTROL MODE (Auto / Manual)
-                    # Maps to your /system/control/update/ logic
                     ce_ctrl = CloudEvent(
                         attributes={"type": "envds.system.control.update", "source": "envops.ui", "subject": target},
                         data={"mode": op_mode}
@@ -555,7 +539,6 @@ async def conditions_ws_endpoint(websocket: WebSocket, client_id: str):
                     L.debug(f"[C2 WS] -> Dispatched Control Mode update: {op_mode}")
                     
                     # 2. SYSTEM MODE TRANSITION REQUEST
-                    # Maps perfectly to manager.py transitions_buffer
                     if sys_mode:
                         ce_sys = CloudEvent(
                             attributes={"type": "envds.system-modes.transition.request", "source": "envops.ui", "subject": target},
@@ -566,7 +549,6 @@ async def conditions_ws_endpoint(websocket: WebSocket, client_id: str):
                         L.debug(f"[C2 WS] -> Dispatched System Mode transition: {sys_mode}")
                         
                     # 3. INDIVIDUAL SAMPLING MODE ACTIVATIONS
-                    # Maps perfectly to manager.py send_activation_request() format
                     if samp_modes:
                         for mode_name, is_active in samp_modes.items():
                             ce_samp = CloudEvent(
@@ -592,7 +574,7 @@ async def conditions_ws_endpoint(websocket: WebSocket, client_id: str):
 from home_app import app as home_dash
 from ops_app import app as ops_dash
 from plot_app import app as plot_dash
-from device_app import app as device_dash # <--- 1. Import the new app
+from device_app import app as device_dash 
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
 dash_dispatcher = DispatcherMiddleware(
@@ -600,7 +582,7 @@ dash_dispatcher = DispatcherMiddleware(
     {
         '/ops': ops_dash.server,      
         '/plots': plot_dash.server,    
-        '/devices': device_dash.server  # <--- 2. Mount it to /devices
+        '/devices': device_dash.server  
     }   
 )
 
