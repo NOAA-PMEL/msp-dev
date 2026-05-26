@@ -25,7 +25,9 @@ class SamplingEventType(BaseEventType):
     TYPE_SAMPLING_STATE = "samplingstate"
     TYPE_SAMPLING_MODE = "samplingmode"
     TYPE_SYSTEM_MODE = "systemmode"
-    
+    TYPE_SYSTEM = "system"
+    TYPE_CONTROL = "control"
+
     # ACTION_RECV = "recv"
     # ACTION_SEND = "send"
     # ACTION_KEEPALIVE = "keepalive"
@@ -137,3 +139,12 @@ class SamplingEventType(BaseEventType):
     def system_mode_status_update():
         return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SYSTEM_MODE), BaseEventType.TYPE_STATUS, BaseEventType.ACTION_UPDATE])
     
+    @staticmethod
+    def system_control_request():
+        # Yields: envds.system.control.request
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SYSTEM), SamplingEventType.TYPE_CONTROL, BaseEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def system_control_update():
+        # Yields: envds.system.control.update
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SYSTEM), SamplingEventType.TYPE_CONTROL, BaseEventType.ACTION_UPDATE])
