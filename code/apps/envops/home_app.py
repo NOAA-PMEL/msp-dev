@@ -20,6 +20,7 @@ register_sidebar_callbacks(app)
 
 ws_protocol = "wss://" if config.ws_use_tls.lower() == "true" else "ws://"
 ws_url = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops/ws/system-ops/main"
+ws_cond_url = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops/ws/conditions/main" # 🟢 NEW: Listen to backend modes
 
 
 def determine_deployment_status(dep_data):
@@ -43,8 +44,10 @@ def get_status_badge(status):
     elif status == "completed": return dbc.Badge("Completed", color="secondary", className="ms-2 shadow-sm")
     return dbc.Badge(status.capitalize(), color="warning", text_color="dark", className="ms-2 shadow-sm")
 
-def create_deployment_card(deployment, platform_info, host_info, child_cards=None, telemetry_cache=None, is_child=False, child_plat_refs=None):
+def create_deployment_card(deployment, platform_info, host_info, child_cards=None, telemetry_cache=None, conditions_cache=None, is_child=False, child_plat_refs=None):
     if telemetry_cache is None: telemetry_cache = {}
+    if conditions_cache is None: conditions_cache = {}
+    
     dep_meta = deployment.get("metadata", {})
     dep_data = deployment.get("data", {})
     dep_id = dep_meta.get("name", "Unknown ID")
@@ -60,30 +63,47 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
     
     plat_ref = dep_data.get("platform_ref", "")
     short_ref = plat_ref.split(".")[-1] if "." in plat_ref else plat_ref
+    
+    # 🟢 Extract real-time telemetry and condition status
     live_data = telemetry_cache.get(plat_ref) or telemetry_cache.get(short_ref) or {}
+    plat_conds = conditions_cache.get(plat_ref) or conditions_cache.get(short_ref) or {}
     
     has_telemetry = bool(live_data.get("last_seen"))
     issues = live_data.get("issues", 0)
+
+    # 🟢 Determine active System Modes and capture condition issues
+    active_sys_modes = [uid.replace("_", " ").title() for uid, info in plat_conds.items() if info.get("actual") and "systemmode" in info.get("type", "")]
+    sys_mode_str = " + ".join(active_sys_modes) if active_sys_modes else "Standby"
     
-    # Hierarchical Health Rollup: Check if children are alive if host is silent
-    if not has_telemetry and child_plat_refs:
+    for uid, info in plat_conds.items():
+        if info.get("actual"):
+            if any(x in uid.lower() for x in ["maintenance", "error", "fault", "alarm"]):
+                issues += 1
+    
+    # Hierarchical Health Rollup: Check children
+    if child_plat_refs:
         for c_ref in child_plat_refs:
             c_short = c_ref.split(".")[-1] if "." in c_ref else c_ref
             c_hit = telemetry_cache.get(c_ref) or telemetry_cache.get(c_short) or {}
-            if c_hit.get("last_seen"):
-                has_telemetry = True
-                issues = max(issues, c_hit.get("issues", 0))
-                break
+            c_cond = conditions_cache.get(c_ref) or conditions_cache.get(c_short) or {}
+            
+            if c_hit.get("last_seen"): has_telemetry = True
+            c_issues = c_hit.get("issues", 0)
+            for uid, info in c_cond.items():
+                if info.get("actual") and any(x in uid.lower() for x in ["maintenance", "error", "fault", "alarm"]):
+                    c_issues += 1
+            issues += c_issues
 
+    # 🟢 Render Dynamic Health & Status Indicators
     if not has_telemetry:
-        health_badge = dbc.Badge("Unknown", color="secondary", className="ms-2 shadow-sm")
+        health_badge = dbc.Badge("Offline / Unknown", color="secondary", className="ms-2 shadow-sm")
         live_indicator = html.Span("Awaiting Data...", className="small text-muted")
     elif issues > 0:
-        health_badge = dbc.Badge(f"{issues} Alarms", color="danger", className="ms-2 shadow-sm")
-        live_indicator = html.Span([html.I(className="bi bi-exclamation-triangle-fill text-danger me-1"), "Issues Detected"], className="small text-danger fw-bold")
+        health_badge = dbc.Badge(f"{issues} Issues", color="danger", className="ms-2 shadow-sm")
+        live_indicator = html.Span([html.I(className="bi bi-exclamation-triangle-fill text-danger me-1"), f"Sys Mode: {sys_mode_str}"], className="small text-danger fw-bold")
     else:
-        health_badge = dbc.Badge("Healthy", color="success", className="ms-2 shadow-sm")
-        live_indicator = html.Span([html.I(className="bi bi-activity text-success me-1"), "Live & Nominal"], className="small text-success")
+        health_badge = dbc.Badge("Nominal", color="success", className="ms-2 shadow-sm")
+        live_indicator = html.Span([html.I(className="bi bi-activity text-success me-1"), f"Sys Mode: {sys_mode_str}"], className="small text-success fw-bold")
     
     if not is_child:
         buttons_row = dbc.Row([
@@ -116,10 +136,15 @@ def create_deployment_card(deployment, platform_info, host_info, child_cards=Non
         dbc.CardBody(card_body_content)
     ], className="shadow-sm mb-3 border-0")
 
+
 # --- Core Layout Content ---
 home_content = html.Div([
     dcc.Store(id="home-telemetry-cache", data={}),
     WebSocket(id="ws-home-telemetry", url=ws_url),
+    
+    # 🟢 NEW: Add the backend status store and socket
+    dcc.Store(id="home-conditions-cache", data={}),
+    WebSocket(id="ws-home-conditions", url=ws_cond_url),
     
     dbc.Row([
         dbc.Col([
@@ -143,19 +168,18 @@ app.layout = create_unified_shell(home_content, active_item="home")
 
 
 # --- Callbacks ---
+
 @app.callback(
     Output("home-telemetry-cache", "data"),
     Input("ws-home-telemetry", "message"),
     State("home-telemetry-cache", "data")
 )
 def ingest_live_telemetry(msg, current_cache):
-    if not msg or "data" not in msg: 
-        return no_update
+    if not msg or "data" not in msg: return no_update
     
     try:
         payload = json.loads(msg["data"])
-        if payload.get("type") != "fleet.location.update":
-            return no_update
+        if payload.get("type") != "fleet.location.update": return no_update
 
         platform_id = payload["platform"]
         
@@ -172,6 +196,53 @@ def ingest_live_telemetry(msg, current_cache):
         L.error(f"[HOME WS] Location parse failure: {e}")
         return no_update
 
+
+@app.callback(
+    Output("home-conditions-cache", "data"),
+    Input("ws-home-conditions", "message"),
+    State("home-conditions-cache", "data")
+)
+def ingest_backend_conditions(msg, current_cache):
+    """🟢 NEW: Parses backend conditions to assess deployment health dynamically."""
+    if not msg or "data" not in msg: return no_update
+    
+    try:
+        payload = json.loads(msg["data"])
+        ce_type = payload.get("type", "")
+        data = payload.get("data", {})
+        source = payload.get("source", "")
+        
+        # Extract the Target Platform ID from the Knative Source String
+        parts = source.split(".")
+        if len(parts) < 2: return no_update
+        plat_id = parts[1] # e.g., "raz1"
+        
+        id_block = data.get("id", {})
+        state_block = data.get("state", {})
+        app_uid = id_block.get("app_uid")
+        
+        if not app_uid: return no_update
+        
+        if "systemmode" in ce_type: actual = state_block.get("mode_active", {}).get("actual", "false")
+        elif "samplingmode" in ce_type: actual = state_block.get("mode_active", {}).get("actual", "false")
+        elif "samplingstate" in ce_type: actual = state_block.get("state_active", {}).get("actual", "false")
+        elif "samplingcondition" in ce_type: actual = state_block.get("condition_met", {}).get("actual", "false")
+        else: actual = "false"
+
+        new_cache = current_cache.copy() if current_cache else {}
+        if plat_id not in new_cache: new_cache[plat_id] = {}
+        
+        new_cache[plat_id][app_uid] = {
+            "type": ce_type,
+            "actual": str(actual).lower() == "true",
+            "timestamp": data.get("timestamp")
+        }
+        return new_cache
+    except Exception as e:
+        L.error(f"[HOME WS] Conditions parse failure: {e}")
+        return no_update
+
+
 @app.callback(
     Output("home-metrics-container", "children"),
     Output("home-map", "figure"),
@@ -179,11 +250,14 @@ def ingest_live_telemetry(msg, current_cache):
     Output("home-projects-accordion", "active_item"),
     Input("home-refresh-interval", "n_intervals"),
     Input("home-telemetry-cache", "data"),
+    Input("home-conditions-cache", "data"), # 🟢 Add conditions dependency
     State("home-projects-accordion", "active_item")
 )
-def update_home_dashboard(n, telemetry_cache, current_active_items):
-    cb_start_time = time.time()
+def update_home_dashboard(n, telemetry_cache, conditions_cache, current_active_items):
     try:
+        telemetry_cache = telemetry_cache or {}
+        conditions_cache = conditions_cache or {}
+        
         deployments = get_registry_data("deployment")
         projects = get_registry_data("project")
         platforms = get_registry_data("platform")
@@ -194,9 +268,16 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
         project_map = {p.get("metadata", {}).get("name"): p for p in projects}
         platform_map = {p.get("metadata", {}).get("name"): p for p in platforms}
 
-        # --- 1. Metrics ---
+        # --- 1. Metrics Rollup ---
         active_deps = sum(1 for d in deployments if determine_deployment_status(d.get("data", {})) == "active")
-        total_issues = sum(plat.get("issues", 0) for plat in telemetry_cache.values())
+        total_issues = 0
+        
+        for plat_id, cache_hit in telemetry_cache.items():
+            total_issues += cache_hit.get("issues", 0)
+        for plat_id, cond_hit in conditions_cache.items():
+            for uid, info in cond_hit.items():
+                if info.get("actual") and any(x in uid.lower() for x in ["maintenance", "error", "fault", "alarm"]):
+                    total_issues += 1
         
         metrics_row = dbc.Row([
             dbc.Col(dbc.Card(dbc.CardBody([html.H5("Deployments", className="text-muted"), html.H2(str(len(deployments)), className="fw-bold")]), className="shadow-sm border-0 text-center"), width=4),
@@ -241,9 +322,7 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
             for p_ref in platforms_to_check:
                 short_ref = p_ref.split(".")[-1] if "." in p_ref else p_ref
                 cache_hit = telemetry_cache.get(p_ref) or telemetry_cache.get(short_ref) or {}
-                
-                lat = cache_hit.get("lat")
-                lon = cache_hit.get("lon")
+                lat, lon = cache_hit.get("lat"), cache_hit.get("lon")
                 
                 if lat is not None and lon is not None:
                     live_lat, live_lon = lat, lon
@@ -261,10 +340,8 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
                 est_texts.append(f"<b>{root_name}</b><br><i>Est: {cov_str}</i>")
 
         fig = go.Figure()
-        if live_lats:
-            fig.add_trace(go.Scattermap(lat=live_lats, lon=live_lons, mode='markers', marker=dict(size=12, color='blue'), text=live_texts, hoverinfo="text", name="Live Telemetry"))
-        if est_lats:
-            fig.add_trace(go.Scattermap(lat=est_lats, lon=est_lons, mode='markers', marker=dict(size=20, color='gray', opacity=0.5), text=est_texts, hoverinfo="text", name="Estimated Region"))
+        if live_lats: fig.add_trace(go.Scattermap(lat=live_lats, lon=live_lons, mode='markers', marker=dict(size=12, color='blue'), text=live_texts, hoverinfo="text", name="Live Telemetry"))
+        if est_lats: fig.add_trace(go.Scattermap(lat=est_lats, lon=est_lons, mode='markers', marker=dict(size=20, color='gray', opacity=0.5), text=est_texts, hoverinfo="text", name="Estimated Region"))
 
         fig.update_layout(
             map_style="carto-positron", 
@@ -298,18 +375,26 @@ def update_home_dashboard(n, telemetry_cache, current_active_items):
                     child_ui = build_cards(children, is_child=True) if children else None
                     child_plat_refs = [c.get("data", {}).get("platform_ref") for c in children]
                     
-                    card = create_deployment_card(d, platform_map.get(plat_ref, {}), platform_map.get(d.get("data", {}).get("host_platform_ref"), {}), child_ui, telemetry_cache, is_child=is_child, child_plat_refs=child_plat_refs)
+                    # 🟢 Pass the new conditions_cache directly to the card builder!
+                    card = create_deployment_card(d, platform_map.get(plat_ref, {}), platform_map.get(d.get("data", {}).get("host_platform_ref"), {}), child_ui, telemetry_cache, conditions_cache, is_child=is_child, child_plat_refs=child_plat_refs)
                     cards.append(html.Div(card, className="mb-2") if is_child else dbc.Col(card, width=12, lg=6, xl=4, className="mb-4"))
                 return cards
 
             root_cards_ui = dbc.Row(build_cards(root_deployments, is_child=False))
             
+            # 🟢 Roll up project-wide issues dynamically from the conditions cache
             proj_issues = 0
             for d in deps:
                 p_ref = d.get("data", {}).get("platform_ref", "")
                 s_ref = p_ref.split(".")[-1] if "." in p_ref else p_ref
+                
                 cache_hit = telemetry_cache.get(p_ref) or telemetry_cache.get(s_ref) or {}
+                cond_hit = conditions_cache.get(p_ref) or conditions_cache.get(s_ref) or {}
+                
                 proj_issues += cache_hit.get("issues", 0)
+                for uid, info in cond_hit.items():
+                    if info.get("actual") and any(x in uid.lower() for x in ["maintenance", "error", "fault", "alarm"]):
+                        proj_issues += 1
 
             if proj_issues > 0:
                 health_badge = dbc.Badge([html.I(className="bi bi-exclamation-triangle-fill me-2"), f"{proj_issues} Issues"], color="danger", className="rounded-pill shadow-sm px-3 py-2")

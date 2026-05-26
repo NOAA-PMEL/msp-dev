@@ -18,5 +18,4 @@ dash_ace
 pandas
 websockets
 datetime
-cachetools==5.3.1
 Werkzeug

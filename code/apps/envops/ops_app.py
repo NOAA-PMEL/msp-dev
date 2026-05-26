@@ -156,7 +156,7 @@ def build_ops_layout(deployment_id):
     ops_ribbon = dbc.Card(dbc.CardBody(dbc.Row([
         dbc.Col([html.H6("System Mode", className="text-muted mb-1 small text-uppercase"), html.H5("STANDBY", id="ops-sys-mode-disp", className="fw-bold mb-0")], width=3, className="border-end"),
         dbc.Col([html.H6("Sampling State", className="text-muted mb-1 small text-uppercase"), html.H5("IDLE", id="ops-samp-state", className="fw-bold mb-0")], width=3, className="border-end"),
-        dbc.Col([html.H6("Active Alarms", className="text-muted mb-1 small text-uppercase"), html.H5("0", id="ops-alarm-count", className="text-success fw-bold mb-0")], width=3),
+        dbc.Col([html.H6("Active Alarms", className="text-muted mb-1 small text-uppercase"), html.H5("0", id="ops-alarm-count", className="text-success fw-bold mb-0")], width=3, className="border-end"), # 🟢 Added border-end
         dbc.Col([html.H6("Operations", className="text-muted mb-1 small text-uppercase"), html.H5("AUTONOMOUS", id="ops-auto-state", className="text-primary fw-bold mb-0")], width=3)
     ])), className="shadow-sm border-0 mb-4 bg-light")
     
@@ -230,42 +230,90 @@ def ingest_live_telemetry(msg):
 
 
 @app.callback(
-    Output("ops-auto-state", "children"), 
+    Output("ops-auto-state", "children"), Output("ops-auto-state", "className"),
+    Output("ops-sys-mode-disp", "children"), Output("ops-sys-mode-disp", "className"),
+    Output("ops-samp-state", "children"), Output("ops-samp-state", "className"),
     Input("ws-ops-conditions", "message")
 )
-def ingest_backend_conditions(msg):
-    """Listens to manager.py state evaluations and updates the global dictionary."""
-    if not msg or "data" not in msg: return no_update
-    
-    try:
-        payload = json.loads(msg["data"])
-        ce_type = payload.get("type", "")
-        data = payload.get("data", {})
-        
-        id_block = data.get("id", {})
-        state_block = data.get("state", {})
-        app_uid = id_block.get("app_uid")
-        
-        if not app_uid: return no_update
-        
-        L.debug(f"[[DEBUG C2 CACHE]] Intercepted envdsStatus for uid: {app_uid}, type: {ce_type}")
-        
-        if "samplingmode" in ce_type: actual = state_block.get("mode_active", {}).get("actual", "false")
-        elif "samplingstate" in ce_type: actual = state_block.get("state_active", {}).get("actual", "false")
-        elif "samplingcondition" in ce_type: actual = state_block.get("condition_met", {}).get("actual", "false")
-        else: actual = "false"
+def update_control_ribbon(msg):
+    """Listens to manager.py state evaluations, updates cache, and renders the Control Ribbon."""
+    if msg and "data" in msg:
+        try:
+            payload = json.loads(msg["data"])
+            ce_type = payload.get("type", "")
+            data = payload.get("data", {})
+            
+            # Catch the C2 Control State (Auto vs Manual)
+            if "system.control" in ce_type:
+                CONDITIONS_CACHE["system_control"] = data.get("mode", "auto").upper()
+            else:
+                id_block = data.get("id", {})
+                state_block = data.get("state", {})
+                app_uid = id_block.get("app_uid")
+                
+                if app_uid:
+                    L.debug(f"[[DEBUG C2 CACHE]] Intercepted envdsStatus for uid: {app_uid}, type: {ce_type}")
+                    if "systemmode" in ce_type: actual = state_block.get("mode_active", {}).get("actual", "false")
+                    elif "samplingmode" in ce_type: actual = state_block.get("mode_active", {}).get("actual", "false")
+                    elif "samplingstate" in ce_type: actual = state_block.get("state_active", {}).get("actual", "false")
+                    elif "samplingcondition" in ce_type: actual = state_block.get("condition_met", {}).get("actual", "false")
+                    else: actual = "false"
 
-        CONDITIONS_CACHE[app_uid] = {
-            "type": ce_type,
-            "actual": str(actual).lower() == "true",
-            "timestamp": data.get("timestamp")
-        }
+                    CONDITIONS_CACHE[app_uid] = {
+                        "type": ce_type,
+                        "actual": str(actual).lower() == "true",
+                        "timestamp": data.get("timestamp")
+                    }
+        except Exception as e:
+            L.error(f"[[DEBUG C2 CACHE]] Parse error: {e}", exc_info=True)
+
+    # 🟢 Re-evaluate Ribbon visually based on the global CONDITIONS_CACHE
+    active_sys_modes = []
+    active_samp_modes = []
+    
+    for uid, info in CONDITIONS_CACHE.items():
+        if uid == "system_control": continue # Skip the control keyword
         
-        L.info(f"[[DEBUG C2 CACHE]] Updated {app_uid} cache -> actual: {CONDITIONS_CACHE[app_uid]['actual']}")
-        return no_update
-    except Exception as e:
-        L.error(f"[[DEBUG C2 CACHE]] Parse error: {e}", exc_info=True)
-        return no_update
+        if info.get("actual"):
+            if "systemmode" in info["type"]:
+                active_sys_modes.append(uid.replace("_", " ").title())
+            elif "samplingmode" in info["type"]:
+                active_samp_modes.append(uid.replace("_", " ").title())
+                
+    sys_mode_text = " + ".join(active_sys_modes) if active_sys_modes else "STANDBY"
+    sys_mode_css = "fw-bold text-primary mb-0" if active_sys_modes else "fw-bold text-muted mb-0"
+    
+    samp_mode_text = " + ".join(active_samp_modes) if active_samp_modes else "IDLE"
+    samp_mode_css = "fw-bold text-success mb-0" if active_samp_modes else "fw-bold text-muted mb-0"
+    
+    op_mode_text = CONDITIONS_CACHE.get("system_control", "AUTONOMOUS").upper()
+    if op_mode_text == "MANUAL":
+        op_mode_css = "fw-bold text-warning mb-0 animate-pulse"
+    else:
+        op_mode_css = "fw-bold text-primary mb-0"
+        op_mode_text = "AUTONOMOUS"
+
+    return op_mode_text, op_mode_css, sys_mode_text, sys_mode_css, samp_mode_text, samp_mode_css
+
+
+@app.callback(
+    Output("ops-health-badge", "children"), Output("ops-health-badge", "color"),
+    Output("ops-alarm-count", "children"),
+    Input({"type": "platform-cache", "index": ALL}, "data")
+)
+def update_telemetry_ribbon(caches):
+    """Strictly evaluates telemetry variables to report system health and alarms."""
+    total_alarms = 0
+    for data in caches:
+        if not data: continue
+        vars_dict = data.get("variables", {})
+        for v_name, v_data in vars_dict.items():
+            val_str = str(v_data.get("value", "")).strip().lower()
+            if val_str in ["error", "alarm", "fault"]: total_alarms += 1
+
+    if total_alarms > 0: 
+        return f"{total_alarms} Critical Alarms", "danger", str(total_alarms)
+    return "Group Nominal", "success", str(total_alarms)
 
 
 @app.callback(
@@ -297,40 +345,6 @@ def send_c2_command(n_clicks, op_mode, sys_mode, active_samp_modes, all_samp_opt
     }
     L.info(f"[[DEBUG C2 COMMAND]] Dispatching payload to {target_platform}: {json.dumps(payload, indent=2)}")
     return json.dumps(payload)
-
-
-@app.callback(
-    Output("ops-health-badge", "children"), Output("ops-health-badge", "color"),
-    Output("ops-sys-mode-disp", "children"), Output("ops-sys-mode-disp", "className"),
-    Output("ops-samp-state", "children"), Output("ops-samp-state", "className"), 
-    Output("ops-alarm-count", "children"),
-    Input({"type": "platform-cache", "index": ALL}, "data")
-)
-def update_ribbon_ui(caches):
-    total_alarms = 0
-    sys_mode, sys_mode_color = "STANDBY", "fw-bold text-muted mb-0"
-    samp_state, samp_state_color = "IDLE", "fw-bold text-muted mb-0"
-    
-    for data in caches:
-        if not data: continue
-        vars_dict = data.get("variables", {})
-        for v_name, v_data in vars_dict.items():
-            val_str = str(v_data.get("value", "")).strip().lower()
-            if val_str in ["error", "alarm", "fault"]: total_alarms += 1
-            if "power_state" in v_name or "system_active" in v_name:
-                if val_str in ["1", "true", "active", "on"]:
-                    sys_mode = "ACTIVE"
-                    sys_mode_color = "fw-bold text-primary mb-0"
-            if "sampling_state" in v_name:
-                if val_str:
-                    samp_state = val_str.upper()
-                    if samp_state == "SAMPLING": samp_state_color = "fw-bold text-success mb-0"
-                    elif samp_state in ["ERROR", "MAINTENANCE"]: samp_state_color = "fw-bold text-danger mb-0"
-                    else: samp_state_color = "fw-bold text-warning mb-0"
-
-    if total_alarms > 0: 
-        return f"{total_alarms} Critical Alarms", "danger", sys_mode, sys_mode_color, samp_state, samp_state_color, str(total_alarms)
-    return "Group Nominal", "success", sys_mode, sys_mode_color, samp_state, samp_state_color, str(total_alarms)
 
 
 @app.callback(
@@ -497,7 +511,7 @@ def update_tactical_quick_look(caches, cache_ids):
     group_aerosols = html.Div([
         html.H5([html.I(className="bi bi-brightness-high me-2"), "Aerosols & Optics"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
         dbc.Row([
-            standard_card("CN Concentration", "cn_concentration", related_ids=["cn_limit", "nominal_concentrations"]),
+            standard_card("CN Concentration", "cn", related_ids=["cn_limit", "nominal_concentrations"]),
             optics_card("Scattering (Mm⁻¹)", "scatter_blue", "scatter_green", "scatter_red"),
             optics_card("Absorption (Mm⁻¹)", "absorption_blue", "absorption_green", "absorption_red"),
         ], className="mb-4")
