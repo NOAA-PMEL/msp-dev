@@ -203,7 +203,7 @@ def ingest_live_telemetry(msg, current_cache):
     State("home-conditions-cache", "data")
 )
 def ingest_backend_conditions(msg, current_cache):
-    """Parses sampling-ops flat schema conditions to assess deployment health dynamically."""
+    """Parses backend conditions to assess deployment health dynamically."""
     if not msg or "data" not in msg: return no_update
     
     try:
@@ -216,10 +216,15 @@ def ingest_backend_conditions(msg, current_cache):
         if len(parts) < 2: return no_update
         plat_id = parts[1] # e.g., "raz1"
         
-        # 🟢 EXACT SCHEMA: Use the flat status block from sampling-ops managers
-        status_block = data.get("status", {})
-        app_uid = status_block.get("name")
-        actual = status_block.get("status", False)
+        # 🟢 DYNAMIC SCHEMA PARSER
+        app_uid = data.get("id", {}).get("app_uid")
+        actual = False
+        
+        if "state" in data:
+            for val in data["state"].values():
+                if isinstance(val, dict) and "actual" in val:
+                    actual = str(val["actual"]).lower() == "true"
+                    break
             
         if not app_uid: return no_update
 
@@ -228,14 +233,13 @@ def ingest_backend_conditions(msg, current_cache):
         
         new_cache[plat_id][app_uid] = {
             "type": ce_type,
-            "actual": str(actual).lower() == "true", # Safely cast bool or string
+            "actual": actual,
             "timestamp": data.get("timestamp")
         }
         return new_cache
     except Exception as e:
         L.error(f"[HOME WS] Conditions parse failure: {e}")
         return no_update
-
 
 @app.callback(
     Output("home-metrics-container", "children"),

@@ -236,31 +236,33 @@ def ingest_live_telemetry(msg):
     Input("ws-ops-conditions", "message")
 )
 def update_control_ribbon(msg):
-    """Listens to sampling-ops flat schema evaluations, updates cache, and renders the Ribbon."""
+    """Listens to manager.py state evaluations, updates cache, and renders the Control Ribbon."""
     if msg and "data" in msg:
         try:
             payload = json.loads(msg["data"])
             ce_type = payload.get("type", "")
             data = payload.get("data", {})
             
-            # 🚨 ADD THIS TEMPORARY DEBUG LINE:
-            if "status.update" in ce_type:
-                L.info(f"🚨 RAW C2 PAYLOAD [{ce_type}]: {json.dumps(data)}")
-                
             # Catch the C2 Control State (Auto vs Manual)
             if "system.control" in ce_type:
                 CONDITIONS_CACHE["system_control"] = data.get("mode", "auto").upper()
             else:
-                # 🟢 EXACT SCHEMA: Use the flat status block from sampling-ops managers
-                status_block = data.get("status", {})
-                app_uid = status_block.get("name")
-                actual = status_block.get("status", False)
+                # 🟢 DYNAMIC SCHEMA PARSER: Grabs the ID and hunts for the "actual" boolean
+                app_uid = data.get("id", {}).get("app_uid")
+                actual = False
+                
+                if "state" in data:
+                    # Dynamically inspect whatever key is inside the state block (e.g., 'system_active', 'mode_active')
+                    for val in data["state"].values():
+                        if isinstance(val, dict) and "actual" in val:
+                            actual = str(val["actual"]).lower() == "true"
+                            break
                 
                 if app_uid:
-                    L.debug(f"[[DEBUG C2 CACHE]] Intercepted UI update for uid: {app_uid} | actual: {actual}")
+                    # L.debug(f"[[DEBUG C2 CACHE]] Intercepted UI update for uid: {app_uid} | actual: {actual}")
                     CONDITIONS_CACHE[app_uid] = {
                         "type": ce_type,
-                        "actual": str(actual).lower() == "true", # Safely cast bool or string
+                        "actual": actual,
                         "timestamp": data.get("timestamp")
                     }
         except Exception as e:
