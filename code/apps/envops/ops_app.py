@@ -441,7 +441,7 @@ def update_tactical_quick_look(caches, cache_ids):
     # --- CARD COMPONENT BUILDERS ---
     def standard_card(title, var_name, related_ids=None):
         _, fmt_val, css, is_stale, unit, active_triggers = get_var_status(var_name, related_ids)
-        val_display = f"{fmt_val} {unit}".strip() if fmt_val != "Waiting...": fmt_val else fmt_val
+        val_display = f"{fmt_val} {unit}".strip() if fmt_val != "Waiting..." else fmt_val
         stale_badge = html.Span(" STALE", className="text-danger fw-bold ms-2") if is_stale else ""
         
         trigger_badges = [dbc.Badge(t, color="warning", className="ms-1 shadow-sm") for t in active_triggers]
