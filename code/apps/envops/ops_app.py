@@ -150,7 +150,7 @@ def build_ops_layout(deployment_id):
         ], width="auto", className="text-end align-self-center")
     ], className="mb-4 align-items-center border-bottom pb-3")
 
-    # 4. Build the Status Ribbon (🟢 5 columns auto-sized)
+    # 4. Build the Status Ribbon (5 columns)
     ops_ribbon = dbc.Card(dbc.CardBody(dbc.Row([
         dbc.Col([html.H6("System Mode", className="text-muted mb-1 small text-uppercase"), html.H5("STANDBY", id="ops-sys-mode-disp", className="fw-bold mb-0")], className="border-end"),
         dbc.Col([html.H6("Sampling Mode", className="text-muted mb-1 small text-uppercase"), html.H5("STANDBY", id="ops-samp-mode-disp", className="fw-bold mb-0")], className="border-end"),
@@ -184,7 +184,6 @@ def build_ops_layout(deployment_id):
         header, ops_ribbon, 
         dbc.Row([
             dbc.Col(html.Div(id="tactical-metrics-container", children=[dbc.Spinner(color="primary")]), width=9),
-            # 🟢 Right Column Stack: C2 Panel on top, Logic Explorer on bottom
             dbc.Col([
                 c2_panel,
                 html.Div(id="ops-logic-explorer", className="mt-4")
@@ -236,7 +235,7 @@ def ingest_live_telemetry(msg):
     Output("ops-sys-mode-disp", "children"), Output("ops-sys-mode-disp", "className"),
     Output("ops-samp-mode-disp", "children"), Output("ops-samp-mode-disp", "className"),
     Output("ops-samp-state", "children"), Output("ops-samp-state", "className"),
-    Output("ops-logic-explorer", "children"), # 🟢 Added Logic Explorer Output
+    Output("ops-logic-explorer", "children"),
     Input("ws-ops-conditions", "message")
 )
 def update_control_ribbon(msg):
@@ -247,16 +246,14 @@ def update_control_ribbon(msg):
             ce_type = payload.get("type", "")
             data = payload.get("data", {})
             
-            # 🚨 THE AGGRESSIVE DEBUG DUMP
-            if "status.update" in ce_type:
-                L.info(f"\n==== EXACT SCHEMA FOR {ce_type} ====\n{json.dumps(data, indent=2)}\n==============================================\n")
-                
+            # Catch the strictly scoped system operations control mode
             if "system.control" in ce_type:
                 CONDITIONS_CACHE["system_control"] = data.get("mode", "auto").upper()
             else:
                 app_uid = data.get("id", {}).get("app_uid")
                 actual = False
                 
+                # Dynamic Schema Parser for exact status values
                 if "state" in data:
                     for val in data["state"].values():
                         if isinstance(val, dict) and "actual" in val:
@@ -272,21 +269,15 @@ def update_control_ribbon(msg):
         except Exception as e:
             L.error(f"[[DEBUG C2 CACHE]] Parse error: {e}", exc_info=True)
 
-    # 🟢 1. Re-evaluate Ribbon visually
-    active_sys_modes = []
-    active_samp_modes = []
-    active_samp_states = []
+    # 1. Re-evaluate Ribbon visually
+    active_sys_modes, active_samp_modes, active_samp_states = [], [], []
     
     for uid, info in CONDITIONS_CACHE.items():
         if uid == "system_control": continue 
-        
         if info.get("actual"):
-            if "systemmode" in info["type"]:
-                active_sys_modes.append(uid.replace("_", " ").title())
-            elif "samplingmode" in info["type"]:
-                active_samp_modes.append(uid.replace("_", " ").title())
-            elif "samplingstate" in info["type"]:
-                active_samp_states.append(uid.replace("_", " ").title())
+            if "systemmode" in info["type"]: active_sys_modes.append(uid.replace("_", " ").title())
+            elif "samplingmode" in info["type"]: active_samp_modes.append(uid.replace("_", " ").title())
+            elif "samplingstate" in info["type"]: active_samp_states.append(uid.replace("_", " ").title())
                 
     sys_mode_text = " + ".join(active_sys_modes) if active_sys_modes else "STANDBY"
     sys_mode_css = "fw-bold text-primary mb-0" if active_sys_modes else "fw-bold text-muted mb-0"
@@ -298,37 +289,24 @@ def update_control_ribbon(msg):
     samp_state_css = "fw-bold text-success mb-0" if active_samp_states else "fw-bold text-muted mb-0"
     
     op_mode_text = CONDITIONS_CACHE.get("system_control", "AUTONOMOUS").upper()
-    if op_mode_text == "MANUAL":
-        op_mode_css = "fw-bold text-warning mb-0 animate-pulse"
-    else:
-        op_mode_css = "fw-bold text-primary mb-0"
-        op_mode_text = "AUTONOMOUS"
+    op_mode_css = "fw-bold text-warning mb-0 animate-pulse" if op_mode_text == "MANUAL" else "fw-bold text-primary mb-0"
 
-    # 🟢 2. Build Logic & Dependency Explorer Card
-    modes_ui = []
-    states_ui = []
-    cond_met_ui = []
-    cond_unmet_ui = []
+    # 2. Build Logic & Dependency Explorer Card
+    modes_ui, states_ui, cond_met_ui, cond_unmet_ui = [], [], [], []
 
     for uid, info in CONDITIONS_CACHE.items():
         if uid == "system_control": continue
         name = uid.replace("_", " ").title()
         is_active = info.get("actual")
 
-        # Color routing based on state
         if "systemmode" in info["type"] or "samplingmode" in info["type"]:
-            color = "success" if is_active else "secondary"
-            modes_ui.append(dbc.Badge(name, color=color, className="me-1 mb-1 shadow-sm"))
-            
+            modes_ui.append(dbc.Badge(name, color="success" if is_active else "secondary", className="me-1 mb-1 shadow-sm"))
         elif "samplingstate" in info["type"]:
-            color = "success" if is_active else "secondary"
-            states_ui.append(dbc.Badge(name, color=color, className="me-1 mb-1 shadow-sm"))
-            
+            states_ui.append(dbc.Badge(name, color="success" if is_active else "secondary", className="me-1 mb-1 shadow-sm"))
         elif "samplingcondition" in info["type"]:
-            if is_active:
+            if is_active: 
                 cond_met_ui.append(dbc.Badge(name, color="success", className="me-1 mb-1 shadow-sm opacity-75"))
-            else:
-                # Critical Unmet Conditions highlighted in Red!
+            else: 
                 cond_unmet_ui.append(dbc.Badge(name, color="danger", className="me-1 mb-1 shadow-sm"))
 
     logic_explorer_card = dbc.Card([
@@ -336,13 +314,13 @@ def update_control_ribbon(msg):
         dbc.CardBody([
             html.H6("System & Sampling Modes", className="text-muted small text-uppercase fw-bold"),
             html.Div(modes_ui if modes_ui else html.Span("Awaiting Data...", className="text-muted small"), className="mb-3"),
-
+            
             html.H6("Contextual States", className="text-muted small text-uppercase fw-bold"),
             html.Div(states_ui if states_ui else html.Span("Awaiting Data...", className="text-muted small"), className="mb-3"),
-
+            
             html.H6("Blocking Conditions (Unmet)", className="text-danger small text-uppercase fw-bold"),
             html.Div(cond_unmet_ui if cond_unmet_ui else html.Span("All Conditions Met!", className="text-success small fw-bold"), className="mb-3"),
-
+            
             html.H6("Met Conditions", className="text-success small text-uppercase fw-bold"),
             html.Div(cond_met_ui if cond_met_ui else html.Span("Awaiting Data...", className="text-muted small"))
         ])
@@ -463,7 +441,7 @@ def update_tactical_quick_look(caches, cache_ids):
     # --- CARD COMPONENT BUILDERS ---
     def standard_card(title, var_name, related_ids=None):
         _, fmt_val, css, is_stale, unit, active_triggers = get_var_status(var_name, related_ids)
-        val_display = f"{fmt_val} {unit}".strip() if fmt_val != "Waiting..." else fmt_val
+        val_display = f"{fmt_val} {unit}".strip() if fmt_val != "Waiting...": fmt_val else fmt_val
         stale_badge = html.Span(" STALE", className="text-danger fw-bold ms-2") if is_stale else ""
         
         trigger_badges = [dbc.Badge(t, color="warning", className="ms-1 shadow-sm") for t in active_triggers]

@@ -44,8 +44,9 @@ class SystemModesConfig(BaseSettings):
     # FIX: Allow this to be parsed correctly from the environment or default to None
     knative_broker: str | None = None
 
+    system_init_control: str = "auto"
     system_init_mode: str = "startup"
-    is_primary_controller: bool = True
+    is_primary_controller: bool = False
     
     class Config:
         env_prefix = "SYSTEM_MODES_"
@@ -163,6 +164,8 @@ class SystemModesManager:
         self.config = SystemModesConfig()
         self.modes = {}
         self.active_mode = None
+        self.control_mode = self.config.system_init_control
+
         self.requirement_status_map = {}
         
         self.http_client = None
@@ -267,7 +270,15 @@ class SystemModesManager:
                 if self.config.is_primary_controller:
                     if not self.active_mode and self.modes:
                         await self.activate_system_mode(self.config.system_init_mode)
-                
+
+                        # 🟢 === ADD THIS BROADCAST BLOCK === 🟢
+                        event = SamplingEvent.create_system_control_update(
+                            source=f"envds.{self.config.daq_id}.system-modes", 
+                            data={"mode": self.control_mode}
+                        )
+                        await self.send_to_mqtt(f"envds/{self.config.daq_id}/system-modes/control/update", event)
+                        # 🟢 ================================ 🟢
+                        
                 # Evaluate ALL modes so they all broadcast their heartbeat
                 for mode in list(self.modes.values()):
                     await mode.evaluate()
