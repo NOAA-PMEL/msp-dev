@@ -203,7 +203,7 @@ def ingest_live_telemetry(msg, current_cache):
     State("home-conditions-cache", "data")
 )
 def ingest_backend_conditions(msg, current_cache):
-    """🟢 NEW: Parses backend conditions to assess deployment health dynamically."""
+    """Parses sampling-ops flat schema conditions to assess deployment health dynamically."""
     if not msg or "data" not in msg: return no_update
     
     try:
@@ -212,29 +212,23 @@ def ingest_backend_conditions(msg, current_cache):
         data = payload.get("data", {})
         source = payload.get("source", "")
         
-        # Extract the Target Platform ID from the Knative Source String
         parts = source.split(".")
         if len(parts) < 2: return no_update
         plat_id = parts[1] # e.g., "raz1"
         
-        id_block = data.get("id", {})
-        state_block = data.get("state", {})
-        app_uid = id_block.get("app_uid")
-        
+        # 🟢 EXACT SCHEMA: Use the flat status block from sampling-ops managers
+        status_block = data.get("status", {})
+        app_uid = status_block.get("name")
+        actual = status_block.get("status", False)
+            
         if not app_uid: return no_update
-        
-        if "systemmode" in ce_type: actual = state_block.get("mode_active", {}).get("actual", "false")
-        elif "samplingmode" in ce_type: actual = state_block.get("mode_active", {}).get("actual", "false")
-        elif "samplingstate" in ce_type: actual = state_block.get("state_active", {}).get("actual", "false")
-        elif "samplingcondition" in ce_type: actual = state_block.get("condition_met", {}).get("actual", "false")
-        else: actual = "false"
 
         new_cache = current_cache.copy() if current_cache else {}
         if plat_id not in new_cache: new_cache[plat_id] = {}
         
         new_cache[plat_id][app_uid] = {
             "type": ce_type,
-            "actual": str(actual).lower() == "true",
+            "actual": str(actual).lower() == "true", # Safely cast bool or string
             "timestamp": data.get("timestamp")
         }
         return new_cache

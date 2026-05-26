@@ -236,7 +236,7 @@ def ingest_live_telemetry(msg):
     Input("ws-ops-conditions", "message")
 )
 def update_control_ribbon(msg):
-    """Listens to manager.py state evaluations, updates cache, and renders the Control Ribbon."""
+    """Listens to sampling-ops flat schema evaluations, updates cache, and renders the Ribbon."""
     if msg and "data" in msg:
         try:
             payload = json.loads(msg["data"])
@@ -247,21 +247,16 @@ def update_control_ribbon(msg):
             if "system.control" in ce_type:
                 CONDITIONS_CACHE["system_control"] = data.get("mode", "auto").upper()
             else:
-                id_block = data.get("id", {})
-                state_block = data.get("state", {})
-                app_uid = id_block.get("app_uid")
+                # 🟢 EXACT SCHEMA: Use the flat status block from sampling-ops managers
+                status_block = data.get("status", {})
+                app_uid = status_block.get("name")
+                actual = status_block.get("status", False)
                 
                 if app_uid:
-                    L.debug(f"[[DEBUG C2 CACHE]] Intercepted envdsStatus for uid: {app_uid}, type: {ce_type}")
-                    if "systemmode" in ce_type: actual = state_block.get("mode_active", {}).get("actual", "false")
-                    elif "samplingmode" in ce_type: actual = state_block.get("mode_active", {}).get("actual", "false")
-                    elif "samplingstate" in ce_type: actual = state_block.get("state_active", {}).get("actual", "false")
-                    elif "samplingcondition" in ce_type: actual = state_block.get("condition_met", {}).get("actual", "false")
-                    else: actual = "false"
-
+                    L.debug(f"[[DEBUG C2 CACHE]] Intercepted UI update for uid: {app_uid} | actual: {actual}")
                     CONDITIONS_CACHE[app_uid] = {
                         "type": ce_type,
-                        "actual": str(actual).lower() == "true",
+                        "actual": str(actual).lower() == "true", # Safely cast bool or string
                         "timestamp": data.get("timestamp")
                     }
         except Exception as e:
@@ -269,22 +264,22 @@ def update_control_ribbon(msg):
 
     # 🟢 Re-evaluate Ribbon visually based on the global CONDITIONS_CACHE
     active_sys_modes = []
-    active_samp_modes = []
+    active_samp_states = []
     
     for uid, info in CONDITIONS_CACHE.items():
-        if uid == "system_control": continue # Skip the control keyword
+        if uid == "system_control": continue 
         
         if info.get("actual"):
             if "systemmode" in info["type"]:
                 active_sys_modes.append(uid.replace("_", " ").title())
-            elif "samplingmode" in info["type"]:
-                active_samp_modes.append(uid.replace("_", " ").title())
+            elif "samplingstate" in info["type"]:
+                active_samp_states.append(uid.replace("_", " ").title())
                 
     sys_mode_text = " + ".join(active_sys_modes) if active_sys_modes else "STANDBY"
     sys_mode_css = "fw-bold text-primary mb-0" if active_sys_modes else "fw-bold text-muted mb-0"
     
-    samp_mode_text = " + ".join(active_samp_modes) if active_samp_modes else "IDLE"
-    samp_mode_css = "fw-bold text-success mb-0" if active_samp_modes else "fw-bold text-muted mb-0"
+    samp_state_text = " + ".join(active_samp_states) if active_samp_states else "IDLE"
+    samp_state_css = "fw-bold text-success mb-0" if active_samp_states else "fw-bold text-muted mb-0"
     
     op_mode_text = CONDITIONS_CACHE.get("system_control", "AUTONOMOUS").upper()
     if op_mode_text == "MANUAL":
@@ -293,7 +288,7 @@ def update_control_ribbon(msg):
         op_mode_css = "fw-bold text-primary mb-0"
         op_mode_text = "AUTONOMOUS"
 
-    return op_mode_text, op_mode_css, sys_mode_text, sys_mode_css, samp_mode_text, samp_mode_css
+    return op_mode_text, op_mode_css, sys_mode_text, sys_mode_css, samp_state_text, samp_state_css
 
 
 @app.callback(

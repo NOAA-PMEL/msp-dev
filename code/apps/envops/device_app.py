@@ -20,14 +20,18 @@ register_sidebar_callbacks(app)
 
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
-# --- Helper Functions ---
+# --- Corrected Route-Splitting Helper Functions ---
 def get_all_devices():
-    """Fetches both Sensors and Controllers from the registry and tags them."""
+    """Fetches Sensors, Operational devices, and Controllers from the registry and tags them."""
     devices = []
-    for d_type in ["sensor", "controller"]:
-        url = f"http://{datastore_url}/device-instance/registry/get/"
+    # 🟢 NEW: Added "operational" to the discovery loop
+    for d_type in ["sensor", "operational", "controller"]:
+        # Split routes based on legacy datastore setup
+        path = "controller-instance" if d_type == "controller" else "device-instance"
+        url = f"http://{datastore_url}/{path}/registry/get/"
         try:
-            response = httpx.get(url, params={"device_type": d_type}, timeout=5.0)
+            query = {"device_type": d_type} if d_type in ["sensor", "operational"] else {}
+            response = httpx.get(url, params=query, timeout=5.0)
             items = response.json().get("results", [])
             for item in items:
                 item["_device_type"] = d_type # Tag it so the UI knows how to route it
@@ -37,33 +41,39 @@ def get_all_devices():
     return devices
 
 def get_device_data(device_id: str, device_type: str="sensor"):
-    query = {"device_type": device_type, "device_id": device_id}
-    url = f"http://{datastore_url}/device/data/get/"
+    path = "controller" if device_type == "controller" else "device"
+    query = {"controller_id": device_id} if device_type == "controller" else {"device_type": device_type, "device_id": device_id}
+    url = f"http://{datastore_url}/{path}/data/get/"
     try:
         response = httpx.get(url, params=query, timeout=10.0)
         results = response.json()
         if "results" in results and results["results"]: return results["results"]
-    except Exception: pass
+    except Exception as e:
+        L.error(f"get_device_data error: {e}")
     return []
 
 def get_device_instance(device_id: str, device_type: str="sensor"):
-    query = {"device_type": device_type, "device_id": device_id}
-    url = f"http://{datastore_url}/device-instance/registry/get/"
+    path = "controller-instance" if device_type == "controller" else "device-instance"
+    query = {"controller_id": device_id} if device_type == "controller" else {"device_type": device_type, "device_id": device_id}
+    url = f"http://{datastore_url}/{path}/registry/get/"
     try:
         response = httpx.get(url, params=query, timeout=5.0)
         results = response.json()
         if "results" in results and results["results"]: return results["results"][0]
-    except Exception: pass
+    except Exception as e:
+        L.error(f"get_device_instance error: {e}")
     return {}
 
 def get_device_definition(device_definition_id: str, device_type: str="sensor"):
-    query = {"device_type": device_type, "device_definition_id": device_definition_id}
-    url = f"http://{datastore_url}/device-definition/registry/get/"
+    path = "controller-definition" if device_type == "controller" else "device-definition"
+    query = {"controller_definition_id": device_definition_id} if device_type == "controller" else {"device_type": device_type, "device_definition_id": device_definition_id}
+    url = f"http://{datastore_url}/{path}/registry/get/"
     try:
         response = httpx.get(url, params=query, timeout=5.0)
         results = response.json()
         if "results" in results and results["results"]: return results["results"][0]
-    except Exception: pass
+    except Exception as e:
+        L.error(f"get_device_definition error: {e}")
     return {}
 
 def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"):
@@ -72,7 +82,8 @@ def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"
         try:
             device_definition_id = "::".join([device["make"], device["model"], device["version"]])
             return get_device_definition(device_definition_id=device_definition_id, device_type=device_type)
-        except Exception: pass
+        except Exception as e:
+            L.error(f"get_device_definition_by_device_id error: {e}")
     return {}
 
 # --- Dynamic Builders ---
@@ -104,32 +115,31 @@ def build_tables(layout_options):
 def build_graph_1d(dropdown_list, xaxis="time"):
     return dbc.Card([
         dbc.CardHeader([dcc.Dropdown(id={"type": "sensor-graph-1d-dropdown", "index": xaxis}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
-        dcc.Graph(id={"type": "sensor-graph-1d", "index": xaxis}, figure=go.Figure(data=go.Scatter(x=[], y=[], type="scatter")), style={"height": 300}),
-    ])
+        dcc.Graph(id={"type": "sensor-graph-1d", "index": xaxis}, figure=go.Figure(data=go.Scatter(x=[], y=[], type="scatter")), style={"height": 400}),
+    ], className="shadow-sm border-0")
 
 def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
     content = dbc.Row([
-        dbc.Button("Submit", {"type": "graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
-        dbc.Label("z-axis min:"), dbc.Col(dbc.Input(type="number", id={"type": "graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"})),
-        dbc.Label("z-axis max:"), dbc.Col(dbc.Input(type="number", id={"type": "graph-2d-z-axis-max", "index": f"{xaxis}::{yaxis}"})),
+        dbc.Button("Submit Range", {"type": "graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}, color="primary", className="mb-2"),
+        dbc.Label("z-axis min:", className="small text-muted fw-bold"), dbc.Col(dbc.Input(type="number", id={"type": "graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"}, className="mb-2")),
+        dbc.Label("z-axis max:", className="small text-muted fw-bold"), dbc.Col(dbc.Input(type="number", id={"type": "graph-2d-z-axis-max", "index": f"{xaxis}::{yaxis}"})),
     ])
-    axes_settings = dbc.Accordion([dbc.AccordionItem([dbc.Card(children=[content])], title="Axes Settings")], start_collapsed=True)
+    axes_settings = dbc.Accordion([dbc.AccordionItem([dbc.Card(children=[content], className="border-0 shadow-sm p-3")], title="Axes Settings")], start_collapsed=True, className="mb-3")
     return dbc.Card([
         dbc.CardHeader([dcc.Dropdown(id={"type": "graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
-        dbc.Row([
+        dbc.CardBody([
             axes_settings,
-            dbc.Col(dcc.Graph(id={"type": "graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
-            dbc.Col(dcc.Graph(id={"type": "graph-2d-line", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
-        ]),
-    ])
+            dbc.Row([
+                dbc.Col(dcc.Graph(id={"type": "graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
+                dbc.Col(dcc.Graph(id={"type": "graph-2d-line", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
+            ])
+        ])
+    ], className="shadow-sm border-0")
 
 def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
-    content = dbc.Row([dbc.Button("Submit", {"type": "graph-3d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}), dbc.Label("z-axis min:")])
-    axes_settings = dbc.Accordion([dbc.AccordionItem([dbc.Card(children=[content])], title="Axes Settings")], start_collapsed=True)
     return dbc.Card([
         dbc.CardHeader([dcc.Dropdown(id={"type": "graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
         dbc.Row([
-            axes_settings,
             dbc.Col(dcc.Graph(id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
             dbc.Col(dcc.Graph(id={"type": "graph-3d-heatmap", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
         ]),
@@ -140,12 +150,12 @@ def build_graphs(layout_options):
     for ltype, dims in layout_options.items():
         for dim, options in dims.items():
             if ltype == "layout-1d":
-                graph_list.append(dbc.AccordionItem([dbc.Row([build_graph_1d(options["variable-list"], xaxis=dim)])], title=f"Plots 1-D ({dim})"))
+                graph_list.append(dbc.AccordionItem([build_graph_1d(options["variable-list"], xaxis=dim)], title=f"Plots 1-D ({dim})"))
             elif ltype == "layout-2d":
-                graph_list.append(dbc.AccordionItem([dbc.Row([build_graph_2d(options["variable-list"], xaxis="time", yaxis=dim)])], title=f"Plots 2-D (time, {dim})"))
+                graph_list.append(dbc.AccordionItem([build_graph_2d(options["variable-list"], xaxis="time", yaxis=dim)], title=f"Plots 2-D (time, {dim})"))
             elif ltype == "layout-3d":
                 axes = dim.split("::")
-                graph_list.append(dbc.AccordionItem([dbc.Row([build_graph_3d(options["variable-list"], xaxis=axes[0], yaxis=axes[1])])], title=f"Plots 3-D ({axes[0]}, {axes[1]})"))
+                graph_list.append(dbc.AccordionItem([build_graph_3d(options["variable-list"], xaxis=axes[0], yaxis=axes[1])], title=f"Plots 3-D ({axes[0]}, {axes[1]})"))
     return graph_list
 
 
@@ -277,16 +287,20 @@ def generate_device_ui(dropdown_val):
                     if "table-column-defs" in options:
                         for cd in options["table-column-defs"]:
                             if cd["field"] in dimensions or cd.get("cellDataType") != "number": continue
-                            layout_options[ltype][dim]["variable-list"].append({"label": cd["field"], "value": cd["field"]})
+                            # Ensure we append the descriptive headerName as the label for the dropdowns
+                            label = cd.get("headerName", cd["field"])
+                            layout_options[ltype][dim]["variable-list"].append({"label": label, "value": cd["field"]})
 
         except Exception as e:
             L.error(f"build layout error: {e}")
 
     # Set up the correct API payload for the settings buffer based on device type
+    # 🟢 DYNAMIC MAPPING: Operational uses sensor streams for its backend configuration
+    topic_type = "sensor" if device_type == "operational" else device_type
     id_field = "controllerid" if device_type == "controller" else "deviceid"
     initial_request = {
         "source": f"envds.{config.daq_id}.dashboard",
-        "data": {}, "destpath": f"envds/{device_type}/settings/request", 
+        "data": {}, "destpath": f"envds/{topic_type}/settings/request", 
         id_field: device_id
     }
 
@@ -294,12 +308,12 @@ def generate_device_ui(dropdown_val):
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
 
     return html.Div([
-        dbc.Accordion(build_tables(layout_options), id="device-data-accordion", className="mb-4"),
+        dbc.Accordion(build_tables(layout_options), id="device-data-accordion", className="mb-4", start_collapsed=True),
         dbc.Accordion(build_graphs(layout_options), id="device-plot-accordion", className="mb-4"),
         dbc.Accordion([dbc.AccordionItem(html.Pre(id="calibration-display", children="Waiting for data...", style={"whiteSpace": "pre-wrap", "wordBreak": "break-all"}), title="Calibration Values")], id="device-calibration-accordion", start_collapsed=True),
         
-        # Route to the correct WebSocket endpoint dynamically
-        WebSocket(id="ws-device-instance", url=f"{ws_base}/ws/{device_type}/{device_id}"),
+        # 🟢 DYNAMIC WEBSOCKET: Operational listens to the sensor stream
+        WebSocket(id="ws-device-instance", url=f"{ws_base}/ws/{topic_type}/{device_id}"),
         html.Div(id="ws-send-instance-buffer", children=json.dumps(initial_request), style={"display": "none"}),
         
         dcc.Store(id="calibration-vars", data=calibration_vars),
@@ -369,10 +383,12 @@ def update_graph_1d(device_data, y_axis_list):
         if "time" not in variables or y_axis not in variables:
             figs_to_update.append(no_update)
             continue
+        
         x_val, y_val = variables["time"].get("data"), variables[y_axis].get("data")
         if x_val is None or y_val is None:
             figs_to_update.append(no_update)
             continue
+            
         if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[-1]
         if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[-1]
         figs_to_update.append(({"x": [[x_val]], "y": [[y_val]]}, [0], 1000))
@@ -411,7 +427,12 @@ def update_table_1d(device_data, col_defs_list):
     if not device_data: raise PreventUpdate
     transactions = []
     for col_defs in col_defs_list:
-        data = {col["field"]: device_data.get("variables", {}).get(col["field"], {}).get("data", "") for col in col_defs}
+        data = {}
+        for col in col_defs:
+            field = col["field"]
+            val = device_data.get("variables", {}).get(field, {}).get("data", "")
+            if isinstance(val, list) and len(val) > 0: val = val[-1]
+            data[field] = val
         transactions.append({"add": [data], "addIndex": 0})
     if not transactions: raise PreventUpdate
     return transactions
@@ -438,14 +459,17 @@ def submit_setting_change(n_clicks_list, selected_rows_list, device_meta):
         else: requested_val = str(raw_val)
     except: requested_val = raw_val
 
-    # Route settings explicitly to either 'sensor' or 'controller'
     dtype = device_meta.get("device_type", "sensor")
+    
+    # 🟢 DYNAMIC MAPPING: Translate operational commands to the expected sensor format
+    topic_type = "sensor" if dtype == "operational" else dtype
     id_field = "controllerid" if dtype == "controller" else "deviceid"
 
+    # Use exact schema matching the hardware targets
     return json.dumps({
         "source": f"envds.{config.daq_id}.dashboard",
-        "data": {"settings": {selected_row["parameter"]: {"requested": requested_val}}},
-        "destpath": f"envds/{dtype}/settings/request",
+        "data": {"settings": selected_row["parameter"], "requested": requested_val},
+        "destpath": f"envds/{topic_type}/settings/request",
         id_field: device_meta["device_id"]
     })
 
