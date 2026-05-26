@@ -236,24 +236,16 @@ async def handle_mqtt_buffer():
                     "variablesetfullid": ce.get("variablesetfullid")
                 }
                 
-                # A. Send to the strict variableset channel (Caught by system_data.py)
                 await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
                 
-                # B. Extract the TRUE platform ID directly from the payload attributes
-                # sampling_system.py guarantees this is populated during load_variablemap
                 platform_id = ce.data.get("attributes", {}).get("platform", {}).get("data")
-                
                 if not platform_id:
                     platform_id = variableset_id.split("::")[0]
                     
-                # Send to the strict platform channel (Caught by platform_ops.py)
                 await manager.broadcast(json.dumps(msg), "platform", platform_id)
 
-                # C. SMART ROUTING: Extract lightweight GPS data for the fleet map (Caught by home.py)
                 variables = ce.data.get("variables", {})
-                L.debug("handle_mqtt_buffer: mini", extra={"varkeys": variables.keys()})
                 if "latitude" in variables and "longitude" in variables:
-                    L.debug("handle_mqtt_buffer: lat/lon", extra={"latitude": variables["latitude"].get("data"), "longitude": variables["longitude"].get("data")})
                     mini_msg = {
                         "type": "fleet.location.update",
                         "platform": platform_id, 
@@ -261,16 +253,22 @@ async def handle_mqtt_buffer():
                         "lon": variables["longitude"].get("data"),
                         "time": variables.get("time", {}).get("data")
                     }
-                    L.debug("handle_mqtt_buffer: mini", extra={"mini_msg": mini_msg})
                     await manager.broadcast(json.dumps(mini_msg), "system-ops", "main")
             
-            # 4. SYSTEM OPS ROUTING (Modes, States, Logs)
+            # 4. SYSTEM OPS ROUTING (Modes, States, Logs, and C2 CONDITIONS)
             elif any(x in ce_type for x in ["systemmode", "samplingmode", "samplingstate", "samplingcondition", "operations.log"]):
                 msg = {
                     "type": ce_type,
                     "data": ce.data
                 }
-                await manager.broadcast(json.dumps(msg), "system-ops", "main")
+                
+                # 🟢 C2 ROUTER: Split Status Updates vs General Ops
+                if "status.update" in ce_type:
+                    L.debug(f"[C2 ROUTER] 🔀 Routing status update to 'conditions' cache: {ce_type}")
+                    await manager.broadcast(json.dumps(msg), "conditions", "main")
+                else:
+                    L.debug(f"[C2 ROUTER] 🔀 Routing ops update to 'system-ops' cache: {ce_type}")
+                    await manager.broadcast(json.dumps(msg), "system-ops", "main")
 
         except Exception as e:
             L.error("handle_mqtt_buffer", extra={"reason": str(e)})
@@ -527,6 +525,39 @@ async def platform_ws_endpoint(websocket: WebSocket, client_id: str):
         L.warning(f"[DEBUG FASTAPI] 🔴 Browser disconnected from Platform WS: {client_id}")
         await manager.disconnect(websocket)
 
+@app.websocket("/ws/conditions/{client_id}")
+async def conditions_ws_endpoint(websocket: WebSocket, client_id: str):
+    L.info(f"[C2 WS] 🟢 Browser connected to Conditions WS: {client_id}")
+    await manager.connect(websocket, client_type="conditions", client_id=client_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            L.debug(f"[C2 WS] 📩 Received raw payload from UI: {data}")
+            
+            # 🟢 Listen for C2 Commands coming from the browser
+            try:
+                command = json.loads(data)
+                if command.get("type") == "c2_command":
+                    L.info(f"[C2 WS] 🛠️ Processing C2 UI Command: {command.get('command_type')}")
+                    
+                    # Package the UI command into a CloudEvent and fire it to the broker
+                    ce = CloudEvent(
+                        attributes={
+                            "type": command.get("command_type", "envds.command"),
+                            "source": "envops.ui",
+                            "datacontenttype": "application/json"
+                        },
+                        data=command.get("payload", {})
+                    )
+                    await send_event(ce)
+                    L.info(f"[C2 WS] ✅ Successfully dispatched Command to broker.")
+            except Exception as e:
+                L.error(f"[C2 WS] 💥 Failed to process UI C2 command: {e}", exc_info=True)
+                
+    except WebSocketDisconnect:
+        L.warning(f"[C2 WS] 🔴 Browser disconnected from Conditions WS: {client_id}")
+        await manager.disconnect(websocket)
+        
 # -----------------------------------------------------------------------------
 # Mount the Isolated Dash Apps inside FastAPI
 # NOTE: Mount the most specific paths first!
