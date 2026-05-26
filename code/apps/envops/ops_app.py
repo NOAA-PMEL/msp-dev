@@ -159,22 +159,49 @@ def ingest_live_telemetry(msg):
 @app.callback(
     Output("ops-health-badge", "children"), Output("ops-health-badge", "color"),
     Output("ops-sys-mode", "children"), Output("ops-sys-mode", "className"),
+    Output("ops-samp-state", "children"), Output("ops-samp-state", "className"), # <-- Now wired up!
     Output("ops-alarm-count", "children"),
     Input({"type": "platform-cache", "index": ALL}, "data")
 )
 def update_ribbon_ui(caches):
     total_alarms = 0
     sys_mode, sys_mode_color = "STANDBY", "fw-bold text-muted mb-0"
+    samp_state, samp_state_color = "IDLE", "fw-bold text-muted mb-0"
+    
     for data in caches:
         if not data: continue
-        state = data.get("state", {})
-        if "alarm" in str(state).lower() or "error" in str(state).lower(): total_alarms += 1
-        if "system_active" in state:
-            sys_mode = "ACTIVE" if str(state["system_active"].get("actual", "")).lower() == "true" else "STANDBY"
-            sys_mode_color = "fw-bold text-primary mb-0" if sys_mode == "ACTIVE" else "fw-bold text-muted mb-0"
+        
+        vars_dict = data.get("variables", {})
+        
+        for v_name, v_data in vars_dict.items():
+            val_str = str(v_data.get("value", "")).strip().lower()
             
-    if total_alarms > 0: return f"{total_alarms} Critical Alarms", "danger", sys_mode, sys_mode_color, str(total_alarms)
-    return "Group Nominal", "success", sys_mode, sys_mode_color, str(total_alarms)
+            # 1. Look for Alarms/Errors in any variable
+            if val_str in ["error", "alarm", "fault"]:
+                total_alarms += 1
+                
+            # 2. Look for System / Power Mode (e.g., main_power_state)
+            if "power_state" in v_name or "system_active" in v_name:
+                if val_str in ["1", "true", "active", "on"]:
+                    sys_mode = "ACTIVE"
+                    sys_mode_color = "fw-bold text-primary mb-0"
+            
+            # 3. Look for Sampling State
+            if "sampling_state" in v_name:
+                if val_str:
+                    samp_state = val_str.upper()
+                    if samp_state == "SAMPLING":
+                        samp_state_color = "fw-bold text-success mb-0"
+                    elif samp_state in ["ERROR", "MAINTENANCE"]:
+                        samp_state_color = "fw-bold text-danger mb-0"
+                    else:
+                        samp_state_color = "fw-bold text-warning mb-0"
+
+    # Compile the final UI returns
+    if total_alarms > 0: 
+        return f"{total_alarms} Critical Alarms", "danger", sys_mode, sys_mode_color, samp_state, samp_state_color, str(total_alarms)
+    
+    return "Group Nominal", "success", sys_mode, sys_mode_color, samp_state, samp_state_color, str(total_alarms)
 
 
 # -----------------------------------------------------------------------------
