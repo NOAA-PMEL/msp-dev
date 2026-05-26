@@ -47,37 +47,70 @@ def render_deployment_ops(pathname):
         return dbc.Alert(f"Fatal Error: {str(e)}", color="danger", className="m-4")
 
 
-def build_c2_panel():
-    """Builds the Command & Control interface for Manual Overrides and Maintenance."""
+def build_c2_panel(host_name, host_plat_ref):
+    """Builds the Command & Control interface dynamically, scoped to the Host Platform."""
+    
+    sys_modes_data = get_registry_data("systemmode") or []
+    samp_modes_data = get_registry_data("samplingmode") or []
+
+    sys_mode_options = [
+        {"label": m.get("metadata", {}).get("name", "Unknown").replace("_", " ").title(),
+         "value": m.get("metadata", {}).get("name", "Unknown")}
+        for m in sys_modes_data
+    ]
+    
+    samp_mode_options = [
+        {"label": m.get("metadata", {}).get("name", "Unknown").replace("_", " ").title(),
+         "value": m.get("metadata", {}).get("name", "Unknown")}
+        for m in samp_modes_data
+    ]
+
+    if not sys_mode_options:
+        sys_mode_options = [{"label": "Normal", "value": "normal"}, {"label": "Startup", "value": "startup"}]
+    if not samp_mode_options:
+        samp_mode_options = [
+            {"label": "Nominal Sampling", "value": "nominal_sampling"}, 
+            {"label": "System Startup", "value": "system_startup"}
+        ]
+
     return dbc.Card([
-        dbc.CardHeader([html.I(className="bi bi-sliders me-2"), "Command & Control"], className="fw-bold bg-dark text-white"),
+        # 🟢 CONTEXT: Add the Host Name to the Header visually
+        dbc.CardHeader([html.I(className="bi bi-sliders me-2"), f"C2: {host_name}"], className="fw-bold bg-dark text-white"),
         dbc.CardBody([
+            # 🟢 CONTEXT: Store the exact platform reference invisibly for the callback
+            dcc.Store(id="c2-target-platform", data=host_plat_ref),
+            
             html.H6("Operation Mode", className="text-muted small text-uppercase fw-bold"),
             dbc.RadioItems(
                 id="c2-operation-mode",
                 options=[
-                    {"label": "Autonomous (Declarative)", "value": "auto"},
+                    {"label": "Autonomous", "value": "auto"},
                     {"label": "Manual Override", "value": "manual"},
                 ],
                 value="auto",
                 inline=True,
                 className="mb-3"
             ),
+            
             html.H6("System Mode", className="text-muted small text-uppercase fw-bold"),
             dbc.Select(
                 id="c2-system-mode",
-                options=[
-                    {"label": "Nominal / Sampling", "value": "nominal"},
-                    {"label": "Standby", "value": "standby"},
-                    {"label": "Maintenance", "value": "maintenance"},
-                ],
-                value="nominal",
+                options=sys_mode_options,
+                value=sys_mode_options[0]["value"],
                 className="mb-4"
             ),
+            
             html.Hr(),
-            html.H6("Manual Subsystem Controls", className="text-muted small text-uppercase fw-bold mb-2"),
-            dbc.Switch(id="c2-main-power", label="Main Power Contactors", value=True, className="mb-2"),
-            dbc.Switch(id="c2-isokinetic", label="Force Isokinetic Mode", value=False, className="mb-2"),
+            html.H6("Manual Subsystem Overrides", className="text-muted small text-uppercase fw-bold mb-2"),
+            
+            dbc.Checklist(
+                id="c2-sampling-modes-checklist",
+                options=samp_mode_options,
+                value=[],
+                switch=True,
+                className="mb-2"
+            ),
+            
             dbc.Button("Apply Overrides", id="c2-apply-btn", color="warning", className="w-100 fw-bold mt-3 shadow-sm")
         ])
     ], className="shadow-sm border-0 h-100")
@@ -87,6 +120,7 @@ def build_ops_layout(deployment_id):
     L.info(f"[[DEBUG LAYOUT]] 🔍 Starting build for {deployment_id}")
     all_deployments = get_registry_data("deployment") or []
     
+    # 1. Resolve Host Deployment Context
     host_dep = next((d for d in all_deployments if d.get("metadata", {}).get("name") == deployment_id), None)
     if not host_dep:
         L.warning("[[DEBUG LAYOUT]] ⚠️ Host deployment not found in registry.")
@@ -96,6 +130,7 @@ def build_ops_layout(deployment_id):
     host_plat_ref = host_data.get("platform_ref", "")
     host_name = host_data.get("display_name", host_plat_ref)
     
+    # 2. Resolve Child Sub-systems
     child_deps = [d for d in all_deployments if d.get("data", {}).get("host_platform_ref") == host_plat_ref and d.get("metadata", {}).get("name") != deployment_id]
 
     raw_targets = [host_plat_ref] + [c.get("data", {}).get("platform_ref", "") for c in child_deps]
@@ -103,6 +138,7 @@ def build_ops_layout(deployment_id):
     group_platforms = list(set(raw_targets + short_targets))
     group_platforms = [p for p in group_platforms if p]
 
+    # 3. Build the Header
     header = dbc.Row([
         dbc.Col([
             html.H2([html.I(className="bi bi-hdd-network me-2"), host_name], className="fw-bold mb-0"),
@@ -116,6 +152,7 @@ def build_ops_layout(deployment_id):
         ], width="auto", className="text-end align-self-center")
     ], className="mb-4 align-items-center border-bottom pb-3")
 
+    # 4. Build the Status Ribbon
     ops_ribbon = dbc.Card(dbc.CardBody(dbc.Row([
         dbc.Col([html.H6("System Mode", className="text-muted mb-1 small text-uppercase"), html.H5("STANDBY", id="ops-sys-mode-disp", className="fw-bold mb-0")], width=3, className="border-end"),
         dbc.Col([html.H6("Sampling State", className="text-muted mb-1 small text-uppercase"), html.H5("IDLE", id="ops-samp-state", className="fw-bold mb-0")], width=3, className="border-end"),
@@ -123,6 +160,7 @@ def build_ops_layout(deployment_id):
         dbc.Col([html.H6("Operations", className="text-muted mb-1 small text-uppercase"), html.H5("AUTONOMOUS", id="ops-auto-state", className="text-primary fw-bold mb-0")], width=3)
     ])), className="shadow-sm border-0 mb-4 bg-light")
     
+    # 5. Initialize WebSockets & Stores
     ws_protocol = "wss://" if str(config.ws_use_tls).lower() == "true" else "ws://"
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
 
@@ -137,13 +175,18 @@ def build_ops_layout(deployment_id):
             ws_connections.append(WebSocket(id={"type": "ws-ops-platform", "index": p_id}, url=f"{ws_base}/ws/platform/{p_id}"))
             platform_stores.append(dcc.Store(id={"type": "platform-cache", "index": p_id}, data={"variables": {}, "state": {}}))
 
+    # 6. Build the Contextual C2 Panel
+    c2_panel = build_c2_panel(host_name, host_plat_ref)
+
+    # 7. Assemble and Return the Layout
     return html.Div([
         html.Div(ws_connections),
         html.Div(platform_stores),
         header, ops_ribbon, 
         dbc.Row([
+            # 🟢 The cards are dynamically injected into this container by the callback!
             dbc.Col(html.Div(id="tactical-metrics-container", children=[dbc.Spinner(color="primary")]), width=9),
-            dbc.Col(build_c2_panel(), width=3)
+            dbc.Col(c2_panel, width=3) 
         ], className="mt-4"),
     ], className="container-fluid mt-3")
 
@@ -207,7 +250,6 @@ def ingest_backend_conditions(msg):
         
         L.debug(f"[[DEBUG C2 CACHE]] Intercepted envdsStatus for uid: {app_uid}, type: {ce_type}")
         
-        # Extract actual status dynamically
         if "samplingmode" in ce_type: actual = state_block.get("mode_active", {}).get("actual", "false")
         elif "samplingstate" in ce_type: actual = state_block.get("state_active", {}).get("actual", "false")
         elif "samplingcondition" in ce_type: actual = state_block.get("condition_met", {}).get("actual", "false")
@@ -231,21 +273,29 @@ def ingest_backend_conditions(msg):
     Input("c2-apply-btn", "n_clicks"),
     State("c2-operation-mode", "value"),
     State("c2-system-mode", "value"), 
-    State("c2-main-power", "value"),
+    State("c2-sampling-modes-checklist", "value"),
+    State("c2-sampling-modes-checklist", "options"), 
+    State("c2-target-platform", "data"), 
     prevent_initial_call=True
 )
-def send_c2_command(n_clicks, op_mode, sys_mode, main_power):
-    """Sends Manual Overrides down to the backend manager."""
+def send_c2_command(n_clicks, op_mode, sys_mode, active_samp_modes, all_samp_options, target_platform):
+    """Sends Manual Overrides down to the backend manager, strictly scoped to the Host Platform."""
+    samp_mode_states = {}
+    if all_samp_options:
+        for opt in all_samp_options:
+            val = opt["value"]
+            samp_mode_states[val] = (val in (active_samp_modes or []))
+
     payload = {
         "type": "c2_command",
-        "command_type": "envds.system.override.request",
         "payload": {
+            "target_platform": target_platform, 
             "operation_mode": op_mode,
             "system_mode": sys_mode, 
-            "main_power_requested": main_power
+            "sampling_modes": samp_mode_states 
         }
     }
-    L.info(f"[[DEBUG C2 COMMAND]] Dispatching payload to websocket: {json.dumps(payload, indent=2)}")
+    L.info(f"[[DEBUG C2 COMMAND]] Dispatching payload to {target_platform}: {json.dumps(payload, indent=2)}")
     return json.dumps(payload)
 
 
@@ -289,6 +339,7 @@ def update_ribbon_ui(caches):
     State({"type": "platform-cache", "index": ALL}, "id")
 )
 def update_tactical_quick_look(caches, cache_ids):
+    # 🟢 THIS CALLBACK IS WHAT RENDERS ALL THE CARDS!
     flat_vars = {}
     for c_data, c_id in zip(caches, cache_ids):
         if not c_data: continue
@@ -323,7 +374,6 @@ def update_tactical_quick_look(caches, cache_ids):
         if is_stale:
             css_class = "border-0 shadow-sm mb-3 bg-light border-start border-4 border-secondary opacity-75"
         else:
-            # 🟢 DYNAMIC CONTROL PLANE EVALUATION
             if related_ids:
                 if isinstance(related_ids, str): related_ids = [related_ids]
                 for uid in related_ids:
@@ -421,21 +471,21 @@ def update_tactical_quick_look(caches, cache_ids):
             content
         ], className="p-3"), className=css), width=12, md=4)
 
-    # --- ASSEMBLE GROUPS ---
+    # --- ASSEMBLE GROUPS (Tied directly to JSON configurations) ---
     group_nav = html.Div([
         html.H5([html.I(className="bi bi-compass me-2"), "Navigation"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
         dbc.Row([
             standard_card("Latitude", "latitude"),
             standard_card("Longitude", "longitude"),
             standard_card("Heading", "platform_heading"),
-            standard_card("Speed", "platform_speed", related_ids=["in_port_geofence"]),
+            standard_card("Speed", "platform_speed", related_ids=["at_pmel"]),
         ], className="mb-4")
     ])
 
     group_met = html.Div([
         html.H5([html.I(className="bi bi-cloud-sun me-2"), "Meteorology & Solar"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
         dbc.Row([
-            wind_card("True Wind", "true_wind_speed", "true_wind_direction", related_ids=["wind_sector_limit"]),
+            wind_card("True Wind", "true_wind_speed", "true_wind_direction", related_ids=["sampling_wind_speed_limit", "sampling_wind_direction_limit", "in_sector"]),
             standard_card("Temperature", "air_temperature"),
             standard_card("Rel. Humidity", "relative_humidity"),
             standard_card("Pressure", "pressure"), 
@@ -447,7 +497,7 @@ def update_tactical_quick_look(caches, cache_ids):
     group_aerosols = html.Div([
         html.H5([html.I(className="bi bi-brightness-high me-2"), "Aerosols & Optics"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
         dbc.Row([
-            standard_card("CN Concentration", "cn_concentration", related_ids=["cn_limit", "isokinetic_sampling"]),
+            standard_card("CN Concentration", "cn_concentration", related_ids=["cn_limit", "nominal_concentrations"]),
             optics_card("Scattering (Mm⁻¹)", "scatter_blue", "scatter_green", "scatter_red"),
             optics_card("Absorption (Mm⁻¹)", "absorption_blue", "absorption_green", "absorption_red"),
         ], className="mb-4")

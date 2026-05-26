@@ -532,32 +532,59 @@ async def conditions_ws_endpoint(websocket: WebSocket, client_id: str):
     try:
         while True:
             data = await websocket.receive_text()
-            L.debug(f"[C2 WS] 📩 Received raw payload from UI: {data}")
             
-            # 🟢 Listen for C2 Commands coming from the browser
             try:
                 command = json.loads(data)
                 if command.get("type") == "c2_command":
-                    L.info(f"[C2 WS] 🛠️ Processing C2 UI Command: {command.get('command_type')}")
+                    payload_data = command.get("payload", {})
+                    target = payload_data.get("target_platform", "unknown")
+                    op_mode = payload_data.get("operation_mode")
+                    sys_mode = payload_data.get("system_mode")
+                    samp_modes = payload_data.get("sampling_modes", {})
                     
-                    # Package the UI command into a CloudEvent and fire it to the broker
-                    ce = CloudEvent(
-                        attributes={
-                            "type": command.get("command_type", "envds.command"),
-                            "source": "envops.ui",
-                            "datacontenttype": "application/json"
-                        },
-                        data=command.get("payload", {})
+                    L.info(f"[C2 WS] 🛠️ Processing C2 Override Sequence for Host: {target}")
+                    
+                    # 1. SYSTEM CONTROL MODE (Auto / Manual)
+                    # Maps to your /system/control/update/ logic
+                    ce_ctrl = CloudEvent(
+                        attributes={"type": "envds.system.control.update", "source": "envops.ui", "subject": target},
+                        data={"mode": op_mode}
                     )
-                    await send_event(ce)
-                    L.info(f"[C2 WS] ✅ Successfully dispatched Command to broker.")
+                    ce_ctrl["destpath"] = f"envds/{target}/system-modes/control/update"
+                    await send_event(ce_ctrl)
+                    L.debug(f"[C2 WS] -> Dispatched Control Mode update: {op_mode}")
+                    
+                    # 2. SYSTEM MODE TRANSITION REQUEST
+                    # Maps perfectly to manager.py transitions_buffer
+                    if sys_mode:
+                        ce_sys = CloudEvent(
+                            attributes={"type": "envds.system-modes.transition.request", "source": "envops.ui", "subject": target},
+                            data={"kind": "SystemMode", "name": sys_mode}
+                        )
+                        ce_sys["destpath"] = f"envds/{target}/system-modes/transition/request"
+                        await send_event(ce_sys)
+                        L.debug(f"[C2 WS] -> Dispatched System Mode transition: {sys_mode}")
+                        
+                    # 3. INDIVIDUAL SAMPLING MODE ACTIVATIONS
+                    # Maps perfectly to manager.py send_activation_request() format
+                    if samp_modes:
+                        for mode_name, is_active in samp_modes.items():
+                            ce_samp = CloudEvent(
+                                attributes={"type": "envds.samplingmode.activation.request", "source": "envops.ui", "subject": target},
+                                data={"mode_name": mode_name, "active": is_active}
+                            )
+                            ce_samp["destpath"] = f"envds/{target}/sampling-modes/{mode_name}/activation/request"
+                            await send_event(ce_samp)
+                            L.debug(f"[C2 WS] -> Dispatched Sampling Mode override: {mode_name} = {is_active}")
+                            
+                    L.info(f"[C2 WS] ✅ Successfully dispatched complete contextual C2 sequence to broker.")
             except Exception as e:
                 L.error(f"[C2 WS] 💥 Failed to process UI C2 command: {e}", exc_info=True)
                 
     except WebSocketDisconnect:
         L.warning(f"[C2 WS] 🔴 Browser disconnected from Conditions WS: {client_id}")
         await manager.disconnect(websocket)
-        
+
 # -----------------------------------------------------------------------------
 # Mount the Isolated Dash Apps inside FastAPI
 # NOTE: Mount the most specific paths first!
