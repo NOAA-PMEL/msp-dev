@@ -74,10 +74,8 @@ def build_c2_panel(host_name, host_plat_ref):
         ]
 
     return dbc.Card([
-        # 🟢 CONTEXT: Add the Host Name to the Header visually
         dbc.CardHeader([html.I(className="bi bi-sliders me-2"), f"C2: {host_name}"], className="fw-bold bg-dark text-white"),
         dbc.CardBody([
-            # 🟢 CONTEXT: Store the exact platform reference invisibly for the callback
             dcc.Store(id="c2-target-platform", data=host_plat_ref),
             
             html.H6("Operation Mode", className="text-muted small text-uppercase fw-bold"),
@@ -152,12 +150,13 @@ def build_ops_layout(deployment_id):
         ], width="auto", className="text-end align-self-center")
     ], className="mb-4 align-items-center border-bottom pb-3")
 
-    # 4. Build the Status Ribbon
+    # 4. Build the Status Ribbon (🟢 5 columns auto-sized)
     ops_ribbon = dbc.Card(dbc.CardBody(dbc.Row([
-        dbc.Col([html.H6("System Mode", className="text-muted mb-1 small text-uppercase"), html.H5("STANDBY", id="ops-sys-mode-disp", className="fw-bold mb-0")], width=3, className="border-end"),
-        dbc.Col([html.H6("Sampling State", className="text-muted mb-1 small text-uppercase"), html.H5("IDLE", id="ops-samp-state", className="fw-bold mb-0")], width=3, className="border-end"),
-        dbc.Col([html.H6("Active Alarms", className="text-muted mb-1 small text-uppercase"), html.H5("0", id="ops-alarm-count", className="text-success fw-bold mb-0")], width=3, className="border-end"), # 🟢 Added border-end
-        dbc.Col([html.H6("Operations", className="text-muted mb-1 small text-uppercase"), html.H5("AUTONOMOUS", id="ops-auto-state", className="text-primary fw-bold mb-0")], width=3)
+        dbc.Col([html.H6("System Mode", className="text-muted mb-1 small text-uppercase"), html.H5("STANDBY", id="ops-sys-mode-disp", className="fw-bold mb-0")], className="border-end"),
+        dbc.Col([html.H6("Sampling Mode", className="text-muted mb-1 small text-uppercase"), html.H5("STANDBY", id="ops-samp-mode-disp", className="fw-bold mb-0")], className="border-end"),
+        dbc.Col([html.H6("Sampling State", className="text-muted mb-1 small text-uppercase"), html.H5("IDLE", id="ops-samp-state", className="fw-bold mb-0")], className="border-end"),
+        dbc.Col([html.H6("Active Alarms", className="text-muted mb-1 small text-uppercase"), html.H5("0", id="ops-alarm-count", className="text-success fw-bold mb-0")], className="border-end"),
+        dbc.Col([html.H6("Operations", className="text-muted mb-1 small text-uppercase"), html.H5("AUTONOMOUS", id="ops-auto-state", className="text-primary fw-bold mb-0")])
     ])), className="shadow-sm border-0 mb-4 bg-light")
     
     # 5. Initialize WebSockets & Stores
@@ -184,9 +183,12 @@ def build_ops_layout(deployment_id):
         html.Div(platform_stores),
         header, ops_ribbon, 
         dbc.Row([
-            # 🟢 The cards are dynamically injected into this container by the callback!
             dbc.Col(html.Div(id="tactical-metrics-container", children=[dbc.Spinner(color="primary")]), width=9),
-            dbc.Col(c2_panel, width=3) 
+            # 🟢 Right Column Stack: C2 Panel on top, Logic Explorer on bottom
+            dbc.Col([
+                c2_panel,
+                html.Div(id="ops-logic-explorer", className="mt-4")
+            ], width=3) 
         ], className="mt-4"),
     ], className="container-fluid mt-3")
 
@@ -232,34 +234,32 @@ def ingest_live_telemetry(msg):
 @app.callback(
     Output("ops-auto-state", "children"), Output("ops-auto-state", "className"),
     Output("ops-sys-mode-disp", "children"), Output("ops-sys-mode-disp", "className"),
+    Output("ops-samp-mode-disp", "children"), Output("ops-samp-mode-disp", "className"),
     Output("ops-samp-state", "children"), Output("ops-samp-state", "className"),
+    Output("ops-logic-explorer", "children"), # 🟢 Added Logic Explorer Output
     Input("ws-ops-conditions", "message")
 )
 def update_control_ribbon(msg):
-    """Listens to manager.py state evaluations, updates cache, and renders the Control Ribbon."""
+    """Listens to manager.py state evaluations, updates cache, and renders the Ribbon & Explorer."""
     if msg and "data" in msg:
         try:
             payload = json.loads(msg["data"])
             ce_type = payload.get("type", "")
             data = payload.get("data", {})
             
-            # Catch the C2 Control State (Auto vs Manual)
             if "system.control" in ce_type:
                 CONDITIONS_CACHE["system_control"] = data.get("mode", "auto").upper()
             else:
-                # 🟢 DYNAMIC SCHEMA PARSER: Grabs the ID and hunts for the "actual" boolean
                 app_uid = data.get("id", {}).get("app_uid")
                 actual = False
                 
                 if "state" in data:
-                    # Dynamically inspect whatever key is inside the state block (e.g., 'system_active', 'mode_active')
                     for val in data["state"].values():
                         if isinstance(val, dict) and "actual" in val:
                             actual = str(val["actual"]).lower() == "true"
                             break
                 
                 if app_uid:
-                    # L.debug(f"[[DEBUG C2 CACHE]] Intercepted UI update for uid: {app_uid} | actual: {actual}")
                     CONDITIONS_CACHE[app_uid] = {
                         "type": ce_type,
                         "actual": actual,
@@ -268,8 +268,9 @@ def update_control_ribbon(msg):
         except Exception as e:
             L.error(f"[[DEBUG C2 CACHE]] Parse error: {e}", exc_info=True)
 
-    # 🟢 Re-evaluate Ribbon visually based on the global CONDITIONS_CACHE
+    # 🟢 1. Re-evaluate Ribbon visually
     active_sys_modes = []
+    active_samp_modes = []
     active_samp_states = []
     
     for uid, info in CONDITIONS_CACHE.items():
@@ -278,11 +279,16 @@ def update_control_ribbon(msg):
         if info.get("actual"):
             if "systemmode" in info["type"]:
                 active_sys_modes.append(uid.replace("_", " ").title())
+            elif "samplingmode" in info["type"]:
+                active_samp_modes.append(uid.replace("_", " ").title())
             elif "samplingstate" in info["type"]:
                 active_samp_states.append(uid.replace("_", " ").title())
                 
     sys_mode_text = " + ".join(active_sys_modes) if active_sys_modes else "STANDBY"
     sys_mode_css = "fw-bold text-primary mb-0" if active_sys_modes else "fw-bold text-muted mb-0"
+
+    samp_mode_text = " + ".join(active_samp_modes) if active_samp_modes else "STANDBY"
+    samp_mode_css = "fw-bold text-info mb-0" if active_samp_modes else "fw-bold text-muted mb-0"
     
     samp_state_text = " + ".join(active_samp_states) if active_samp_states else "IDLE"
     samp_state_css = "fw-bold text-success mb-0" if active_samp_states else "fw-bold text-muted mb-0"
@@ -294,7 +300,51 @@ def update_control_ribbon(msg):
         op_mode_css = "fw-bold text-primary mb-0"
         op_mode_text = "AUTONOMOUS"
 
-    return op_mode_text, op_mode_css, sys_mode_text, sys_mode_css, samp_state_text, samp_state_css
+    # 🟢 2. Build Logic & Dependency Explorer Card
+    modes_ui = []
+    states_ui = []
+    cond_met_ui = []
+    cond_unmet_ui = []
+
+    for uid, info in CONDITIONS_CACHE.items():
+        if uid == "system_control": continue
+        name = uid.replace("_", " ").title()
+        is_active = info.get("actual")
+
+        # Color routing based on state
+        if "systemmode" in info["type"] or "samplingmode" in info["type"]:
+            color = "success" if is_active else "secondary"
+            modes_ui.append(dbc.Badge(name, color=color, className="me-1 mb-1 shadow-sm"))
+            
+        elif "samplingstate" in info["type"]:
+            color = "success" if is_active else "secondary"
+            states_ui.append(dbc.Badge(name, color=color, className="me-1 mb-1 shadow-sm"))
+            
+        elif "samplingcondition" in info["type"]:
+            if is_active:
+                cond_met_ui.append(dbc.Badge(name, color="success", className="me-1 mb-1 shadow-sm opacity-75"))
+            else:
+                # Critical Unmet Conditions highlighted in Red!
+                cond_unmet_ui.append(dbc.Badge(name, color="danger", className="me-1 mb-1 shadow-sm"))
+
+    logic_explorer_card = dbc.Card([
+        dbc.CardHeader([html.I(className="bi bi-diagram-3 me-2"), "Logic & Dependencies"], className="fw-bold bg-dark text-white"),
+        dbc.CardBody([
+            html.H6("System & Sampling Modes", className="text-muted small text-uppercase fw-bold"),
+            html.Div(modes_ui if modes_ui else html.Span("Awaiting Data...", className="text-muted small"), className="mb-3"),
+
+            html.H6("Contextual States", className="text-muted small text-uppercase fw-bold"),
+            html.Div(states_ui if states_ui else html.Span("Awaiting Data...", className="text-muted small"), className="mb-3"),
+
+            html.H6("Blocking Conditions (Unmet)", className="text-danger small text-uppercase fw-bold"),
+            html.Div(cond_unmet_ui if cond_unmet_ui else html.Span("All Conditions Met!", className="text-success small fw-bold"), className="mb-3"),
+
+            html.H6("Met Conditions", className="text-success small text-uppercase fw-bold"),
+            html.Div(cond_met_ui if cond_met_ui else html.Span("Awaiting Data...", className="text-muted small"))
+        ])
+    ], className="shadow-sm border-0 h-100")
+
+    return op_mode_text, op_mode_css, sys_mode_text, sys_mode_css, samp_mode_text, samp_mode_css, samp_state_text, samp_state_css, logic_explorer_card
 
 
 @app.callback(
@@ -354,7 +404,6 @@ def send_c2_command(n_clicks, op_mode, sys_mode, active_samp_modes, all_samp_opt
     State({"type": "platform-cache", "index": ALL}, "id")
 )
 def update_tactical_quick_look(caches, cache_ids):
-    # 🟢 THIS CALLBACK IS WHAT RENDERS ALL THE CARDS!
     flat_vars = {}
     for c_data, c_id in zip(caches, cache_ids):
         if not c_data: continue
@@ -486,7 +535,7 @@ def update_tactical_quick_look(caches, cache_ids):
             content
         ], className="p-3"), className=css), width=12, md=4)
 
-    # --- ASSEMBLE GROUPS (Tied directly to JSON configurations) ---
+    # --- ASSEMBLE GROUPS ---
     group_nav = html.Div([
         html.H5([html.I(className="bi bi-compass me-2"), "Navigation"], className="fw-bold mb-3 text-secondary border-bottom pb-2"),
         dbc.Row([
