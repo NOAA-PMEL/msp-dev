@@ -247,6 +247,10 @@ def update_control_ribbon(msg):
             ce_type = payload.get("type", "")
             data = payload.get("data", {})
             
+            # 🚨 THE AGGRESSIVE DEBUG DUMP
+            if "status.update" in ce_type:
+                L.info(f"\n==== EXACT SCHEMA FOR {ce_type} ====\n{json.dumps(data, indent=2)}\n==============================================\n")
+                
             if "system.control" in ce_type:
                 CONDITIONS_CACHE["system_control"] = data.get("mode", "auto").upper()
             else:
