@@ -243,6 +243,10 @@ def update_control_ribbon(msg):
             ce_type = payload.get("type", "")
             data = payload.get("data", {})
             
+            # 🚨 ADD THIS TEMPORARY DEBUG LINE:
+            if "status.update" in ce_type:
+                L.info(f"🚨 RAW C2 PAYLOAD [{ce_type}]: {json.dumps(data)}")
+                
             # Catch the C2 Control State (Auto vs Manual)
             if "system.control" in ce_type:
                 CONDITIONS_CACHE["system_control"] = data.get("mode", "auto").upper()
