@@ -267,7 +267,14 @@ def update_home_dashboard(n, telemetry_cache, conditions_cache, current_active_i
         platform_map = {p.get("metadata", {}).get("name"): p for p in platforms}
 
         # --- 1. Metrics Rollup ---
-        active_deps = sum(1 for d in deployments if determine_deployment_status(d.get("data", {})) == "active")
+        # 🟢 Filter to only count primary host deployments for the top metrics
+        host_deployments = [
+            d for d in deployments 
+            if not d.get("data", {}).get("host_platform_ref") 
+            or d.get("data", {}).get("host_platform_ref") == d.get("data", {}).get("platform_ref")
+        ]
+        
+        active_deps = sum(1 for d in host_deployments if determine_deployment_status(d.get("data", {})) == "active")
         total_issues = 0
         
         for plat_id, cache_hit in telemetry_cache.items():
@@ -278,7 +285,7 @@ def update_home_dashboard(n, telemetry_cache, conditions_cache, current_active_i
                     total_issues += 1
         
         metrics_row = dbc.Row([
-            dbc.Col(dbc.Card(dbc.CardBody([html.H5("Deployments", className="text-muted"), html.H2(str(len(deployments)), className="fw-bold")]), className="shadow-sm border-0 text-center"), width=4),
+            dbc.Col(dbc.Card(dbc.CardBody([html.H5("Deployments", className="text-muted"), html.H2(str(len(host_deployments)), className="fw-bold")]), className="shadow-sm border-0 text-center"), width=4),
             dbc.Col(dbc.Card(dbc.CardBody([html.H5("Active", className="text-muted"), html.H2(str(active_deps), className="text-primary fw-bold")]), className="shadow-sm border-0 text-center"), width=4),
             dbc.Col(dbc.Card(dbc.CardBody([html.H5("Live Issues", className="text-muted"), html.H2(str(total_issues), className="text-danger fw-bold")]), className="shadow-sm border-0 text-center"), width=4),
         ], className="mb-4")

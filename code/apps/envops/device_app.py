@@ -20,21 +20,35 @@ register_sidebar_callbacks(app)
 
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
-# --- Corrected Route-Splitting Helper Functions ---
+# --- GLOBAL MEMORY CACHE ---
+# Caching definitions takes < 5MB of RAM and eliminates blocking HTTP calls
+REGISTRY_CACHE = {
+    "instances": {},
+    "definitions": {}
+}
+
+# --- Route-Splitting Helper Functions ---
 def get_all_devices():
-    """Fetches Sensors, Operational devices, and Controllers from the registry and tags them."""
+    """Fetches Sensors, Operational devices, and Controllers from the registry and caches them."""
     devices = []
-    # 🟢 NEW: Added "operational" to the discovery loop
     for d_type in ["sensor", "operational", "controller"]:
-        # Split routes based on legacy datastore setup
         path = "controller-instance" if d_type == "controller" else "device-instance"
         url = f"http://{datastore_url}/{path}/registry/get/"
         try:
             query = {"device_type": d_type} if d_type in ["sensor", "operational"] else {}
-            response = httpx.get(url, params=query, timeout=5.0)
+            response = httpx.get(url, params=query, timeout=10.0)
             items = response.json().get("results", [])
             for item in items:
-                item["_device_type"] = d_type # Tag it so the UI knows how to route it
+                item["_device_type"] = d_type 
+                
+                # 🟢 Cache the instance instantly so the dropdown doesn't have to fetch it again
+                make = item.get("make")
+                model = item.get("model")
+                sn = item.get("serial_number", item.get("serial_id"))
+                if make and model and sn:
+                    cache_key = f"{d_type}::{make}::{model}::{sn}"
+                    REGISTRY_CACHE["instances"][cache_key] = item
+                    
             devices.extend(items)
         except Exception as e:
             L.error(f"get_all_devices error for {d_type}: {e}")
@@ -45,7 +59,7 @@ def get_device_data(device_id: str, device_type: str="sensor"):
     query = {"controller_id": device_id} if device_type == "controller" else {"device_type": device_type, "device_id": device_id}
     url = f"http://{datastore_url}/{path}/data/get/"
     try:
-        response = httpx.get(url, params=query, timeout=10.0)
+        response = httpx.get(url, params=query, timeout=30.0) # 🟢 Increased timeout for large data pulls
         results = response.json()
         if "results" in results and results["results"]: return results["results"]
     except Exception as e:
@@ -57,34 +71,49 @@ def get_device_instance(device_id: str, device_type: str="sensor"):
     query = {"controller_id": device_id} if device_type == "controller" else {"device_type": device_type, "device_id": device_id}
     url = f"http://{datastore_url}/{path}/registry/get/"
     try:
-        response = httpx.get(url, params=query, timeout=5.0)
+        response = httpx.get(url, params=query, timeout=10.0)
         results = response.json()
         if "results" in results and results["results"]: return results["results"][0]
     except Exception as e:
         L.error(f"get_device_instance error: {e}")
     return {}
 
-def get_device_definition(device_definition_id: str, device_type: str="sensor"):
-    path = "controller-definition" if device_type == "controller" else "device-definition"
-    query = {"controller_definition_id": device_definition_id} if device_type == "controller" else {"device_type": device_type, "device_definition_id": device_definition_id}
-    url = f"http://{datastore_url}/{path}/registry/get/"
-    try:
-        response = httpx.get(url, params=query, timeout=5.0)
-        results = response.json()
-        if "results" in results and results["results"]: return results["results"][0]
-    except Exception as e:
-        L.error(f"get_device_definition error: {e}")
-    return {}
-
 def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"):
-    device = get_device_instance(device_id=device_id, device_type=device_type)
+    """Uses memory cache first to resolve definitions in milliseconds."""
+    cache_key = f"{device_type}::{device_id}"
+    
+    # 1. Grab instance from memory cache first
+    device = REGISTRY_CACHE["instances"].get(cache_key)
+    if not device:
+        device = get_device_instance(device_id, device_type)
+        
     if device:
         try:
-            device_definition_id = "::".join([device["make"], device["model"], device["version"]])
-            return get_device_definition(device_definition_id=device_definition_id, device_type=device_type)
+            version = device.get("version")
+            if not version: return {}
+            
+            device_definition_id = f"{device['make']}::{device['model']}::{version}"
+            def_cache_key = f"{device_type}::{device_definition_id}"
+            
+            # 2. Check definition memory cache
+            if def_cache_key in REGISTRY_CACHE["definitions"]:
+                return REGISTRY_CACHE["definitions"][def_cache_key]
+                
+            # 3. Fetch from API if missing and cache it
+            path = "controller-definition" if device_type == "controller" else "device-definition"
+            query = {"controller_definition_id": device_definition_id} if device_type == "controller" else {"device_type": device_type, "device_definition_id": device_definition_id}
+            url = f"http://{datastore_url}/{path}/registry/get/"
+            
+            response = httpx.get(url, params=query, timeout=10.0)
+            results = response.json()
+            if "results" in results and results["results"]: 
+                dfn = results["results"][0]
+                REGISTRY_CACHE["definitions"][def_cache_key] = dfn
+                return dfn
         except Exception as e:
             L.error(f"get_device_definition_by_device_id error: {e}")
     return {}
+
 
 # --- Dynamic Builders ---
 def build_tables(layout_options):
@@ -177,14 +206,13 @@ def render_global_devices(pathname):
         for d in devices:
             make = d.get("make")
             model = d.get("model")
-            sn = d.get("serial_number")
+            sn = d.get("serial_number", d.get("serial_id"))
             
             if not make or not model or not sn: continue
             
             dtype = d.get("_device_type", "sensor")
             device_id = f"{make}::{model}::{sn}"
             
-            # Embed the device type into the value so the UI knows how to route it
             dropdown_val = f"{dtype}::{device_id}"
             label = f"{make} {model} (SN: {sn}) [{dtype.capitalize()}]"
             
@@ -211,7 +239,7 @@ def render_global_devices(pathname):
         L.error(f"[DEVICE UI] Layout Crash: {traceback.format_exc()}")
         return html.Div([
             dbc.Alert([
-                html.H4("🚨 Internal Server Error", className="alert-heading"),
+                html.H4("⚙️ Internal Server Error", className="alert-heading"),
                 html.P("The dashboard encountered a fatal Python exception while building the layout:")
             ], color="danger", className="m-4 shadow-sm"),
             html.Pre(traceback.format_exc(), className="bg-dark text-danger p-3 mx-4 rounded shadow-sm border border-danger", style={"overflowX": "auto"})
@@ -249,10 +277,17 @@ def generate_device_ui(dropdown_val):
                 
                 if var_type == "setting":
                     long_name = var.get("attributes", {}).get("long_name", {}).get("data", name)
+                    # 🟢 Restored missing hardware limits for the ag-grid UI editor
                     control_metadata = {
-                        "parameter": name, "description": long_name, "actual_value": "", "requested_value": "",
+                        "parameter": name, 
+                        "description": long_name, 
+                        "actual_value": "", 
+                        "requested_value": "",
                         "type": var.get("type", "unknown"),
                         "allowed_values": [x.strip() for x in (var.get("attributes", {}).get("allowed_values", {}).get("data", "")).split(",")] if var.get("attributes", {}).get("allowed_values", {}).get("data") else None,
+                        "min": var.get("attributes", {}).get("valid_min", {}).get("data", None),
+                        "max": var.get("attributes", {}).get("valid_max", {}).get("data", None),
+                        "step": var.get("attributes", {}).get("step_increment", {}).get("data", None)
                     }
                     layout_options["layout-settings"]["time"]["row-data-skeletons"].append(control_metadata)
                 elif var_type == "calibration":
@@ -287,15 +322,12 @@ def generate_device_ui(dropdown_val):
                     if "table-column-defs" in options:
                         for cd in options["table-column-defs"]:
                             if cd["field"] in dimensions or cd.get("cellDataType") != "number": continue
-                            # Ensure we append the descriptive headerName as the label for the dropdowns
                             label = cd.get("headerName", cd["field"])
                             layout_options[ltype][dim]["variable-list"].append({"label": label, "value": cd["field"]})
 
         except Exception as e:
             L.error(f"build layout error: {e}")
 
-    # Set up the correct API payload for the settings buffer based on device type
-    # 🟢 DYNAMIC MAPPING: Operational uses sensor streams for its backend configuration
     topic_type = "sensor" if device_type == "operational" else device_type
     id_field = "controllerid" if device_type == "controller" else "deviceid"
     initial_request = {
@@ -312,7 +344,6 @@ def generate_device_ui(dropdown_val):
         dbc.Accordion(build_graphs(layout_options), id="device-plot-accordion", className="mb-4"),
         dbc.Accordion([dbc.AccordionItem(html.Pre(id="calibration-display", children="Waiting for data...", style={"whiteSpace": "pre-wrap", "wordBreak": "break-all"}), title="Calibration Values")], id="device-calibration-accordion", start_collapsed=True),
         
-        # 🟢 DYNAMIC WEBSOCKET: Operational listens to the sensor stream
         WebSocket(id="ws-device-instance", url=f"{ws_base}/ws/{topic_type}/{device_id}"),
         html.Div(id="ws-send-instance-buffer", children=json.dumps(initial_request), style={"display": "none"}),
         
@@ -460,15 +491,12 @@ def submit_setting_change(n_clicks_list, selected_rows_list, device_meta):
     except: requested_val = raw_val
 
     dtype = device_meta.get("device_type", "sensor")
-    
-    # 🟢 DYNAMIC MAPPING: Translate operational commands to the expected sensor format
     topic_type = "sensor" if dtype == "operational" else dtype
     id_field = "controllerid" if dtype == "controller" else "deviceid"
 
-    # Use exact schema matching the hardware targets
     return json.dumps({
         "source": f"envds.{config.daq_id}.dashboard",
-        "data": {"settings": selected_row["parameter"], "requested": requested_val},
+        "data": {"settings": {selected_row["parameter"]: {"requested": requested_val}}},
         "destpath": f"envds/{topic_type}/settings/request",
         id_field: device_meta["device_id"]
     })
