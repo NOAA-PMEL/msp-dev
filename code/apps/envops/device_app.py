@@ -359,7 +359,7 @@ def update_device_buffers(event):
     if event and "data" in event:
         try:
             event_data = json.loads(event["data"])
-             L.debug("update_device_buffers", extra={"db_event": event})
+            L.debug("update_device_buffers", extra={"db_event": event})
             data_out = no_update
             settings_out = no_update
 
