@@ -351,31 +351,31 @@ def router(pathname):
 # --- Sub-Callbacks (Isolated per page load) ---
 
 @app.callback(
-    Output("device-data-buffer", "data"), Output("device-settings-buffer", "data"), Output("last-time-store", "data"),
-    Input("ws-device-instance", "message"), State("last-time-store", "data")
+    Output("device-data-buffer", "data"), Output("device-settings-buffer", "data"),
+    Input("ws-device-instance", "message")
 )
-def update_device_buffers(event, last_time):
+def update_device_buffers(event):
+    L.debug("update_device_buffers", extra={"db_event": event})
     if event and "data" in event:
         try:
             event_data = json.loads(event["data"])
-            data_out, settings_out, new_last_time = no_update, no_update, no_update
+             L.debug("update_device_buffers", extra={"db_event": event})
+            data_out = no_update
+            settings_out = no_update
 
             if "data-update" in event_data and event_data["data-update"]: 
-                current_time = event_data["data-update"].get("variables", {}).get("time", {}).get("data")
-                if isinstance(current_time, list) and len(current_time) > 0: current_time = current_time[-1]
-                
-                if current_time and current_time == last_time: pass 
-                else:
-                    data_out = event_data["data-update"]
-                    new_last_time = current_time or last_time
+                data_out = event_data["data-update"]
+                L.info(f"🚨 DEBUG DATA STREAM: Valid telemetry received. Keys in payload: {list(data_out.get('variables', {}).keys())}")
 
             if "settings-update" in event_data and event_data["settings-update"]: 
                 settings_out = event_data["settings-update"]
 
-            return [data_out, settings_out, new_last_time]
-        except Exception: pass
-    return [no_update, no_update, no_update]
-
+            return [data_out, settings_out]
+        except Exception as e: 
+            L.error(f"[DEVICE LIVE] WebSocket message parsing error: {e}")
+            pass
+            
+    return [no_update, no_update]
 
 @app.callback(
     Output({"type": "sensor-graph-1d", "index": MATCH}, "figure"),
