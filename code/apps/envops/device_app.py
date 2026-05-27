@@ -180,6 +180,19 @@ def build_graphs(layout_options):
 # --- Main App Layout ---
 app.layout = create_unified_shell(html.Div([
     dcc.Location(id="device-url", refresh=False),
+    
+    # 🟢 HOISTED DATA PIPELINE: By keeping these stores and the WebSocket outside the dynamic UI container,
+    # we guarantee they are never destroyed/unmounted when you switch devices, preventing orphaned callbacks.
+    dcc.Store(id="device-meta", data={}),
+    dcc.Store(id="device-definition", data={}),
+    dcc.Store(id="calibration-vars", data=[]),
+    dcc.Store(id="graph-axes", data={}),
+    dcc.Store(id="device-data-buffer", data={}),
+    dcc.Store(id="device-settings-buffer", data={}),
+    dcc.Store(id="last-time-store", data=None),
+    WebSocket(id="ws-device-instance", url=""),
+    html.Div(id="ws-send-instance-buffer", style={"display": "none"}),
+    
     html.Div(id="device-page-content") 
 ]), active_item="devices")
 
@@ -224,12 +237,31 @@ def render_global_devices(pathname):
         return html.Div([dbc.Alert(f"Fatal Layout Error: {e}", color="danger")])
 
 @app.callback(
-    Output("device-ui-container", "children"),
-    Input("device-selector", "value")
+    [
+        Output("device-ui-container", "children"),
+        Output("device-meta", "data"),
+        Output("device-definition", "data"),
+        Output("calibration-vars", "data"),
+        Output("ws-device-instance", "url"),
+        Output("ws-send-instance-buffer", "children", allow_duplicate=True),
+        Output("device-data-buffer", "data"),
+        Output("device-settings-buffer", "data"),
+        Output("last-time-store", "data")
+    ],
+    Input("device-selector", "value"),
+    prevent_initial_call=False
 )
 def generate_device_ui(dropdown_val):
+    """
+    🟢 MASTER SPA CONTROLLER:
+    When the user selects a new device, we push the fresh UI to the container, 
+    but simultaneously push the new routing variables to the global data pipeline above.
+    """
     if not dropdown_val:
-        return html.Div(html.H5("Please select an instrument from the dropdown to load its UI and variable plots.", className="text-muted text-center mt-5"))
+        return (
+            html.Div(html.H5("Please select an instrument from the dropdown to load its UI and variable plots.", className="text-muted text-center mt-5")),
+            {}, {}, [], "", no_update, {}, {}, None
+        )
         
     parts = dropdown_val.split("::")
     device_type = parts[0]
@@ -315,23 +347,22 @@ def generate_device_ui(dropdown_val):
 
     ws_protocol = "wss://" if str(config.ws_use_tls).lower() == "true" else "ws://"
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
-
-    return html.Div([
+    
+    ui_container = html.Div([
         dbc.Accordion(build_tables(layout_options), id="device-data-accordion", className="mb-4", start_collapsed=True),
         dbc.Accordion(build_graphs(layout_options), id="device-plot-accordion", className="mb-4"),
-        dbc.Accordion([dbc.AccordionItem(html.Pre(id="calibration-display", children="Waiting for data...", style={"whiteSpace": "pre-wrap", "wordBreak": "break-all"}), title="Calibration Values")], id="device-calibration-accordion", start_collapsed=True),
-        
-        WebSocket(id="ws-device-instance", url=f"{ws_base}/ws/{topic_type}/{device_id}"),
-        html.Div(id="ws-send-instance-buffer", children=json.dumps(initial_request), style={"display": "none"}),
-        
-        dcc.Store(id="calibration-vars", data=calibration_vars),
-        dcc.Store(id="device-definition", data=device_definition),
-        dcc.Store(id="device-meta", data=device_meta),
-        dcc.Store(id="graph-axes", data={}),
-        dcc.Store(id="device-data-buffer", data={}),
-        dcc.Store(id="device-settings-buffer", data={}),
-        dcc.Store(id="last-time-store", data=None) # Filters out 1-second duplicate telemetry bumps
+        dbc.Accordion([dbc.AccordionItem(html.Pre(id="calibration-display", children="Waiting for data...", style={"whiteSpace": "pre-wrap", "wordBreak": "break-all"}), title="Calibration Values")], id="device-calibration-accordion", start_collapsed=True)
     ])
+
+    return (
+        ui_container, 
+        device_meta, 
+        device_definition, 
+        calibration_vars, 
+        f"{ws_base}/ws/{topic_type}/{device_id}", 
+        json.dumps(initial_request), 
+        {}, {}, None
+    )
 
 
 # --- Sub-Callbacks ---
@@ -374,7 +405,7 @@ def update_device_buffers(event, last_time):
 )
 def select_graph_1d(y_axis, device_meta, graph_axes, device_definition, graph_id):
     default_fig = go.Figure(layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}, "template": "simple_white"})
-    if not y_axis: return default_fig
+    if not y_axis or not device_meta: return default_fig
 
     try:
         x, y = [], []
@@ -438,7 +469,7 @@ def update_graph_1d(device_data, y_axis_list):
     prevent_initial_call=True,
 )
 def select_graph_2d(z_axis, device_meta, device_definition, graph_id):
-    if not z_axis: raise PreventUpdate
+    if not z_axis or not device_meta: raise PreventUpdate
     y_axis = graph_id["index"].split("::")[1]
     use_log = (y_axis == "diameter")
     
@@ -601,7 +632,7 @@ def update_graph_2d_scatter(device_data, z_axis_list, device_definition, current
     prevent_initial_call=True,
 )
 def select_graph_3d(z_axis, device_meta, device_definition, graph_id):
-    if not z_axis: raise PreventUpdate
+    if not z_axis or not device_meta: raise PreventUpdate
     x_axis = graph_id["index"].split("::")[0]
     y_axis = graph_id["index"].split("::")[1]
     
@@ -721,7 +752,8 @@ def update_graph_3d_plots(device_data, z_axis_list, device_definition, line_figs
 @app.callback(
     Output({"type": "data-table-1d", "index": ALL}, "rowTransaction"),
     Input("device-data-buffer", "data"),
-    State({"type": "data-table-1d", "index": ALL}, "columnDefs")
+    State({"type": "data-table-1d", "index": ALL}, "columnDefs"),
+    prevent_initial_call=True
 )
 def update_table_1d(device_data, col_defs_list):
     if not device_data: raise PreventUpdate
@@ -734,7 +766,7 @@ def update_table_1d(device_data, col_defs_list):
             val = device_data.get("variables", {}).get(field, {}).get("data")
             
             if isinstance(val, list) and len(val) > 0: val = val[-1]
-            if val == "": val = None # 🟢 Fixes the AG Grid "Invalid Number" crash on empty payloads
+            if val == "": val = None
             
             data[field] = val
             
@@ -747,7 +779,8 @@ def update_table_1d(device_data, col_defs_list):
 @app.callback(
     Output({"type": "data-table-2d", "index": ALL}, "rowData"), 
     Input("device-data-buffer", "data"),
-    [State({"type": "data-table-2d", "index": ALL}, "rowData"), State({"type": "data-table-2d", "index": ALL}, "columnDefs"), State("device-definition", "data")]
+    [State({"type": "data-table-2d", "index": ALL}, "rowData"), State({"type": "data-table-2d", "index": ALL}, "columnDefs"), State("device-definition", "data")],
+    prevent_initial_call=True
 )
 def update_table_2d(device_data, row_data_list, col_defs_list, device_definition):
     if not device_data: raise PreventUpdate
@@ -755,7 +788,7 @@ def update_table_2d(device_data, row_data_list, col_defs_list, device_definition
     
     for col_defs in col_defs_list:
         if not col_defs:
-            new_row_data_list.append(dash.no_update)
+            new_row_data_list.append(no_update)
             continue
             
         dim_2d = col_defs[0]["field"]
@@ -764,11 +797,11 @@ def update_table_2d(device_data, row_data_list, col_defs_list, device_definition
         if dim_2d_is_coord: dim_data = device_definition["variables"][dim_2d].get("data", [])
         else:
             if dim_2d not in device_data.get("variables", {}):
-                new_row_data_list.append(dash.no_update)
+                new_row_data_list.append(no_update)
                 continue
             dim_data = device_data["variables"][dim_2d].get("data")
             if not dim_data:
-                new_row_data_list.append(dash.no_update)
+                new_row_data_list.append(no_update)
                 continue
 
         row_data = []
@@ -780,7 +813,7 @@ def update_table_2d(device_data, row_data_list, col_defs_list, device_definition
             row_data.append(data)
         new_row_data_list.append(row_data)
         
-    if all(r == dash.no_update for r in new_row_data_list): raise PreventUpdate
+    if all(r == no_update for r in new_row_data_list): raise PreventUpdate
     return new_row_data_list
 
 
@@ -788,6 +821,7 @@ def update_table_2d(device_data, row_data_list, col_defs_list, device_definition
     Output({"type": "settings-table", "index": ALL}, "rowData"), 
     Input("device-settings-buffer", "data"),
     State({"type": "settings-table", "index": ALL}, "rowData"),
+    prevent_initial_call=True
 )
 def update_settings_table(device_settings, row_data_list):
     if not device_settings or not row_data_list: raise PreventUpdate
@@ -796,7 +830,7 @@ def update_settings_table(device_settings, row_data_list):
 
     for rows in row_data_list:
         if not rows:
-            updated_row_lists.append(dash.no_update)
+            updated_row_lists.append(no_update)
             continue
             
         grid_patched = False
@@ -824,7 +858,7 @@ def update_settings_table(device_settings, row_data_list):
         if grid_patched:
             updated_row_lists.append(rows)
             has_updates = True
-        else: updated_row_lists.append(dash.no_update)
+        else: updated_row_lists.append(no_update)
 
     if not has_updates: raise PreventUpdate
     return updated_row_lists
@@ -833,7 +867,8 @@ def update_settings_table(device_settings, row_data_list):
 @app.callback(
     Output("calibration-display", "children"),
     Input("device-data-buffer", "data"),
-    [State("calibration-display", "children"), State("calibration-vars", "data")]
+    [State("calibration-display", "children"), State("calibration-vars", "data")],
+    prevent_initial_call=True
 )
 def update_calibration_display(device_data, current_display, cal_vars):
     if not device_data or not cal_vars: raise PreventUpdate

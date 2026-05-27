@@ -22,12 +22,16 @@ datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 # --- Dynamic Builders (Adapted for Plots) ---
 def build_graph_1d(dropdown_list, xaxis="time"):
+    default_fig = go.Figure(layout={"template": "simple_white", "xaxis": {"title": "Time (UTC)"}, "yaxis": {"title": "Value"}})
     return dbc.Card([
         dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-1d-dropdown", "index": xaxis}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
-        dcc.Graph(id={"type": "plot-graph-1d", "index": xaxis}, figure=go.Figure(data=go.Scatter(x=[], y=[], type="scatter")), style={"height": 400}),
+        dcc.Graph(id={"type": "plot-graph-1d", "index": xaxis}, figure=default_fig, style={"height": 400}),
     ], className="shadow-sm border-0")
 
 def build_graph_2d(dropdown_list, xaxis="time", yaxis=""):
+    default_heatmap = go.Figure(layout={"template": "simple_white", "xaxis": {"title": "Time"}, "yaxis": {"title": yaxis}})
+    default_scatter = go.Figure(layout={"template": "simple_white", "xaxis": {"title": yaxis}, "yaxis": {"title": "Value"}})
+    
     content = dbc.Row([
         dbc.Button("Submit Range", {"type": "plot-graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}, color="primary", className="mb-2"),
         dbc.Label("z-axis min:", className="small text-muted fw-bold"), dbc.Col(dbc.Input(type="number", id={"type": "plot-graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"}, className="mb-2")),
@@ -39,18 +43,19 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis=""):
         dbc.CardBody([
             axes_settings,
             dbc.Row([
-                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
-                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-line", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
+                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=default_heatmap, style={"height": 500})),
+                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-line", "index": f"{xaxis}::{yaxis}"}, figure=default_scatter, style={"height": 500})),
             ])
         ])
     ], className="shadow-sm border-0")
 
 def build_graph_3d(dropdown_list, xaxis="", yaxis=""):
+    default_fig = go.Figure(layout={"template": "simple_white"})
     return dbc.Card([
         dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
         dbc.Row([
-            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-line", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
-            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-heatmap", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
+            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-line", "index": f"{xaxis}::{yaxis}"}, figure=default_fig, style={"height": 500})),
+            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=default_fig, style={"height": 500})),
         ]),
     ])
 
@@ -72,17 +77,30 @@ def build_graphs(layout_options):
 # --- Main App Layout ---
 app.layout = create_unified_shell(html.Div([
     dcc.Location(id="plot-url", refresh=False),
+    
+    # 🟢 HOISTED DATA PIPELINE: Prevents React from unmounting and causing the WebSocket reconnect loops
+    dcc.Store(id="plot-vmap-definitions", data={}),
+    dcc.Store(id="plot-data-buffer", data={}),
+    dcc.Store(id="plot-last-time-store", data={}),
+    html.Div(id="plot-ws-container", style={"display": "none"}),
+    
     html.Div(id="plot-page-content") 
 ]), active_item="plots")
 
 @app.callback(
-    Output("plot-page-content", "children"),
+    [
+        Output("plot-page-content", "children"),
+        Output("plot-ws-container", "children"),
+        Output("plot-vmap-definitions", "data"),
+        Output("plot-data-buffer", "data"),
+        Output("plot-last-time-store", "data")
+    ],
     Input("plot-url", "pathname")
 )
 def render_deployment_plots(pathname):
     try:
         if not pathname or "deployment/" not in pathname:
-            return dbc.Alert("Select a deployment from the sidebar.", color="info", className="m-4")
+            return dbc.Alert("Select a deployment from the sidebar.", color="info", className="m-4"), [], {}, {}, {}
         
         deployment_id = pathname.split("/")[-1]
         
@@ -90,7 +108,7 @@ def render_deployment_plots(pathname):
         all_deployments = get_registry_data("deployment") or []
         host_dep = next((d for d in all_deployments if d.get("metadata", {}).get("name") == deployment_id), None)
         if not host_dep:
-            return dbc.Alert(f"Deployment {deployment_id} not found.", color="warning", className="m-4")
+            return dbc.Alert(f"Deployment {deployment_id} not found.", color="warning", className="m-4"), [], {}, {}, {}
             
         host_data = host_dep.get("data", {})
         host_plat_ref = host_data.get("platform_ref", "")
@@ -103,7 +121,7 @@ def render_deployment_plots(pathname):
 
         # 2. Variable Discovery & Layout Parsing
         variablemaps = get_registry_data("variablemap") or []
-        vmap_definitions = {} # Cache for callbacks to resolve coordinates
+        vmap_definitions = {} 
         
         layout_options = {
             "layout-1d": {"time": {"variable-list": []}},
@@ -166,18 +184,16 @@ def render_deployment_plots(pathname):
 
         ws_connections = [WebSocket(id={"type": "ws-plot-platform", "index": p_id}, url=f"{ws_base}/ws/platform/{p_id}") for p_id in group_platforms if p_id]
 
-        return html.Div([
-            html.Div(ws_connections),
-            dcc.Store(id="plot-vmap-definitions", data=vmap_definitions),
-            dcc.Store(id="plot-data-buffer", data={}),
-            dcc.Store(id="plot-last-time-store", data={}),
+        ui = html.Div([
             header, 
             dbc.Accordion(build_graphs(layout_options), id="plot-accordion", className="mb-4")
         ], className="container-fluid mt-3")
+
+        return ui, ws_connections, vmap_definitions, {}, {}
         
     except Exception as e:
         L.error(f"[PLOTS] Crash: {traceback.format_exc()}")
-        return dbc.Alert(f"Fatal Error: {str(e)}", color="danger", className="m-4")
+        return dbc.Alert(f"Fatal Error: {str(e)}", color="danger", className="m-4"), [], {}, {}, {}
 
 
 # --- Callbacks ---
@@ -282,63 +298,69 @@ def update_graph_1d(buffer_payload, selected_values):
     [Output({"type": "plot-graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True), Output({"type": "plot-graph-2d-line", "index": MATCH}, "figure", allow_duplicate=True)],
     Input({"type": "plot-graph-2d-dropdown", "index": MATCH}, "value"),
     [State("plot-vmap-definitions", "data"), State({"type": "plot-graph-2d-dropdown", "index": MATCH}, "id")],
-    prevent_initial_call=True,
+    prevent_initial_call=False,
 )
 def init_graph_2d(selected_value, vmaps, graph_id):
-    if not selected_value: raise PreventUpdate
-    plat_id, vset, z_axis = selected_value.split("::")
     y_axis = graph_id["index"].split("::")[1]
-    use_log = (y_axis == "diameter")
-    
-    x, y, orig_z = [], [], []
-    y_is_coord = False
-    
-    vmap = vmaps.get(plat_id, {}).get("variables", {})
-    if y_axis in vmap:
-        if vmap[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-            y_is_coord = True
-            y = vmap[y_axis].get("data", [])
+    default_heatmap = go.Figure(layout={"xaxis": {"title": "Time"}, "yaxis": {"title": y_axis}})
+    default_scatter = go.Figure(layout={"xaxis": {"title": y_axis}, "yaxis": {"title": "Value"}})
 
-    url = f"http://{datastore_url}/variableset/data/get/"
-    query = {"variableset_id": f"{plat_id}::{vset}"}
+    if not selected_value or not vmaps: return [default_heatmap, default_scatter]
     
     try:
-        response = httpx.get(url, params=query, timeout=10.0)
-        if response.status_code == 200:
-            for doc in response.json().get("results", []):
-                t_data = doc.get("variables", {}).get("time", {}).get("data")
-                z_data = doc.get("variables", {}).get(z_axis, {}).get("data")
-                if t_data is None or z_data is None: continue
-                
-                if isinstance(t_data, list):
-                    x.extend(t_data)
-                    orig_z.extend(z_data)
-                    if not y_is_coord: y.extend(doc.get("variables", {}).get(y_axis, {}).get("data", []))
-                else:
-                    x.append(t_data)
-                    orig_z.append(z_data)
-                    if not y_is_coord: y.append(doc.get("variables", {}).get(y_axis, {}).get("data"))
-    except Exception: pass
+        plat_id, vset, z_axis = selected_value.split("::")
+        use_log = (y_axis == "diameter")
+        
+        x, y, orig_z = [], [], []
+        y_is_coord = False
+        
+        vmap = vmaps.get(plat_id, {}).get("variables", {})
+        if y_axis in vmap:
+            if vmap[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+                y_is_coord = True
+                y = vmap[y_axis].get("data", [])
 
-    if len(y) > 0 and isinstance(y[-1], list): y = y[-1]
+        url = f"http://{datastore_url}/variableset/data/get/"
+        query = {"variableset_id": f"{plat_id}::{vset}"}
+        
+        try:
+            response = httpx.get(url, params=query, timeout=10.0)
+            if response.status_code == 200:
+                for doc in response.json().get("results", []):
+                    t_data = doc.get("variables", {}).get("time", {}).get("data")
+                    z_data = doc.get("variables", {}).get(z_axis, {}).get("data")
+                    if t_data is None or z_data is None: continue
+                    
+                    if isinstance(t_data, list):
+                        x.extend(t_data)
+                        orig_z.extend(z_data)
+                        if not y_is_coord: y.extend(doc.get("variables", {}).get(y_axis, {}).get("data", []))
+                    else:
+                        x.append(t_data)
+                        orig_z.append(z_data)
+                        if not y_is_coord: y.append(doc.get("variables", {}).get(y_axis, {}).get("data"))
+        except Exception: pass
 
-    z = []
-    for yi in range(len(y)):
-        new_z = []
-        for xi in range(len(x)):
-            try: new_z.append(orig_z[xi][yi])
-            except IndexError: new_z.append(None)
-        z.append(new_z)
+        if len(y) > 0 and isinstance(y[-1], list): y = y[-1]
 
-    heatmap = go.Figure(data=go.Heatmap(x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"), layout={"xaxis": {"title": "Time"}, "yaxis": {"title": y_axis}})
-    scatter = go.Figure(data=[{"x": y, "y": orig_z[-1] if len(orig_z) > 0 else [], "type": "scatter"}], layout={"xaxis": {"title": y_axis}, "yaxis": {"title": z_axis}, "title": str(x[-1]) if len(x) > 0 else ""})
+        z = []
+        for yi in range(len(y)):
+            new_z = []
+            for xi in range(len(x)):
+                try: new_z.append(orig_z[xi][yi])
+                except IndexError: new_z.append(None)
+            z.append(new_z)
 
-    if use_log:
-        heatmap.update_yaxes(type="log")
-        heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
-        scatter.update_xaxes(type="log")
+        heatmap = go.Figure(data=go.Heatmap(x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"), layout={"xaxis": {"title": "Time"}, "yaxis": {"title": y_axis}})
+        scatter = go.Figure(data=[{"x": y, "y": orig_z[-1] if len(orig_z) > 0 else [], "type": "scatter"}], layout={"xaxis": {"title": y_axis}, "yaxis": {"title": z_axis}, "title": str(x[-1]) if len(x) > 0 else ""})
 
-    return [heatmap, scatter]
+        if use_log:
+            heatmap.update_yaxes(type="log")
+            heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
+            scatter.update_xaxes(type="log")
+
+        return [heatmap, scatter]
+    except Exception: return [default_heatmap, default_scatter]
 
 
 @app.callback(
@@ -456,66 +478,70 @@ def update_graph_2d_scatter(buffer_payload, selected_values, vmaps, current_figs
     [Output({"type": "plot-graph-3d-line", "index": MATCH}, "figure", allow_duplicate=True), Output({"type": "plot-graph-3d-heatmap", "index": MATCH}, "figure", allow_duplicate=True)],
     Input({"type": "plot-graph-3d-dropdown", "index": MATCH}, "value"),
     [State("plot-vmap-definitions", "data"), State({"type": "plot-graph-3d-dropdown", "index": MATCH}, "id")],
-    prevent_initial_call=True,
+    prevent_initial_call=False,
 )
 def init_graph_3d(selected_value, vmaps, graph_id):
-    if not selected_value: raise PreventUpdate
-    plat_id, vset, z_axis = selected_value.split("::")
-    x_axis = graph_id["index"].split("::")[0]
-    y_axis = graph_id["index"].split("::")[1]
-    
-    x_is_coord, y_is_coord = False, False
-    x, y, z_history = [], [], []
-
-    vmap = vmaps.get(plat_id, {}).get("variables", {})
-    if x_axis in vmap and vmap[x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-        x_is_coord = True
-        x = vmap[x_axis].get("data", [])
-    if y_axis in vmap and vmap[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-        y_is_coord = True
-        y = vmap[y_axis].get("data", [])
-
-    url = f"http://{datastore_url}/variableset/data/get/"
-    query = {"variableset_id": f"{plat_id}::{vset}"}
+    default_fig = go.Figure(layout={"template": "simple_white"})
+    if not selected_value or not vmaps: return [default_fig, default_fig]
     
     try:
-        response = httpx.get(url, params=query, timeout=10.0)
-        if response.status_code == 200:
-            for doc in response.json().get("results", []):
-                z_data = doc.get("variables", {}).get(z_axis, {}).get("data")
-                if z_data is None: continue
-                
-                if isinstance(z_data, list):
-                    if not x_is_coord: x.extend(doc.get("variables", {}).get(x_axis, {}).get("data", []))
-                    if not y_is_coord: y.extend(doc.get("variables", {}).get(y_axis, {}).get("data", []))
-                    z_history.extend(z_data)
-                else:
-                    if not x_is_coord: x.append(doc.get("variables", {}).get(x_axis, {}).get("data"))
-                    if not y_is_coord: y.append(doc.get("variables", {}).get(y_axis, {}).get("data"))
-                    z_history.append(z_data)
-    except Exception: pass
-
-    if len(x) > 0 and isinstance(x[-1], list): x = x[-1]
-    if len(y) > 0 and isinstance(y[-1], list): y = y[-1]
-    if not z_history: raise PreventUpdate
+        plat_id, vset, z_axis = selected_value.split("::")
+        x_axis = graph_id["index"].split("::")[0]
+        y_axis = graph_id["index"].split("::")[1]
         
-    latest_z = z_history[-1] 
-    z = []
-    for yi in range(len(y)):
-        new_row = []
-        for xi in range(len(x)):
-            try: new_row.append(latest_z[xi][yi])
-            except IndexError: new_row.append(None)
-        z.append(new_row)
+        x_is_coord, y_is_coord = False, False
+        x, y, z_history = [], [], []
 
-    scatter = go.Figure(data=go.Surface(z=z, x=x, y=y))
-    scatter.update_scenes(xaxis_title_text=x_axis, yaxis_title_text=y_axis, zaxis_title_text=z_axis)
+        vmap = vmaps.get(plat_id, {}).get("variables", {})
+        if x_axis in vmap and vmap[x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+            x_is_coord = True
+            x = vmap[x_axis].get("data", [])
+        if y_axis in vmap and vmap[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+            y_is_coord = True
+            y = vmap[y_axis].get("data", [])
 
-    heatmap = go.Figure(data=go.Heatmap(z=z, x=x, y=y, type="heatmap", colorscale="Rainbow"))
-    heatmap.update_layout(xaxis={"title": x_axis}, yaxis={"title": y_axis})
-    if x_axis == "diameter": heatmap.update_xaxes(type="log")
+        url = f"http://{datastore_url}/variableset/data/get/"
+        query = {"variableset_id": f"{plat_id}::{vset}"}
+        
+        try:
+            response = httpx.get(url, params=query, timeout=10.0)
+            if response.status_code == 200:
+                for doc in response.json().get("results", []):
+                    z_data = doc.get("variables", {}).get(z_axis, {}).get("data")
+                    if z_data is None: continue
+                    
+                    if isinstance(z_data, list):
+                        if not x_is_coord: x.extend(doc.get("variables", {}).get(x_axis, {}).get("data", []))
+                        if not y_is_coord: y.extend(doc.get("variables", {}).get(y_axis, {}).get("data", []))
+                        z_history.extend(z_data)
+                    else:
+                        if not x_is_coord: x.append(doc.get("variables", {}).get(x_axis, {}).get("data"))
+                        if not y_is_coord: y.append(doc.get("variables", {}).get(y_axis, {}).get("data"))
+                        z_history.append(z_data)
+        except Exception: pass
 
-    return [scatter, heatmap]
+        if len(x) > 0 and isinstance(x[-1], list): x = x[-1]
+        if len(y) > 0 and isinstance(y[-1], list): y = y[-1]
+        if not z_history: return [default_fig, default_fig]
+            
+        latest_z = z_history[-1] 
+        z = []
+        for yi in range(len(y)):
+            new_row = []
+            for xi in range(len(x)):
+                try: new_row.append(latest_z[xi][yi])
+                except IndexError: new_row.append(None)
+            z.append(new_row)
+
+        scatter = go.Figure(data=go.Surface(z=z, x=x, y=y))
+        scatter.update_scenes(xaxis_title_text=x_axis, yaxis_title_text=y_axis, zaxis_title_text=z_axis)
+
+        heatmap = go.Figure(data=go.Heatmap(z=z, x=x, y=y, type="heatmap", colorscale="Rainbow"))
+        heatmap.update_layout(xaxis={"title": x_axis}, yaxis={"title": y_axis})
+        if x_axis == "diameter": heatmap.update_xaxes(type="log")
+
+        return [scatter, heatmap]
+    except Exception: return [default_fig, default_fig]
 
 
 @app.callback(
