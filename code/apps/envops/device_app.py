@@ -56,7 +56,9 @@ def get_device_data(device_id: str, device_type: str="sensor"):
     try:
         response = httpx.get(url, params=query, timeout=30.0)
         results = response.json()
-        if "results" in results and results["results"]: return results["results"]
+        if "results" in results and results["results"]: 
+            L.info(f"[DEVICE HISTORY] Successfully fetched {len(results['results'])} historical records for {device_id}")
+            return results["results"]
     except Exception as e:
         L.error(f"get_device_data error: {e}")
     return []
@@ -181,8 +183,7 @@ def build_graphs(layout_options):
 app.layout = create_unified_shell(html.Div([
     dcc.Location(id="device-url", refresh=False),
     
-    # 🟢 HOISTED DATA PIPELINE: By keeping these stores and the WebSocket outside the dynamic UI container,
-    # we guarantee they are never destroyed/unmounted when you switch devices, preventing orphaned callbacks.
+    # 🟢 HOISTED DATA PIPELINE
     dcc.Store(id="device-meta", data={}),
     dcc.Store(id="device-definition", data={}),
     dcc.Store(id="calibration-vars", data=[]),
@@ -190,7 +191,9 @@ app.layout = create_unified_shell(html.Div([
     dcc.Store(id="device-data-buffer", data={}),
     dcc.Store(id="device-settings-buffer", data={}),
     dcc.Store(id="last-time-store", data=None),
-    WebSocket(id="ws-device-instance", url=""),
+    
+    # 🟢 FIX: The WebSocket is injected into this Div so it mounts fresh with the right URL.
+    html.Div(id="device-ws-container", style={"display": "none"}),
     html.Div(id="ws-send-instance-buffer", style={"display": "none"}),
     
     html.Div(id="device-page-content") 
@@ -242,25 +245,20 @@ def render_global_devices(pathname):
         Output("device-meta", "data"),
         Output("device-definition", "data"),
         Output("calibration-vars", "data"),
-        Output("ws-device-instance", "url"),
+        Output("device-ws-container", "children"), # 🟢 FIX: Mounts a fresh WebSocket component
         Output("ws-send-instance-buffer", "children", allow_duplicate=True),
         Output("device-data-buffer", "data"),
         Output("device-settings-buffer", "data"),
         Output("last-time-store", "data")
     ],
     Input("device-selector", "value"),
-    prevent_initial_call=True # 🟢 FIX: Changed this from False to True
+    prevent_initial_call=True
 )
 def generate_device_ui(dropdown_val):
-    """
-    🟢 MASTER SPA CONTROLLER:
-    When the user selects a new device, we push the fresh UI to the container, 
-    but simultaneously push the new routing variables to the global data pipeline above.
-    """
     if not dropdown_val:
         return (
             html.Div(html.H5("Please select an instrument from the dropdown to load its UI and variable plots.", className="text-muted text-center mt-5")),
-            {}, {}, [], "", no_update, {}, {}, None
+            {}, {}, [], [], no_update, {}, {}, None
         )
         
     parts = dropdown_val.split("::")
@@ -348,6 +346,9 @@ def generate_device_ui(dropdown_val):
     ws_protocol = "wss://" if str(config.ws_use_tls).lower() == "true" else "ws://"
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
     
+    ws_component = WebSocket(id="ws-device-instance", url=f"{ws_base}/ws/{topic_type}/{device_id}")
+    L.info(f"[DEVICE UI] Connecting WebSocket to: {ws_component.url}")
+    
     ui_container = html.Div([
         dbc.Accordion(build_tables(layout_options), id="device-data-accordion", className="mb-4", start_collapsed=True),
         dbc.Accordion(build_graphs(layout_options), id="device-plot-accordion", className="mb-4"),
@@ -359,7 +360,7 @@ def generate_device_ui(dropdown_val):
         device_meta, 
         device_definition, 
         calibration_vars, 
-        f"{ws_base}/ws/{topic_type}/{device_id}", 
+        ws_component, 
         json.dumps(initial_request), 
         {}, {}, None
     )
@@ -383,18 +384,22 @@ def update_device_buffers(event, last_time):
                 current_time = event_data["data-update"].get("variables", {}).get("time", {}).get("data")
                 if isinstance(current_time, list) and len(current_time) > 0: current_time = current_time[-1]
                 
+                # 🟢 FIX: Ensure current_time actually exists before attempting to deduplicate it
                 if current_time and current_time == last_time:
-                    # Deduplicate 1-sec ping preventing table/graph thrashing
                     pass 
                 else:
                     data_out = event_data["data-update"]
                     new_last_time = current_time or last_time
+                    L.info(f"[DEVICE LIVE] Data Update Captured for time: {current_time}")
 
             if "settings-update" in event_data and event_data["settings-update"]: 
                 settings_out = event_data["settings-update"]
 
             return [data_out, settings_out, new_last_time]
-        except Exception: pass
+        except Exception as e: 
+            L.error(f"[DEVICE LIVE] WebSocket message parsing error: {e}")
+            pass
+            
     return [no_update, no_update, no_update]
 
 
@@ -428,7 +433,9 @@ def select_graph_1d(y_axis, device_meta, graph_axes, device_definition, graph_id
         except Exception: pass
 
         return go.Figure(data=go.Scatter(x=x, y=y, type="scatter", mode="lines+markers"), layout={"xaxis": {"title": "Time"}, "yaxis": {"title": f"{y_axis} {units}".strip()}, "template": "simple_white"})
-    except Exception: return default_fig
+    except Exception as e: 
+        L.error(f"[DEVICE PLOT] 1D render error: {e}")
+        return default_fig
 
 
 @app.callback(
