@@ -249,7 +249,7 @@ def render_global_devices(pathname):
         Output("last-time-store", "data")
     ],
     Input("device-selector", "value"),
-    prevent_initial_call=False
+    prevent_initial_call=True # 🟢 FIX: Changed this from False to True
 )
 def generate_device_ui(dropdown_val):
     """
