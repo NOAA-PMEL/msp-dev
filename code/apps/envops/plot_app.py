@@ -19,6 +19,11 @@ register_sidebar_callbacks(app)
 
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
+# 🟢 FIX: Corrected the WebSocket Path to match your FastAPI Mount!
+ws_protocol = "wss://" if str(config.ws_use_tls).lower() == "true" else "ws://"
+ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/msp/dashboardtest"
+
+
 def get_short_id(full_id: str) -> str:
     parts = full_id.split("::")
     if len(parts) >= 4: return f"{parts[1]}::{parts[3]}"
@@ -82,7 +87,9 @@ def render_deployment_plots(deployment_id):
     L.info(f"🚨 SSR BUILD: Building plot page for deployment {deployment_id}")
     all_deployments = get_registry_data("deployment") or []
     host_dep = next((d for d in all_deployments if d.get("metadata", {}).get("name") == deployment_id), None)
-    if not host_dep: return dbc.Alert(f"Deployment {deployment_id} not found.", color="warning", className="m-4")
+    
+    if not host_dep: 
+        return dbc.Alert(f"Deployment {deployment_id} not found.", color="warning", className="m-4")
         
     host_data = host_dep.get("data", {})
     host_plat_ref = host_data.get("platform_ref", "")
@@ -148,12 +155,10 @@ def render_deployment_plots(deployment_id):
         dbc.Col([dbc.Button([html.I(className="bi bi-sliders me-2"), "Back to Ops Dashboard"], href=f"/envds/envops/ops/deployment/{deployment_id}", color="dark", className="fw-bold shadow-sm")], width="auto", className="text-end align-self-center")
     ], className="mb-4 align-items-center border-bottom pb-3")
 
-    ws_protocol = "wss://" if str(config.ws_use_tls).lower() == "true" else "ws://"
-    ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
-
     ws_connections = [WebSocket(id={"type": "ws-variableset", "index": short_id}, url=f"{ws_base}/ws/variableset/{short_id}") for short_id in vset_defs.keys()]
     
-    return html.Div([
+    # 🟢 FIX: Wrap the layout in a Div with a dynamic `key`. This forces React to unmount the old WebSockets cleanly!
+    return html.Div(key=deployment_id, children=[
         html.Div(ws_connections),
         dcc.Store(id="plot-vset-definitions", data=vset_defs),
         dcc.Store(id="plot-data-buffer", data={}),
@@ -162,17 +167,20 @@ def render_deployment_plots(deployment_id):
     ], className="container-fluid mt-3")
 
 
-# --- SSR Layout Function ---
+# --- Pure SSR Layout Router ---
+# 🟢 FIX: Completely removed the dcc.Location and `@app.callback` router. 
+# Dash will natively route using flask.request on page load.
 def serve_layout():
     """Builds the UI on the server based on the active URL."""
     try:
         pathname = flask.request.path
         if "/deployment/" in pathname:
-            deployment_id = pathname.split("/")[-1]
+            deployment_id = pathname.split("/deployment/")[-1]
             return create_unified_shell(render_deployment_plots(deployment_id), active_item="plots")
         return create_unified_shell(dbc.Alert("Select a deployment from the sidebar.", color="info", className="m-4"), active_item="plots")
-    except Exception:
-        return create_unified_shell(dbc.Alert("Select a deployment from the sidebar.", color="info", className="m-4"), active_item="plots")
+    except Exception as e:
+        L.error(f"Error serving layout: {traceback.format_exc()}")
+        return create_unified_shell(dbc.Alert(f"Fatal Error: {e}", color="danger", className="m-4"), active_item="plots")
 
 app.layout = serve_layout
 
@@ -265,8 +273,7 @@ def init_graph_2d(selected_value, vset_defs, graph_id):
         short_id = f"{parts[0]}::{parts[1]}"
         z_axis = parts[2]
         use_log = (y_axis == "diameter")
-        x, y, orig_z = [], [], []
-        y_is_coord = False
+        x, y, orig_z = [], [], y_is_coord = False
         vmap = vset_defs.get(short_id, {}).get("variables", {})
         if y_axis in vmap and vmap[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
             y_is_coord = True

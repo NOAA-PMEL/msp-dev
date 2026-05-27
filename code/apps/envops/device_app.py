@@ -9,7 +9,6 @@ import logging
 import json
 import httpx
 import traceback
-import flask
 
 from utils import get_registry_data, config, create_unified_shell, register_sidebar_callbacks
 
@@ -19,6 +18,11 @@ app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/devices/", rou
 register_sidebar_callbacks(app)
 
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
+
+# 🟢 FIX: Corrected the WebSocket Path to match your FastAPI Mount!
+ws_protocol = "wss://" if str(config.ws_use_tls).lower() == "true" else "ws://"
+ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/msp/dashboardtest"
+
 
 # --- Route-Splitting Helper Functions ---
 def get_all_devices():
@@ -33,7 +37,7 @@ def get_all_devices():
             for item in items:
                 item["_device_type"] = d_type 
                 devices.append(item)
-        except Exception as e: pass
+        except Exception: pass
     return devices
 
 def get_device_data(device_id: str, device_type: str="sensor"):
@@ -74,7 +78,8 @@ def get_device_definition(device_id: str, device_type: str="sensor"):
         except Exception: pass
     return {}
 
-# --- Dynamic Builders (Matching sensor.py) ---
+
+# --- Dynamic Builders ---
 def build_tables(layout_options):
     table_list = []
     for ltype, dims in layout_options.items():
@@ -107,33 +112,29 @@ def build_graph_1d(dropdown_list, xaxis="time"):
 
 def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
     content = dbc.Row([
-        dbc.Button("Submit", {"type": "graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
-        dbc.Label("z-axis min:"), dbc.Col(dbc.Input(type="number", id={"type": "graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"})),
-        dbc.Label("z-axis max:"), dbc.Col(dbc.Input(type="number", id={"type": "graph-2d-z-axis-max", "index": f"{xaxis}::{yaxis}"})),
+        dbc.Button("Submit Range", {"type": "graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}, color="primary", className="mb-2"),
+        dbc.Label("z-axis min:", className="small text-muted fw-bold"), dbc.Col(dbc.Input(type="number", id={"type": "graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"}, className="mb-2")),
+        dbc.Label("z-axis max:", className="small text-muted fw-bold"), dbc.Col(dbc.Input(type="number", id={"type": "graph-2d-z-axis-max", "index": f"{xaxis}::{yaxis}"})),
     ])
-    axes_settings = dbc.Accordion([dbc.AccordionItem([dbc.Card(children=[content])], title="Axes Settings")], start_collapsed=True)
+    axes_settings = dbc.Accordion([dbc.AccordionItem([dbc.Card(children=[content], className="border-0 shadow-sm p-3")], title="Axes Settings")], start_collapsed=True, className="mb-3")
     return dbc.Card([
         dbc.CardHeader([dcc.Dropdown(id={"type": "graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="")]),
-        dbc.Row([
+        dbc.CardBody([
             axes_settings,
-            dbc.Col(dcc.Graph(id={"type": "graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(layout={"template": "simple_white"}), style={"height": 500})),
-            dbc.Col(dcc.Graph(id={"type": "graph-2d-line", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(layout={"template": "simple_white"}), style={"height": 500})),
+            dbc.Row([
+                dbc.Col(dcc.Graph(id={"type": "graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(layout={"template": "simple_white"}), style={"height": 500})),
+                dbc.Col(dcc.Graph(id={"type": "graph-2d-line", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(layout={"template": "simple_white"}), style={"height": 500})),
+            ])
         ])
-    ])
+    ], className="shadow-sm border-0")
 
 def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
-    content = dbc.Row([
-        dbc.Button("Submit", {"type": "graph-3d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
-        dbc.Label("z-axis min:"),
-    ])
-    axes_settings = dbc.Accordion([dbc.AccordionItem([dbc.Card(children=[content])], title="Axes Settings")], start_collapsed=True)
     return dbc.Card([
         dbc.CardHeader([dcc.Dropdown(id={"type": "graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="")]),
         dbc.Row([
-            axes_settings,
             dbc.Col(dcc.Graph(id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(layout={"template": "simple_white"}), style={"height": 500})),
             dbc.Col(dcc.Graph(id={"type": "graph-3d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(layout={"template": "simple_white"}), style={"height": 500})),
-        ])
+        ]),
     ])
 
 def build_graphs(layout_options):
@@ -149,7 +150,8 @@ def build_graphs(layout_options):
                 graph_list.append(dbc.AccordionItem([dbc.Row([build_graph_3d(options["variable-list"], xaxis=axes[0], yaxis=axes[1])])], title=f"Plots 3-D ({axes[0]}, {axes[1]})"))
     return graph_list
 
-# --- Core View Renderers (Server Side Rendered) ---
+
+# --- Core View Renderers ---
 def render_registry_view():
     devices = get_all_devices()
     row_data = []
@@ -160,7 +162,6 @@ def render_registry_view():
         sn = d.get("serial_number", d.get("serial_id", "unknown"))
         dev_id = f"{dtype}::{make}::{model}::{sn}"
         link = f"[{make} {model} ({sn})](/envds/envops/devices/view/{dev_id})"
-        
         row_data.append({"device": link, "type": dtype.capitalize(), "make": make, "model": model, "serial_number": sn})
 
     columns = [
@@ -179,7 +180,7 @@ def render_registry_view():
 
 
 def render_device_detail(device_uri):
-    L.info(f"🚨 SSR BUILD: Generating layout for {device_uri}")
+    L.info(f"🚨 ROUTER: Building fresh page for device -> {device_uri}")
     parts = device_uri.split("::")
     if len(parts) != 4: return dbc.Alert("Invalid Device URI", color="danger")
     
@@ -259,10 +260,8 @@ def render_device_detail(device_uri):
     id_field = "controllerid" if device_type == "controller" else "deviceid"
     initial_request = {"source": f"envds.{config.daq_id}.dashboard", "data": {}, "destpath": f"envds/{topic_type}/settings/request", id_field: device_id}
 
-    ws_protocol = "wss://" if str(config.ws_use_tls).lower() == "true" else "ws://"
-    ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
-
-    return html.Div([
+    # 🟢 FIX: Wrap the layout in a Div with a dynamic `key`. This forces React to unmount the old WebSockets and Stores cleanly!
+    return html.Div(key=device_uri, children=[
         dbc.Row([
             dbc.Col(html.H2(f"Diagnostics: {device_id}", className="fw-bold mb-0")),
             dbc.Col(dbc.Button([html.I(className="bi bi-arrow-left me-2"), "Back to Registry"], href="/envds/envops/devices/", color="dark", outline=True), width="auto")
@@ -284,20 +283,25 @@ def render_device_detail(device_uri):
     ], className="container-fluid mt-3")
 
 
-# --- SSR Layout Function ---
-def serve_layout():
-    """Builds the UI on the server based on the active URL."""
-    try:
-        pathname = flask.request.path
-        if "/view/" in pathname:
-            device_uri = pathname.split("/view/")[-1]
-            return create_unified_shell(render_device_detail(device_uri), active_item="devices")
-        return create_unified_shell(render_registry_view(), active_item="devices")
-    except Exception:
-        # Fallback if flask request context isn't available (e.g. background validation)
-        return create_unified_shell(render_registry_view(), active_item="devices")
+# --- Main App Layout ---
+app.layout = create_unified_shell(html.Div([
+    dcc.Location(id="device-url", refresh=False),
+    html.Div(id="device-page-content") 
+]), active_item="devices")
 
-app.layout = serve_layout
+
+@app.callback(Output("device-page-content", "children"), Input("device-url", "pathname"))
+def display_page(pathname):
+    """🟢 FIX: Classic SPA Router. Wraps errors in an Alert instead of silently failing."""
+    if not pathname: return render_registry_view()
+    if "/view/" in pathname:
+        device_uri = pathname.split("/view/")[-1]
+        try:
+            return render_device_detail(device_uri)
+        except Exception as e:
+            L.error(f"Error rendering device: {traceback.format_exc()}")
+            return dbc.Alert(f"Fatal Layout Error: {e}", color="danger", className="m-4")
+    return render_registry_view()
 
 
 # --- Sub-Callbacks (Isolated per page load) ---
@@ -681,9 +685,11 @@ def update_table_1d(device_data, col_defs_list):
         for col in col_defs:
             name = col["field"]
             if name in device_data.get("variables", {}):
-                data[name] = device_data["variables"][name].get("data", "")
+                val = device_data["variables"][name].get("data", "")
+                if val == "": val = None
+                data[name] = val
             else:
-                data[name] = ""
+                data[name] = None
                 
         transactions.append({"add": [data], "addIndex": 0})
         
