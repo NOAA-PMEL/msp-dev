@@ -9,12 +9,12 @@ import logging
 import json
 import httpx
 import traceback
+import flask
 
 from utils import get_registry_data, config, create_unified_shell, register_sidebar_callbacks
 
 L = logging.getLogger(__name__)
 
-# --- Initialize Isolated Dash App ---
 app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/devices/", routes_pathname_prefix="/", suppress_callback_exceptions=True)
 register_sidebar_callbacks(app)
 
@@ -33,8 +33,7 @@ def get_all_devices():
             for item in items:
                 item["_device_type"] = d_type 
                 devices.append(item)
-        except Exception as e:
-            L.error(f"get_all_devices error for {d_type}: {e}")
+        except Exception as e: pass
     return devices
 
 def get_device_data(device_id: str, device_type: str="sensor"):
@@ -44,10 +43,8 @@ def get_device_data(device_id: str, device_type: str="sensor"):
     try:
         response = httpx.get(url, params=query, timeout=30.0)
         results = response.json()
-        if "results" in results and results["results"]: 
-            return results["results"]
-    except Exception as e:
-        L.error(f"get_device_data error: {e}")
+        if "results" in results and results["results"]: return results["results"]
+    except Exception: pass
     return []
 
 def get_device_instance(device_id: str, device_type: str="sensor"):
@@ -58,8 +55,7 @@ def get_device_instance(device_id: str, device_type: str="sensor"):
         response = httpx.get(url, params=query, timeout=10.0)
         results = response.json()
         if "results" in results and results["results"]: return results["results"][0]
-    except Exception as e:
-        L.error(f"get_device_instance error: {e}")
+    except Exception: pass
     return {}
 
 def get_device_definition(device_id: str, device_type: str="sensor"):
@@ -68,22 +64,17 @@ def get_device_definition(device_id: str, device_type: str="sensor"):
         try:
             version = device.get("version")
             if not version: return {}
-            
             device_definition_id = f"{device['make']}::{device['model']}::{version}"
             path = "controller-definition" if device_type == "controller" else "device-definition"
             query = {"controller_definition_id": device_definition_id} if device_type == "controller" else {"device_type": device_type, "device_definition_id": device_definition_id}
             url = f"http://{datastore_url}/{path}/registry/get/"
-            
             response = httpx.get(url, params=query, timeout=10.0)
             results = response.json()
-            if "results" in results and results["results"]: 
-                return results["results"][0]
-        except Exception as e:
-            L.error(f"get_device_definition error: {e}")
+            if "results" in results and results["results"]: return results["results"][0]
+        except Exception: pass
     return {}
 
-
-# --- Dynamic Builders (Matching sensor.py Exactly) ---
+# --- Dynamic Builders (Matching sensor.py) ---
 def build_tables(layout_options):
     table_list = []
     for ltype, dims in layout_options.items():
@@ -102,20 +93,16 @@ def build_tables(layout_options):
                 ], title=title))
             elif ltype == "layout-1d":
                 title = f"Data 1-D ({dim})"
-                table_list.append(dbc.AccordionItem([
-                    dag.AgGrid(id={"type": "data-table-1d", "index": dim}, rowData=[], columnDefs=options["table-column-defs"], columnSizeOptions="autoSize")
-                ], title=title))
+                table_list.append(dbc.AccordionItem([dag.AgGrid(id={"type": "data-table-1d", "index": dim}, rowData=[], columnDefs=options["table-column-defs"], columnSizeOptions="autoSize")], title=title))
             elif ltype == "layout-2d":
                 title = f"Data 2-D (time, {dim})"
-                table_list.append(dbc.AccordionItem([
-                    dag.AgGrid(id={"type": "data-table-2d", "index": f"time::{dim}"}, rowData=[], columnDefs=options["table-column-defs"], columnSizeOptions="autoSize")
-                ], title=title))
+                table_list.append(dbc.AccordionItem([dag.AgGrid(id={"type": "data-table-2d", "index": f"time::{dim}"}, rowData=[], columnDefs=options["table-column-defs"], columnSizeOptions="autoSize")], title=title))
     return table_list
 
 def build_graph_1d(dropdown_list, xaxis="time"):
     return dbc.Card([
         dbc.CardHeader([dcc.Dropdown(id={"type": "sensor-graph-1d-dropdown", "index": xaxis}, options=dropdown_list, value="")]),
-        dcc.Graph(id={"type": "sensor-graph-1d", "index": xaxis}, figure=go.Figure(data=go.Scatter(x=[], y=[], type="scatter")), style={"height": 300}),
+        dcc.Graph(id={"type": "sensor-graph-1d", "index": xaxis}, figure=go.Figure(layout={"template": "simple_white"}), style={"height": 300}),
     ])
 
 def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
@@ -129,8 +116,8 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
         dbc.CardHeader([dcc.Dropdown(id={"type": "graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="")]),
         dbc.Row([
             axes_settings,
-            dbc.Col(dcc.Graph(id={"type": "graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
-            dbc.Col(dcc.Graph(id={"type": "graph-2d-line", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
+            dbc.Col(dcc.Graph(id={"type": "graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(layout={"template": "simple_white"}), style={"height": 500})),
+            dbc.Col(dcc.Graph(id={"type": "graph-2d-line", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(layout={"template": "simple_white"}), style={"height": 500})),
         ])
     ])
 
@@ -144,8 +131,8 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
         dbc.CardHeader([dcc.Dropdown(id={"type": "graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="")]),
         dbc.Row([
             axes_settings,
-            dbc.Col(dcc.Graph(id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
-            dbc.Col(dcc.Graph(id={"type": "graph-3d-heatmap", "index": f"{xaxis}::{yaxis}"}, style={"height": 500})),
+            dbc.Col(dcc.Graph(id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(layout={"template": "simple_white"}), style={"height": 500})),
+            dbc.Col(dcc.Graph(id={"type": "graph-3d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(layout={"template": "simple_white"}), style={"height": 500})),
         ])
     ])
 
@@ -162,28 +149,19 @@ def build_graphs(layout_options):
                 graph_list.append(dbc.AccordionItem([dbc.Row([build_graph_3d(options["variable-list"], xaxis=axes[0], yaxis=axes[1])])], title=f"Plots 3-D ({axes[0]}, {axes[1]})"))
     return graph_list
 
-
-# --- Core View Renderers ---
+# --- Core View Renderers (Server Side Rendered) ---
 def render_registry_view():
     devices = get_all_devices()
     row_data = []
-    
     for d in devices:
         dtype = d.get("_device_type", "sensor")
         make = d.get("make", "unknown")
         model = d.get("model", "unknown")
         sn = d.get("serial_number", d.get("serial_id", "unknown"))
-        
         dev_id = f"{dtype}::{make}::{model}::{sn}"
         link = f"[{make} {model} ({sn})](/envds/envops/devices/view/{dev_id})"
         
-        row_data.append({
-            "device": link,
-            "type": dtype.capitalize(),
-            "make": make,
-            "model": model,
-            "serial_number": sn
-        })
+        row_data.append({"device": link, "type": dtype.capitalize(), "make": make, "model": model, "serial_number": sn})
 
     columns = [
         {"field": "device", "headerName": "Device Link", "cellRenderer": "markdown", "flex": 2},
@@ -196,26 +174,18 @@ def render_registry_view():
     return html.Div([
         html.H2([html.I(className="bi bi-cpu me-2"), "Fleet Device Registry"], className="fw-bold mb-1"),
         html.P("Select a device link below to open its dedicated dashboard.", className="text-muted mb-4"),
-        dag.AgGrid(
-            id="registry-table",
-            rowData=row_data,
-            columnDefs=columns,
-            columnSizeOptions="responsiveSizeToFit",
-            dashGridOptions={"rowHeight": 40},
-            style={"height": "75vh"}
-        )
+        dag.AgGrid(rowData=row_data, columnDefs=columns, columnSizeOptions="responsiveSizeToFit", dashGridOptions={"rowHeight": 40}, style={"height": "75vh"})
     ], className="container-fluid mt-3")
 
 
 def render_device_detail(device_uri):
-    L.info(f"🚨 DEBUG UI: Building fresh page for device -> {device_uri}")
+    L.info(f"🚨 SSR BUILD: Generating layout for {device_uri}")
     parts = device_uri.split("::")
     if len(parts) != 4: return dbc.Alert("Invalid Device URI", color="danger")
     
     device_type = parts[0]
     device_id = f"{parts[1]}::{parts[2]}::{parts[3]}"
     device_meta = {"device_id": device_id, "device_type": device_type, "make": parts[1], "model": parts[2], "serial_number": parts[3]}
-    
     device_definition = get_device_definition(device_id=device_id, device_type=device_type)
 
     layout_options = {
@@ -236,28 +206,20 @@ def render_device_detail(device_uri):
             if var_type == "setting":
                 long_name = var.get("attributes", {}).get("long_name", {}).get("data", name)
                 control_metadata = {
-                    "parameter": name, 
-                    "description": long_name, 
-                    "actual_value": "", 
-                    "requested_value": "",
-                    "type": dtype,
+                    "parameter": name, "description": long_name, "actual_value": "", "requested_value": "", "type": dtype,
                     "allowed_values": [x.strip() for x in (var.get("attributes", {}).get("allowed_values", {}).get("data", "")).split(",")] if var.get("attributes", {}).get("allowed_values", {}).get("data") else None,
                     "min": var.get("attributes", {}).get("valid_min", {}).get("data", None),
                     "max": var.get("attributes", {}).get("valid_max", {}).get("data", None),
                     "step": var.get("attributes", {}).get("step_increment", {}).get("data", None)
                 }
                 layout_options["layout-settings"]["time"]["row-data-skeletons"].append(control_metadata)
-                
             elif var_type == "calibration":
                 calibration_vars.append(name)
-                
             elif var_type == "main" or "shape" in var:
                 if "shape" not in var or "time" not in var["shape"]: continue
-                
                 long_name = var.get("attributes", {}).get("long_name", {}).get("data", name)
                 is_numeric = any(x in dtype for x in ["float", "double", "int", "number"])
                 data_type = "number" if is_numeric else "boolean" if dtype == "bool" else "text"
-
                 cd = {"field": name, "headerName": long_name, "filter": False, "cellDataType": data_type}
 
                 if multi_dim and len(var["shape"]) == 2:
@@ -265,18 +227,15 @@ def render_device_detail(device_uri):
                     dim_2d = [d for d in var["shape"] if d != "time"][0]
                     if dim_2d not in layout_options["layout-2d"]:
                         layout_options["layout-2d"][dim_2d] = {"table-column-defs": [], "variable-list": []}
-                        
                         dln = dim_2d
                         try: dln = device_definition["attributes"][dim_2d]["long_name"]["data"]
                         except KeyError: pass
-                        
                         dcd_data_type = "text"
                         try:
                             d_dtype = str(device_definition["variables"][dim_2d]["type"]).lower()
                             if any(x in d_dtype for x in ["float", "double", "int", "number"]): dcd_data_type = "number"
                             elif d_dtype in ["bool"]: dcd_data_type = "boolean"
                         except KeyError: pass
-                        
                         layout_options["layout-2d"][dim_2d]["table-column-defs"].append({"field": dim_2d, "headerName": dln, "filter": False, "cellDataType": dcd_data_type, "pinned": "left"})
                     layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
                 elif multi_dim and len(var["shape"]) == 3:
@@ -296,14 +255,9 @@ def render_device_detail(device_uri):
                         if cd["cellDataType"] != "number": continue
                         layout_options[ltype][dim]["variable-list"].append({"label": cd["field"], "value": cd["field"]})
 
-
     topic_type = "sensor" if device_type == "operational" else device_type
     id_field = "controllerid" if device_type == "controller" else "deviceid"
-    initial_request = {
-        "source": f"envds.{config.daq_id}.dashboard",
-        "data": {}, "destpath": f"envds/{topic_type}/settings/request", 
-        id_field: device_id
-    }
+    initial_request = {"source": f"envds.{config.daq_id}.dashboard", "data": {}, "destpath": f"envds/{topic_type}/settings/request", id_field: device_id}
 
     ws_protocol = "wss://" if str(config.ws_use_tls).lower() == "true" else "ws://"
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
@@ -326,56 +280,44 @@ def render_device_detail(device_uri):
         dcc.Store(id="device-meta", data=device_meta),
         dcc.Store(id="graph-axes", data={}),
         dcc.Store(id="device-data-buffer", data={}),
-        dcc.Store(id="device-settings-buffer", data={}),
-        dcc.Store(id="last-time-store", data=None)
+        dcc.Store(id="device-settings-buffer", data={})
     ], className="container-fluid mt-3")
 
 
-# --- Main App Layout & Router ---
-app.layout = create_unified_shell(html.Div([
-    dcc.Location(id="device-url", refresh=False),
-    html.Div(id="device-page-content") 
-]), active_item="devices")
+# --- SSR Layout Function ---
+def serve_layout():
+    """Builds the UI on the server based on the active URL."""
+    try:
+        pathname = flask.request.path
+        if "/view/" in pathname:
+            device_uri = pathname.split("/view/")[-1]
+            return create_unified_shell(render_device_detail(device_uri), active_item="devices")
+        return create_unified_shell(render_registry_view(), active_item="devices")
+    except Exception:
+        # Fallback if flask request context isn't available (e.g. background validation)
+        return create_unified_shell(render_registry_view(), active_item="devices")
 
-@app.callback(
-    Output("device-page-content", "children"),
-    Input("device-url", "pathname")
-)
-def router(pathname):
-    if pathname and "/view/" in pathname:
-        device_uri = pathname.split("/view/")[-1]
-        return render_device_detail(device_uri)
-    return render_registry_view()
+app.layout = serve_layout
 
 
 # --- Sub-Callbacks (Isolated per page load) ---
-
 @app.callback(
     Output("device-data-buffer", "data"), Output("device-settings-buffer", "data"),
     Input("ws-device-instance", "message")
 )
 def update_device_buffers(event):
-    L.debug("update_device_buffers", extra={"db_event": event})
     if event and "data" in event:
         try:
             event_data = json.loads(event["data"])
-            L.debug("update_device_buffers", extra={"db_event": event})
-            data_out = no_update
-            settings_out = no_update
-
+            data_out, settings_out = no_update, no_update
             if "data-update" in event_data and event_data["data-update"]: 
                 data_out = event_data["data-update"]
-                L.info(f"🚨 DEBUG DATA STREAM: Valid telemetry received. Keys in payload: {list(data_out.get('variables', {}).keys())}")
-
             if "settings-update" in event_data and event_data["settings-update"]: 
                 settings_out = event_data["settings-update"]
-
             return [data_out, settings_out]
-        except Exception as e: 
-            L.error(f"[DEVICE LIVE] WebSocket message parsing error: {e}")
-            pass
-            
+        except Exception: pass
     return [no_update, no_update]
+
 
 @app.callback(
     Output({"type": "sensor-graph-1d", "index": MATCH}, "figure"),
@@ -383,9 +325,8 @@ def update_device_buffers(event):
     [State("device-meta", "data"), State("graph-axes", "data"), State("device-definition", "data"), State({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "id")]
 )
 def select_graph_1d(y_axis, device_meta, graph_axes, device_definition, graph_id):
-    default_fig = go.Figure(layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}})
+    default_fig = go.Figure(layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}, "template": "simple_white"})
     if not y_axis or not device_meta: return default_fig
-
     try:
         x, y = [], []
         results = get_device_data(device_id=device_meta.get("device_id"), device_type=device_meta.get("device_type", "sensor"))
@@ -399,12 +340,10 @@ def select_graph_1d(y_axis, device_meta, graph_axes, device_definition, graph_id
                     if isinstance(y_data, list): y.extend(y_data)
                     else: y.append(y_data)
                 except KeyError: pass
-
         units = ""
         try: units = f'({device_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
         except Exception: pass
-
-        return go.Figure(data=go.Scatter(x=x, y=y, type="scatter", mode="lines+markers"), layout={"xaxis": {"title": "Time"}, "yaxis": {"title": f"{y_axis} {units}".strip()}})
+        return go.Figure(data=go.Scatter(x=x, y=y, type="scatter", mode="lines+markers"), layout={"xaxis": {"title": "Time"}, "yaxis": {"title": f"{y_axis} {units}".strip()}, "template": "simple_white"})
     except Exception: return default_fig
 
 
@@ -446,8 +385,11 @@ def update_graph_1d(device_data, y_axis_list):
     prevent_initial_call=True,
 )
 def select_graph_2d(z_axis, device_meta, device_definition, graph_id):
-    if not z_axis or not device_meta: raise PreventUpdate
     y_axis = graph_id["index"].split("::")[1]
+    default_heatmap = go.Figure(layout={"template": "simple_white", "xaxis": {"title": "Time"}, "yaxis": {"title": y_axis}})
+    default_scatter = go.Figure(layout={"template": "simple_white", "xaxis": {"title": y_axis}, "yaxis": {"title": "Value"}})
+
+    if not z_axis or not device_meta: return [default_heatmap, default_scatter]
     use_log = (y_axis == "diameter")
     
     x, y, orig_z = [], [], []
@@ -491,8 +433,8 @@ def select_graph_2d(z_axis, device_meta, device_definition, graph_id):
     try: z_units = f'({device_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
     except Exception: pass
 
-    heatmap = go.Figure(data=go.Heatmap(x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"), layout={"xaxis": {"title": "Time"}, "yaxis": {"title": f"{y_axis} {y_units}".strip()}})
-    scatter = go.Figure(data=[{"x": y, "y": orig_z[-1] if len(orig_z) > 0 else [], "type": "scatter"}], layout={"xaxis": {"title": f"{y_axis} {y_units}".strip()}, "yaxis": {"title": f"{z_axis} {z_units}".strip()}, "title": str(x[-1]) if len(x) > 0 else ""})
+    heatmap = go.Figure(data=go.Heatmap(x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"), layout={"template": "simple_white", "xaxis": {"title": "Time"}, "yaxis": {"title": f"{y_axis} {y_units}".strip()}})
+    scatter = go.Figure(data=[{"x": y, "y": orig_z[-1] if len(orig_z) > 0 else [], "type": "scatter"}], layout={"template": "simple_white", "xaxis": {"title": f"{y_axis} {y_units}".strip()}, "yaxis": {"title": f"{z_axis} {z_units}".strip()}, "title": str(x[-1]) if len(x) > 0 else ""})
 
     if use_log:
         heatmap.update_yaxes(type="log")
@@ -608,9 +550,10 @@ def update_graph_2d_scatter(device_data, z_axis_list, device_definition, current
     prevent_initial_call=True,
 )
 def select_graph_3d(z_axis, device_meta, device_definition, graph_id):
-    if not z_axis or not device_meta: raise PreventUpdate
     x_axis = graph_id["index"].split("::")[0]
     y_axis = graph_id["index"].split("::")[1]
+    default_fig = go.Figure(layout={"template": "simple_white"})
+    if not z_axis or not device_meta: return [default_fig, default_fig]
     
     x_is_coord, y_is_coord = False, False
     x, y, z_history = [], [], []
@@ -642,7 +585,7 @@ def select_graph_3d(z_axis, device_meta, device_definition, graph_id):
 
     if len(x) > 0 and isinstance(x[-1], list): x = x[-1]
     if len(y) > 0 and isinstance(y[-1], list): y = y[-1]
-    if not z_history: raise PreventUpdate
+    if not z_history: return [default_fig, default_fig]
         
     latest_z = z_history[-1] 
     z = []
