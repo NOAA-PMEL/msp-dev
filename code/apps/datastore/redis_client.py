@@ -260,7 +260,7 @@ class RedisClient(DBClient):
         ids = []
         try:
             self.connect()
-            async for key in self.client.scan_iter(f"{prefix}*"):
+            async for key in self.client.scan_iter(f"{prefix}*", count=5000):
                 if isinstance(key, bytes):
                     key = key.decode('utf-8')
                 
