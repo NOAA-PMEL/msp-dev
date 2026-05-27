@@ -298,7 +298,7 @@ def update_graph_1d(buffer_payload, selected_values):
     [Output({"type": "plot-graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True), Output({"type": "plot-graph-2d-line", "index": MATCH}, "figure", allow_duplicate=True)],
     Input({"type": "plot-graph-2d-dropdown", "index": MATCH}, "value"),
     [State("plot-vmap-definitions", "data"), State({"type": "plot-graph-2d-dropdown", "index": MATCH}, "id")],
-    prevent_initial_call=False,
+    prevent_initial_call=True,  # 🟢 FIX: This MUST be True
 )
 def init_graph_2d(selected_value, vmaps, graph_id):
     y_axis = graph_id["index"].split("::")[1]
@@ -478,7 +478,7 @@ def update_graph_2d_scatter(buffer_payload, selected_values, vmaps, current_figs
     [Output({"type": "plot-graph-3d-line", "index": MATCH}, "figure", allow_duplicate=True), Output({"type": "plot-graph-3d-heatmap", "index": MATCH}, "figure", allow_duplicate=True)],
     Input({"type": "plot-graph-3d-dropdown", "index": MATCH}, "value"),
     [State("plot-vmap-definitions", "data"), State({"type": "plot-graph-3d-dropdown", "index": MATCH}, "id")],
-    prevent_initial_call=False,
+    prevent_initial_call=True,  # 🟢 FIX: This MUST be True
 )
 def init_graph_3d(selected_value, vmaps, graph_id):
     default_fig = go.Figure(layout={"template": "simple_white"})
