@@ -267,10 +267,14 @@ def update_home_dashboard(n, telemetry_cache, conditions_cache, current_active_i
         platform_map = {p.get("metadata", {}).get("name"): p for p in platforms}
 
         # --- 1. Metrics Rollup ---
-        # 🟢 Filter to only count primary host deployments for the top metrics
+        # 🟢 Create a fast lookup map of platforms currently tied to a deployment
+        platform_to_dep = {d.get("data", {}).get("platform_ref"): d for d in deployments}
+
+        # 🟢 A root deployment is one whose host_ref isn't tracked as a separate parent deployment, 
+        # or explicitly points to itself.
         host_deployments = [
             d for d in deployments 
-            if not d.get("data", {}).get("host_platform_ref") 
+            if d.get("data", {}).get("host_platform_ref") not in platform_to_dep 
             or d.get("data", {}).get("host_platform_ref") == d.get("data", {}).get("platform_ref")
         ]
         

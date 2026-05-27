@@ -21,7 +21,6 @@ register_sidebar_callbacks(app)
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 # --- GLOBAL MEMORY CACHE ---
-# Caching definitions takes < 5MB of RAM and eliminates blocking HTTP calls
 REGISTRY_CACHE = {
     "instances": {},
     "definitions": {}
@@ -29,7 +28,6 @@ REGISTRY_CACHE = {
 
 # --- Route-Splitting Helper Functions ---
 def get_all_devices():
-    """Fetches Sensors, Operational devices, and Controllers from the registry and caches them."""
     devices = []
     for d_type in ["sensor", "operational", "controller"]:
         path = "controller-instance" if d_type == "controller" else "device-instance"
@@ -40,15 +38,12 @@ def get_all_devices():
             items = response.json().get("results", [])
             for item in items:
                 item["_device_type"] = d_type 
-                
-                # 🟢 Cache the instance instantly so the dropdown doesn't have to fetch it again
                 make = item.get("make")
                 model = item.get("model")
                 sn = item.get("serial_number", item.get("serial_id"))
                 if make and model and sn:
                     cache_key = f"{d_type}::{make}::{model}::{sn}"
                     REGISTRY_CACHE["instances"][cache_key] = item
-                    
             devices.extend(items)
         except Exception as e:
             L.error(f"get_all_devices error for {d_type}: {e}")
@@ -59,7 +54,7 @@ def get_device_data(device_id: str, device_type: str="sensor"):
     query = {"controller_id": device_id} if device_type == "controller" else {"device_type": device_type, "device_id": device_id}
     url = f"http://{datastore_url}/{path}/data/get/"
     try:
-        response = httpx.get(url, params=query, timeout=30.0) # 🟢 Increased timeout for large data pulls
+        response = httpx.get(url, params=query, timeout=30.0)
         results = response.json()
         if "results" in results and results["results"]: return results["results"]
     except Exception as e:
@@ -79,10 +74,7 @@ def get_device_instance(device_id: str, device_type: str="sensor"):
     return {}
 
 def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"):
-    """Uses memory cache first to resolve definitions in milliseconds."""
     cache_key = f"{device_type}::{device_id}"
-    
-    # 1. Grab instance from memory cache first
     device = REGISTRY_CACHE["instances"].get(cache_key)
     if not device:
         device = get_device_instance(device_id, device_type)
@@ -95,11 +87,9 @@ def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"
             device_definition_id = f"{device['make']}::{device['model']}::{version}"
             def_cache_key = f"{device_type}::{device_definition_id}"
             
-            # 2. Check definition memory cache
             if def_cache_key in REGISTRY_CACHE["definitions"]:
                 return REGISTRY_CACHE["definitions"][def_cache_key]
                 
-            # 3. Fetch from API if missing and cache it
             path = "controller-definition" if device_type == "controller" else "device-definition"
             query = {"controller_definition_id": device_definition_id} if device_type == "controller" else {"device_type": device_type, "device_definition_id": device_definition_id}
             url = f"http://{datastore_url}/{path}/registry/get/"
@@ -120,7 +110,6 @@ def build_tables(layout_options):
     table_list = []
     for ltype, dims in layout_options.items():
         for dim, options in dims.items():
-            title = "Data"
             if ltype == "layout-settings":
                 title = f"Device Settings"
                 column_defs = [
@@ -207,16 +196,11 @@ def render_global_devices(pathname):
             make = d.get("make")
             model = d.get("model")
             sn = d.get("serial_number", d.get("serial_id"))
-            
             if not make or not model or not sn: continue
             
             dtype = d.get("_device_type", "sensor")
             device_id = f"{make}::{model}::{sn}"
-            
-            dropdown_val = f"{dtype}::{device_id}"
-            label = f"{make} {model} (SN: {sn}) [{dtype.capitalize()}]"
-            
-            device_options.append({"label": label, "value": dropdown_val})
+            device_options.append({"label": f"{make} {model} (SN: {sn}) [{dtype.capitalize()}]", "value": f"{dtype}::{device_id}"})
 
         device_options = sorted(device_options, key=lambda d: d['label'])
         
@@ -237,13 +221,7 @@ def render_global_devices(pathname):
         
     except Exception as e:
         L.error(f"[DEVICE UI] Layout Crash: {traceback.format_exc()}")
-        return html.Div([
-            dbc.Alert([
-                html.H4("⚙️ Internal Server Error", className="alert-heading"),
-                html.P("The dashboard encountered a fatal Python exception while building the layout:")
-            ], color="danger", className="m-4 shadow-sm"),
-            html.Pre(traceback.format_exc(), className="bg-dark text-danger p-3 mx-4 rounded shadow-sm border border-danger", style={"overflowX": "auto"})
-        ])
+        return html.Div([dbc.Alert(f"Fatal Layout Error: {e}", color="danger")])
 
 @app.callback(
     Output("device-ui-container", "children"),
@@ -277,7 +255,6 @@ def generate_device_ui(dropdown_val):
                 
                 if var_type == "setting":
                     long_name = var.get("attributes", {}).get("long_name", {}).get("data", name)
-                    # 🟢 Restored missing hardware limits for the ag-grid UI editor
                     control_metadata = {
                         "parameter": name, 
                         "description": long_name, 
@@ -352,24 +329,43 @@ def generate_device_ui(dropdown_val):
         dcc.Store(id="device-meta", data=device_meta),
         dcc.Store(id="graph-axes", data={}),
         dcc.Store(id="device-data-buffer", data={}),
-        dcc.Store(id="device-settings-buffer", data={})
+        dcc.Store(id="device-settings-buffer", data={}),
+        dcc.Store(id="last-time-store", data=None) # Filters out 1-second duplicate telemetry bumps
     ])
 
 
 # --- Sub-Callbacks ---
 
 @app.callback(
-    Output("device-data-buffer", "data"), Output("device-settings-buffer", "data"),
-    Input("ws-device-instance", "message")
+    Output("device-data-buffer", "data"), Output("device-settings-buffer", "data"), Output("last-time-store", "data"),
+    Input("ws-device-instance", "message"), State("last-time-store", "data")
 )
-def update_device_buffers(event):
+def update_device_buffers(event, last_time):
     if event and "data" in event:
         try:
             event_data = json.loads(event["data"])
-            if "data-update" in event_data and event_data["data-update"]: return [event_data["data-update"], no_update]
-            if "settings-update" in event_data and event_data["settings-update"]: return [no_update, event_data["settings-update"]]
+            data_out = no_update
+            settings_out = no_update
+            new_last_time = no_update
+
+            if "data-update" in event_data and event_data["data-update"]: 
+                current_time = event_data["data-update"].get("variables", {}).get("time", {}).get("data")
+                if isinstance(current_time, list) and len(current_time) > 0: current_time = current_time[-1]
+                
+                if current_time and current_time == last_time:
+                    # Deduplicate 1-sec ping preventing table/graph thrashing
+                    pass 
+                else:
+                    data_out = event_data["data-update"]
+                    new_last_time = current_time or last_time
+
+            if "settings-update" in event_data and event_data["settings-update"]: 
+                settings_out = event_data["settings-update"]
+
+            return [data_out, settings_out, new_last_time]
         except Exception: pass
-    return [no_update, no_update]
+    return [no_update, no_update, no_update]
+
 
 @app.callback(
     Output({"type": "sensor-graph-1d", "index": MATCH}, "figure"),
@@ -386,8 +382,14 @@ def select_graph_1d(y_axis, device_meta, graph_axes, device_definition, graph_id
         if results:
             for doc in results:
                 try:
-                    x.append(doc["variables"]["time"]["data"])
-                    y.append(doc["variables"][y_axis]["data"])
+                    time_data = doc["variables"]["time"]["data"]
+                    y_data = doc["variables"][y_axis]["data"]
+                    
+                    if isinstance(time_data, list): x.extend(time_data)
+                    else: x.append(time_data)
+                    
+                    if isinstance(y_data, list): y.extend(y_data)
+                    else: y.append(y_data)
                 except KeyError: pass
 
         units = ""
@@ -396,6 +398,7 @@ def select_graph_1d(y_axis, device_meta, graph_axes, device_definition, graph_id
 
         return go.Figure(data=go.Scatter(x=x, y=y, type="scatter", mode="lines+markers"), layout={"xaxis": {"title": "Time"}, "yaxis": {"title": f"{y_axis} {units}".strip()}, "template": "simple_white"})
     except Exception: return default_fig
+
 
 @app.callback(
     Output({"type": "sensor-graph-1d", "index": ALL}, "extendData"),
@@ -424,8 +427,408 @@ def update_graph_1d(device_data, y_axis_list):
         if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[-1]
         figs_to_update.append(({"x": [[x_val]], "y": [[y_val]]}, [0], 1000))
         
-    if not any(f != no_update for f in figs_to_update): raise PreventUpdate
+    if all(f == no_update for f in figs_to_update): raise PreventUpdate
     return figs_to_update
+
+
+@app.callback(
+    [Output({"type": "graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True), Output({"type": "graph-2d-line", "index": MATCH}, "figure", allow_duplicate=True)],
+    Input({"type": "graph-2d-dropdown", "index": MATCH}, "value"),
+    [State("device-meta", "data"), State("device-definition", "data"), State({"type": "graph-2d-dropdown", "index": MATCH}, "id")],
+    prevent_initial_call=True,
+)
+def select_graph_2d(z_axis, device_meta, device_definition, graph_id):
+    if not z_axis: raise PreventUpdate
+    y_axis = graph_id["index"].split("::")[1]
+    use_log = (y_axis == "diameter")
+    
+    x, y, orig_z = [], [], []
+    y_is_coord = False
+    
+    if device_definition and y_axis in device_definition.get("variables", {}):
+        if device_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+            y_is_coord = True
+            y = device_definition["variables"][y_axis].get("data", [])
+
+    results = get_device_data(device_id=device_meta.get("device_id"), device_type=device_meta.get("device_type", "sensor"))
+    if not results: raise PreventUpdate
+
+    for doc in results:
+        try:
+            t_data = doc["variables"]["time"]["data"]
+            z_data = doc["variables"][z_axis]["data"]
+            
+            if isinstance(t_data, list):
+                x.extend(t_data)
+                orig_z.extend(z_data)
+                if not y_is_coord: y.extend(doc["variables"][y_axis]["data"])
+            else:
+                x.append(t_data)
+                orig_z.append(z_data)
+                if not y_is_coord: y.append(doc["variables"][y_axis]["data"])
+        except KeyError: continue
+
+    if len(y) > 0 and isinstance(y[-1], list): y = y[-1]
+
+    z = []
+    for yi in range(len(y)):
+        new_z = []
+        for xi in range(len(x)):
+            try: new_z.append(orig_z[xi][yi])
+            except IndexError: new_z.append(None)
+        z.append(new_z)
+
+    y_units, z_units = "", ""
+    try: y_units = f'({device_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
+    except Exception: pass
+    try: z_units = f'({device_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
+    except Exception: pass
+
+    heatmap = go.Figure(data=go.Heatmap(x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"), layout={"xaxis": {"title": "Time"}, "yaxis": {"title": f"{y_axis} {y_units}".strip()}})
+    scatter = go.Figure(data=[{"x": y, "y": orig_z[-1] if len(orig_z) > 0 else [], "type": "scatter"}], layout={"xaxis": {"title": f"{y_axis} {y_units}".strip()}, "yaxis": {"title": f"{z_axis} {z_units}".strip()}, "title": str(x[-1]) if len(x) > 0 else ""})
+
+    if use_log:
+        heatmap.update_yaxes(type="log")
+        heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
+        scatter.update_xaxes(type="log")
+
+    return [heatmap, scatter]
+
+
+@app.callback(
+    Output({"type": "graph-2d-heatmap", "index": ALL}, "figure", allow_duplicate=True),
+    Input("device-data-buffer", "data"),
+    [State({"type": "graph-2d-dropdown", "index": ALL}, "value"), State("device-definition", "data"), State({"type": "graph-2d-heatmap", "index": ALL}, "figure"), State({"type": "graph-2d-heatmap", "index": ALL}, "id")],
+    prevent_initial_call=True,
+)
+def update_graph_2d_heatmap(device_data, z_axis_list, device_definition, current_figs, graph_ids):
+    if not device_data: raise PreventUpdate
+    heatmaps = []
+    
+    for z_axis, graph_id, current_fig in zip(z_axis_list, graph_ids, current_figs):
+        if not current_fig or not current_fig.get("data") or not z_axis:
+            heatmaps.append(no_update)
+            continue
+
+        y_axis = graph_id["index"].split("::")[1]
+        y_is_coord = False
+        
+        if device_definition and y_axis in device_definition.get("variables", {}):
+            if device_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate": y_is_coord = True
+
+        if ("time" not in device_data.get("variables", {}) or (not y_is_coord and y_axis not in device_data.get("variables", {})) or z_axis not in device_data.get("variables", {})):
+            heatmaps.append(no_update)
+            continue
+
+        x = device_data["variables"]["time"]["data"]
+        if x in current_fig["data"][0].get("x", []):
+            heatmaps.append(no_update)
+            continue
+
+        if not isinstance(x, list): x = [x]
+        for nx in x: current_fig["data"][0]["x"].append(nx)
+        
+        y = current_fig["data"][0].get("y", [])
+        if len(y) == 0: y = device_definition["variables"][y_axis].get("data", []) if y_is_coord else device_data["variables"][y_axis]["data"]
+        
+        orig_z = device_data["variables"][z_axis]["data"]
+        if not isinstance(orig_z, list): orig_z = [orig_z]
+
+        if len(x) > 1:
+            z = []
+            for yi, yval in enumerate(y):
+                new_z = []
+                for xi, xval in enumerate(x):
+                    try: new_z.append(orig_z[xi][yi])
+                    except IndexError: new_z.append(None)
+                z.append(new_z)
+            current_fig["data"][0]["z"] = z
+        else:
+            for yi, yval in enumerate(y):
+                try: current_fig["data"][0]["z"][yi].append(orig_z[yi])
+                except IndexError: pass
+
+        heatmaps.append(current_fig)
+        
+    if all(h == no_update for h in heatmaps): raise PreventUpdate
+    return heatmaps
+
+
+@app.callback(
+    Output({"type": "graph-2d-line", "index": ALL}, "figure"),
+    Input("device-data-buffer", "data"),
+    [State({"type": "graph-2d-dropdown", "index": ALL}, "value"), State("device-definition", "data"), State({"type": "graph-2d-line", "index": ALL}, "figure"), State({"type": "graph-2d-line", "index": ALL}, "id")],
+    prevent_initial_call=True,
+)
+def update_graph_2d_scatter(device_data, z_axis_list, device_definition, current_figs, graph_ids):
+    if not device_data: raise PreventUpdate
+    scatters = []
+    
+    for z_axis, graph_id, current_fig in zip(z_axis_list, graph_ids, current_figs):
+        if not current_fig or not current_fig.get("data") or not z_axis:
+            scatters.append(no_update)
+            continue
+
+        y_axis = graph_id["index"].split("::")[1]
+        y_is_coord = False
+        
+        if device_definition and y_axis in device_definition.get("variables", {}):
+            if device_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate": y_is_coord = True
+
+        if ("time" not in device_data.get("variables", {}) or (not y_is_coord and y_axis not in device_data.get("variables", {})) or z_axis not in device_data.get("variables", {})):
+            scatters.append(no_update)
+            continue
+
+        x = device_data["variables"]["time"]["data"]
+        y = device_definition["variables"][y_axis].get("data", []) if y_is_coord else device_data["variables"][y_axis]["data"]
+        z = device_data["variables"][z_axis]["data"]
+
+        current_fig["data"][0]["x"] = y
+        current_fig["data"][0]["y"] = z
+        if isinstance(x, list) and len(x) > 0: x = x[-1]
+        current_fig["layout"]["title"] = str(x)
+        
+        scatters.append(current_fig)
+
+    if all(s == no_update for s in scatters): raise PreventUpdate
+    return scatters
+
+
+@app.callback(
+    [Output({"type": "graph-3d-line", "index": MATCH}, "figure", allow_duplicate=True), Output({"type": "graph-3d-heatmap", "index": MATCH}, "figure", allow_duplicate=True)],
+    Input({"type": "graph-3d-dropdown", "index": MATCH}, "value"),
+    [State("device-meta", "data"), State("device-definition", "data"), State({"type": "graph-3d-dropdown", "index": MATCH}, "id")],
+    prevent_initial_call=True,
+)
+def select_graph_3d(z_axis, device_meta, device_definition, graph_id):
+    if not z_axis: raise PreventUpdate
+    x_axis = graph_id["index"].split("::")[0]
+    y_axis = graph_id["index"].split("::")[1]
+    
+    x_is_coord, y_is_coord = False, False
+    x, y, z_history = [], [], []
+
+    if device_definition:
+        if x_axis in device_definition.get("variables", {}) and device_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+            x_is_coord = True
+            x = device_definition["variables"][x_axis].get("data", [])
+        if y_axis in device_definition.get("variables", {}) and device_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+            y_is_coord = True
+            y = device_definition["variables"][y_axis].get("data", [])
+
+    results = get_device_data(device_id=device_meta.get("device_id"), device_type=device_meta.get("device_type", "sensor"))
+    if not results: raise PreventUpdate
+
+    for doc in results:
+        try:
+            t_data = doc["variables"]["time"]["data"]
+            z_data = doc["variables"][z_axis]["data"]
+            
+            if isinstance(t_data, list):
+                if not x_is_coord: x.extend(doc["variables"][x_axis]["data"])
+                if not y_is_coord: y.extend(doc["variables"][y_axis]["data"])
+                z_history.extend(z_data)
+            else:
+                if not x_is_coord: x.append(doc["variables"][x_axis]["data"])
+                if not y_is_coord: y.append(doc["variables"][y_axis]["data"])
+                z_history.append(z_data)
+        except KeyError: continue
+
+    if len(x) > 0 and isinstance(x[-1], list): x = x[-1]
+    if len(y) > 0 and isinstance(y[-1], list): y = y[-1]
+    if not z_history: raise PreventUpdate
+        
+    latest_z = z_history[-1] 
+    z = []
+    for yi in range(len(y)):
+        new_row = []
+        for xi in range(len(x)):
+            try: new_row.append(latest_z[xi][yi])
+            except IndexError: new_row.append(None)
+        z.append(new_row)
+
+    units = []
+    for axis in [x_axis, y_axis, z_axis]:
+        try: units.append(f'({device_definition["variables"][axis]["attributes"]["units"]["data"]})')
+        except Exception: units.append('')
+
+    scatter = go.Figure(data=go.Surface(z=z, x=x, y=y))
+    scatter.update_scenes(xaxis_title_text=f"{x_axis} {units[0]}".strip(), yaxis_title_text=f"{y_axis} {units[1]}".strip(), zaxis_title_text=f"{z_axis} {units[2]}".strip())
+
+    heatmap = go.Figure(data=go.Heatmap(z=z, x=x, y=y, type="heatmap", colorscale="Rainbow"))
+    heatmap.update_layout(xaxis={"title": f"{x_axis} {units[0]}".strip()}, yaxis={"title": f"{y_axis} {units[1]}".strip()})
+    
+    if x_axis == "diameter": heatmap.update_xaxes(type="log")
+
+    return [scatter, heatmap]
+
+
+@app.callback(
+    [Output({"type": "graph-3d-line", "index": ALL}, "figure"), Output({"type": "graph-3d-heatmap", "index": ALL}, "figure")],
+    Input("device-data-buffer", "data"),
+    [State({"type": "graph-3d-dropdown", "index": ALL}, "value"), State("device-definition", "data"), State({"type": "graph-3d-line", "index": ALL}, "figure"), State({"type": "graph-3d-heatmap", "index": ALL}, "figure"), State({"type": "graph-3d-dropdown", "index": ALL}, "id")],
+    prevent_initial_call=True,
+)
+def update_graph_3d_plots(device_data, z_axis_list, device_definition, line_figs, heatmap_figs, graph_ids):
+    if not device_data: raise PreventUpdate
+    updated_lines, updated_heatmaps = [], []
+    
+    for z_axis, graph_id, line_fig, heatmap_fig in zip(z_axis_list, graph_ids, line_figs, heatmap_figs):
+        if not z_axis or not line_fig or not heatmap_fig:
+            updated_lines.append(no_update)
+            updated_heatmaps.append(no_update)
+            continue
+
+        x_axis = graph_id["index"].split("::")[0]
+        y_axis = graph_id["index"].split("::")[1]
+        
+        x_is_coord, y_is_coord = False, False
+        if device_definition:
+            if x_axis in device_definition.get("variables", {}) and device_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate": x_is_coord = True
+            if y_axis in device_definition.get("variables", {}) and device_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate": y_is_coord = True
+
+        if ((not x_is_coord and x_axis not in device_data.get("variables", {})) or (not y_is_coord and y_axis not in device_data.get("variables", {})) or z_axis not in device_data.get("variables", {})):
+            updated_lines.append(no_update)
+            updated_heatmaps.append(no_update)
+            continue
+
+        x = device_definition["variables"][x_axis].get("data", []) if x_is_coord else device_data["variables"][x_axis]["data"]
+        y = device_definition["variables"][y_axis].get("data", []) if y_is_coord else device_data["variables"][y_axis]["data"]
+        latest_z = device_data["variables"][z_axis]["data"]
+
+        z = []
+        for yi in range(len(y)):
+            new_row = []
+            for xi in range(len(x)):
+                try: new_row.append(latest_z[xi][yi])
+                except IndexError: new_row.append(None)
+            z.append(new_row)
+
+        line_fig["data"][0]["z"] = z
+        heatmap_fig["data"][0]["z"] = z
+        
+        if isinstance(x, list) and len(x) > 0: x_title = x[-1]
+        else: x_title = x
+        line_fig["layout"]["title"] = str(x_title)
+        
+        updated_lines.append(line_fig)
+        updated_heatmaps.append(heatmap_fig)
+
+    if all(l == no_update for l in updated_lines): raise PreventUpdate
+    return updated_lines, updated_heatmaps
+
+
+@app.callback(
+    Output({"type": "data-table-1d", "index": ALL}, "rowTransaction"),
+    Input("device-data-buffer", "data"),
+    State({"type": "data-table-1d", "index": ALL}, "columnDefs")
+)
+def update_table_1d(device_data, col_defs_list):
+    if not device_data: raise PreventUpdate
+    transactions = []
+    
+    for col_defs in col_defs_list:
+        data = {}
+        for col in col_defs:
+            field = col["field"]
+            val = device_data.get("variables", {}).get(field, {}).get("data")
+            
+            if isinstance(val, list) and len(val) > 0: val = val[-1]
+            if val == "": val = None # 🟢 Fixes the AG Grid "Invalid Number" crash on empty payloads
+            
+            data[field] = val
+            
+        transactions.append({"add": [data], "addIndex": 0})
+        
+    if not transactions: raise PreventUpdate
+    return transactions
+
+
+@app.callback(
+    Output({"type": "data-table-2d", "index": ALL}, "rowData"), 
+    Input("device-data-buffer", "data"),
+    [State({"type": "data-table-2d", "index": ALL}, "rowData"), State({"type": "data-table-2d", "index": ALL}, "columnDefs"), State("device-definition", "data")]
+)
+def update_table_2d(device_data, row_data_list, col_defs_list, device_definition):
+    if not device_data: raise PreventUpdate
+    new_row_data_list = []
+    
+    for col_defs in col_defs_list:
+        if not col_defs:
+            new_row_data_list.append(dash.no_update)
+            continue
+            
+        dim_2d = col_defs[0]["field"]
+        dim_2d_is_coord = device_definition and dim_2d in device_definition.get("variables", {}) and device_definition["variables"][dim_2d].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate"
+        
+        if dim_2d_is_coord: dim_data = device_definition["variables"][dim_2d].get("data", [])
+        else:
+            if dim_2d not in device_data.get("variables", {}):
+                new_row_data_list.append(dash.no_update)
+                continue
+            dim_data = device_data["variables"][dim_2d].get("data")
+            if not dim_data:
+                new_row_data_list.append(dash.no_update)
+                continue
+
+        row_data = []
+        for index in range(0, len(dim_data)):
+            data = {dim_2d: dim_data[index]}
+            for col in col_defs[1:]:
+                try: data[col["field"]] = device_data["variables"][col["field"]]["data"][index]
+                except (KeyError, IndexError, TypeError): data[col["field"]] = None
+            row_data.append(data)
+        new_row_data_list.append(row_data)
+        
+    if all(r == dash.no_update for r in new_row_data_list): raise PreventUpdate
+    return new_row_data_list
+
+
+@app.callback(
+    Output({"type": "settings-table", "index": ALL}, "rowData"), 
+    Input("device-settings-buffer", "data"),
+    State({"type": "settings-table", "index": ALL}, "rowData"),
+)
+def update_settings_table(device_settings, row_data_list):
+    if not device_settings or not row_data_list: raise PreventUpdate
+    updated_row_lists = []
+    has_updates = False
+
+    for rows in row_data_list:
+        if not rows:
+            updated_row_lists.append(dash.no_update)
+            continue
+            
+        grid_patched = False
+        for row in rows:
+            param_name = row["parameter"]
+            if param_name in device_settings.get("settings", {}):
+                param_data = device_settings["settings"][param_name]
+                
+                if isinstance(param_data, dict) and "data" in param_data:
+                    actual_val = param_data["data"].get("actual", "")
+                    req_val = param_data["data"].get("requested", "")
+                elif isinstance(param_data, dict):
+                    actual_val = param_data.get("actual", "")
+                    req_val = param_data.get("requested", "")
+                else: continue
+
+                if str(row.get("actual_value")) != str(actual_val):
+                    row["actual_value"] = actual_val
+                    grid_patched = True
+                    
+                if row.get("requested_value") == "" or row.get("requested_value") is None:
+                    row["requested_value"] = req_val
+                    grid_patched = True
+        
+        if grid_patched:
+            updated_row_lists.append(rows)
+            has_updates = True
+        else: updated_row_lists.append(dash.no_update)
+
+    if not has_updates: raise PreventUpdate
+    return updated_row_lists
+
 
 @app.callback(
     Output("calibration-display", "children"),
@@ -449,24 +852,6 @@ def update_calibration_display(device_data, current_display, cal_vars):
     if not cal_data: return "Waiting for data..."
     return json.dumps(cal_data, indent=2)
 
-@app.callback(
-    Output({"type": "data-table-1d", "index": ALL}, "rowTransaction"),
-    Input("device-data-buffer", "data"),
-    State({"type": "data-table-1d", "index": ALL}, "columnDefs")
-)
-def update_table_1d(device_data, col_defs_list):
-    if not device_data: raise PreventUpdate
-    transactions = []
-    for col_defs in col_defs_list:
-        data = {}
-        for col in col_defs:
-            field = col["field"]
-            val = device_data.get("variables", {}).get(field, {}).get("data", "")
-            if isinstance(val, list) and len(val) > 0: val = val[-1]
-            data[field] = val
-        transactions.append({"add": [data], "addIndex": 0})
-    if not transactions: raise PreventUpdate
-    return transactions
 
 @app.callback(
     Output("ws-send-instance-buffer", "children", allow_duplicate=True),
@@ -501,45 +886,6 @@ def submit_setting_change(n_clicks_list, selected_rows_list, device_meta):
         id_field: device_meta["device_id"]
     })
 
-@app.callback(Output("ws-device-instance", "send"), Input("ws-send-instance-buffer", "children"))
-def send_to_instance(value): return value
-
-@app.callback(
-    Output({"type": "data-table-2d", "index": ALL}, "rowData"), 
-    Input("device-data-buffer", "data"),
-    [State({"type": "data-table-2d", "index": ALL}, "rowData"), State({"type": "data-table-2d", "index": ALL}, "columnDefs"), State("device-definition", "data")]
-)
-def update_table_2d(device_data, row_data_list, col_defs_list, device_definition):
-    if not device_data: raise PreventUpdate
-    new_row_data_list = []
-    for col_defs in col_defs_list:
-        if not col_defs:
-            new_row_data_list.append(dash.no_update)
-            continue
-        dim_2d = col_defs[0]["field"]
-        dim_2d_is_coord = device_definition and dim_2d in device_definition.get("variables", {}) and device_definition["variables"][dim_2d].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate"
-        
-        if dim_2d_is_coord: dim_data = device_definition["variables"][dim_2d].get("data", [])
-        else:
-            if dim_2d not in device_data.get("variables", {}):
-                new_row_data_list.append(dash.no_update)
-                continue
-            dim_data = device_data["variables"][dim_2d].get("data")
-            if not dim_data:
-                new_row_data_list.append(dash.no_update)
-                continue
-
-        row_data = []
-        for index in range(0, len(dim_data)):
-            data = {dim_2d: dim_data[index]}
-            for col in col_defs[1:]:
-                try: data[col["field"]] = device_data["variables"][col["field"]]["data"][index]
-                except (KeyError, IndexError, TypeError): data[col["field"]] = None
-            row_data.append(data)
-        new_row_data_list.append(row_data)
-        
-    if all(r == dash.no_update for r in new_row_data_list): raise PreventUpdate
-    return new_row_data_list
 
 @app.callback(
     Output({"type": "graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True),
@@ -549,3 +895,6 @@ def update_table_2d(device_data, row_data_list, col_defs_list, device_definition
 )
 def set_2d_z_axis_range(n, axis_min, axis_max, heatmap):
     return go.Figure(heatmap).update_layout(coloraxis=dict(cauto=False, cmax=axis_max, cmin=axis_min))
+
+@app.callback(Output("ws-device-instance", "send"), Input("ws-send-instance-buffer", "children"))
+def send_to_instance(value): return value
