@@ -57,7 +57,6 @@ def get_device_data(device_id: str, device_type: str="sensor"):
         response = httpx.get(url, params=query, timeout=30.0)
         results = response.json()
         if "results" in results and results["results"]: 
-            L.info(f"[DEVICE HISTORY] Successfully fetched {len(results['results'])} historical records for {device_id}")
             return results["results"]
     except Exception as e:
         L.error(f"get_device_data error: {e}")
@@ -84,12 +83,16 @@ def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"
     if device:
         try:
             version = device.get("version")
-            if not version: return {}
+            if not version: 
+                L.warning(f"🚨 DEBUG FETCH: Device {device_id} missing 'version' in instance data!")
+                return {}
             
             device_definition_id = f"{device['make']}::{device['model']}::{version}"
             def_cache_key = f"{device_type}::{device_definition_id}"
+            L.info(f"🚨 DEBUG FETCH: Attempting to resolve definition -> {def_cache_key}")
             
             if def_cache_key in REGISTRY_CACHE["definitions"]:
+                L.info(f"🚨 DEBUG FETCH: Found definition in cache!")
                 return REGISTRY_CACHE["definitions"][def_cache_key]
                 
             path = "controller-definition" if device_type == "controller" else "device-definition"
@@ -101,9 +104,14 @@ def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"
             if "results" in results and results["results"]: 
                 dfn = results["results"][0]
                 REGISTRY_CACHE["definitions"][def_cache_key] = dfn
+                L.info(f"🚨 DEBUG FETCH: Fetched definition from datastore and cached it.")
                 return dfn
+            else:
+                L.warning(f"🚨 DEBUG FETCH: Datastore returned empty results for definition {device_definition_id}")
         except Exception as e:
-            L.error(f"get_device_definition_by_device_id error: {e}")
+            L.error(f"🚨 DEBUG FETCH error: {e}")
+    else:
+        L.warning(f"🚨 DEBUG FETCH: Could not find instance data for {device_id}")
     return {}
 
 
@@ -126,10 +134,16 @@ def build_tables(layout_options):
                 ], title=title))
             elif ltype == "layout-1d":
                 title = f"Data 1-D ({dim})"
-                table_list.append(dbc.AccordionItem([dag.AgGrid(id={"type": "data-table-1d", "index": dim}, rowData=[], columnDefs=options["table-column-defs"], columnSizeOptions="autoSize")], title=title))
+                # 🟢 REVERTED: Matching sensor.py perfectly
+                table_list.append(dbc.AccordionItem([
+                    dag.AgGrid(id={"type": "data-table-1d", "index": dim}, rowData=[], columnDefs=options["table-column-defs"], columnSizeOptions="autoSize")
+                ], title=title))
             elif ltype == "layout-2d":
                 title = f"Data 2-D (time, {dim})"
-                table_list.append(dbc.AccordionItem([dag.AgGrid(id={"type": "data-table-2d", "index": f"time::{dim}"}, rowData=[], columnDefs=options["table-column-defs"], columnSizeOptions="autoSize")], title=title))
+                # 🟢 REVERTED: Matching sensor.py perfectly
+                table_list.append(dbc.AccordionItem([
+                    dag.AgGrid(id={"type": "data-table-2d", "index": f"time::{dim}"}, rowData=[], columnDefs=options["table-column-defs"], columnSizeOptions="autoSize")
+                ], title=title))
     return table_list
 
 def build_graph_1d(dropdown_list, xaxis="time"):
@@ -183,7 +197,6 @@ def build_graphs(layout_options):
 app.layout = create_unified_shell(html.Div([
     dcc.Location(id="device-url", refresh=False),
     
-    # 🟢 HOISTED DATA PIPELINE
     dcc.Store(id="device-meta", data={}),
     dcc.Store(id="device-definition", data={}),
     dcc.Store(id="calibration-vars", data=[]),
@@ -192,7 +205,6 @@ app.layout = create_unified_shell(html.Div([
     dcc.Store(id="device-settings-buffer", data={}),
     dcc.Store(id="last-time-store", data=None),
     
-    # 🟢 FIX: The WebSocket is injected into this Div so it mounts fresh with the right URL.
     html.Div(id="device-ws-container", style={"display": "none"}),
     html.Div(id="ws-send-instance-buffer", style={"display": "none"}),
     
@@ -245,7 +257,7 @@ def render_global_devices(pathname):
         Output("device-meta", "data"),
         Output("device-definition", "data"),
         Output("calibration-vars", "data"),
-        Output("device-ws-container", "children"), # 🟢 FIX: Mounts a fresh WebSocket component
+        Output("device-ws-container", "children"), 
         Output("ws-send-instance-buffer", "children", allow_duplicate=True),
         Output("device-data-buffer", "data"),
         Output("device-settings-buffer", "data"),
@@ -261,12 +273,16 @@ def generate_device_ui(dropdown_val):
             {}, {}, [], [], no_update, {}, {}, None
         )
         
+    L.info(f"🚨 DEBUG UI BUILD: Selected Dropdown Value -> {dropdown_val}")
+    
     parts = dropdown_val.split("::")
     device_type = parts[0]
     device_id = f"{parts[1]}::{parts[2]}::{parts[3]}"
     
     device_meta = {"device_id": device_id, "device_type": device_type, "make": parts[1], "model": parts[2], "serial_number": parts[3]}
     device_definition = get_device_definition_by_device_id(device_id=device_id, device_type=device_type)
+
+    L.info(f"🚨 DEBUG UI BUILD: device_definition fetched. Keys present: {list(device_definition.keys()) if device_definition else 'NONE (Definition is empty!)'}")
 
     layout_options = {
         "layout-settings": {"time": {"table-column-defs": [], "variable-list": [], "row-data-skeletons": []}},
@@ -279,9 +295,15 @@ def generate_device_ui(dropdown_val):
         try:
             dimensions = device_definition.get("dimensions", {})
             multi_dim = len(dimensions.keys()) > 1
+            
+            L.info(f"🚨 DEBUG UI BUILD: Parsing {len(device_definition.get('variables', {}))} variables...")
 
             for name, var in device_definition.get("variables", {}).items():
                 var_type = var.get("attributes", {}).get("variable_type", {}).get("data")
+                dtype = var.get("type", "unknown")
+                shape = var.get("shape", [])
+                
+                L.info(f"  -> Var: {name} | var_type: {var_type} | dtype: {dtype} | shape: {shape}")
                 
                 if var_type == "setting":
                     long_name = var.get("attributes", {}).get("long_name", {}).get("data", name)
@@ -290,7 +312,7 @@ def generate_device_ui(dropdown_val):
                         "description": long_name, 
                         "actual_value": "", 
                         "requested_value": "",
-                        "type": var.get("type", "unknown"),
+                        "type": dtype,
                         "allowed_values": [x.strip() for x in (var.get("attributes", {}).get("allowed_values", {}).get("data", "")).split(",")] if var.get("attributes", {}).get("allowed_values", {}).get("data") else None,
                         "min": var.get("attributes", {}).get("valid_min", {}).get("data", None),
                         "max": var.get("attributes", {}).get("valid_max", {}).get("data", None),
@@ -300,11 +322,16 @@ def generate_device_ui(dropdown_val):
                 elif var_type == "calibration":
                     calibration_vars.append(name)
                 elif var_type == "main":
-                    if "shape" not in var or "time" not in var["shape"]: continue
+                    if "shape" not in var: continue
+                    if "time" not in var["shape"]: continue
                     
                     long_name = var.get("attributes", {}).get("long_name", {}).get("data", name)
-                    dtype = var.get("type", "unknown")
-                    data_type = "number" if dtype in ["float", "double", "int"] else "boolean" if dtype == "bool" else "text"
+                    
+                    # 🟢 REVERTED: Exactly matching sensor.py's parsing logic
+                    data_type = "text"
+                    if dtype in ["float", "double", "int"]: data_type = "number"
+                    elif dtype in ["str", "string", "char"]: data_type = "text"
+                    elif dtype in ["bool"]: data_type = "boolean"
 
                     cd = {"field": name, "headerName": long_name, "filter": False, "cellDataType": data_type}
 
@@ -313,7 +340,19 @@ def generate_device_ui(dropdown_val):
                         dim_2d = [d for d in var["shape"] if d != "time"][0]
                         if dim_2d not in layout_options["layout-2d"]:
                             layout_options["layout-2d"][dim_2d] = {"table-column-defs": [], "variable-list": []}
-                            layout_options["layout-2d"][dim_2d]["table-column-defs"].append({"field": dim_2d, "headerName": dim_2d, "filter": False, "cellDataType": "text", "pinned": "left"})
+                            dln = dim_2d
+                            try: dln = device_definition["attributes"][dim_2d]["long_name"]["data"]
+                            except KeyError: pass
+                            
+                            dcd_data_type = "text"
+                            try:
+                                d_dtype = device_definition["variables"][dim_2d]["type"]
+                                if d_dtype in ["float", "double", "int"]: dcd_data_type = "number"
+                                elif d_dtype in ["str", "string", "char"]: dcd_data_type = "text"
+                                elif d_dtype in ["bool"]: dcd_data_type = "boolean"
+                            except KeyError: pass
+                            
+                            layout_options["layout-2d"][dim_2d]["table-column-defs"].append({"field": dim_2d, "headerName": dln, "filter": False, "cellDataType": dcd_data_type, "pinned": "left"})
                         layout_options["layout-2d"][dim_2d]["table-column-defs"].append(cd)
                     elif multi_dim and len(var["shape"]) == 3:
                         if "layout-3d" not in layout_options: layout_options["layout-3d"] = {}
@@ -328,12 +367,14 @@ def generate_device_ui(dropdown_val):
                 for dim, options in dims.items():
                     if "table-column-defs" in options:
                         for cd in options["table-column-defs"]:
-                            if cd["field"] in dimensions or cd.get("cellDataType") != "number": continue
-                            label = cd.get("headerName", cd["field"])
-                            layout_options[ltype][dim]["variable-list"].append({"label": label, "value": cd["field"]})
+                            if cd["field"] in dimensions: continue
+                            if cd["cellDataType"] != "number": continue
+                            layout_options[ltype][dim]["variable-list"].append({"label": cd["field"], "value": cd["field"]})
 
         except Exception as e:
-            L.error(f"build layout error: {e}")
+            L.error(f"🚨 DEBUG UI BUILD: error parsing layout -> {e}")
+
+    L.info(f"🚨 DEBUG UI BUILD: Final layout options generated: {layout_options}")
 
     topic_type = "sensor" if device_type == "operational" else device_type
     id_field = "controllerid" if device_type == "controller" else "deviceid"
@@ -347,7 +388,6 @@ def generate_device_ui(dropdown_val):
     ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/envds/envops"
     
     ws_component = WebSocket(id="ws-device-instance", url=f"{ws_base}/ws/{topic_type}/{device_id}")
-    L.info(f"[DEVICE UI] Connecting WebSocket to: {ws_component.url}")
     
     ui_container = html.Div([
         dbc.Accordion(build_tables(layout_options), id="device-data-accordion", className="mb-4", start_collapsed=True),
@@ -384,20 +424,18 @@ def update_device_buffers(event, last_time):
                 current_time = event_data["data-update"].get("variables", {}).get("time", {}).get("data")
                 if isinstance(current_time, list) and len(current_time) > 0: current_time = current_time[-1]
                 
-                # 🟢 FIX: Ensure current_time actually exists before attempting to deduplicate it
                 if current_time and current_time == last_time:
                     pass 
                 else:
                     data_out = event_data["data-update"]
                     new_last_time = current_time or last_time
-                    L.info(f"[DEVICE LIVE] Data Update Captured for time: {current_time}")
+                    L.info(f"🚨 DEBUG DATA STREAM: Valid telemetry received for time {current_time}. Keys in payload: {list(data_out.get('variables', {}).keys())}")
 
             if "settings-update" in event_data and event_data["settings-update"]: 
                 settings_out = event_data["settings-update"]
 
             return [data_out, settings_out, new_last_time]
         except Exception as e: 
-            L.error(f"[DEVICE LIVE] WebSocket message parsing error: {e}")
             pass
             
     return [no_update, no_update, no_update]
@@ -434,7 +472,6 @@ def select_graph_1d(y_axis, device_meta, graph_axes, device_definition, graph_id
 
         return go.Figure(data=go.Scatter(x=x, y=y, type="scatter", mode="lines+markers"), layout={"xaxis": {"title": "Time"}, "yaxis": {"title": f"{y_axis} {units}".strip()}, "template": "simple_white"})
     except Exception as e: 
-        L.error(f"[DEVICE PLOT] 1D render error: {e}")
         return default_fig
 
 
@@ -769,17 +806,17 @@ def update_table_1d(device_data, col_defs_list):
     for col_defs in col_defs_list:
         data = {}
         for col in col_defs:
-            field = col["field"]
-            val = device_data.get("variables", {}).get(field, {}).get("data")
-            
-            if isinstance(val, list) and len(val) > 0: val = val[-1]
-            if val == "": val = None
-            
-            data[field] = val
-            
+            name = col["field"]
+            # 🟢 REVERTED: Matching sensor.py perfectly
+            if name in device_data.get("variables", {}):
+                data[name] = device_data["variables"][name].get("data", "")
+            else:
+                data[name] = ""
+                
         transactions.append({"add": [data], "addIndex": 0})
         
     if not transactions: raise PreventUpdate
+    L.info(f"🚨 DEBUG TABLE 1D: Generated row transaction -> {transactions[0].get('add', [{}])[0].keys()}")
     return transactions
 
 
