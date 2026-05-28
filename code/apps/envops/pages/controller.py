@@ -37,8 +37,8 @@ L.setLevel(logging.DEBUG)
 
 dash.register_page(
     __name__,
-    path_template="/sensor/<sensor_id>",
-    title="Sensor Telemetry",
+    path_template="/controller/<controller_id>",
+    title="Controller Telemetry",
     nav_bar=False
 )
 
@@ -84,11 +84,11 @@ def build_tables(layout_options):
             title = "Data"
 
             if ltype == "layout-settings":
-                title = f"Device Settings"
+                title = f"Controller Settings & Controls"
                 
                 # Reshaped row definitions for the parameter layout grid
                 column_defs = [
-                    {"field": "parameter", "headerName": "Setting Parameter", "editable": False, "pinned": "left"},
+                    {"field": "parameter", "headerName": "Control Parameter", "editable": False, "pinned": "left"},
                     {"field": "description", "headerName": "Description", "editable": False},
                     {"field": "actual_value", "headerName": "Actual Value", "editable": False},
                     {
@@ -103,14 +103,14 @@ def build_tables(layout_options):
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
-                                id={"type": "settings-table", "index": dim},
+                                id={"type": "controller-settings-table", "index": dim},
                                 rowData=options.get("row-data-skeletons", []),
                                 columnDefs=column_defs,
                                 columnSizeOptions="autoSize",
                                 dashGridOptions={"domLayout": "autoHeight", "singleClickEdit": True, "rowSelection": "single"},
                                 style={"height": None, "maxHeight": "500px", "overflow": "auto"}
                             ),
-                            dbc.Button("Submit Selected Setting", id={"type": "submit-setting-btn", "index": dim}, color="primary", className="mt-3")
+                            dbc.Button("Submit Selected Control", id={"type": "controller-submit-setting-btn", "index": dim}, color="primary", className="mt-3")
                         ],
                         title=title,
                     )
@@ -122,7 +122,7 @@ def build_tables(layout_options):
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
-                                id={"type": "data-table-1d", "index": dim},
+                                id={"type": "controller-data-table-1d", "index": dim},
                                 rowData=[],
                                 columnDefs=options["table-column-defs"],
                                 columnSizeOptions="autoSize",
@@ -138,7 +138,7 @@ def build_tables(layout_options):
                     dbc.AccordionItem(
                         [
                             dag.AgGrid(
-                                id={"type": "data-table-2d", "index": f"time::{dim}"},
+                                id={"type": "controller-data-table-2d", "index": f"time::{dim}"},
                                 rowData=[],
                                 columnDefs=options["table-column-defs"],
                                 columnSizeOptions="autoSize",
@@ -158,14 +158,14 @@ def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
             dbc.CardHeader(
                 children=[
                     dcc.Dropdown(
-                        id={"type": "sensor-graph-1d-dropdown", "index": xaxis},
+                        id={"type": "controller-graph-1d-dropdown", "index": xaxis},
                         options=dropdown_list,
                         value="",
                     )
                 ]
             ),
             dcc.Graph(
-                id={"type": "sensor-graph-1d", "index": xaxis},
+                id={"type": "controller-graph-1d", "index": xaxis},
                 figure=go.Figure(
                     data=go.Scatter(x=[], y=[], type="scatter")
                 ),
@@ -178,19 +178,19 @@ def build_graph_1d(dropdown_list, xaxis="time", yaxis=""):
 def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
     content = dbc.Row(
         children=[
-            dbc.Button("Submit", {"type": "graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
+            dbc.Button("Submit", {"type": "controller-graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
             dbc.Label("z-axis min:"),
             dbc.Col(
                 dbc.Input(
                     type="number",
-                    id={"type": "graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"},
+                    id={"type": "controller-graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"},
                 )
             ),
             dbc.Label("z-axis max:"),
             dbc.Col(
                 dbc.Input(
                     type="number",
-                    id={"type": "graph-2d-z-axis-max", "index": f"{xaxis}::{yaxis}"},
+                    id={"type": "controller-graph-2d-z-axis-max", "index": f"{xaxis}::{yaxis}"},
                 )
             ),
         ]
@@ -212,7 +212,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
             dbc.CardHeader(
                 children=[
                     dcc.Dropdown(
-                        id={"type": "graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"},
+                        id={"type": "controller-graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"},
                         options=dropdown_list,
                         value="",
                     )
@@ -224,7 +224,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
                     dbc.Col(
                         dcc.Graph(
                             id={
-                                "type": "graph-2d-heatmap",
+                                "type": "controller-graph-2d-heatmap",
                                 "index": f"{xaxis}::{yaxis}",
                             },
                             style={"height": 500},
@@ -232,7 +232,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
                     ),
                     dbc.Col(
                         dcc.Graph(
-                            id={"type": "graph-2d-line", "index": f"{xaxis}::{yaxis}"},
+                            id={"type": "controller-graph-2d-line", "index": f"{xaxis}::{yaxis}"},
                             style={"height": 500},
                         )
                     ),
@@ -246,7 +246,7 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis="", zaxis=""):
 def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
     content = dbc.Row(
         children=[
-            dbc.Button("Submit", {"type": "graph-3d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
+            dbc.Button("Submit", {"type": "controller-graph-3d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}),
             dbc.Label("z-axis min:"),
         ]
     )
@@ -267,7 +267,7 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
             dbc.CardHeader(
                 children=[
                     dcc.Dropdown(
-                        id={"type": "graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"},
+                        id={"type": "controller-graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"},
                         options=dropdown_list,
                         value="",
                     )
@@ -278,14 +278,14 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
                     axes_settings,
                     dbc.Col(
                         dcc.Graph(
-                            id={"type": "graph-3d-line", "index": f"{xaxis}::{yaxis}"},
+                            id={"type": "controller-graph-3d-line", "index": f"{xaxis}::{yaxis}"},
                             style={"height": 500},
                         )
                     ),
                     dbc.Col(
                         dcc.Graph(
                             id={
-                                "type": "graph-3d-heatmap",
+                                "type": "controller-graph-3d-heatmap",
                                 "index": f"{xaxis}::{yaxis}",
                             },
                             style={"height": 500},
@@ -298,76 +298,9 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
     return graph
 
 
-def build_graphs(layout_options):
-    graph_list = []
-    print(f"build_graphs: {layout_options}")
-    for ltype, dims in layout_options.items():
-        print('dims', dims)
-        for dim, options in dims.items():
-            title = "Plots"
-            if ltype == "layout-1d":
-                title = f"Plots 1-D ({dim})"
-                graph_list.append(
-                    dbc.AccordionItem(
-                        [
-                            dbc.Row(
-                                children=[
-                                    build_graph_1d(
-                                        options["variable-list"],
-                                        xaxis=dim,
-                                    )
-                                ]
-                            )
-                        ],
-                        title=title,
-                    )
-                )
-
-            elif ltype == "layout-2d":
-                title = f"Plots 2-D (time, {dim})"
-                graph_list.append(
-                    dbc.AccordionItem(
-                        [
-                            dbc.Row(
-                                children=[
-                                    build_graph_2d(
-                                        options["variable-list"],
-                                        xaxis="time",
-                                        yaxis=dim,
-                                    )
-                                ]
-                            )
-                        ],
-                        title=title,
-                    )
-                )
-            
-            elif ltype == "layout-3d":
-                axes = dim.split("::")
-                title = f"Plots 3-D ({axes[0]}, {axes[1]})"
-                graph_list.append(
-                    dbc.AccordionItem(
-                        [
-                            dbc.Row(
-                                children=[
-                                    build_graph_3d(
-                                        options["variable-list"],
-                                        xaxis=axes[0],
-                                        yaxis=axes[1],
-                                    )
-                                ]
-                            )
-                        ],
-                        title=title,
-                    )
-                )
-
-    print(f"build_graphs list: {graph_list}")
-    return graph_list
-
-def get_device_data(device_id: str, device_type: str="sensor"):
-    query = {"device_type": device_type, "device_id": device_id}
-    url = f"http://{datastore_url}/device/data/get/"
+def get_controller_data(controller_id: str):
+    query = {"device_id": controller_id}
+    url = f"http://{datastore_url}/controller/data/get/"
     try:
         timeout = httpx.Timeout(30.0, read=None)
         response = httpx.get(url, params=query, timeout=timeout)
@@ -375,12 +308,12 @@ def get_device_data(device_id: str, device_type: str="sensor"):
         if "results" in results and results["results"]:
             return results["results"]
     except Exception as e:
-        L.error("get_device_data", extra={"reason": e})
+        L.error("get_controller_data", extra={"reason": e})
     return []
 
-def get_device_instance(device_id: str, device_type: str="sensor"):
-    query = {"device_type": device_type, "device_id": device_id}
-    url = f"http://{datastore_url}/device-instance/registry/get/"
+def get_controller_instance(controller_id: str):
+    query = {"device_id": controller_id}
+    url = f"http://{datastore_url}/controller-instance/registry/get/"
     try:
         timeout = httpx.Timeout(30.0, read=None)
         response = httpx.get(url, params=query, timeout=timeout)
@@ -388,26 +321,26 @@ def get_device_instance(device_id: str, device_type: str="sensor"):
         if "results" in results and results["results"]:
             return results["results"][0]
     except Exception as e:
-        L.error("get_device_instance", extra={"reason": e})
+        L.error("get_controller_instance", extra={"reason": e})
     return {}
 
-def get_device_definition_by_device_id(device_id: str, device_type: str="sensor"):
-    device = get_device_instance(device_id=device_id, device_type=device_type)
-    if device:
+def get_controller_definition_by_device_id(controller_id: str):
+    controller = get_controller_instance(controller_id=controller_id)
+    if controller:
         try:
-            device_definition_id = "::".join([
-                device["make"],
-                device["model"],
-                device["version"]
+            controller_definition_id = "::".join([
+                controller["make"],
+                controller["model"],
+                controller["version"]
             ])
-            return get_device_definition(device_definition_id=device_definition_id, device_type=device_type)
+            return get_controller_definition(controller_definition_id=controller_definition_id)
         except Exception as e:
-            print("ERROR: get_device_definition_by_device_id", extra={"reason": e})
+            print("ERROR: get_controller_definition_by_device_id", extra={"reason": e})
     return {}
 
-def get_device_definition(device_definition_id: str, device_type: str="sensor"):
-    query = {"device_type": device_type, "device_definition_id": device_definition_id}
-    url = f"http://{datastore_url}/device-definition/registry/get/"
+def get_controller_definition(controller_definition_id: str):
+    query = {"controller_definition_id": controller_definition_id}
+    url = f"http://{datastore_url}/controller-definition/registry/get/"
     try:
         timeout = httpx.Timeout(30.0, read=None)
         response = httpx.get(url, params=query, timeout=timeout)
@@ -415,27 +348,27 @@ def get_device_definition(device_definition_id: str, device_type: str="sensor"):
         if "results" in results and results["results"]:
             return results["results"][0]
     except Exception as e:
-        L.error("get_device_definition", extra={"reason": e})
+        L.error("get_controller_definition", extra={"reason": e})
         return {}
 
 
-def layout(sensor_id=None):
-    print(f"get_layout: {sensor_id}")
-    sensor_definition = None
-    if sensor_id:
-        parts = sensor_id.split("::")
-        sensor_meta = {
-            "device_id": sensor_id,
+def layout(controller_id=None):
+    print(f"get_layout: {controller_id}")
+    controller_definition = None
+    if controller_id:
+        parts = controller_id.split("::")
+        controller_meta = {
+            "device_id": controller_id,
             "make": parts[0],
             "model": parts[1],
             "serial_number": parts[2],
         }
 
-        sensor_definition = get_device_definition_by_device_id(device_id=sensor_id, device_type="sensor")
+        controller_definition = get_controller_definition_by_device_id(controller_id=controller_id)
 
     else:
-        sensor_meta = {}
-        sensor_definition = {}
+        controller_meta = {}
+        controller_definition = {}
 
     layout_options = {
         "layout-settings": {"time": {"table-column-defs": [], "variable-list": [], "row-data-skeletons": []}},
@@ -445,14 +378,14 @@ def layout(sensor_id=None):
     
     calibration_vars = []
 
-    if sensor_definition:
+    if controller_definition:
         try:
-            dimensions = sensor_definition["dimensions"]
+            dimensions = controller_definition["dimensions"]
             multi_dim = False
             if len(dimensions.keys()) > 1:
                 multi_dim = True
 
-            for name, var in sensor_definition["variables"].items():
+            for name, var in controller_definition["variables"].items():
                 var_type = var["attributes"].get("variable_type", {}).get("data")
                 
                 if var_type == "setting":
@@ -526,13 +459,13 @@ def layout(sensor_id=None):
                             }
                             dln = dim_2d
                             try:
-                                dln = sensor_definition["attributes"][dim_2d]["long_name"]["data"]
+                                dln = controller_definition["attributes"][dim_2d]["long_name"]["data"]
                             except KeyError:
                                 pass
 
                             data_type = "text"
                             try:
-                                dtype = sensor_definition["variables"][dim_2d]["type"]
+                                dtype = controller_definition["variables"][dim_2d]["type"]
                                 if dtype in ["float", "double", "int"]:
                                     data_type = "number"
                                 elif dtype in ["str", "string", "char"]:
@@ -591,16 +524,16 @@ def layout(sensor_id=None):
     initial_request = {
         "source": f"envds.{config.daq_id}.dashboard",
         "data": {},
-        "destpath": "envds/sensor/settings/request",
-        "deviceid": sensor_meta.get("device_id", "")
+        "destpath": "envds/controller/settings/request",
+        "controllerid": controller_meta.get("device_id", "")
     }
 
-    display_name = f"{sensor_meta.get('make', '')} {sensor_meta.get('model', sensor_id.split('::')[-1])}"
+    display_name = f"{controller_meta.get('make', '')} {controller_meta.get('model', controller_id.split('::')[-1])}"
 
     layout = html.Div([
         # --- UNIFIED HEADER ---
         dbc.Row([
-            dbc.Col(html.H2(f"Sensor: {display_name}", className="text-primary")),
+            dbc.Col(html.H2(f"Controller: {display_name}", className="text-primary")),
             dbc.Col(
                 dbc.Button(
                     "Back to Registry ⭢", 
@@ -618,7 +551,7 @@ def layout(sensor_id=None):
                     dbc.CardBody([
                         dbc.Accordion(
                             build_graphs(layout_options),
-                            id="sensor-plot-accordion",
+                            id="controller-plot-accordion",
                             always_open=True,
                             flush=True
                         )
@@ -627,15 +560,15 @@ def layout(sensor_id=None):
             ], width=12)
         ]),
 
-        # --- DYNAMIC TABLES & SETTINGS CARD ---
+        # --- DYNAMIC TABLES & CONTROLS CARD ---
         dbc.Row([
             dbc.Col([
                 dbc.Card([
-                    dbc.CardHeader(html.H5("Data & Settings Tables", className="mb-0")),
+                    dbc.CardHeader(html.H5("Data & Controls Tables", className="mb-0")),
                     dbc.CardBody([
                         dbc.Accordion(
                             build_tables(layout_options),
-                            id="sensor-data-accordion",
+                            id="controller-data-accordion",
                             always_open=True,
                             flush=True
                         )
@@ -651,7 +584,7 @@ def layout(sensor_id=None):
                     dbc.CardHeader(html.H5("Calibration Values", className="mb-0")),
                     dbc.CardBody([
                         html.Pre(
-                            id="calibration-display", 
+                            id="controller-calibration-display", 
                             children="Waiting for data...",
                             style={"whiteSpace": "pre-wrap", "wordBreak": "break-all"}
                         )
@@ -662,30 +595,30 @@ def layout(sensor_id=None):
 
         # --- WEBSOCKETS & STORES ---
         WebSocket(
-            id="ws-sensor-instance",
-            url=f"{ws_url_base}/envds/envops/ws/sensor/{sensor_id}" 
+            id="ws-controller-instance",
+            url=f"{ws_url_base}/envds/envops/ws/sensor/{controller_id}" 
         ),
-        html.Div(id="ws-send-instance-buffer", children=json.dumps(initial_request), style={"display": "none"}),
-        dcc.Store(id="calibration-vars", data=calibration_vars),
-        dcc.Store(id="sensor-definition", data=sensor_definition),
-        dcc.Store(id="sensor-meta", data=sensor_meta),
-        dcc.Store(id="graph-axes", data={}),
-        dcc.Store(id="sensor-data-buffer", data={}),
-        dcc.Store(id="sensor-settings-buffer", data={})
+        html.Div(id="ws-send-controller-buffer", children=json.dumps(initial_request), style={"display": "none"}),
+        dcc.Store(id="controller-calibration-vars", data=calibration_vars),
+        dcc.Store(id="controller-definition", data=controller_definition),
+        dcc.Store(id="controller-meta", data=controller_meta),
+        dcc.Store(id="controller-graph-axes", data={}),
+        dcc.Store(id="controller-data-buffer", data={}),
+        dcc.Store(id="controller-settings-buffer", data={})
     ])
     return layout
 
 @callback(
-    Output({"type": "sensor-graph-1d", "index": MATCH}, "figure"),
-    Input({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "value"),
+    Output({"type": "controller-graph-1d", "index": MATCH}, "figure"),
+    Input({"type": "controller-graph-1d-dropdown", "index": MATCH}, "value"),
     [
-        State("sensor-meta", "data"),
-        State("graph-axes", "data"),
-        State("sensor-definition", "data"),
-        State({"type": "sensor-graph-1d-dropdown", "index": MATCH}, "id"),
+        State("controller-meta", "data"),
+        State("controller-graph-axes", "data"),
+        State("controller-definition", "data"),
+        State({"type": "controller-graph-1d-dropdown", "index": MATCH}, "id"),
     ],
 )
-def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
+def select_graph_1d(y_axis, controller_meta, graph_axes, controller_definition, graph_id):
     default_fig = go.Figure(
         data=go.Scatter(x=[], y=[], type="scatter", mode="lines+markers"),
         layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}}
@@ -703,7 +636,7 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         graph_axes["graph-1d"][graph_id["index"]] = {"x-axis": "time", "y-axis": y_axis}
 
         x, y = [], []
-        results = get_device_data(device_id=sensor_meta.get("device_id"), device_type="sensor")
+        results = get_controller_data(controller_id=controller_meta.get("device_id"))
         
         if results and len(results) > 0:
             for doc in results:
@@ -715,7 +648,7 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
 
         units = ""
         try:
-            unit_data = sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]
+            unit_data = controller_definition["variables"][y_axis]["attributes"]["units"]["data"]
             if unit_data:
                 units = f'({unit_data})'
         except Exception:
@@ -737,19 +670,19 @@ def select_graph_1d(y_axis, sensor_meta, graph_axes, sensor_definition, graph_id
 
 @callback(
     [
-        Output({"type": "graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True),
-        Output({"type": "graph-2d-line", "index": MATCH}, "figure", allow_duplicate=True),
+        Output({"type": "controller-graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True),
+        Output({"type": "controller-graph-2d-line", "index": MATCH}, "figure", allow_duplicate=True),
     ],
-    Input({"type": "graph-2d-dropdown", "index": MATCH}, "value"),
+    Input({"type": "controller-graph-2d-dropdown", "index": MATCH}, "value"),
     [
-        State("sensor-meta", "data"),
-        State("graph-axes", "data"),
-        State("sensor-definition", "data"),
-        State({"type": "graph-2d-dropdown", "index": MATCH}, "id"),
+        State("controller-meta", "data"),
+        State("controller-graph-axes", "data"),
+        State("controller-definition", "data"),
+        State({"type": "controller-graph-2d-dropdown", "index": MATCH}, "id"),
     ],
     prevent_initial_call=True,
 )
-def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
+def select_graph_2d(z_axis, controller_meta, graph_axes, controller_definition, graph_id):
     if not z_axis:
         raise PreventUpdate
 
@@ -768,13 +701,13 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
     x, y, orig_z = [], [], []
     
     y_is_coord = False
-    if sensor_definition and y_axis in sensor_definition.get("variables", {}):
-        if sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+    if controller_definition and y_axis in controller_definition.get("variables", {}):
+        if controller_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
             y_is_coord = True
-            y = sensor_definition["variables"][y_axis].get("data", [])
+            y = controller_definition["variables"][y_axis].get("data", [])
 
-    device_id = sensor_meta.get("device_id")
-    results = get_device_data(device_id=device_id, device_type="sensor")
+    device_id = controller_meta.get("device_id")
+    results = get_controller_data(controller_id=device_id)
 
     if not results:
         raise PreventUpdate
@@ -803,10 +736,10 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
 
     y_units, z_units = "", ""
     try:
-        y_units = f'({sensor_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
+        y_units = f'({controller_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
     except Exception: pass
     try:
-        z_units = f'({sensor_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
+        z_units = f'({controller_definition["variables"][z_axis]["attributes"]["units"]["data"]})'
     except Exception: pass
 
     heatmap = go.Figure(
@@ -836,19 +769,19 @@ def select_graph_2d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
 
 @callback(
     [
-        Output({"type": "graph-3d-line", "index": MATCH}, "figure", allow_duplicate=True),
-        Output({"type": "graph-3d-heatmap", "index": MATCH}, "figure", allow_duplicate=True)
+        Output({"type": "controller-graph-3d-line", "index": MATCH}, "figure", allow_duplicate=True),
+        Output({"type": "controller-graph-3d-heatmap", "index": MATCH}, "figure", allow_duplicate=True)
     ],
-    Input({"type": "graph-3d-dropdown", "index": MATCH}, "value"),
+    Input({"type": "controller-graph-3d-dropdown", "index": MATCH}, "value"),
     [
-        State("sensor-meta", "data"),
-        State("graph-axes", "data"),
-        State("sensor-definition", "data"),
-        State({"type": "graph-3d-dropdown", "index": MATCH}, "id"),
+        State("controller-meta", "data"),
+        State("controller-graph-axes", "data"),
+        State("controller-definition", "data"),
+        State({"type": "controller-graph-3d-dropdown", "index": MATCH}, "id"),
     ],
     prevent_initial_call=True,
 )
-def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id):
+def select_graph_3d(z_axis, controller_meta, graph_axes, controller_definition, graph_id):
     if not z_axis:
         raise PreventUpdate
 
@@ -861,16 +794,16 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
     x_is_coord, y_is_coord = False, False
     x, y, z_history = [], [], []
 
-    if sensor_definition:
-        if x_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+    if controller_definition:
+        if x_axis in controller_definition.get("variables", {}) and controller_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
             x_is_coord = True
-            x = sensor_definition["variables"][x_axis].get("data", [])
-        if y_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+            x = controller_definition["variables"][x_axis].get("data", [])
+        if y_axis in controller_definition.get("variables", {}) and controller_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
             y_is_coord = True
-            y = sensor_definition["variables"][y_axis].get("data", [])
+            y = controller_definition["variables"][y_axis].get("data", [])
 
-    device_id = sensor_meta.get("device_id")
-    results = get_device_data(device_id=device_id, device_type="sensor")
+    device_id = controller_meta.get("device_id")
+    results = get_controller_data(controller_id=device_id)
 
     if not results:
         raise PreventUpdate
@@ -905,7 +838,7 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
     units = []
     for axis in [x_axis, y_axis, z_axis]:
         try:
-            unit = f'({sensor_definition["variables"][axis]["attributes"]["units"]["data"]})'
+            unit = f'({controller_definition["variables"][axis]["attributes"]["units"]["data"]})'
             units.append(unit)
         except Exception:
             units.append('')
@@ -929,11 +862,11 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
 
 
 @callback(
-    Output("sensor-data-buffer", "data"),
-    Output("sensor-settings-buffer", "data"),
-    Input("ws-sensor-instance", "message")
+    Output("controller-data-buffer", "data"),
+    Output("controller-settings-buffer", "data"),
+    Input("ws-controller-instance", "message")
 )
-def update_sensor_buffers(event):
+def update_controller_buffers(event):
     if event is not None and "data" in event:
         try:
             event_data = json.loads(event["data"])
@@ -947,21 +880,21 @@ def update_sensor_buffers(event):
                 return [dash.no_update, event_data]
                 
         except Exception as e:
-            L.error(f"Sensor buffer parse error: {e}")
+            L.error(f"Controller buffer parse error: {e}")
             
     return [dash.no_update, dash.no_update]
 
 
 @callback(
-    Output({"type": "sensor-graph-1d", "index": ALL}, "extendData"),
-    Input("sensor-data-buffer", "data"),
+    Output({"type": "controller-graph-1d", "index": ALL}, "extendData"),
+    Input("controller-data-buffer", "data"),
     [
-        State({"type": "sensor-graph-1d-dropdown", "index": ALL}, "value"),
+        State({"type": "controller-graph-1d-dropdown", "index": ALL}, "value"),
     ],
     prevent_initial_call=True
 )
-def update_graph_1d(sensor_data, y_axis_list):
-    if not sensor_data:
+def update_graph_1d(controller_data, y_axis_list):
+    if not controller_data:
         raise PreventUpdate
 
     try:
@@ -971,7 +904,7 @@ def update_graph_1d(sensor_data, y_axis_list):
                 figs_to_update.append(dash.no_update)
                 continue
 
-            variables = sensor_data.get("variables", {})
+            variables = controller_data.get("variables", {})
             if "time" not in variables or y_axis not in variables:
                 figs_to_update.append(dash.no_update)
                 continue
@@ -1000,21 +933,21 @@ def update_graph_1d(sensor_data, y_axis_list):
         raise PreventUpdate
 
 @callback(
-    Output({"type": "graph-2d-heatmap", "index": ALL}, "figure", allow_duplicate=True),
-    Input("sensor-data-buffer", "data"),
+    Output({"type": "controller-graph-2d-heatmap", "index": ALL}, "figure", allow_duplicate=True),
+    Input("controller-data-buffer", "data"),
     [
-        State({"type": "graph-2d-dropdown", "index": ALL}, "value"),
-        State("graph-axes", "data"),
-        State("sensor-definition", "data"),
-        State({"type": "graph-2d-heatmap", "index": ALL}, "figure"),
-        State({"type": "graph-2d-heatmap", "index": ALL}, "id"),
+        State({"type": "controller-graph-2d-dropdown", "index": ALL}, "value"),
+        State("controller-graph-axes", "data"),
+        State("controller-definition", "data"),
+        State({"type": "controller-graph-2d-heatmap", "index": ALL}, "figure"),
+        State({"type": "controller-graph-2d-heatmap", "index": ALL}, "id"),
     ],
     prevent_initial_call=True,
 )
 def update_graph_2d_heatmap(
-    sensor_data, z_axis_list, graph_axes, sensor_definition, current_figs, graph_ids
+    controller_data, z_axis_list, graph_axes, controller_definition, current_figs, graph_ids
 ):
-    if not sensor_data:
+    if not controller_data:
         raise PreventUpdate
 
     heatmaps = []
@@ -1026,19 +959,19 @@ def update_graph_2d_heatmap(
         y_axis = graph_id["index"].split("::")[1]
         
         y_is_coord = False
-        if sensor_definition and y_axis in sensor_definition.get("variables", {}):
-            if sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+        if controller_definition and y_axis in controller_definition.get("variables", {}):
+            if controller_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                 y_is_coord = True
 
         if (
-            "time" not in sensor_data.get("variables", {})
-            or (not y_is_coord and y_axis not in sensor_data.get("variables", {}))
-            or z_axis not in sensor_data.get("variables", {})
+            "time" not in controller_data.get("variables", {})
+            or (not y_is_coord and y_axis not in controller_data.get("variables", {}))
+            or z_axis not in controller_data.get("variables", {})
         ):
             heatmaps.append(dash.no_update)
             continue
 
-        x = sensor_data["variables"]["time"]["data"]
+        x = controller_data["variables"]["time"]["data"]
 
         if x in current_fig["data"][0].get("x", []):
             heatmaps.append(dash.no_update)
@@ -1053,11 +986,11 @@ def update_graph_2d_heatmap(
         y = current_fig["data"][0].get("y", [])
         if len(y) == 0:
             if y_is_coord:
-                y = sensor_definition["variables"][y_axis].get("data", [])
+                y = controller_definition["variables"][y_axis].get("data", [])
             else:
-                y = sensor_data["variables"][y_axis]["data"]
+                y = controller_data["variables"][y_axis]["data"]
         
-        orig_z = sensor_data["variables"][z_axis]["data"]
+        orig_z = controller_data["variables"][z_axis]["data"]
         if not isinstance(orig_z, list):
             orig_z = [orig_z]
 
@@ -1087,21 +1020,21 @@ def update_graph_2d_heatmap(
     return heatmaps
 
 @callback(
-    Output({"type": "graph-2d-line", "index": ALL}, "figure"),
-    Input("sensor-data-buffer", "data"),
+    Output({"type": "controller-graph-2d-line", "index": ALL}, "figure"),
+    Input("controller-data-buffer", "data"),
     [
-        State({"type": "graph-2d-dropdown", "index": ALL}, "value"),
-        State("graph-axes", "data"),
-        State("sensor-definition", "data"),
-        State({"type": "graph-2d-line", "index": ALL}, "figure"),
-        State({"type": "graph-2d-line", "index": ALL}, "id"),
+        State({"type": "controller-graph-2d-dropdown", "index": ALL}, "value"),
+        State("controller-graph-axes", "data"),
+        State("controller-definition", "data"),
+        State({"type": "controller-graph-2d-line", "index": ALL}, "figure"),
+        State({"type": "controller-graph-2d-line", "index": ALL}, "id"),
     ],
     prevent_initial_call=True,
 )
 def update_graph_2d_scatter(
-    sensor_data, z_axis_list, graph_axes, sensor_definition, current_figs, graph_ids
+    controller_data, z_axis_list, graph_axes, controller_definition, current_figs, graph_ids
 ):
-    if not sensor_data:
+    if not controller_data:
         raise PreventUpdate
 
     scatters = []
@@ -1113,26 +1046,26 @@ def update_graph_2d_scatter(
         y_axis = graph_id["index"].split("::")[1]
         
         y_is_coord = False
-        if sensor_definition and y_axis in sensor_definition.get("variables", {}):
-            if sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+        if controller_definition and y_axis in controller_definition.get("variables", {}):
+            if controller_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                 y_is_coord = True
 
         if (
-            "time" not in sensor_data.get("variables", {})
-            or (not y_is_coord and y_axis not in sensor_data.get("variables", {}))
-            or z_axis not in sensor_data.get("variables", {})
+            "time" not in controller_data.get("variables", {})
+            or (not y_is_coord and y_axis not in controller_data.get("variables", {}))
+            or z_axis not in controller_data.get("variables", {})
         ):
             scatters.append(dash.no_update)
             continue
 
-        x = sensor_data["variables"]["time"]["data"]
+        x = controller_data["variables"]["time"]["data"]
         
         if y_is_coord:
-            y = sensor_definition["variables"][y_axis].get("data", [])
+            y = controller_definition["variables"][y_axis].get("data", [])
         else:
-            y = sensor_data["variables"][y_axis]["data"]
+            y = controller_data["variables"][y_axis]["data"]
             
-        z = sensor_data["variables"][z_axis]["data"]
+        z = controller_data["variables"][z_axis]["data"]
 
         current_fig["data"][0]["x"] = y
         current_fig["data"][0]["y"] = z
@@ -1150,23 +1083,23 @@ def update_graph_2d_scatter(
 
 @callback(
     [
-        Output({"type": "graph-3d-line", "index": ALL}, "figure"),
-        Output({"type": "graph-3d-heatmap", "index": ALL}, "figure")
+        Output({"type": "controller-graph-3d-line", "index": ALL}, "figure"),
+        Output({"type": "controller-graph-3d-heatmap", "index": ALL}, "figure")
     ],
-    Input("sensor-data-buffer", "data"),
+    Input("controller-data-buffer", "data"),
     [
-        State({"type": "graph-3d-dropdown", "index": ALL}, "value"),
-        State("sensor-definition", "data"),
-        State({"type": "graph-3d-line", "index": ALL}, "figure"),
-        State({"type": "graph-3d-heatmap", "index": ALL}, "figure"),
-        State({"type": "graph-3d-dropdown", "index": ALL}, "id"),
+        State({"type": "controller-graph-3d-dropdown", "index": ALL}, "value"),
+        State("controller-definition", "data"),
+        State({"type": "controller-graph-3d-line", "index": ALL}, "figure"),
+        State({"type": "controller-graph-3d-heatmap", "index": ALL}, "figure"),
+        State({"type": "controller-graph-3d-dropdown", "index": ALL}, "id"),
     ],
     prevent_initial_call=True,
 )
 def update_graph_3d_plots(
-    sensor_data, z_axis_list, sensor_definition, line_figs, heatmap_figs, graph_ids
+    controller_data, z_axis_list, controller_definition, line_figs, heatmap_figs, graph_ids
 ):
-    if not sensor_data:
+    if not controller_data:
         raise PreventUpdate
 
     updated_lines, updated_heatmaps = [], []
@@ -1181,32 +1114,32 @@ def update_graph_3d_plots(
         y_axis = graph_id["index"].split("::")[1]
         
         x_is_coord, y_is_coord = False, False
-        if sensor_definition:
-            if x_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+        if controller_definition:
+            if x_axis in controller_definition.get("variables", {}) and controller_definition["variables"][x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                 x_is_coord = True
-            if y_axis in sensor_definition.get("variables", {}) and sensor_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+            if y_axis in controller_definition.get("variables", {}) and controller_definition["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                 y_is_coord = True
 
         if (
-            (not x_is_coord and x_axis not in sensor_data.get("variables", {}))
-            or (not y_is_coord and y_axis not in sensor_data.get("variables", {}))
-            or z_axis not in sensor_data.get("variables", {})
+            (not x_is_coord and x_axis not in controller_data.get("variables", {}))
+            or (not y_is_coord and y_axis not in controller_data.get("variables", {}))
+            or z_axis not in controller_data.get("variables", {})
         ):
             updated_lines.append(dash.no_update)
             updated_heatmaps.append(dash.no_update)
             continue
 
         if x_is_coord:
-            x = sensor_definition["variables"][x_axis].get("data", [])
+            x = controller_definition["variables"][x_axis].get("data", [])
         else:
-            x = sensor_data["variables"][x_axis]["data"]
+            x = controller_data["variables"][x_axis]["data"]
             
         if y_is_coord:
-            y = sensor_definition["variables"][y_axis].get("data", [])
+            y = controller_definition["variables"][y_axis].get("data", [])
         else:
-            y = sensor_data["variables"][y_axis]["data"]
+            y = controller_data["variables"][y_axis]["data"]
             
-        latest_z = sensor_data["variables"][z_axis]["data"]
+        latest_z = controller_data["variables"][z_axis]["data"]
 
         z = []
         for yi in range(len(y)):
@@ -1236,13 +1169,13 @@ def update_graph_3d_plots(
 
 
 @callback(
-    Output("ws-send-instance-buffer", "children", allow_duplicate=True),
-    Input({"type": "submit-setting-btn", "index": ALL}, "n_clicks"),
-    State({"type": "settings-table", "index": ALL}, "selectedRows"),
-    State("sensor-meta", "data"),
+    Output("ws-send-controller-buffer", "children", allow_duplicate=True),
+    Input({"type": "controller-submit-setting-btn", "index": ALL}, "n_clicks"),
+    State({"type": "controller-settings-table", "index": ALL}, "selectedRows"),
+    State("controller-meta", "data"),
     prevent_initial_call=True
 )
-def submit_setting_change(n_clicks_list, selected_rows_list, sensor_meta):
+def submit_setting_change(n_clicks_list, selected_rows_list, controller_meta):
     """Detects explicit button click, pulls the active row's requested_value, and compiles a structured Request CloudEvent."""
     
     # Check if a button was actually clicked
@@ -1281,8 +1214,8 @@ def submit_setting_change(n_clicks_list, selected_rows_list, sensor_meta):
     event = {
         "source": f"envds.{config.daq_id}.dashboard",
         "data": {"settings": {col_id: {"requested": requested_val}}},
-        "destpath": "envds/sensor/settings/request",
-        "deviceid": sensor_meta["device_id"]
+        "destpath": "envds/controller/settings/request",
+        "controllerid": controller_meta["device_id"]
     }
     
     print(f"Generated explicit settings control request event: {event}")
@@ -1290,13 +1223,13 @@ def submit_setting_change(n_clicks_list, selected_rows_list, sensor_meta):
 
 
 @callback(
-    Output({"type": "settings-table", "index": ALL}, "rowData"), 
-    Input("sensor-settings-buffer", "data"),
-    State({"type": "settings-table", "index": ALL}, "rowData"),
+    Output({"type": "controller-settings-table", "index": ALL}, "rowData"), 
+    Input("controller-settings-buffer", "data"),
+    State({"type": "controller-settings-table", "index": ALL}, "rowData"),
 )
-def update_settings_table(sensor_settings, row_data_list):
+def update_settings_table(controller_settings, row_data_list):
     """Live-update parameter layout rows when the instrument broadcasts actual setting updates."""
-    if not sensor_settings or not row_data_list:
+    if not controller_settings or not row_data_list:
         raise PreventUpdate
 
     updated_row_lists = []
@@ -1312,8 +1245,8 @@ def update_settings_table(sensor_settings, row_data_list):
             
             for row in rows:
                 param_name = row["parameter"]
-                if param_name in sensor_settings.get("settings", {}):
-                    param_data = sensor_settings["settings"][param_name]
+                if param_name in controller_settings.get("settings", {}):
+                    param_data = controller_settings["settings"][param_name]
                     
                     # Handle multiple potential envds packing patterns
                     if isinstance(param_data, dict) and "data" in param_data:
@@ -1352,15 +1285,15 @@ def update_settings_table(sensor_settings, row_data_list):
 
 
 @callback(
-    Output("calibration-display", "children"),
-    Input("sensor-data-buffer", "data"),
+    Output("controller-calibration-display", "children"),
+    Input("controller-data-buffer", "data"),
     [
-        State("calibration-display", "children"),
-        State("calibration-vars", "data"),
+        State("controller-calibration-display", "children"),
+        State("controller-calibration-vars", "data"),
     ]
 )
-def update_calibration_display(sensor_data, current_display, cal_vars):
-    if not sensor_data or not cal_vars:
+def update_calibration_display(controller_data, current_display, cal_vars):
+    if not controller_data or not cal_vars:
         raise PreventUpdate
 
     try:
@@ -1370,8 +1303,8 @@ def update_calibration_display(sensor_data, current_display, cal_vars):
 
     has_updates = False
     for name in cal_vars:
-        if name in sensor_data.get("variables", {}):
-            new_val = sensor_data["variables"][name].get("data")
+        if name in controller_data.get("variables", {}):
+            new_val = controller_data["variables"][name].get("data")
             if cal_data.get(name) != new_val:
                 cal_data[name] = new_val
                 has_updates = True
@@ -1387,18 +1320,18 @@ def update_calibration_display(sensor_data, current_display, cal_vars):
 
 @callback(
     Output(
-        {"type": "data-table-1d", "index": ALL}, "rowTransaction"
+        {"type": "controller-data-table-1d", "index": ALL}, "rowTransaction"
     ),
-    Input("sensor-data-buffer", "data"),
+    Input("controller-data-buffer", "data"),
     [
-        State({"type": "data-table-1d", "index": ALL}, "columnDefs"),
+        State({"type": "controller-data-table-1d", "index": ALL}, "columnDefs"),
     ],
 )
-def update_table_1d(sensor_data, col_defs_list):
-    if not sensor_data:
+def update_table_1d(controller_data, col_defs_list):
+    if not controller_data:
         raise PreventUpdate
 
-    print('sensor data', sensor_data)
+    print('controller data', controller_data)
     transactions = []
     
     try:
@@ -1406,8 +1339,8 @@ def update_table_1d(sensor_data, col_defs_list):
             data = {}
             for col in col_defs:
                 name = col["field"]
-                if name in sensor_data.get("variables", {}):
-                    data[name] = sensor_data["variables"][name].get("data", "")
+                if name in controller_data.get("variables", {}):
+                    data[name] = controller_data["variables"][name].get("data", "")
                 else:
                     data[name] = ""
             
@@ -1426,17 +1359,17 @@ def update_table_1d(sensor_data, col_defs_list):
 
 @callback(
     Output(
-        {"type": "data-table-2d", "index": ALL}, "rowData"
+        {"type": "controller-data-table-2d", "index": ALL}, "rowData"
     ), 
-    Input("sensor-data-buffer", "data"),
+    Input("controller-data-buffer", "data"),
     [
-        State({"type": "data-table-2d", "index": ALL}, "rowData"),
-        State({"type": "data-table-2d", "index": ALL}, "columnDefs"),
-        State("sensor-definition", "data"),
+        State({"type": "controller-data-table-2d", "index": ALL}, "rowData"),
+        State({"type": "controller-data-table-2d", "index": ALL}, "columnDefs"),
+        State("controller-definition", "data"),
     ],
 )
-def update_table_2d(sensor_data, row_data_list, col_defs_list, sensor_definition):
-    if not sensor_data:
+def update_table_2d(controller_data, row_data_list, col_defs_list, controller_definition):
+    if not controller_data:
         raise PreventUpdate
         
     new_row_data_list = []
@@ -1448,17 +1381,17 @@ def update_table_2d(sensor_data, row_data_list, col_defs_list, sensor_definition
         dim_2d = col_defs[0]["field"]
         
         dim_2d_is_coord = False
-        if sensor_definition and dim_2d in sensor_definition.get("variables", {}):
-            if sensor_definition["variables"][dim_2d].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+        if controller_definition and dim_2d in controller_definition.get("variables", {}):
+            if controller_definition["variables"][dim_2d].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                 dim_2d_is_coord = True
         
         if dim_2d_is_coord:
-            dim_data = sensor_definition["variables"][dim_2d].get("data", [])
+            dim_data = controller_definition["variables"][dim_2d].get("data", [])
         else:
-            if dim_2d not in sensor_data.get("variables", {}):
+            if dim_2d not in controller_data.get("variables", {}):
                 new_row_data_list.append(dash.no_update)
                 continue
-            dim_data = sensor_data["variables"][dim_2d].get("data")
+            dim_data = controller_data["variables"][dim_2d].get("data")
             if not dim_data:
                 new_row_data_list.append(dash.no_update)
                 continue
@@ -1472,7 +1405,7 @@ def update_table_2d(sensor_data, row_data_list, col_defs_list, sensor_definition
                     data[name] = dim_data[index]
                 else:
                     try:
-                        data[name] = sensor_data["variables"][name]["data"][index]
+                        data[name] = controller_data["variables"][name]["data"][index]
                     except (KeyError, IndexError, TypeError):
                         data[name] = None
             row_data.append(data)
@@ -1486,13 +1419,13 @@ def update_table_2d(sensor_data, row_data_list, col_defs_list, sensor_definition
 
 @callback(
     Output(
-        {"type": "graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True
+        {"type": "controller-graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True
     ),
-    [Input({"type": "graph-2d-z-axis-submit", "index": MATCH}, "n_clicks")],
+    [Input({"type": "controller-graph-2d-z-axis-submit", "index": MATCH}, "n_clicks")],
     [
-        State({"type": "graph-2d-z-axis-min", "index": MATCH}, "value"),
-        State({"type": "graph-2d-z-axis-max", "index": MATCH}, "value"),
-        State({"type": "graph-2d-heatmap", "index": MATCH}, "figure"),
+        State({"type": "controller-graph-2d-z-axis-min", "index": MATCH}, "value"),
+        State({"type": "controller-graph-2d-z-axis-max", "index": MATCH}, "value"),
+        State({"type": "controller-graph-2d-heatmap", "index": MATCH}, "figure"),
     ],
     prevent_initial_call=True,
 )
@@ -1506,7 +1439,7 @@ def set_2d_z_axis_range(n, axis_min, axis_max, heatmap):
     return fig
 
 @callback(
-    Output("ws-sensor-instance", "send"), Input("ws-send-instance-buffer", "children")
+    Output("ws-controller-instance", "send"), Input("ws-send-controller-buffer", "children")
 )
 def send_to_instance(value):
     print(f"sending: {value}")
