@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, Input, Output, State, no_update, ALL, MATCH, ctx
+from dash import html, dcc, Input, Output, State, ALL, MATCH, ctx
 from dash.exceptions import PreventUpdate
 from dash_extensions import WebSocket
 import dash_bootstrap_components as dbc
@@ -28,12 +28,15 @@ def get_short_id(full_id: str) -> str:
 
 # --- Dynamic Builders ---
 def build_graph_1d(dropdown_list, xaxis="time"):
+    default_fig = go.Figure(data=[go.Scatter(x=[], y=[], mode="lines+markers")], layout={"template": "simple_white", "xaxis": {"title": "Time (UTC)"}, "yaxis": {"title": "Value"}})
     return dbc.Card([
-        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-1d-dropdown", "index": xaxis}, options=dropdown_list, value="")]),
-        dcc.Graph(id={"type": "plot-graph-1d", "index": xaxis}, figure=go.Figure(data=[go.Scatter(x=[], y=[], mode="lines+markers")]), style={"height": 400}),
+        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-1d-dropdown", "index": xaxis}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
+        dcc.Graph(id={"type": "plot-graph-1d", "index": xaxis}, figure=default_fig, style={"height": 400}),
     ], className="shadow-sm border-0")
 
 def build_graph_2d(dropdown_list, xaxis="time", yaxis=""):
+    default_heatmap = go.Figure(data=[go.Heatmap(x=[], y=[], z=[], type="heatmap")], layout={"template": "simple_white", "xaxis": {"title": "Time"}, "yaxis": {"title": yaxis}})
+    default_scatter = go.Figure(data=[go.Scatter(x=[], y=[], mode="lines")], layout={"template": "simple_white", "xaxis": {"title": yaxis}, "yaxis": {"title": "Value"}})
     content = dbc.Row([
         dbc.Button("Submit Range", {"type": "plot-graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}, color="primary", className="mb-2"),
         dbc.Label("z-axis min:", className="small text-muted fw-bold"), dbc.Col(dbc.Input(type="number", id={"type": "plot-graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"}, className="mb-2")),
@@ -41,22 +44,23 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis=""):
     ])
     axes_settings = dbc.Accordion([dbc.AccordionItem([dbc.Card(children=[content], className="border-0 shadow-sm p-3")], title="Axes Settings")], start_collapsed=True, className="mb-3")
     return dbc.Card([
-        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="")]),
+        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
         dbc.CardBody([
             axes_settings,
             dbc.Row([
-                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(data=[go.Heatmap(x=[], y=[], z=[], type="heatmap")]), style={"height": 500})),
-                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-line", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(data=[go.Scatter(x=[], y=[], mode="lines")]), style={"height": 500})),
+                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=default_heatmap, style={"height": 500})),
+                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-line", "index": f"{xaxis}::{yaxis}"}, figure=default_scatter, style={"height": 500})),
             ])
         ])
     ], className="shadow-sm border-0")
 
 def build_graph_3d(dropdown_list, xaxis="", yaxis=""):
+    default_fig = go.Figure(layout={"template": "simple_white"})
     return dbc.Card([
-        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="")]),
+        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
         dbc.Row([
-            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-line", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(data=[go.Surface(x=[], y=[], z=[])]), style={"height": 500})),
-            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(data=[go.Heatmap(x=[], y=[], z=[], type="heatmap")]), style={"height": 500})),
+            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-line", "index": f"{xaxis}::{yaxis}"}, figure=default_fig, style={"height": 500})),
+            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=default_fig, style={"height": 500})),
         ]),
     ])
 
@@ -75,7 +79,6 @@ def build_graphs(layout_options):
 
 # --- Core View Renderers ---
 def render_deployment_plots(deployment_id):
-    L.info(f"🚨 ROUTER: Building plot page for deployment {deployment_id}")
     all_deployments = get_registry_data("deployment") or []
     host_dep = next((d for d in all_deployments if d.get("metadata", {}).get("name") == deployment_id), None)
     if not host_dep: return dbc.Alert(f"Deployment {deployment_id} not found.", color="warning", className="m-4")
@@ -91,14 +94,16 @@ def render_deployment_plots(deployment_id):
 
     vset_defs = {} 
     try:
-        ids_response = httpx.get(f"http://{datastore_url}/variableset-definition/registry/ids/get/", timeout=10.0)
+        ids_response = httpx.get(f"http://{datastore_url}/variableset-definition/registry/ids/get/", timeout=30.0)
         for full_id in ids_response.json().get("results", []):
             if not full_id: continue
             short_id = get_short_id(full_id)
-            if short_id.split("::")[0] in group_platforms:
-                def_response = httpx.get(f"http://{datastore_url}/variableset-definition/registry/get/", params={"variableset_definition_id": full_id}, timeout=10.0)
+            
+            # Simple check if platform prefix matches anything in our group
+            if any(p in short_id for p in group_platforms):
+                def_response = httpx.get(f"http://{datastore_url}/variableset-definition/registry/get/", params={"variableset_definition_id": full_id}, timeout=30.0)
                 if def_response.status_code == 200: vset_defs[short_id] = def_response.json().get("results", [{}])[0]
-    except Exception as e: L.error(f"🚨 ROUTER: Failed to fetch variablesets: {e}")
+    except Exception as e: L.error(f"Failed to fetch variablesets: {e}")
 
     layout_options = {"layout-1d": {"time": {"variable-list": []}}, "layout-2d": {}, "layout-3d": {}}
     for short_id, vset_def in vset_defs.items():
@@ -109,9 +114,7 @@ def render_deployment_plots(deployment_id):
             value = f"{short_id}::{v_name}" 
             
             dtype = str(v_def.get("type", "unknown")).lower()
-            
-            # 🟢 THE FIX: Broad matching allows float32, float64, etc.
-            if not any(x in dtype for x in ["float", "double", "int", "number"]): continue
+            if dtype not in ["float", "double", "int"]: continue
                 
             shape = v_def.get("shape", ["time"])
             if not shape: shape = ["time"]
@@ -145,7 +148,7 @@ def render_deployment_plots(deployment_id):
 
     ws_connections = [WebSocket(id={"type": "ws-variableset", "index": short_id}, url=f"{ws_base}/ws/variableset/{short_id}") for short_id in vset_defs.keys()]
     
-    return html.Div([
+    return html.Div(key=deployment_id, children=[
         html.Div(ws_connections),
         dcc.Store(id="plot-vset-definitions", data=vset_defs),
         dcc.Store(id="plot-data-buffer", data={}),
@@ -162,17 +165,16 @@ app.layout = create_unified_shell(html.Div([
 
 @app.callback(Output("plot-page-content", "children"), Input("plot-url", "pathname"))
 def display_page(pathname):
-    if not pathname or "/deployment/" not in pathname:
+    if not pathname or "deployment" not in pathname:
         return dbc.Alert("Select a deployment from the sidebar.", color="info", className="m-4")
     try:
-        deployment_id = pathname.split("/deployment/")[-1]
+        deployment_id = pathname.split("deployment/")[-1]
         return render_deployment_plots(deployment_id)
     except Exception as e:
-        L.error(f"Error rendering plots: {traceback.format_exc()}")
-        return dbc.Alert(f"Fatal Layout Error: {e}", color="danger", className="m-4")
+        return dbc.Alert(f"Fatal Layout Error: {traceback.format_exc()}", color="danger", className="m-4")
 
 
-# --- Sub-Callbacks (Isolated per page load) ---
+# --- Sub-Callbacks ---
 @app.callback(
     Output("plot-data-buffer", "data"),
     Input({"type": "ws-variableset", "index": ALL}, "message"),
@@ -186,7 +188,6 @@ def buffer_ws_streams(messages):
     try:
         event_data = json.loads(msg["data"]).get("data-update")
         if not event_data: raise PreventUpdate
-        L.info(f"🚨 DEBUG PLOTS WS: Valid telemetry received for variableset {short_id}")
         return {"short_id": short_id, "data-update": event_data}
     except Exception: raise PreventUpdate
 
@@ -195,7 +196,7 @@ def buffer_ws_streams(messages):
     Input({"type": "plot-graph-1d-dropdown", "index": MATCH}, "value")
 )
 def init_graph_1d(selected_value):
-    default_fig = go.Figure(data=[go.Scatter(x=[], y=[], mode="lines+markers")], layout={"template": "simple_white", "xaxis": {"title": "Time (UTC)"}, "yaxis": {"title": "Value"}})
+    default_fig = go.Figure(data=[go.Scatter(x=[], y=[], mode="lines+markers")], layout={"template": "simple_white", "xaxis": {"title": "Time (UTC)"}, "yaxis": {"title": "Value"}, "margin": {"t": 30}})
     if not selected_value: return default_fig
     try:
         parts = selected_value.split("::")
@@ -203,7 +204,7 @@ def init_graph_1d(selected_value):
         var_name = parts[2]
         url = f"http://{datastore_url}/variableset/data/get/"
         x, y = [], []
-        response = httpx.get(url, params={"variableset_id": short_id}, timeout=10.0)
+        response = httpx.get(url, params={"variableset_id": short_id}, timeout=30.0)
         if response.status_code == 200:
             for doc in response.json().get("results", []):
                 variables = doc.get("variables", {})
@@ -226,23 +227,23 @@ def update_graph_1d(buffer_payload, selected_values):
     figs_to_update = []
     for selected_value in selected_values:
         if not selected_value: 
-            figs_to_update.append(no_update)
+            figs_to_update.append(dash.no_update)
             continue
         parts = selected_value.split("::")
         short_id = f"{parts[0]}::{parts[1]}"
         var_name = parts[2]
         if incoming_short_id != short_id:
-            figs_to_update.append(no_update)
+            figs_to_update.append(dash.no_update)
             continue
         variables = event_data.get("variables", {})
         x_val, y_val = variables.get("time", {}).get("data"), variables.get(var_name, {}).get("data")
         if x_val is None or y_val is None:
-            figs_to_update.append(no_update)
+            figs_to_update.append(dash.no_update)
             continue
         if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[-1]
         if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[-1]
         figs_to_update.append(({"x": [[x_val]], "y": [[y_val]]}, [0], 1000))
-    if all(f == no_update for f in figs_to_update): raise PreventUpdate
+    if all(f == dash.no_update for f in figs_to_update): raise PreventUpdate
     return figs_to_update
 
 @app.callback(
@@ -267,7 +268,7 @@ def init_graph_2d(selected_value, vset_defs, graph_id):
         if y_axis in vmap and vmap[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
             y_is_coord = True
             y = vmap[y_axis].get("data", [])
-        response = httpx.get(f"http://{datastore_url}/variableset/data/get/", params={"variableset_id": short_id}, timeout=10.0)
+        response = httpx.get(f"http://{datastore_url}/variableset/data/get/", params={"variableset_id": short_id}, timeout=30.0)
         if response.status_code == 200:
             for doc in response.json().get("results", []):
                 t_data = doc.get("variables", {}).get("time", {}).get("data")
@@ -282,13 +283,7 @@ def init_graph_2d(selected_value, vset_defs, graph_id):
                     orig_z.append(z_data)
                     if not y_is_coord: y.append(doc.get("variables", {}).get(y_axis, {}).get("data"))
         if len(y) > 0 and isinstance(y[-1], list): y = y[-1]
-        z = []
-        for yi in range(len(y)):
-            new_z = []
-            for xi in range(len(x)):
-                try: new_z.append(orig_z[xi][yi])
-                except IndexError: new_z.append(None)
-            z.append(new_z)
+        z = [[orig_z[xi][yi] if xi < len(orig_z) and yi < len(orig_z[xi]) else None for xi in range(len(x))] for yi in range(len(y))]
         heatmap = go.Figure(data=go.Heatmap(x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"), layout={"template": "simple_white", "xaxis": {"title": "Time"}, "yaxis": {"title": y_axis}})
         scatter = go.Figure(data=[{"x": y, "y": orig_z[-1] if len(orig_z) > 0 else [], "type": "scatter"}], layout={"template": "simple_white", "xaxis": {"title": y_axis}, "yaxis": {"title": z_axis}, "title": str(x[-1]) if len(x) > 0 else ""})
         if use_log:
@@ -311,25 +306,23 @@ def update_graph_2d_heatmap(buffer_payload, selected_values, vset_defs, current_
     heatmaps = []
     for selected_value, graph_id, current_fig in zip(selected_values, graph_ids, current_figs):
         if not current_fig or not selected_value:
-            heatmaps.append(no_update)
+            heatmaps.append(dash.no_update)
             continue
         parts = selected_value.split("::")
         short_id = f"{parts[0]}::{parts[1]}"
         z_axis = parts[2]
         if incoming_short_id != short_id:
-            heatmaps.append(no_update)
+            heatmaps.append(dash.no_update)
             continue
         y_axis = graph_id["index"].split("::")[1]
         y_is_coord = False
         vmap = vset_defs.get(short_id, {}).get("variables", {})
         if y_axis in vmap and vmap[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate": y_is_coord = True
         if ("time" not in event_data.get("variables", {}) or (not y_is_coord and y_axis not in event_data.get("variables", {})) or z_axis not in event_data.get("variables", {})):
-            heatmaps.append(no_update)
+            heatmaps.append(dash.no_update)
             continue
         x = event_data["variables"]["time"]["data"]
-        if x in current_fig["data"][0].get("x", []):
-            heatmaps.append(no_update)
-            continue
+        if x in current_fig["data"][0].get("x", []): heatmaps.append(dash.no_update); continue
         if not isinstance(x, list): x = [x]
         for nx in x: current_fig["data"][0]["x"].append(nx)
         y = current_fig["data"][0].get("y", [])
@@ -337,20 +330,14 @@ def update_graph_2d_heatmap(buffer_payload, selected_values, vset_defs, current_
         orig_z = event_data["variables"][z_axis]["data"]
         if not isinstance(orig_z, list): orig_z = [orig_z]
         if len(x) > 1:
-            z = []
-            for yi, yval in enumerate(y):
-                new_z = []
-                for xi, xval in enumerate(x):
-                    try: new_z.append(orig_z[xi][yi])
-                    except IndexError: new_z.append(None)
-                z.append(new_z)
+            z = [[orig_z[xi][yi] if xi < len(orig_z) and yi < len(orig_z[xi]) else None for xi in range(len(x))] for yi in range(len(y))]
             current_fig["data"][0]["z"] = z
         else:
             for yi, yval in enumerate(y):
                 try: current_fig["data"][0]["z"][yi].append(orig_z[yi])
                 except IndexError: pass
         heatmaps.append(current_fig)
-    if all(h == no_update for h in heatmaps): raise PreventUpdate
+    if all(h == dash.no_update for h in heatmaps): raise PreventUpdate
     return heatmaps
 
 @app.callback(
@@ -366,20 +353,20 @@ def update_graph_2d_scatter(buffer_payload, selected_values, vset_defs, current_
     scatters = []
     for selected_value, graph_id, current_fig in zip(selected_values, graph_ids, current_figs):
         if not current_fig or not selected_value:
-            scatters.append(no_update)
+            scatters.append(dash.no_update)
             continue
         parts = selected_value.split("::")
         short_id = f"{parts[0]}::{parts[1]}"
         z_axis = parts[2]
         if incoming_short_id != short_id:
-            scatters.append(no_update)
+            scatters.append(dash.no_update)
             continue
         y_axis = graph_id["index"].split("::")[1]
         y_is_coord = False
         vmap = vset_defs.get(short_id, {}).get("variables", {})
         if y_axis in vmap and vmap[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate": y_is_coord = True
         if ("time" not in event_data.get("variables", {}) or (not y_is_coord and y_axis not in event_data.get("variables", {})) or z_axis not in event_data.get("variables", {})):
-            scatters.append(no_update)
+            scatters.append(dash.no_update)
             continue
         x = event_data["variables"]["time"]["data"]
         y = vmap[y_axis].get("data", []) if y_is_coord else event_data["variables"][y_axis]["data"]
@@ -389,7 +376,7 @@ def update_graph_2d_scatter(buffer_payload, selected_values, vset_defs, current_
         if isinstance(x, list) and len(x) > 0: x = x[-1]
         current_fig["layout"]["title"] = str(x)
         scatters.append(current_fig)
-    if all(s == no_update for s in scatters): raise PreventUpdate
+    if all(s == dash.no_update for s in scatters): raise PreventUpdate
     return scatters
 
 @app.callback(
@@ -416,7 +403,7 @@ def init_graph_3d(selected_value, vset_defs, graph_id):
         if y_axis in vmap and vmap[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
             y_is_coord = True
             y = vmap[y_axis].get("data", [])
-        response = httpx.get(f"http://{datastore_url}/variableset/data/get/", params={"variableset_id": short_id}, timeout=10.0)
+        response = httpx.get(f"http://{datastore_url}/variableset/data/get/", params={"variableset_id": short_id}, timeout=30.0)
         if response.status_code == 200:
             for doc in response.json().get("results", []):
                 z_data = doc.get("variables", {}).get(z_axis, {}).get("data")
@@ -461,15 +448,15 @@ def update_graph_3d_plots(buffer_payload, selected_values, vset_defs, line_figs,
     updated_lines, updated_heatmaps = [], []
     for selected_value, graph_id, line_fig, heatmap_fig in zip(selected_values, graph_ids, line_figs, heatmap_figs):
         if not selected_value or not line_fig or not heatmap_fig:
-            updated_lines.append(no_update)
-            updated_heatmaps.append(no_update)
+            updated_lines.append(dash.no_update)
+            updated_heatmaps.append(dash.no_update)
             continue
         parts = selected_value.split("::")
         short_id = f"{parts[0]}::{parts[1]}"
         z_axis = parts[2]
         if incoming_short_id != short_id:
-            updated_lines.append(no_update)
-            updated_heatmaps.append(no_update)
+            updated_lines.append(dash.no_update)
+            updated_heatmaps.append(dash.no_update)
             continue
         x_axis = graph_id["index"].split("::")[0]
         y_axis = graph_id["index"].split("::")[1]
@@ -478,8 +465,8 @@ def update_graph_3d_plots(buffer_payload, selected_values, vset_defs, line_figs,
         if x_axis in vmap and vmap[x_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate": x_is_coord = True
         if y_axis in vmap and vmap[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate": y_is_coord = True
         if ((not x_is_coord and x_axis not in event_data.get("variables", {})) or (not y_is_coord and y_axis not in event_data.get("variables", {})) or z_axis not in event_data.get("variables", {})):
-            updated_lines.append(no_update)
-            updated_heatmaps.append(no_update)
+            updated_lines.append(dash.no_update)
+            updated_heatmaps.append(dash.no_update)
             continue
         x = vmap[x_axis].get("data", []) if x_is_coord else event_data["variables"][x_axis]["data"]
         y = vmap[y_axis].get("data", []) if y_is_coord else event_data["variables"][y_axis]["data"]
@@ -498,7 +485,7 @@ def update_graph_3d_plots(buffer_payload, selected_values, vset_defs, line_figs,
         line_fig["layout"]["title"] = str(x_title)
         updated_lines.append(line_fig)
         updated_heatmaps.append(heatmap_fig)
-    if all(l == no_update for l in updated_lines): raise PreventUpdate
+    if all(l == dash.no_update for l in updated_lines): raise PreventUpdate
     return updated_lines, updated_heatmaps
 
 @app.callback(
