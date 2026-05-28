@@ -8,7 +8,6 @@ import logging
 import json
 import httpx
 import traceback
-import flask
 
 from utils import get_registry_data, config, create_unified_shell, register_sidebar_callbacks
 
@@ -18,8 +17,6 @@ app = dash.Dash(__name__, requests_pathname_prefix="/envds/envops/plots/", route
 register_sidebar_callbacks(app)
 
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
-
-# 🟢 FIX: Corrected the WebSocket Path to match your FastAPI Mount!
 ws_protocol = "wss://" if str(config.ws_use_tls).lower() == "true" else "ws://"
 ws_base = f"{ws_protocol}{config.external_hostname}:{config.ws_port}/msp/dashboardtest"
 
@@ -31,15 +28,12 @@ def get_short_id(full_id: str) -> str:
 
 # --- Dynamic Builders ---
 def build_graph_1d(dropdown_list, xaxis="time"):
-    default_fig = go.Figure(layout={"template": "simple_white", "xaxis": {"title": "Time (UTC)"}, "yaxis": {"title": "Value"}})
     return dbc.Card([
-        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-1d-dropdown", "index": xaxis}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
-        dcc.Graph(id={"type": "plot-graph-1d", "index": xaxis}, figure=default_fig, style={"height": 400}),
+        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-1d-dropdown", "index": xaxis}, options=dropdown_list, value="")]),
+        dcc.Graph(id={"type": "plot-graph-1d", "index": xaxis}, figure=go.Figure(data=[go.Scatter(x=[], y=[], mode="lines+markers")]), style={"height": 400}),
     ], className="shadow-sm border-0")
 
 def build_graph_2d(dropdown_list, xaxis="time", yaxis=""):
-    default_heatmap = go.Figure(layout={"template": "simple_white", "xaxis": {"title": "Time"}, "yaxis": {"title": yaxis}})
-    default_scatter = go.Figure(layout={"template": "simple_white", "xaxis": {"title": yaxis}, "yaxis": {"title": "Value"}})
     content = dbc.Row([
         dbc.Button("Submit Range", {"type": "plot-graph-2d-z-axis-submit", "index": f"{xaxis}::{yaxis}"}, color="primary", className="mb-2"),
         dbc.Label("z-axis min:", className="small text-muted fw-bold"), dbc.Col(dbc.Input(type="number", id={"type": "plot-graph-2d-z-axis-min", "index": f"{xaxis}::{yaxis}"}, className="mb-2")),
@@ -47,23 +41,22 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis=""):
     ])
     axes_settings = dbc.Accordion([dbc.AccordionItem([dbc.Card(children=[content], className="border-0 shadow-sm p-3")], title="Axes Settings")], start_collapsed=True, className="mb-3")
     return dbc.Card([
-        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
+        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="")]),
         dbc.CardBody([
             axes_settings,
             dbc.Row([
-                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=default_heatmap, style={"height": 500})),
-                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-line", "index": f"{xaxis}::{yaxis}"}, figure=default_scatter, style={"height": 500})),
+                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(data=[go.Heatmap(x=[], y=[], z=[], type="heatmap")]), style={"height": 500})),
+                dbc.Col(dcc.Graph(id={"type": "plot-graph-2d-line", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(data=[go.Scatter(x=[], y=[], mode="lines")]), style={"height": 500})),
             ])
         ])
     ], className="shadow-sm border-0")
 
 def build_graph_3d(dropdown_list, xaxis="", yaxis=""):
-    default_fig = go.Figure(layout={"template": "simple_white"})
     return dbc.Card([
-        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", placeholder="Select variable to plot...")]),
+        dbc.CardHeader([dcc.Dropdown(id={"type": "plot-graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="")]),
         dbc.Row([
-            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-line", "index": f"{xaxis}::{yaxis}"}, figure=default_fig, style={"height": 500})),
-            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=default_fig, style={"height": 500})),
+            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-line", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(data=[go.Surface(x=[], y=[], z=[])]), style={"height": 500})),
+            dbc.Col(dcc.Graph(id={"type": "plot-graph-3d-heatmap", "index": f"{xaxis}::{yaxis}"}, figure=go.Figure(data=[go.Heatmap(x=[], y=[], z=[], type="heatmap")]), style={"height": 500})),
         ]),
     ])
 
@@ -72,24 +65,20 @@ def build_graphs(layout_options):
     for ltype, dims in layout_options.items():
         for dim, options in dims.items():
             if not options["variable-list"]: continue
-            if ltype == "layout-1d":
-                graph_list.append(dbc.AccordionItem([build_graph_1d(options["variable-list"], xaxis=dim)], title=f"Plots 1-D ({dim})"))
-            elif ltype == "layout-2d":
-                graph_list.append(dbc.AccordionItem([build_graph_2d(options["variable-list"], xaxis="time", yaxis=dim)], title=f"Plots 2-D (time, {dim})"))
+            if ltype == "layout-1d": graph_list.append(dbc.AccordionItem([build_graph_1d(options["variable-list"], xaxis=dim)], title=f"Plots 1-D ({dim})"))
+            elif ltype == "layout-2d": graph_list.append(dbc.AccordionItem([build_graph_2d(options["variable-list"], xaxis="time", yaxis=dim)], title=f"Plots 2-D (time, {dim})"))
             elif ltype == "layout-3d":
                 axes = dim.split("::")
                 graph_list.append(dbc.AccordionItem([build_graph_3d(options["variable-list"], xaxis=axes[0], yaxis=axes[1])], title=f"Plots 3-D ({axes[0]}, {axes[1]})"))
     return graph_list
 
 
-# --- Core View Renderers (Server Side Rendered) ---
+# --- Core View Renderers ---
 def render_deployment_plots(deployment_id):
-    L.info(f"🚨 SSR BUILD: Building plot page for deployment {deployment_id}")
+    L.info(f"🚨 ROUTER: Building plot page for deployment {deployment_id}")
     all_deployments = get_registry_data("deployment") or []
     host_dep = next((d for d in all_deployments if d.get("metadata", {}).get("name") == deployment_id), None)
-    
-    if not host_dep: 
-        return dbc.Alert(f"Deployment {deployment_id} not found.", color="warning", className="m-4")
+    if not host_dep: return dbc.Alert(f"Deployment {deployment_id} not found.", color="warning", className="m-4")
         
     host_data = host_dep.get("data", {})
     host_plat_ref = host_data.get("platform_ref", "")
@@ -102,17 +91,14 @@ def render_deployment_plots(deployment_id):
 
     vset_defs = {} 
     try:
-        ids_url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
-        timeout = httpx.Timeout(10.0)
-        ids_response = httpx.get(ids_url, timeout=timeout)
+        ids_response = httpx.get(f"http://{datastore_url}/variableset-definition/registry/ids/get/", timeout=10.0)
         for full_id in ids_response.json().get("results", []):
             if not full_id: continue
             short_id = get_short_id(full_id)
             if short_id.split("::")[0] in group_platforms:
-                def_url = f"http://{datastore_url}/variableset-definition/registry/get/"
-                def_response = httpx.get(def_url, params={"variableset_definition_id": full_id}, timeout=timeout)
+                def_response = httpx.get(f"http://{datastore_url}/variableset-definition/registry/get/", params={"variableset_definition_id": full_id}, timeout=10.0)
                 if def_response.status_code == 200: vset_defs[short_id] = def_response.json().get("results", [{}])[0]
-    except Exception as e: L.error(f"🚨 SSR BUILD: Failed to fetch variablesets: {e}")
+    except Exception as e: L.error(f"🚨 ROUTER: Failed to fetch variablesets: {e}")
 
     layout_options = {"layout-1d": {"time": {"variable-list": []}}, "layout-2d": {}, "layout-3d": {}}
     for short_id, vset_def in vset_defs.items():
@@ -123,6 +109,8 @@ def render_deployment_plots(deployment_id):
             value = f"{short_id}::{v_name}" 
             
             dtype = str(v_def.get("type", "unknown")).lower()
+            
+            # 🟢 THE FIX: Broad matching allows float32, float64, etc.
             if not any(x in dtype for x in ["float", "double", "int", "number"]): continue
                 
             shape = v_def.get("shape", ["time"])
@@ -157,8 +145,7 @@ def render_deployment_plots(deployment_id):
 
     ws_connections = [WebSocket(id={"type": "ws-variableset", "index": short_id}, url=f"{ws_base}/ws/variableset/{short_id}") for short_id in vset_defs.keys()]
     
-    # 🟢 FIX: Wrap the layout in a Div with a dynamic `key`. This forces React to unmount the old WebSockets cleanly!
-    return html.Div(key=deployment_id, children=[
+    return html.Div([
         html.Div(ws_connections),
         dcc.Store(id="plot-vset-definitions", data=vset_defs),
         dcc.Store(id="plot-data-buffer", data={}),
@@ -167,22 +154,22 @@ def render_deployment_plots(deployment_id):
     ], className="container-fluid mt-3")
 
 
-# --- Pure SSR Layout Router ---
-# 🟢 FIX: Completely removed the dcc.Location and `@app.callback` router. 
-# Dash will natively route using flask.request on page load.
-def serve_layout():
-    """Builds the UI on the server based on the active URL."""
-    try:
-        pathname = flask.request.path
-        if "/deployment/" in pathname:
-            deployment_id = pathname.split("/deployment/")[-1]
-            return create_unified_shell(render_deployment_plots(deployment_id), active_item="plots")
-        return create_unified_shell(dbc.Alert("Select a deployment from the sidebar.", color="info", className="m-4"), active_item="plots")
-    except Exception as e:
-        L.error(f"Error serving layout: {traceback.format_exc()}")
-        return create_unified_shell(dbc.Alert(f"Fatal Error: {e}", color="danger", className="m-4"), active_item="plots")
+# --- Main App Router (SPA) ---
+app.layout = create_unified_shell(html.Div([
+    dcc.Location(id="plot-url", refresh=False),
+    html.Div(id="plot-page-content") 
+]), active_item="plots")
 
-app.layout = serve_layout
+@app.callback(Output("plot-page-content", "children"), Input("plot-url", "pathname"))
+def display_page(pathname):
+    if not pathname or "/deployment/" not in pathname:
+        return dbc.Alert("Select a deployment from the sidebar.", color="info", className="m-4")
+    try:
+        deployment_id = pathname.split("/deployment/")[-1]
+        return render_deployment_plots(deployment_id)
+    except Exception as e:
+        L.error(f"Error rendering plots: {traceback.format_exc()}")
+        return dbc.Alert(f"Fatal Layout Error: {e}", color="danger", className="m-4")
 
 
 # --- Sub-Callbacks (Isolated per page load) ---
@@ -199,6 +186,7 @@ def buffer_ws_streams(messages):
     try:
         event_data = json.loads(msg["data"]).get("data-update")
         if not event_data: raise PreventUpdate
+        L.info(f"🚨 DEBUG PLOTS WS: Valid telemetry received for variableset {short_id}")
         return {"short_id": short_id, "data-update": event_data}
     except Exception: raise PreventUpdate
 
@@ -207,7 +195,7 @@ def buffer_ws_streams(messages):
     Input({"type": "plot-graph-1d-dropdown", "index": MATCH}, "value")
 )
 def init_graph_1d(selected_value):
-    default_fig = go.Figure(layout={"template": "simple_white", "xaxis": {"title": "Time (UTC)"}, "yaxis": {"title": "Value"}, "margin": {"t": 30}})
+    default_fig = go.Figure(data=[go.Scatter(x=[], y=[], mode="lines+markers")], layout={"template": "simple_white", "xaxis": {"title": "Time (UTC)"}, "yaxis": {"title": "Value"}})
     if not selected_value: return default_fig
     try:
         parts = selected_value.split("::")
@@ -265,15 +253,16 @@ def update_graph_1d(buffer_payload, selected_values):
 )
 def init_graph_2d(selected_value, vset_defs, graph_id):
     y_axis = graph_id["index"].split("::")[1]
-    default_heatmap = go.Figure(layout={"template": "simple_white", "xaxis": {"title": "Time"}, "yaxis": {"title": y_axis}})
-    default_scatter = go.Figure(layout={"template": "simple_white", "xaxis": {"title": y_axis}, "yaxis": {"title": "Value"}})
+    default_heatmap = go.Figure(data=[go.Heatmap(x=[], y=[], z=[], type="heatmap")], layout={"template": "simple_white", "xaxis": {"title": "Time"}, "yaxis": {"title": y_axis}})
+    default_scatter = go.Figure(data=[go.Scatter(x=[], y=[], mode="lines")], layout={"template": "simple_white", "xaxis": {"title": y_axis}, "yaxis": {"title": "Value"}})
     if not selected_value or not vset_defs: return [default_heatmap, default_scatter]
     try:
         parts = selected_value.split("::")
         short_id = f"{parts[0]}::{parts[1]}"
         z_axis = parts[2]
         use_log = (y_axis == "diameter")
-        x, y, orig_z = [], [], y_is_coord = False
+        x, y, orig_z = [], [], []
+        y_is_coord = False
         vmap = vset_defs.get(short_id, {}).get("variables", {})
         if y_axis in vmap and vmap[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
             y_is_coord = True
