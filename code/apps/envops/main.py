@@ -48,6 +48,8 @@ class ConnectionManager:
         # We store connections grouped by type (e.g., 'deployment', 'variableset', 'sensor')
         # and then by their specific ID.
         self.active_connections: dict[str, dict[str, list[WebSocket]]] = {
+            "fleet": {},
+            "fleet_telemetry": {},
             "deployment_c2": {},
             "deployment_telemetry": {},
             "variableset": {},
@@ -121,13 +123,28 @@ async def mqtt_listen_task():
                             # Example: broadcast to ALL active deployment C2 dashboards
                             for dep_id in manager.active_connections.get("deployment_c2", {}).keys():
                                 await manager.broadcast(payload_str, "deployment_c2", dep_id)
+                            
+                            for fleet_id in manager.active_connections.get("fleet", {}).keys():
+                                await manager.broadcast(payload_str, "fleet", fleet_id)
 
                         # 2. Route Variableset Telemetry to Variableset WebSockets
-                        # elif "variableset" in ce_type and "data.update" in ce_type:
                         elif ce_type in ["envds.variableset.data.update"]:
-                            # Extract variableset ID (e.g., 'main', 'met', etc.)
                             vs_id = source.split(".")[-1] 
                             await manager.broadcast(payload_str, "variableset", vs_id)
+                            
+                            # Extract nav/gps data for the global fleet map
+                            if "nav" in vs_id.lower() or "gps" in vs_id.lower():
+                                try:
+                                    # Grab the platform or deployment name from the source string
+                                    target_id = source.split(".")[-2] 
+                                    
+                                    # Wrap the ce.data with the target_id so the frontend knows who moved
+                                    loc_payload = json.dumps({"target_id": target_id, "data": ce.data})
+                                    
+                                    for fleet_id in manager.active_connections.get("fleet_telemetry", {}).keys():
+                                        await manager.broadcast(loc_payload, "fleet_telemetry", fleet_id)
+                                except Exception as e:
+                                    L.error(f"Error parsing nav source for map: {e}")
 
                         # 3. Route Raw Sensor Telemetry
                         # elif "sensor" in ce_type and "data.update" in ce_type:
@@ -220,6 +237,15 @@ async def ws_sensor(websocket: WebSocket, sensor_id: str):
     except WebSocketDisconnect:
         manager.disconnect(websocket, "sensor", sensor_id)
 
+@app.websocket("/ws/fleet/telemetry")
+async def ws_fleet_telemetry(websocket: WebSocket):
+    await manager.connect(websocket, "fleet_telemetry", "global") 
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, "fleet_telemetry", "global")
+        
 # --- MOUNT DASH FRONTEND ---
 # Traefik strips `/envds/envops`, so FastAPI mounts this at the root.
 app.mount("/", WSGIMiddleware(dash_app.server))

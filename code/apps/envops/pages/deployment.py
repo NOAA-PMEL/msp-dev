@@ -83,16 +83,15 @@ def layout(deployment_id=None):
                         dbc.ListGroup([
                             dbc.ListGroupItem(
                                 "View Variableset Plots", 
-                                # Updated absolute path for K8s Traefik StripPrefix
-                                href=f"/envds/envops/deployment/{deployment_id}/variablesets", 
+                                # Let Dash handle the prefix automatically
+                                href=dash.get_relative_path(f"/deployment/{deployment_id}/variablesets"), 
                                 action=True,
                                 color="info",
                                 className="fw-bold"
                             ),
                             dbc.ListGroupItem(
                                 "View Raw Asset Telemetry", 
-                                # Routes to asset manager to select a specific device
-                                href="/envds/envops/assets", 
+                                href=dash.get_relative_path("/assets"), 
                                 action=True,
                                 className="fw-bold"
                             )

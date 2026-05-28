@@ -79,8 +79,7 @@ def fetch_asset_registry(n_clicks):
                     "make": make,
                     "model": model,
                     "serial_number": sn,
-                    # Routes to sensor.py utilizing the K8s strip-prefix path
-                    "action": f"[View Raw Telemetry](/envds/envops/sensor/{device_id})" 
+                    "action": f"[View Raw Telemetry]({dash.get_relative_path(f'/sensor/{device_id}')})" 
                 })
             return row_data
     except Exception as e:

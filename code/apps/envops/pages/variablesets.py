@@ -40,7 +40,11 @@ def layout(deployment_id=None):
         
         dbc.Row([
             dbc.Col(html.H3(f"Variablesets: {deployment_id}", className="text-primary")),
-            dbc.Col(dbc.Button("Back to C2", href=f"/envds/envops/deployment/{deployment_id}", color="secondary", outline=True, className="float-end")) # <-- UPDATED HREF
+            dbc.Col(dbc.Button(
+                "Back to C2", 
+                href=dash.get_relative_path(f"/deployment/{deployment_id}"), 
+                color="secondary", outline=True, className="float-end"
+            ))
         ], className="mb-4 mt-3"),
 
         # Dynamic container for plots and tables
