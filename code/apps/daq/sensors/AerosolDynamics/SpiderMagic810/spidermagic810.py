@@ -181,9 +181,12 @@ class SpiderMagic810(Sensor):
         #     "hvgo\r"
         # ]
         # Added \n to flush network buffers...
+
+        # switch to 60 sec scans
+        # TODO: make scan time configurable
         cmds = [
             "stop\r\n", 
-            "scan, 5, 5000, 4, 0\r\n", 
+            "scan, 5, 5000, 8, 0\r\n", 
             "hvgo\r\n"
         ]
         need_start = True
