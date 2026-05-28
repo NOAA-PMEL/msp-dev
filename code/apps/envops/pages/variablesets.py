@@ -105,7 +105,8 @@ def fetch_deployment_variablesets(deployment_id, deployments_cache):
         # Inject the WebSocket listener
         websockets.append(WebSocket(
             id={"type": "ws-varset", "index": vs_name}, 
-            url=f"{ws_url_base}/msp/dashboardtest/ws/variableset/{vs_name}" # Adapt to your WS route
+            # CHANGED: /msp/dashboardtest -> /envds/envops
+            url=f"{ws_url_base}/envds/envops/ws/variableset/{vs_name}" 
         ))
         
         # Build the Table & Plot Layout

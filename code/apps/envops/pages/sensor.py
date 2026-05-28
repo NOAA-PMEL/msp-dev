@@ -620,7 +620,8 @@ def layout(sensor_id=None):
             ),
             WebSocket(
                 id="ws-sensor-instance",
-                url=f"{ws_url_base}/msp/dashboardtest/ws/sensor/{sensor_id}"
+                # CHANGED: /msp/dashboardtest -> /envds/envops
+                url=f"{ws_url_base}/envds/envops/ws/sensor/{sensor_id}" 
             ),
             html.Div(id="ws-send-instance-buffer", children=json.dumps(initial_request), style={"display": "none"}),
             dcc.Store(id="calibration-vars", data=calibration_vars),
@@ -887,29 +888,26 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
 
 
 @callback(
-        Output("sensor-data-buffer", "data"),
-        Output("sensor-settings-buffer", "data"),
-        Input("ws-sensor-instance", "message")
-          )
+    Output("sensor-data-buffer", "data"),
+    Output("sensor-settings-buffer", "data"),
+    Input("ws-sensor-instance", "message")
+)
 def update_sensor_buffers(event):
-    L.debug("update_sensor_buffers", extra={"usb_event": event})
     if event is not None and "data" in event:
-        event_data = json.loads(event["data"])
-        print(f"update_sensor_buffers: {event_data}")
-        if "data-update" in event_data:
-            try:
-                if event_data["data-update"]:
-                    return [event_data["data-update"], dash.no_update]
-            except Exception as event:
-                print(f"data buffer update error: {event}")
+        try:
+            event_data = json.loads(event["data"])
             
-        if "settings-update" in event_data:
-            try:
-                if event_data["settings-update"]:
-                    return [dash.no_update, event_data["settings-update"]]
-            except Exception as e:
-                print(f"settings buffer update error: {e}")
-        
+            # The backend now sends ce.data directly.
+            # Differentiate based on the expected dictionary keys.
+            if "variables" in event_data:
+                return [event_data, dash.no_update]
+                
+            elif "settings" in event_data:
+                return [dash.no_update, event_data]
+                
+        except Exception as e:
+            L.error(f"Sensor buffer parse error: {e}")
+            
     return [dash.no_update, dash.no_update]
 
 

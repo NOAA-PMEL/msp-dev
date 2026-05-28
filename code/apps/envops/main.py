@@ -114,7 +114,8 @@ async def mqtt_listen_task():
                         L.debug("mqtt_listen_task", extra={"payload_str": payload_str})
 
                         # 1. Route Operations Health (Status Updates) to Deployment C2 WebSockets
-                        if "status.update" in ce_type:
+                        # if "status.update" in ce_type:
+                        if any(x in ce_type for x in ["systemmode", "samplingmode", "samplingstate", "samplingcondition"]):
                             # You can extract deployment mapping here if needed. 
                             # For now, broadcasting to a general deployment scope or mapping it via source.
                             # Example: broadcast to ALL active deployment C2 dashboards
@@ -122,13 +123,15 @@ async def mqtt_listen_task():
                                 await manager.broadcast(payload_str, "deployment_c2", dep_id)
 
                         # 2. Route Variableset Telemetry to Variableset WebSockets
-                        elif "variableset" in ce_type and "data.update" in ce_type:
+                        # elif "variableset" in ce_type and "data.update" in ce_type:
+                        elif ce_type in ["envds.variableset.data.update"]:
                             # Extract variableset ID (e.g., 'main', 'met', etc.)
                             vs_id = source.split(".")[-1] 
                             await manager.broadcast(payload_str, "variableset", vs_id)
 
                         # 3. Route Raw Sensor Telemetry
-                        elif "sensor" in ce_type and "data.update" in ce_type:
+                        # elif "sensor" in ce_type and "data.update" in ce_type:
+                        elif ce_type in ["envds.data.update"]:
                             L.debug("mqtt_listen_task", extra={"payload_str": payload_str})
                             # Depending on exact source string format (e.g., 'envds.default.sensor.make::model::sn')
                             sensor_id = source.split(".")[-1]

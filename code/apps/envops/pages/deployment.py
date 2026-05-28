@@ -104,8 +104,8 @@ def layout(deployment_id=None):
 
         # --- WEBSOCKETS & STATE ---
         # Note: Keep the backend path mapping (/msp/dashboardtest) exactly as your FastAPI server expects it
-        WebSocket(id="ws-deployment-c2", url=f"{ws_url_base}/msp/dashboardtest/ws/deployment/{deployment_id}/c2"),
-        WebSocket(id="ws-deployment-telemetry", url=f"{ws_url_base}/msp/dashboardtest/ws/deployment/{deployment_id}/telemetry"),
+        WebSocket(id="ws-deployment-c2", url=f"{ws_url_base}/envds/envops/ws/deployment/{deployment_id}/c2"),
+        WebSocket(id="ws-deployment-telemetry", url=f"{ws_url_base}/envds/envops/ws/deployment/{deployment_id}/telemetry"),
         html.Div(id="ws-c2-send-buffer", style={"display": "none"}),
         dcc.Store(id="store-deployment-id", data=deployment_id)
     ])
@@ -162,26 +162,29 @@ def send_c2_request(payload):
     prevent_initial_call=True
 )
 def update_operations_health(message):
-    """Listens to envds.status.update events to render the state machine health."""
+    """Listens to status updates to render the state machine health."""
     if not message or "data" not in message:
         return dash.no_update, dash.no_update
         
     try:
-        event = json.loads(message["data"])
+        # This is now ce.data (envdsStatus format), NOT the full CloudEvent
+        status_data = json.loads(message["data"])
         
-        # Parse the status update from the sampling-operations manager
-        if event.get("type") == "envds.status.update":
-            state_data = event.get("data", {}).get("state", {})
-            
-            # Update Header Badge
-            current_mode = state_data.get("system_mode", {}).get("actual", "UNKNOWN")
+        app_group = status_data.get("id", {}).get("app_group", "")
+        state_dict = status_data.get("state", {})
+        
+        # 1. Update Header Badge if this is a System Mode update
+        badge = dash.no_update
+        if app_group == "systemmode" or "system_mode" in state_dict:
+            current_mode = state_dict.get("system_mode", {}).get("actual", "UNKNOWN")
             badge_color = "success" if current_mode.lower() == "auto" else "warning"
             badge = dbc.Badge(f"SYSTEM MODE: {current_mode.upper()}", color=badge_color, className="p-2 fs-6")
             
-            # Format the rest of the Operations Health
-            health_ui = html.Pre(json.dumps(state_data, indent=2), style={"fontSize": "12px"})
-            
-            return badge, health_ui
+        # 2. Format the Operations Health (States, Conditions)
+        # You can expand this into a more robust UI tree component later
+        health_ui = html.Pre(json.dumps(status_data, indent=2), style={"fontSize": "12px"})
+        
+        return badge, health_ui
             
     except Exception as e:
         L.error(f"Error parsing status update: {e}")

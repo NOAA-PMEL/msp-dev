@@ -129,10 +129,15 @@ offcanvas_logbook = dbc.Offcanvas([
 app.layout = html.Div([
     dcc.Location(id="url"),
     sidebar,
-    dash.page_container,
+    
+    # WRAP THE PAGE CONTAINER WITH THE CORRECT ID
+    html.Div(
+        dash.page_container, 
+        id="page-content"
+    ), 
+    
     offcanvas_logbook
 ])
-
 # --- CALLBACKS ---
 @app.callback(
     Output("sidebar", "className"),
