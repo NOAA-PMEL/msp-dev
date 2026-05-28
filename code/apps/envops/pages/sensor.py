@@ -892,6 +892,7 @@ def select_graph_3d(z_axis, sensor_meta, graph_axes, sensor_definition, graph_id
         Input("ws-sensor-instance", "message")
           )
 def update_sensor_buffers(event):
+    L.debug("update_sensor_buffers", extra={"usb_event": event})
     if event is not None and "data" in event:
         event_data = json.loads(event["data"])
         print(f"update_sensor_buffers: {event_data}")

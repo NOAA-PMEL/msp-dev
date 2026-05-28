@@ -74,6 +74,7 @@ class ConnectionManager:
         if client_id in self.active_connections.get(client_type, {}):
             for connection in self.active_connections[client_type][client_id]:
                 try:
+                    L.debug("broadcast", extra={"client_type": client_type, "client_id": client_id, "bcast_message": message})
                     await connection.send_text(message)
                 except Exception as e:
                     L.error(f"WS Broadcast error on {client_type}/{client_id}: {e}")
@@ -121,6 +122,7 @@ async def mqtt_listen_task():
 
                         # 3. Route Raw Sensor Telemetry
                         elif "sensor" in ce_type and "data.update" in ce_type:
+                            L.debug("mqtt_listen_task", extra={"payload_str": payload_str})
                             # Depending on exact source string format (e.g., 'envds.default.sensor.make::model::sn')
                             sensor_id = source.split(".")[-1]
                             await manager.broadcast(payload_str, "sensor", sensor_id)
