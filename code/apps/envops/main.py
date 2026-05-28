@@ -109,9 +109,10 @@ async def mqtt_listen_task():
                         source = ce.get("source", "")
                         L.debug("mqtt_listen_task", extra={"ce-source": source})
                         
-                        payload_str = json.dumps({"data": message.payload.decode()})
+                        # payload_str = json.dumps({"data": message.payload.decode()})
+                        payload_str = json.dumps(ce.data)
                         L.debug("mqtt_listen_task", extra={"payload_str": payload_str})
-                        
+
                         # 1. Route Operations Health (Status Updates) to Deployment C2 WebSockets
                         if "status.update" in ce_type:
                             # You can extract deployment mapping here if needed. 
