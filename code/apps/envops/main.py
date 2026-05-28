@@ -1,81 +1,39 @@
-import os
 import asyncio
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 import json
 import logging
-import traceback
-import socket
-from fastapi import (
-    FastAPI,
-    APIRouter,
-    HTTPException,
-    Request,
-    WebSocket,
-    WebSocketDisconnect,
-    status,
-    Response
-)
-from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.wsgi import WSGIMiddleware
-import uvicorn
-from cloudevents.http import CloudEvent, from_http, from_json, to_json
-from cloudevents.conversion import to_structured, to_json  
-from cloudevents.exceptions import InvalidStructuredJSON
+from pydantic import BaseSettings, Field
+from ulid import ULID
 from aiomqtt import Client, MqttError
 
-import httpx
+from cloudevents.http import from_json
 from logfmter import Logfmter
-from pydantic import BaseModel, BaseSettings, Field
-from ulid import ULID
 
-from envds.daq.types import DAQEventType as det
-from envds.daq.event import DAQEvent
-from envds.message.message import Message
-from envds.core import envdsBase, envdsAppID, envdsStatus
+# Import the initialized Dash app from app.py
+from app import app as dash_app
 
-# 1. Read environmental visibility configurations
-LOG_LEVEL = os.getenv("ENVOPS_LOG_LEVEL", "INFO").upper()
-
-# 2. Bind the logfmt handler to standard out
+# --- LOGGING ---
 handler = logging.StreamHandler()
-handler.setFormatter(Logfmter(
-    keys=["at", "logger", "msg"], 
-    mapping={"at": "levelname", "logger": "name"}
-))
+handler.setFormatter(Logfmter())
+logging.basicConfig(handlers=[handler])
+L = logging.getLogger("EnvOps-Main")
+L.setLevel(logging.DEBUG)
 
-# Add force=True so nothing else can override our logfmtr!
-logging.basicConfig(
-    level=LOG_LEVEL,
-    handlers=[handler],
-    force=True 
-)
-L = logging.getLogger(__name__)
-L.setLevel(LOG_LEVEL)
-
+# --- CONFIG ---
 class Settings(BaseSettings):
-    host: str = "0.0.0.0" 
-    port: int = 8787      
+    host: str = "0.0.0.0"
+    port: int = 8080
     debug: bool = False
     daq_id: str = "default"
 
-    log_level: str = "info"
-    external_hostname: str = "localhost" 
-    http_use_tls: bool = False
-    http_port: int = 80
-    https_port: int = 443
-    ws_use_tls: bool = False
-    ws_port: int = 80
-    wss_port: int = 443
-
-    knative_broker: str = "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
-    
-    dry_run: bool = False
-
-    mqtt_broker: str = 'mosquitto.default'
+    mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
-    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#, envds/+/+/status/#' 
-    mqtt_client_id: str = Field(str(ULID()))
+    # Subscribe to relevant telemetry, status, and variableset updates
+    mqtt_topic_subscriptions: str = "envds/+/+/+/data/#,envds/+/+/+/status/#"
+    mqtt_client_id: str = Field(default_factory=lambda: f"envops-dash-{str(ULID())}")
 
     class Config:
         env_prefix = "ENVOPS_"
@@ -83,511 +41,178 @@ class Settings(BaseSettings):
 
 config = Settings()
 
+# --- CONNECTION MANAGER ---
 class ConnectionManager:
+    """Manages granular WebSocket connections for Dash drill-down pages."""
     def __init__(self):
-        self.active_connections = {}
+        # We store connections grouped by type (e.g., 'deployment', 'variableset', 'sensor')
+        # and then by their specific ID.
+        self.active_connections: dict[str, dict[str, list[WebSocket]]] = {
+            "deployment_c2": {},
+            "deployment_telemetry": {},
+            "variableset": {},
+            "sensor": {},
+            "registry": {}
+        }
 
     async def connect(self, websocket: WebSocket, client_type: str, client_id: str):
-        print(f"{client_type}: {client_id}")
         await websocket.accept()
-        if client_type not in self.active_connections:
-            self.active_connections[client_type] = dict()
         if client_id not in self.active_connections[client_type]:
             self.active_connections[client_type][client_id] = []
-        
         self.active_connections[client_type][client_id].append(websocket)
+        L.debug(f"WS Connected: {client_type}/{client_id}. Total: {len(self.active_connections[client_type][client_id])}")
 
-    async def disconnect(self, websocket: WebSocket):
-        for client_type, types in self.active_connections.items():
-            for client_id, ws_list in types.items():
-                if websocket in ws_list:
-                    ws_list.remove(websocket)
-                    if websocket:
-                        await websocket.close()
-                    return
-
-    async def send_personal_message(self, message: str, websocket: WebSocket, client_type: str, client_id: str):
-        await websocket.send_text(message)
+    def disconnect(self, websocket: WebSocket, client_type: str, client_id: str):
+        if client_id in self.active_connections[client_type]:
+            self.active_connections[client_type][client_id].remove(websocket)
+            if not self.active_connections[client_type][client_id]:
+                del self.active_connections[client_type][client_id]
+            L.debug(f"WS Disconnected: {client_type}/{client_id}")
 
     async def broadcast(self, message: str, client_type: str, client_id: str):
-        try:
-            if client_type in self.active_connections and client_id in self.active_connections[client_type]:
-                for connection in self.active_connections[client_type][client_id]:
+        """Send a message strictly to the WebSockets listening to this specific client_id."""
+        if client_id in self.active_connections.get(client_type, {}):
+            for connection in self.active_connections[client_type][client_id]:
+                try:
                     await connection.send_text(message)
-        except Exception as e:
-            L.error(f"broadcast error: {e}")
-
-    async def broadcast_exclude_self(self, message: str, websocket: WebSocket, client_type: str, client_id: str):
-        try:
-            if client_type in self.active_connections and client_id in self.active_connections[client_type]:
-                for connection in self.active_connections[client_type][client_id]:
-                    if connection != websocket:
-                        await connection.send_text(message)
-        except Exception as e:
-            L.error(f"broadcast_exclude_self error: {e}")
+                except Exception as e:
+                    L.error(f"WS Broadcast error on {client_type}/{client_id}: {e}")
 
 manager = ConnectionManager()
-host_name = socket.gethostname()
-host_ip = socket.gethostbyname(host_name)
-L.info(f"name: {host_name}, ip: {host_ip}")
+mqtt_publish_queue = asyncio.Queue()
 
-async def send_event(ce: CloudEvent):
-    try:
-        timeout = httpx.Timeout(5.0, read=0.1)
-        headers, body = to_structured(ce)
-        async with httpx.AsyncClient() as client:
-            r = await client.post(
-                config.knative_broker,
-                headers=headers,
-                data=body,
-                timeout=timeout,
-            )
-            r.raise_for_status()
-    except InvalidStructuredJSON:
-        L.error(f"INVALID MSG: {ce}")
-    except httpx.TimeoutException:
-        pass
-    except httpx.HTTPError as e:
-        L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
-    except Exception as e:
-        L.error("send_event", extra={"reason": str(e)})
-
-mqtt_buffer = asyncio.Queue()
-
-async def get_from_mqtt_loop():
-    reconnect = 10
+# --- MQTT BACKGROUND TASKS ---
+async def mqtt_listen_task():
+    """Listens to the broker and routes incoming CloudEvents to the correct WebSockets."""
+    reconnect_delay = 5
     while True:
         try:
-            client_id = str(ULID())
-            L.debug(f"Attempting to connect to MQTT Broker: {config.mqtt_broker} on port {config.mqtt_port}")
-            
-            async with Client(config.mqtt_broker, port=config.mqtt_port, identifier=client_id) as client:
-                L.info(f"Successfully connected to MQTT Broker as {client_id}")
+            L.info(f"Connecting to MQTT Broker: {config.mqtt_broker}:{config.mqtt_port}")
+            async with Client(config.mqtt_broker, port=config.mqtt_port, identifier=config.mqtt_client_id) as client:
                 
+                # Subscribe to required topics
                 for topic in config.mqtt_topic_subscriptions.split(","):
                     if topic.strip():
-                        await client.subscribe(f"{topic.strip()}")
-                        L.debug(f"Subscribed to topic: {topic.strip()}")
+                        await client.subscribe(topic.strip())
+                        L.info(f"Subscribed to MQTT topic: {topic.strip()}")
 
-                async for message in client.messages: 
+                async for message in client.messages:
                     try:
                         ce = from_json(message.payload)
                         topic = message.topic.value
-                        ce["sourcepath"] = topic
-                        await mqtt_buffer.put(ce)
+                        ce_type = ce.get("type", "")
+                        source = ce.get("source", "")
                         
-                        L.debug("MQTT Message Buffered", extra={"topic": topic, "type": ce.get("type", "unknown")})
-                    except Exception as e:
-                        L.error("get_from_mqtt_loop inner message parse error", extra={"reason": str(e)})
-                        
-        except MqttError as error:
-            L.error(f'MQTT Broker Error: {error}. Trying again in {reconnect} seconds')
-            await asyncio.sleep(reconnect)
-            
-        except Exception as e:
-            # A real, deliberate sleep to prevent CPU thrashing if a generic bug causes a crash loop
-            L.error("Critical get_from_mqtt_loop outer failure. Restarting in 5 seconds.", extra={"reason": str(e)})
-            await asyncio.sleep(5)
+                        payload_str = json.dumps({"data": message.payload.decode()})
 
-async def handle_mqtt_buffer():
+                        # 1. Route Operations Health (Status Updates) to Deployment C2 WebSockets
+                        if "status.update" in ce_type:
+                            # You can extract deployment mapping here if needed. 
+                            # For now, broadcasting to a general deployment scope or mapping it via source.
+                            # Example: broadcast to ALL active deployment C2 dashboards
+                            for dep_id in manager.active_connections.get("deployment_c2", {}).keys():
+                                await manager.broadcast(payload_str, "deployment_c2", dep_id)
+
+                        # 2. Route Variableset Telemetry to Variableset WebSockets
+                        elif "variableset" in ce_type and "data.update" in ce_type:
+                            # Extract variableset ID (e.g., 'main', 'met', etc.)
+                            vs_id = source.split(".")[-1] 
+                            await manager.broadcast(payload_str, "variableset", vs_id)
+
+                        # 3. Route Raw Sensor Telemetry
+                        elif "sensor" in ce_type and "data.update" in ce_type:
+                            # Depending on exact source string format (e.g., 'envds.default.sensor.make::model::sn')
+                            sensor_id = source.split(".")[-1]
+                            await manager.broadcast(payload_str, "sensor", sensor_id)
+
+                    except Exception as e:
+                        L.error(f"Error processing MQTT message on topic {topic}: {e}")
+                        
+        except MqttError as e:
+            L.error(f"MQTT Connection dropped: {e}. Reconnecting in {reconnect_delay}s...")
+            await asyncio.sleep(reconnect_delay)
+        except Exception as e:
+            L.error(f"Unexpected MQTT listener error: {e}")
+            await asyncio.sleep(reconnect_delay)
+
+async def mqtt_publish_task():
+    """Takes outbound messages (like C2 requests) from Dash and pushes them to MQTT."""
+    reconnect_delay = 5
+    client_id = f"envops-pub-{str(ULID())}"
     while True:
         try:
-            ce = await mqtt_buffer.get()
-            ce_type = ce.get("type", "")
+            async with Client(config.mqtt_broker, port=config.mqtt_port, identifier=client_id) as client:
+                while True:
+                    topic, payload = await mqtt_publish_queue.get()
+                    await client.publish(topic, payload, qos=1)
+                    mqtt_publish_queue.task_done()
+        except MqttError as e:
+            L.error(f"MQTT Publisher dropped: {e}. Reconnecting...")
+            await asyncio.sleep(reconnect_delay)
 
-            # 1. SENSOR TELEMETRY ROUTING
-            if ce_type in ["envds.data.update", "envds.sensor.data.update", "sensor.data.update"]:
-                attributes = ce.data.get("attributes", {})
-                make = str(attributes.get("make", {}).get("data", "unknown") if "make" in attributes else "unknown")
-                model = str(attributes.get("model", {}).get("data", "unknown") if "model" in attributes else "unknown")
-                sn = str(attributes.get("serial_number", {}).get("data", "unknown") if "serial_number" in attributes else "unknown")
-                
-                sensor_id = f"{make}::{model}::{sn}"
-                msg = {"data-update": ce.data}
-                await manager.broadcast(json.dumps(msg), "sensor", sensor_id)
-
-            # 2. CONTROLLER TELEMETRY ROUTING
-            elif ce_type in ["envds.controller.data.update", "controller.data.update"]:
-                attributes = ce.data.get("attributes", {})
-                make = str(attributes.get("make", {}).get("data", "unknown") if "make" in attributes else "unknown")
-                model = str(attributes.get("model", {}).get("data", "unknown") if "model" in attributes else "unknown")
-                sn = str(attributes.get("serial_number", {}).get("data", "unknown") if "serial_number" in attributes else "unknown")
-                
-                controller_id = f"{make}::{model}::{sn}"
-                msg = {"data-update": ce.data}
-                await manager.broadcast(json.dumps(msg), "controller", controller_id)
-
-            # 3. VARIABLESET ROUTING (Smart Routing enabled!)
-            elif ce_type == "envds.variableset.data.update":
-                variableset_id = ce.get("variablesetid", "unknown")
-                if "variablesetid" not in ce and "variablesetfullid" in ce:
-                    variableset_id = ce["variablesetfullid"]
-
-                msg = {
-                    "data-update": ce.data, 
-                    "variablesetfullid": ce.get("variablesetfullid")
-                }
-                
-                await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
-                
-                platform_id = ce.data.get("attributes", {}).get("platform", {}).get("data")
-                if not platform_id:
-                    platform_id = variableset_id.split("::")[0]
-                    
-                await manager.broadcast(json.dumps(msg), "platform", platform_id)
-
-                variables = ce.data.get("variables", {})
-                if "latitude" in variables and "longitude" in variables:
-                    mini_msg = {
-                        "type": "fleet.location.update",
-                        "platform": platform_id, 
-                        "lat": variables["latitude"].get("data"),
-                        "lon": variables["longitude"].get("data"),
-                        "time": variables.get("time", {}).get("data")
-                    }
-                    await manager.broadcast(json.dumps(mini_msg), "system-ops", "main")
-            
-            # 4. SYSTEM OPS ROUTING (Modes, States, Logs, and C2 CONDITIONS)
-            # 🟢 UPDATED: Catching all variants of systemmode, system-mode, and system.control
-            elif any(x in ce_type for x in ["systemmode", "system-mode", "system.control", "samplingmode", "samplingstate", "samplingcondition", "operations.log"]):
-                msg = {
-                    "type": ce_type,
-                    "data": ce.data
-                }
-                
-                # 🟢 UPDATED: Explicitly route 'control' and 'status' updates to the Conditions Cache
-                if "status.update" in ce_type or "control" in ce_type:
-                    L.debug(f"[C2 ROUTER] 🔀 Routing status update to 'conditions' cache: {ce_type}")
-                    await manager.broadcast(json.dumps(msg), "conditions", "main")
-                else:
-                    L.debug(f"[C2 ROUTER] 🔀 Routing ops update to 'system-ops' cache: {ce_type}")
-                    await manager.broadcast(json.dumps(msg), "system-ops", "main")
-
-        except Exception as e:
-            L.error("handle_mqtt_buffer", extra={"reason": str(e)})
-        
-        await asyncio.sleep(0.0001)
-
+# --- APP LIFECYCLE ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    L.debug("lifespan: Application starting up...")
-    asyncio.create_task(get_from_mqtt_loop())
-    asyncio.create_task(handle_mqtt_buffer())
+    # Startup: Launch background tasks
+    task_listen = asyncio.create_task(mqtt_listen_task())
+    task_publish = asyncio.create_task(mqtt_publish_task())
     yield
-    L.debug("lifespan: Application shutting down...")
+    # Shutdown: Clean up tasks
+    task_listen.cancel()
+    task_publish.cancel()
 
 app = FastAPI(lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # --- WEBSOCKET ENDPOINTS ---
-
-@app.websocket("/ws/sensor/{client_id}")
-async def sensor_ws_endpoint(websocket: WebSocket, client_id: str):
-    await manager.connect(websocket, client_type="sensor", client_id=client_id)
+@app.websocket("/ws/deployment/{deployment_id}/c2")
+async def ws_deployment_c2(websocket: WebSocket, deployment_id: str):
+    await manager.connect(websocket, "deployment_c2", deployment_id)
     try:
         while True:
             data = await websocket.receive_text()
-            message = json.loads(data)
-
-            if 'sensor/settings/request' in message.get('destpath', ''):
-                event = DAQEvent.create_sensor_settings_request(
-                    source=message['source'],
-                    data=message['data']
-                )
-                event['destpath'] = message['destpath']
-                event["deviceid"] = message["deviceid"]
-                await send_event(event)
-
-            if message.get("client-request") == "start-updates":
-                msg_type = "sensor.registry.request"
-                attributes = {
-                        "type": msg_type,
-                        "source": "uasdaq.dashboard",
-                        "id": str(ULID()),
-                        "datacontenttype": "application/json; charset=utf-8",
-                }
-                reg_request = {"register-sensor-request": "update-sensor-definition-all"}
-                ce = CloudEvent(attributes=attributes, data=reg_request)
-                try:
-                    headers, body = to_structured(ce)
-                    async with httpx.AsyncClient() as client:
-                        r = await client.post(config.knative_broker, headers=headers, data=body)
-                except Exception as e:
-                    L.error(f"Error requesting registry update: {e}")
-                    
-    except WebSocketDisconnect:
-        await manager.disconnect(websocket)
-        await asyncio.sleep(.1)
-
-@app.websocket("/ws/controller/{client_id}")
-async def controller_ws_endpoint(websocket: WebSocket, client_id: str):
-    await manager.connect(websocket, client_type="controller", client_id=client_id)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
-
-            if 'controller/settings/request' in message.get('destpath', ''):
-                event = DAQEvent.create_controller_settings_request(
-                    source=message['source'],
-                    data=message['data']
-                )
-                event['destpath'] = message['destpath']
-                event["controllerid"] = message["controllerid"]
-                await send_event(event)
-
-            if message.get("client-request") == "start-updates":
-                msg_type = "controller.registry.request"
-                attributes = {
-                        "type": msg_type,
-                        "source": "uasdaq.dashboard",
-                        "id": str(ULID()),
-                        "datacontenttype": "application/json; charset=utf-8",
-                }
-                reg_request = {"register-sensor-request": "update-sensor-definition-all"}
-                ce = CloudEvent(attributes=attributes, data=reg_request)
-                try:
-                    headers, body = to_structured(ce)
-                    async with httpx.AsyncClient() as client:
-                        r = await client.post(config.knative_broker, headers=headers, data=body)
-                except Exception as e:
-                    L.error(f"Error requesting registry update: {e}")
-                    
-    except WebSocketDisconnect:
-        await manager.disconnect(websocket)
-        await asyncio.sleep(.1)
-
-@app.websocket("/ws/variableset/{client_id}")
-async def variableset_ws_endpoint(websocket: WebSocket, client_id: str):
-    await manager.connect(websocket, client_type="variableset", client_id=client_id)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
-
-            if message.get("client-request") == "start-updates":
-                msg_type = "sensor.registry.request"
-                attributes = {
-                        "type": msg_type,
-                        "source": "uasdaq.dashboard",
-                        "id": str(ULID()),
-                        "datacontenttype": "application/json; charset=utf-8",
-                }
-                reg_request = {"register-sensor-request": "update-sensor-definition-all"}
-                ce = CloudEvent(attributes=attributes, data=reg_request)
-                try:
-                    headers, body = to_structured(ce)
-                    async with httpx.AsyncClient() as client:
-                        r = await client.post(config.knative_broker, headers=headers, data=body)
-                except Exception as e:
-                    L.error(f"Error requesting registry update: {e}")
-                    
-    except WebSocketDisconnect:
-        await manager.disconnect(websocket)
-        await asyncio.sleep(.1)
-
-@app.websocket("/ws/system-ops/{client_id}")
-async def system_ops_ws_endpoint(websocket: WebSocket, client_id: str):
-    await manager.connect(websocket, client_type="system-ops", client_id=client_id)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await manager.broadcast(f"received: {data}", "system-ops", client_id)
-    except WebSocketDisconnect:
-        await manager.disconnect(websocket)
-
-# --- HTTP POST ENDPOINTS (Fallback for Datastore/External pushes) ---
-
-@app.post("/sensor/data/update/")
-async def sensor_data_update(request: Request):
-    data = await request.body()
-    try:
-        ce = from_http(headers=request.headers, data=data)
-        if isinstance(ce.data, str):
-            ce.data = json.loads(ce.data)
-            
-        attributes = ce.data["attributes"]
-        make = attributes["make"]["data"]
-        model = attributes["model"]["data"]
-        serial_number = attributes["serial_number"]["data"]
-        sensor_id = "::".join([make, model, serial_number])
-        
-        msg = {"data-update": ce.data}
-        await manager.broadcast(json.dumps(msg), "sensor", sensor_id)
-    except Exception:
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-@app.post("/sensor/settings/update/")
-async def sensor_settings_update(request: Request):
-    data = await request.body()
-    try:
-        ce = from_http(headers=request.headers, data=data)
-        if isinstance(ce.data, str):
-            ce.data = json.loads(ce.data)
-            
-        attributes = ce.data["attributes"]
-        make = attributes["make"]["data"]
-        model = attributes["model"]["data"]
-        serial_number = attributes["serial_number"]["data"]
-        sensor_id = "::".join([make, model, serial_number])
-
-        msg = {"settings-update": ce.data}
-        await manager.broadcast(json.dumps(msg), "sensor", sensor_id)
-    except Exception:
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-@app.post("/controller/data/update/")
-async def controller_data_update(request: Request):
-    data = await request.body()
-    try:
-        ce = from_http(headers=request.headers, data=data)
-        if isinstance(ce.data, str):
-            ce.data = json.loads(ce.data)
-            
-        attributes = ce.data["attributes"]
-        make = attributes["make"]["data"]
-        model = attributes["model"]["data"]
-        serial_number = attributes["serial_number"]["data"]
-        controller_id = "::".join([make, model, serial_number])
-
-        msg = {"data-update": ce.data}
-        await manager.broadcast(json.dumps(msg), "controller", controller_id)
-    except Exception:
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-@app.post("/controller/settings/update/")
-async def controller_settings_update(request: Request):
-    data = await request.body()
-    try:
-        ce = from_http(headers=request.headers, data=data)
-        if isinstance(ce.data, str):
-            ce.data = json.loads(ce.data)
-            
-        attributes = ce.data["attributes"]
-        make = attributes["make"]["data"]
-        model = attributes["model"]["data"]
-        serial_number = attributes["serial_number"]["data"]
-        controller_id = "::".join([make, model, serial_number])
-
-        msg = {"settings-update": ce.data}
-        await manager.broadcast(json.dumps(msg), "controller", controller_id)
-    except Exception:
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-@app.post("/variableset/data/update/")
-async def variableset_data_update(request: Request):
-    data = await request.body()
-    try:
-        ce = from_http(headers=request.headers, data=data)
-        if isinstance(ce.data, str):
-            ce.data = json.loads(ce.data)
-            
-        variableset_id = ce.data["variableset_id"]
-        msg = {"data-update": ce.data}
-        await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
-    except Exception:
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-@app.websocket("/ws/platform/{client_id}")
-async def platform_ws_endpoint(websocket: WebSocket, client_id: str):
-    L.info(f"[DEBUG FASTAPI] 🟢 Browser successfully connected to Platform WS: {client_id}")
-    await manager.connect(websocket, client_type="platform", client_id=client_id)
-    try:
-        while True:
-            await websocket.receive_text() # Just keep the pipe open
-    except WebSocketDisconnect:
-        L.warning(f"[DEBUG FASTAPI] 🔴 Browser disconnected from Platform WS: {client_id}")
-        await manager.disconnect(websocket)
-
-@app.websocket("/ws/conditions/{client_id}")
-async def conditions_ws_endpoint(websocket: WebSocket, client_id: str):
-    L.info(f"[C2 WS] 🟢 Browser connected to Conditions WS: {client_id}")
-    await manager.connect(websocket, client_type="conditions", client_id=client_id)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            
+            # Incoming data from the dashboard C2 panel (Auto/Manual request)
             try:
-                command = json.loads(data)
-                if command.get("type") == "c2_command":
-                    payload_data = command.get("payload", {})
-                    target = payload_data.get("target_platform", "unknown")
-                    op_mode = payload_data.get("operation_mode")
-                    sys_mode = payload_data.get("system_mode")
-                    samp_modes = payload_data.get("sampling_modes", {})
-                    
-                    L.info(f"[C2 WS] 🛠️ Processing C2 Override Sequence for Host: {target}")
-                    
-                    # 1. SYSTEM CONTROL MODE (Auto / Manual)
-                    ce_ctrl = CloudEvent(
-                        attributes={"type": "envds.system.control.update", "source": "envops.ui", "subject": target},
-                        data={"mode": op_mode}
-                    )
-                    ce_ctrl["destpath"] = f"envds/{target}/system-modes/control/update"
-                    await send_event(ce_ctrl)
-                    L.debug(f"[C2 WS] -> Dispatched Control Mode update: {op_mode}")
-                    
-                    # 2. SYSTEM MODE TRANSITION REQUEST
-                    if sys_mode:
-                        ce_sys = CloudEvent(
-                            attributes={"type": "envds.system-modes.transition.request", "source": "envops.ui", "subject": target},
-                            data={"kind": "SystemMode", "name": sys_mode}
-                        )
-                        ce_sys["destpath"] = f"envds/{target}/system-modes/transition/request"
-                        await send_event(ce_sys)
-                        L.debug(f"[C2 WS] -> Dispatched System Mode transition: {sys_mode}")
-                        
-                    # 3. INDIVIDUAL SAMPLING MODE ACTIVATIONS
-                    if samp_modes:
-                        for mode_name, is_active in samp_modes.items():
-                            ce_samp = CloudEvent(
-                                attributes={"type": "envds.samplingmode.activation.request", "source": "envops.ui", "subject": target},
-                                data={"mode_name": mode_name, "active": is_active}
-                            )
-                            ce_samp["destpath"] = f"envds/{target}/sampling-modes/{mode_name}/activation/request"
-                            await send_event(ce_samp)
-                            L.debug(f"[C2 WS] -> Dispatched Sampling Mode override: {mode_name} = {is_active}")
-                            
-                    L.info(f"[C2 WS] ✅ Successfully dispatched complete contextual C2 sequence to broker.")
-            except Exception as e:
-                L.error(f"[C2 WS] 💥 Failed to process UI C2 command: {e}", exc_info=True)
-                
+                event = json.loads(data)
+                topic = event.get("destpath")
+                if topic:
+                    # Drop it onto the MQTT publisher queue
+                    await mqtt_publish_queue.put((topic, data))
+            except json.JSONDecodeError:
+                pass
     except WebSocketDisconnect:
-        L.warning(f"[C2 WS] 🔴 Browser disconnected from Conditions WS: {client_id}")
-        await manager.disconnect(websocket)
+        manager.disconnect(websocket, "deployment_c2", deployment_id)
 
-# -----------------------------------------------------------------------------
-# Mount the Isolated Dash Apps inside FastAPI
-# NOTE: Mount the most specific paths first!
-# -----------------------------------------------------------------------------
-from home_app import app as home_dash
-from ops_app import app as ops_dash
-from plot_app import app as plot_dash
-from device_app import app as device_dash 
-from werkzeug.middleware.dispatcher import DispatcherMiddleware
+@app.websocket("/ws/variableset/{variableset_id}")
+async def ws_variableset(websocket: WebSocket, variableset_id: str):
+    await manager.connect(websocket, "variableset", variableset_id)
+    try:
+        while True:
+            await websocket.receive_text() # Mostly listening, but keep socket alive
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, "variableset", variableset_id)
 
-dash_dispatcher = DispatcherMiddleware(
-    home_dash.server,           
-    {
-        '/ops': ops_dash.server,      
-        '/plots': plot_dash.server,    
-        '/devices': device_dash.server  
-    }   
-)
+@app.websocket("/ws/sensor/{sensor_id}")
+async def ws_sensor(websocket: WebSocket, sensor_id: str):
+    await manager.connect(websocket, "sensor", sensor_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Handle settings/config updates from the raw sensor page
+            try:
+                event = json.loads(data)
+                topic = event.get("destpath")
+                if topic:
+                    await mqtt_publish_queue.put((topic, data))
+            except json.JSONDecodeError:
+                pass
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, "sensor", sensor_id)
 
-app.mount("/", WSGIMiddleware(dash_dispatcher))
+# --- MOUNT DASH FRONTEND ---
+# Traefik strips `/envds/envops`, so FastAPI mounts this at the root.
+app.mount("/", WSGIMiddleware(dash_app.server))
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
+    # When running locally without Docker
+    uvicorn.run("main:app", host=config.host, port=config.port, log_level="info")
