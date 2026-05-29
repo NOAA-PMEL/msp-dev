@@ -14,7 +14,7 @@ L = logging.getLogger(__name__)
 
 dash.register_page(
     __name__,
-    path_template="/variablesets/<deployment_id>", # <-- Flattened route here
+    path_template="/variablesets/<deployment_id>",
     title="Deployment Variablesets",
 )
 
@@ -32,7 +32,7 @@ ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 
 # --- HELPER: REST FETCH ---
 def fetch_registry_data(resource_type: str):
-    """Directly fetch definitions from datastore so we don't rely on cross-page caches."""
+    """Directly fetch definitions from datastore."""
     url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
     docs = []
     try:
@@ -51,7 +51,46 @@ def fetch_registry_data(resource_type: str):
         L.error(f"Failed to fetch {resource_type} definitions: {e}")
     return docs
 
+def get_bundle_variablesets(host_id):
+    """Finds the Host deployment, Sub-deployments, and returns all associated variablesets."""
+    deployments = fetch_registry_data("deployment")
+    varsets = fetch_registry_data("variableset")
+    
+    platforms = set()
+    
+    # 1. Identify Host & Subs Platforms
+    for dep in deployments:
+        if dep.get("metadata", {}).get("name") == host_id:
+            host_platform = dep.get("data", {}).get("platform_ref")
+            if host_platform:
+                platforms.add(host_platform)
+                # Find subs attached to this host platform
+                for sub in deployments:
+                    if sub.get("data", {}).get("host_platform_ref") == host_platform:
+                        platforms.add(sub.get("data", {}).get("platform_ref"))
+            break
+                
+    # 2. Identify Variablesets tied to any of these platforms
+    active_varsets = {}
+    for vs in varsets:
+        # Safely extract platform
+        vs_platform = vs.get("data", {}).get("attributes", {}).get("platform", {}).get("data", "")
+        if vs_platform in platforms:
+            
+            # Reconstruct the exact routing ID expected by main.py (e.g., 'payload_03::main')
+            vmap = vs.get("data", {}).get("attributes", {}).get("variablemap", {}).get("data")
+            if not vmap:
+                vmap = vs.get("data", {}).get("attributes", {}).get("variablemap_id", {}).get("data", "")
+            
+            vs_name = vs.get("metadata", {}).get("name", "unknown")
+            
+            routing_key = f"{vmap}::{vs_name}" if vmap else vs_name
+            active_varsets[routing_key] = vs
 
+    return platforms, active_varsets
+
+
+# --- LAYOUT ---
 def layout(deployment_id=None):
     if not deployment_id:
         return html.Div("No Deployment ID provided.")
@@ -69,10 +108,7 @@ def layout(deployment_id=None):
             ))
         ], className="mb-4 mt-3"),
 
-        # Dynamic container for plots and tables
         dcc.Loading(html.Div(id="variablesets-container", children=html.P("Fetching mission variablesets..."))),
-        
-        # We will inject WebSockets dynamically based on the fetched variablesets
         html.Div(id="dynamic-websockets-container")
     ])
 
@@ -81,70 +117,34 @@ def layout(deployment_id=None):
     Output("variablesets-container", "children"),
     Output("dynamic-websockets-container", "children"),
     Input("store-current-deployment", "data"),
-    # REMOVED: State("store-deployments", "data")
 )
 def fetch_deployment_variablesets(deployment_id):
-    """Cross-references the deployment to find the platform, then fetches its variablesets."""
     if not deployment_id:
         raise PreventUpdate
 
-    # 1. Fetch deployments directly from datastore
-    deployments = fetch_registry_data("deployment")
-
-    # 2. Find the platform_ref for this deployment
-    platform_ref = None
-    for dep in deployments:
-        if dep.get("metadata", {}).get("name") == deployment_id:
-            platform_ref = dep.get("data", {}).get("platform_ref")
-            break
-
-    if not platform_ref:
-        return dash.no_update, html.P("Deployment not found in active cache.", className="text-danger"), []
-
-    # 3. Query Datastore for Variablesets matching this platform
-    active_varsets = {}
-    try:
-        url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
-        timeout = httpx.Timeout(10.0)
-        response = httpx.get(url, timeout=timeout)
-        
-        if response.status_code == 200:
-            all_ids = response.json().get("results", [])
-            for full_id in all_ids:
-                # If the ID contains our platform_ref, fetch the definition
-                if platform_ref in full_id:
-                    def_url = f"http://{datastore_url}/variableset-definition/registry/get/"
-                    def_resp = httpx.get(def_url, params={"name": full_id}, timeout=timeout)
-                    if def_resp.status_code == 200:
-                        vs_def = def_resp.json().get("results", [{}])[0]
-                        vs_name = vs_def.get("metadata", {}).get("name")
-                        if vs_name:
-                            active_varsets[vs_name] = full_id
-    except Exception as e:
-        L.error(f"Failed to fetch variablesets for platform {platform_ref}: {e}")
+    platforms, active_varsets = get_bundle_variablesets(deployment_id)
 
     if not active_varsets:
-        return active_varsets, html.P(f"No active variablesets found for platform: {platform_ref}"), []
+        plat_str = ", ".join(platforms) if platforms else "None found"
+        return active_varsets, html.P(f"No active variablesets found for platforms: {plat_str}", className="text-danger"), []
 
-    # 4. Build UI and WebSockets
     ui_elements = []
     websockets = []
     
-    for vs_name, full_id in active_varsets.items():
-        # Inject the WebSocket listener
+    for routing_key, vs_def in active_varsets.items():
+        # Inject the WebSocket listener using the exact ID from main.py
         websockets.append(WebSocket(
-            id={"type": "ws-varset", "index": vs_name}, 
-            url=f"{ws_url_base}/envds/envops/ws/variableset/{vs_name}" 
+            id={"type": "ws-varset", "index": routing_key}, 
+            url=f"{ws_url_base}/envds/envops/ws/variableset/{routing_key}" 
         ))
         
-        # Build the Table & Plot Layout
         ui_elements.append(dbc.Card([
-            dbc.CardHeader(html.H5(vs_name.capitalize())),
+            dbc.CardHeader(html.H5(f"Variableset: {routing_key}")),
             dbc.CardBody([
                 dbc.Row([
                     dbc.Col([
                         dag.AgGrid(
-                            id={"type": "varset-table", "index": vs_name},
+                            id={"type": "varset-table", "index": routing_key},
                             rowData=[],
                             columnDefs=[{"field": "time", "headerName": "Time"}], 
                             columnSizeOptions="autoSize",
@@ -153,7 +153,7 @@ def fetch_deployment_variablesets(deployment_id):
                     ], width=5),
                     dbc.Col([
                         dcc.Graph(
-                            id={"type": "varset-plot", "index": vs_name},
+                            id={"type": "varset-plot", "index": routing_key},
                             figure=go.Figure(layout={"margin": {"t": 10, "b": 10, "l": 10, "r": 10}}),
                             style={"height": "300px"}
                         )
@@ -164,7 +164,7 @@ def fetch_deployment_variablesets(deployment_id):
 
     return active_varsets, ui_elements, websockets
 
-# Pattern-Matching Callbacks to handle the incoming WebSockets
+# --- PATTERN MATCHING CALLBACKS ---
 @callback(
     Output({"type": "varset-plot", "index": MATCH}, "extendData"),
     Output({"type": "varset-table", "index": MATCH}, "rowTransaction"),
@@ -174,7 +174,6 @@ def fetch_deployment_variablesets(deployment_id):
     prevent_initial_call=True
 )
 def stream_variableset_data(message, current_cols):
-    """Processes incoming variableset data to update the specific plot and table."""
     if not message or "data" not in message:
         raise PreventUpdate
 
