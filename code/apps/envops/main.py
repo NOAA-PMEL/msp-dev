@@ -132,13 +132,16 @@ async def mqtt_listen_task():
                             vs_id = source.split(".")[-1] 
                             await manager.broadcast(payload_str, "variableset", vs_id)
                             
-                            # Extract nav/gps data for the global fleet map
-                            if "nav" in vs_id.lower() or "gps" in vs_id.lower():
+                            # Extract nav/gps data dynamically for the global fleet map
+                            variables = ce.data.get("variables", {})
+                            
+                            # Check the actual payload keys instead of the variableset name
+                            if "latitude" in variables and "longitude" in variables:
                                 try:
-                                    # Grab the platform or deployment name from the source string
-                                    target_id = source.split(".")[-2] 
+                                    target_id = ce.get("deploymentref")
+                                    if not target_id:
+                                        target_id = ce.data.get("attributes", {}).get("deployment_ref", {}).get("data", "unknown")
                                     
-                                    # Wrap the ce.data with the target_id so the frontend knows who moved
                                     loc_payload = json.dumps({"target_id": target_id, "data": ce.data})
                                     
                                     for fleet_id in manager.active_connections.get("fleet_telemetry", {}).keys():
@@ -245,7 +248,7 @@ async def ws_fleet_telemetry(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, "fleet_telemetry", "global")
-        
+
 # --- MOUNT DASH FRONTEND ---
 # Traefik strips `/envds/envops`, so FastAPI mounts this at the root.
 app.mount("/", WSGIMiddleware(dash_app.server))
