@@ -14,7 +14,8 @@ L = logging.getLogger(__name__)
 
 dash.register_page(
     __name__,
-    path_template="/deployment/<deployment_id>/variablesets",
+    # CHANGE THIS LINE
+    path_template="/variablesets/<deployment_id>",
     title="Deployment Variablesets",
 )
 

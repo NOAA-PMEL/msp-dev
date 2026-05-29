@@ -3,7 +3,7 @@ import json
 import time
 import logging
 import httpx
-from dash import html, dcc, callback, Input, Output, State, ctx
+from dash import html, dcc, callback, Input, Output, State, MATCH, ALL, ctx
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 from dash_extensions import WebSocket
@@ -53,32 +53,40 @@ def fetch_registry_data(resource_type: str):
     return docs
 
 def get_deployment_bundle(host_id):
-    """Finds the Host deployment and any Sub-deployments hitched to its platform."""
+    """Finds the Host deployment, its Sub-deployments, and required Variablesets."""
     deployments = fetch_registry_data("deployment")
+    varsets = fetch_registry_data("variableset")
     
     host_dep = None
     subs = []
+    platforms = set()
     
+    # 1. Identify Host & Subs
     for dep in deployments:
         if dep.get("metadata", {}).get("name") == host_id:
             host_dep = dep
+            platforms.add(dep.get("data", {}).get("platform_ref"))
             break
             
-    if not host_dep:
-        return None, []
-        
-    host_platform_ref = host_dep.get("data", {}).get("platform_ref")
-    
-    for dep in deployments:
-        if dep.get("data", {}).get("host_platform_ref") == host_platform_ref:
-            subs.append(dep)
-            
-    return host_dep, subs
+    if host_dep:
+        host_platform_ref = host_dep.get("data", {}).get("platform_ref")
+        for dep in deployments:
+            if dep.get("data", {}).get("host_platform_ref") == host_platform_ref:
+                subs.append(dep)
+                platforms.add(dep.get("data", {}).get("platform_ref"))
+                
+    # 2. Identify Variablesets tied to these platforms
+    required_varsets = set()
+    for vs in varsets:
+        for p in platforms:
+            if p and p in vs.get("metadata", {}).get("name", ""):
+                required_varsets.add(vs.get("metadata", {}).get("name"))
+
+    return host_dep, subs, list(required_varsets)
 
 
 # --- UI HELPERS ---
 def make_kpi_col(label, id_str):
-    """Helper to generate dense metric blocks."""
     return dbc.Col([
         html.Div(label, className="text-muted small fw-bold text-uppercase", style={"fontSize": "0.7rem"}),
         html.Div("--", id=id_str, className="fs-6 fw-semibold")
@@ -90,14 +98,27 @@ def layout(deployment_id=None):
     if not deployment_id:
         return html.Div("No Deployment ID provided.", className="p-4 text-danger")
 
-    host_dep, subs = get_deployment_bundle(deployment_id)
+    host_dep, subs, varsets = get_deployment_bundle(deployment_id)
     
-    if not host_dep:
-        display_name = deployment_id
-        bundle_ids = [deployment_id]
-    else:
-        display_name = host_dep.get("data", {}).get("display_name", deployment_id)
-        bundle_ids = [deployment_id] + [s.get("metadata", {}).get("name") for s in subs]
+    display_name = host_dep.get("data", {}).get("display_name", deployment_id) if host_dep else deployment_id
+    bundle_ids = [deployment_id] + [s.get("metadata", {}).get("name") for s in subs]
+
+    # --- DYNAMIC WEBSOCKET GENERATION ---
+    websockets = []
+    
+    # Status Sockets for the Host and ALL Subs
+    for b_id in bundle_ids:
+        websockets.append(WebSocket(
+            id={"type": "ws-dep-status", "index": b_id}, 
+            url=f"{ws_url_base}/envds/envops/ws/deployment/{b_id}/c2"
+        ))
+        
+    # Telemetry Sockets for all discovered Variablesets
+    for vs in varsets:
+        websockets.append(WebSocket(
+            id={"type": "ws-varset", "index": vs}, 
+            url=f"{ws_url_base}/envds/envops/ws/variableset/{vs}"
+        ))
 
     return html.Div([
         dbc.Row([
@@ -111,23 +132,20 @@ def layout(deployment_id=None):
         dbc.Row([
             # --- LEFT COLUMN: C2 & Bundled Health ---
             dbc.Col([
-                # Command & Control Panel
                 dbc.Card([
                     dbc.CardHeader(html.H5("Command & Control", className="mb-0")),
                     dbc.CardBody([
-                        html.P("Set the overarching operational mode for this bundle. This command will be processed by the Host and cascaded to subsystems.", className="text-muted small"),
+                        html.P("Set the overarching operational mode for this bundle.", className="text-muted small"),
                         dbc.ButtonGroup([
                             dbc.Button("AUTO", id="btn-mode-auto", color="success", outline=True, className="fw-bold"),
                             dbc.Button("MANUAL", id="btn-mode-manual", color="warning", outline=True, className="fw-bold"),
                         ], className="w-100 mb-3"),
                         html.Hr(),
-                        html.P("Manual Overrides", className="text-muted small"),
                         dbc.Button("Trigger Calibration", id="btn-trigger-cal", color="secondary", size="sm", className="w-100 mb-2", disabled=True),
                         dbc.Button("Initiate Flow Check", id="btn-trigger-flow", color="secondary", size="sm", className="w-100", disabled=True),
                     ])
                 ], className="shadow-sm mb-3 border-dark"),
 
-                # Operations Health
                 dbc.Card([
                     dbc.CardHeader(html.H5("Bundled Operations Health", className="mb-0")),
                     dbc.CardBody([
@@ -135,21 +153,17 @@ def layout(deployment_id=None):
                     ])
                 ], className="shadow-sm mb-3 border-dark"),
 
-                # Navigation Links
                 dbc.Card([
                     dbc.CardHeader(html.H5("Data & Telemetry Links", className="mb-0")),
                     dbc.CardBody([
                         dbc.ListGroup([
                             dbc.ListGroupItem(
                                 "View Variableset Plots", 
-                                href=dash.get_relative_path(f"/deployment/{deployment_id}/variablesets"), 
+                                # CHANGE THIS LINE
+                                href=dash.get_relative_path(f"/variablesets/{deployment_id}"), 
                                 action=True, color="info", className="fw-bold"
                             ),
-                            dbc.ListGroupItem(
-                                "View Raw Asset Telemetry", 
-                                href=dash.get_relative_path("/assets"), 
-                                action=True, className="fw-bold"
-                            )
+                            dbc.ListGroupItem("View Raw Asset Telemetry", href=dash.get_relative_path("/assets"), action=True, className="fw-bold")
                         ])
                     ])
                 ], className="shadow-sm border-dark")
@@ -158,55 +172,42 @@ def layout(deployment_id=None):
             # --- RIGHT COLUMN: Expanded Quick Looks ---
             dbc.Col([
                 dbc.Row([
-                    # Sub-Column 1 (Nav, Aero, Gas)
                     dbc.Col([
                         dbc.Card([
                             dbc.CardHeader("Navigation", className="p-2 bg-light fw-bold"),
                             dbc.CardBody(dbc.Row([
-                                make_kpi_col("Lat / Lon", "kpi-nav-latlon"),
-                                make_kpi_col("Speed / Hdg", "kpi-nav-spdhdg"),
-                                make_kpi_col("Pitch / Roll", "kpi-nav-pitchroll"),
+                                make_kpi_col("Lat / Lon", "kpi-nav-latlon"), make_kpi_col("Speed / Hdg", "kpi-nav-spdhdg"), make_kpi_col("Pitch / Roll", "kpi-nav-pitchroll"),
                             ], className="g-2"), className="p-2")
                         ], className="mb-3 shadow-sm"),
                         
                         dbc.Card([
                             dbc.CardHeader("Aerosols", className="p-2 bg-light fw-bold"),
                             dbc.CardBody(dbc.Row([
-                                make_kpi_col("CN", "kpi-aero-cn"),
-                                make_kpi_col("Scat (B/G/R)", "kpi-aero-scat"),
-                                make_kpi_col("Abs (B/G/R)", "kpi-aero-abs"),
+                                make_kpi_col("CN", "kpi-aero-cn"), make_kpi_col("Scat (B/G/R)", "kpi-aero-scat"), make_kpi_col("Abs (B/G/R)", "kpi-aero-abs"),
                             ], className="g-2"), className="p-2")
                         ], className="mb-3 shadow-sm"),
 
                         dbc.Card([
                             dbc.CardHeader("Gas Phase", className="p-2 bg-light fw-bold"),
                             dbc.CardBody(dbc.Row([
-                                make_kpi_col("O3", "kpi-gas-o3"),
-                                make_kpi_col("CO", "kpi-gas-co"),
-                                make_kpi_col("NO / NO2", "kpi-gas-nox"),
+                                make_kpi_col("O3", "kpi-gas-o3"), make_kpi_col("CO", "kpi-gas-co"), make_kpi_col("NO / NO2", "kpi-gas-nox"),
                             ], className="g-2"), className="p-2")
                         ], className="mb-3 shadow-sm")
                     ], width=6),
                     
-                    # Sub-Column 2 (Met, Ops)
                     dbc.Col([
                         dbc.Card([
                             dbc.CardHeader("Meteorology", className="p-2 bg-light fw-bold"),
                             dbc.CardBody(dbc.Row([
-                                make_kpi_col("True WS/WDIR", "kpi-met-wind"),
-                                make_kpi_col("Temp / RH", "kpi-met-temprh"),
-                                make_kpi_col("Pressure", "kpi-met-press"),
-                                make_kpi_col("Rain Rate", "kpi-met-rain"),
-                                make_kpi_col("Irradiance", "kpi-met-irrad"),
+                                make_kpi_col("True WS/WDIR", "kpi-met-wind"), make_kpi_col("Temp / RH", "kpi-met-temprh"), make_kpi_col("Pressure", "kpi-met-press"),
+                                make_kpi_col("Rain Rate", "kpi-met-rain"), make_kpi_col("Irradiance", "kpi-met-irrad"),
                             ], className="g-2"), className="p-2")
                         ], className="mb-3 shadow-sm"),
 
                         dbc.Card([
                             dbc.CardHeader("Operational", className="p-2 bg-light fw-bold"),
                             dbc.CardBody(dbc.Row([
-                                make_kpi_col("Rel WS/WDIR", "kpi-ops-relwind"),
-                                make_kpi_col("Inlet Flow", "kpi-ops-flow"),
-                                make_kpi_col("Inlet SP", "kpi-ops-flowsp"),
+                                make_kpi_col("Rel WS/WDIR", "kpi-ops-relwind"), make_kpi_col("Inlet Flow", "kpi-ops-flow"), make_kpi_col("Inlet SP", "kpi-ops-flowsp"),
                             ], className="g-2"), className="p-2")
                         ], className="mb-3 shadow-sm")
                     ], width=6)
@@ -214,27 +215,21 @@ def layout(deployment_id=None):
             ], width=8)
         ]),
 
-        # --- WEBSOCKETS & STATE ---
-        WebSocket(id="ws-deployment-c2", url=f"{ws_url_base}/envds/envops/ws/deployment/{deployment_id}/c2"),
-        WebSocket(id="ws-deployment-telemetry", url=f"{ws_url_base}/envds/envops/ws/deployment/{deployment_id}/telemetry"),
+        # --- DYNAMIC WEBSOCKETS & CENTRAL CACHES ---
+        html.Div(websockets),
+        WebSocket(id="ws-c2-sender", url=f"{ws_url_base}/envds/envops/ws/deployment/{deployment_id}/c2"),
         html.Div(id="ws-c2-send-buffer", style={"display": "none"}),
-        dcc.Store(id="store-deployment-id", data=deployment_id),
-        dcc.Store(id="store-bundle-ids", data=bundle_ids),
-        dcc.Store(id="c2-health-store", data={}),
         
-        # --- STALENESS HEARTBEAT (Ticks every 10 seconds) ---
-        dcc.Interval(id="kpi-staleness-interval", interval=10 * 1000, n_intervals=0),
-
-        # --- TELEMETRY CACHES (Now tracking timestamps) ---
-        dcc.Store(id="kpi-nav-cache", data={k: {"val": "--", "ts": 0} for k in ["lat", "lon", "spd", "hdg", "pitch", "roll"]}),
-        dcc.Store(id="kpi-met-cache", data={k: {"val": "--", "ts": 0} for k in ["tws", "twdir", "temp", "rh", "press", "rain", "irrad"]}),
-        dcc.Store(id="kpi-ops-cache", data={k: {"val": "--", "ts": 0} for k in ["rws", "rwdir", "flow", "flowsp"]}),
-        dcc.Store(id="kpi-aero-cache", data={k: {"val": "--", "ts": 0} for k in ["cn", "scat_b", "scat_g", "scat_r", "abs_b", "abs_g", "abs_r"]}),
-        dcc.Store(id="kpi-gas-cache", data={k: {"val": "--", "ts": 0} for k in ["o3", "co", "no", "no2"]})
+        dcc.Interval(id="kpi-staleness-interval", interval=5 * 1000, n_intervals=0),
+        
+        dcc.Store(id="store-deployment-id", data=deployment_id),
+        dcc.Store(id="c2-health-store", data={}),
+        dcc.Store(id="unified-telemetry-store", data={})
     ])
 
 # --- CALLBACKS ---
 
+# 1. SEND COMMANDS
 @callback(
     Output("ws-c2-send-buffer", "children"),
     Input("btn-mode-auto", "n_clicks"),
@@ -243,64 +238,49 @@ def layout(deployment_id=None):
     prevent_initial_call=True
 )
 def handle_c2_mode_switch(auto_clicks, manual_clicks, deployment_id):
-    if not ctx.triggered:
-        raise PreventUpdate
-        
+    if not ctx.triggered: raise PreventUpdate
     button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    requested_mode = "auto" if button_id == "btn-mode-auto" else "manual"
-
+    req_mode = "auto" if button_id == "btn-mode-auto" else "manual"
     event = {
-        "type": "envds.control.request",
-        "source": f"envds.{config.daq_id}.dashboard",
-        "id": str(ULID()),
-        "datacontenttype": "application/json; charset=utf-8",
-        "data": {
-            "system_mode": {
-                "requested": requested_mode
-            }
-        },
-        "destpath": f"envds/{config.daq_id}/system/control/request",
-        "deploymentref": deployment_id
+        "type": "envds.control.request", "source": f"envds.{config.daq_id}.dashboard",
+        "id": str(ULID()), "datacontenttype": "application/json",
+        "data": {"system_mode": {"requested": req_mode}},
+        "destpath": f"envds/{config.daq_id}/system/control/request", "deploymentref": deployment_id
     }
-    
-    L.info(f"Issuing C2 Request to Host {deployment_id}: Switch to {requested_mode.upper()} mode.")
     return json.dumps(event)
 
-@callback(
-    Output("ws-deployment-c2", "send"), 
-    Input("ws-c2-send-buffer", "children")
-)
+@callback(Output("ws-c2-sender", "send"), Input("ws-c2-send-buffer", "children"))
 def send_c2_request(payload):
-    if payload:
-        return payload
+    if payload: return payload
     raise PreventUpdate
 
+# 2. AGGREGATE OPERATIONS HEALTH
 @callback(
     Output("c2-health-store", "data"),
-    Input("ws-deployment-c2", "message"),
-    State("store-bundle-ids", "data"),
+    Input({"type": "ws-dep-status", "index": ALL}, "message"),
     State("c2-health-store", "data"),
     prevent_initial_call=True
 )
-def accumulate_bundle_health(message, bundle_ids, current_store):
-    if not message or "data" not in message:
-        raise PreventUpdate
-        
-    try:
-        status_data = json.loads(message["data"])
-        app_uid = status_data.get("id", {}).get("app_uid", "")
-        
-        if app_uid in bundle_ids:
-            if current_store is None:
-                current_store = {}
-            current_store[app_uid] = status_data
-            return current_store
+def aggregate_health(messages, current_store):
+    if current_store is None: current_store = {}
+    updated = False
+    
+    # Process only the websockets that actually fired this tick
+    for t in ctx.triggered:
+        if not t["value"] or "data" not in t["value"]: continue
+        try:
+            status_data = json.loads(t["value"]["data"])
+            app_uid = status_data.get("id", {}).get("app_uid", "")
+            if app_uid:
+                current_store[app_uid] = status_data
+                updated = True
+        except Exception as e:
+            L.error(f"Health Parse Error: {e}")
             
-    except Exception as e:
-        L.error(f"Error parsing C2 status update: {e}")
-        
-    raise PreventUpdate
+    if not updated: raise PreventUpdate
+    return current_store
 
+# 3. RENDER OPERATIONS HEALTH
 @callback(
     Output("live-system-mode-badge", "children"),
     Output("ops-health-container", "children"),
@@ -309,214 +289,112 @@ def accumulate_bundle_health(message, bundle_ids, current_store):
     prevent_initial_call=True
 )
 def render_bundle_health(health_store, host_id):
-    if not health_store:
-        raise PreventUpdate
+    if not health_store: raise PreventUpdate
         
-    # Helpers for building the state machine tree
     def get_badge(val):
-        """Converts booleans or common mode strings into color-coded badges."""
-        if isinstance(val, bool):
-            color = "success" if val else "secondary"
-            text = "TRUE" if val else "FALSE"
+        if isinstance(val, bool): return dbc.Badge("TRUE" if val else "FALSE", color="success" if val else "secondary", className="ms-2")
         elif isinstance(val, str):
-            val_lower = val.lower()
-            if val_lower in ["auto", "normal", "nominal_sampling"]:
-                color = "success"
-            elif val_lower in ["manual", "startup", "system_startup"]:
-                color = "warning"
-            else:
-                color = "secondary"
-            text = val.upper()
-        else:
-            color = "light"
-            text = str(val)
-        return dbc.Badge(text, color=color, className="ms-2")
+            v = val.lower()
+            return dbc.Badge(val.upper(), color="success" if v in ["auto", "normal", "nominal_sampling"] else ("warning" if v in ["manual", "startup", "system_startup"] else "secondary"), className="ms-2")
+        return dbc.Badge(str(val), color="light", className="ms-2")
 
     def render_list(title, title_color, data_dict):
-        """Renders a subsection (like Sampling Modes or States) as a clean unordered list."""
-        if not data_dict:
-            return html.Div()
-            
-        items = []
-        for k, v in data_dict.items():
-            # Handle if value is a dict ({"actual": bool}) or just a raw boolean
-            actual_val = v.get("actual") if isinstance(v, dict) else v
-            items.append(html.Li([
-                html.Span(k, className="font-monospace text-dark"), 
-                get_badge(actual_val)
-            ], className="mb-1"))
-            
-        return html.Div([
-            html.Div(title, className=f"fw-bold mt-3 mb-2 border-bottom {title_color}"),
-            html.Ul(items, className="list-unstyled ms-3 mb-0")
-        ])
+        if not data_dict: return html.Div()
+        items = [html.Li([html.Span(k, className="font-monospace text-dark"), get_badge(v.get("actual") if isinstance(v, dict) else v)], className="mb-1") for k, v in data_dict.items()]
+        return html.Div([html.Div(title, className=f"fw-bold mt-3 mb-2 border-bottom {title_color}"), html.Ul(items, className="list-unstyled ms-3 mb-0")])
 
-    # 1. Evaluate Host Status for the Top Badge
-    host_data = health_store.get(host_id, {})
-    host_state = host_data.get("state", {})
-    
+    host_state = health_store.get(host_id, {}).get("state", {})
     current_mode = host_state.get("system_mode", {}).get("actual", "UNKNOWN")
-    badge_color = "success" if current_mode.lower() in ["auto", "normal"] else "warning"
-    top_badge = dbc.Badge(f"HOST MODE: {current_mode.upper()}", color=badge_color, className="p-2 fs-6")
+    top_badge = dbc.Badge(f"HOST MODE: {current_mode.upper()}", color="success" if current_mode.lower() in ["auto", "normal"] else "warning", className="p-2 fs-6")
     
-    # 2. Render Accordions for Host and Subs
     accordions = []
     for dep_id, s_data in health_store.items():
         state_dict = s_data.get("state", {})
         title_prefix = "HOST: " if dep_id == host_id else "SUB: "
-        
-        # Calculate Title Color
         actual_sys_mode = state_dict.get("system_mode", {}).get("actual", "unknown").lower()
         text_color = "text-success" if actual_sys_mode in ["auto", "normal"] else "text-warning"
         
-        # Build the hierarchical tree content
-        sys_mode_ui = html.Div([
-            html.Div("System Mode", className="fw-bold mb-2 text-primary border-bottom"),
-            html.Span("Current Active Mode:", className="ms-3 text-muted me-2"),
-            get_badge(state_dict.get("system_mode", {}).get("actual", "UNKNOWN"))
-        ])
-        
+        sys_mode_ui = html.Div([html.Div("System Mode", className="fw-bold mb-2 text-primary border-bottom"), html.Span("Current Active Mode:", className="ms-3 text-muted me-2"), get_badge(state_dict.get("system_mode", {}).get("actual", "UNKNOWN"))])
         sm_ui = render_list("Sampling Modes", "text-info", state_dict.get("sampling_mode", {}))
         ss_ui = render_list("Sampling States", "text-success", state_dict.get("sampling_state", {}))
         sc_ui = render_list("Sampling Conditions", "text-secondary", state_dict.get("sampling_condition", {}))
         
         content = html.Div([sys_mode_ui, sm_ui, ss_ui, sc_ui], style={"fontSize": "0.85rem", "maxHeight": "400px", "overflowY": "auto"})
+        accordions.append(dbc.AccordionItem(content, title=html.Span([f"{title_prefix}{dep_id.split('.')[-1]} ", html.Span("●", className=text_color)])))
         
-        # Assemble the accordion item
-        title = html.Span([f"{title_prefix}{dep_id.split('.')[-1]} ", html.Span("●", className=text_color)])
-        accordions.append(dbc.AccordionItem(content, title=title))
-        
-    health_ui = dbc.Accordion(accordions, start_collapsed=False, flush=True) if accordions else dash.no_update
-    
-    return top_badge, health_ui
+    return top_badge, dbc.Accordion(accordions, start_collapsed=False, flush=True)
 
+# 4. AGGREGATE TELEMETRY
 @callback(
-    Output("kpi-nav-latlon", "children"),
-    Output("kpi-nav-spdhdg", "children"),
-    Output("kpi-nav-pitchroll", "children"),
-    Output("kpi-met-wind", "children"),
-    Output("kpi-met-temprh", "children"),
-    Output("kpi-met-press", "children"),
-    Output("kpi-met-rain", "children"),
-    Output("kpi-met-irrad", "children"),
-    Output("kpi-aero-cn", "children"),
-    Output("kpi-aero-scat", "children"),
-    Output("kpi-aero-abs", "children"),
-    Output("kpi-gas-o3", "children"),
-    Output("kpi-gas-co", "children"),
-    Output("kpi-gas-nox", "children"),
-    Output("kpi-ops-relwind", "children"),
-    Output("kpi-ops-flow", "children"),
-    Output("kpi-ops-flowsp", "children"),
-    Input("ws-deployment-telemetry", "message"),
-    Input("kpi-staleness-interval", "n_intervals"), 
-    State("kpi-nav-cache", "data"),
-    State("kpi-met-cache", "data"),
-    State("kpi-ops-cache", "data"),
-    State("kpi-aero-cache", "data"),
-    State("kpi-gas-cache", "data"),
+    Output("unified-telemetry-store", "data"),
+    Input({"type": "ws-varset", "index": ALL}, "message"),
+    State("unified-telemetry-store", "data"),
     prevent_initial_call=True
 )
-def update_quick_looks(message, n_intervals, n_cache, m_cache, o_cache, a_cache, g_cache):
-    trigger = ctx.triggered_id
+def aggregate_telemetry(messages, current_store):
+    if current_store is None: current_store = {}
+    updated = False
     now = time.time()
-    stale_threshold = 120  # Seconds until data is considered "Stale"
-
-    # --- DEBUGGING: Track the trigger ---
-    if trigger == "kpi-staleness-interval":
-        # print(f"DEBUG: Heartbeat tick at {now}")
-        pass
-    elif trigger == "ws-deployment-telemetry":
-        print(f"\n--- DEBUG: WEBSOCKET EVENT RECEIVED ---")
-
-    # 1. Update caches ONLY if triggered by new WebSocket data
-    if trigger == "ws-deployment-telemetry" and message and "data" in message:
+    
+    for t in ctx.triggered:
+        if not t["value"] or "data" not in t["value"]: continue
         try:
-            payload = json.loads(message["data"])
-            
-            print(f"DEBUG Payload Keys: {list(payload.keys())}")
-            
+            payload = json.loads(t["value"]["data"])
             variables = payload.get("variables", {})
-            print(f"DEBUG Received Variables: {list(variables.keys())}")
-            
-            def get_val(var_name):
-                if var_name in variables:
-                    val = variables[var_name].get("data")
-                    return f"{val:.2f}" if isinstance(val, float) else str(val)
-                return None
-
-            # NAV
-            for key, v_names in [("lat", ["latitude", "lat"]), ("lon", ["longitude", "lon"]), 
-                                 ("spd", ["sog", "speed"]), ("hdg", ["cog", "heading"]),
-                                 ("pitch", ["pitch"]), ("roll", ["roll"])]:
-                for vn in v_names:
-                    if val := get_val(vn): 
-                        n_cache[key] = {"val": val, "ts": now}
-                        print(f"DEBUG: Matched NAV {key} -> {val}")
-
-            # MET
-            for key, v_names in [("tws", ["true_wind_speed", "tws"]), ("twdir", ["true_wind_dir", "twdir"]),
-                                 ("temp", ["temperature", "air_temp"]), ("rh", ["rh", "relative_humidity"]),
-                                 ("press", ["pressure", "baro"]), ("rain", ["rain_rate", "precip"]),
-                                 ("irrad", ["irradiance", "solar"])]:
-                for vn in v_names:
-                    if val := get_val(vn): 
-                        m_cache[key] = {"val": val, "ts": now}
-                        print(f"DEBUG: Matched MET {key} -> {val}")
-                        
-            # AERO
-            for key, v_names in [("cn", ["cn_concentration", "cn"])]:
-                for vn in v_names:
-                    if val := get_val(vn): a_cache[key] = {"val": val, "ts": now}
-            for key, v_names in [("scat_b", ["scatter_blue", "scat_blue"]), ("scat_g", ["scatter_green", "scat_green"]), ("scat_r", ["scatter_red", "scat_red"]),
-                                 ("abs_b", ["absorption_blue", "abs_blue"]), ("abs_g", ["absorption_green", "abs_green"]), ("abs_r", ["absorption_red", "abs_red"])]:
-                for vn in v_names:
-                    if val := get_val(vn): a_cache[key] = {"val": val, "ts": now}
-
-            # GAS
-            for key, v_names in [("o3", ["o3", "ozone"]), ("co", ["co", "carbon_monoxide"]), 
-                                 ("no", ["no", "nitric_oxide"]), ("no2", ["no2", "nitrogen_dioxide"])]:
-                for vn in v_names:
-                    if val := get_val(vn): g_cache[key] = {"val": val, "ts": now}
-
-            # OPS
-            for key, v_names in [("rws", ["relative_wind_speed", "rel_wind_speed", "rws"]), ("rwdir", ["relative_wind_dir", "rel_wind_dir", "rwdir"]),
-                                 ("flow", ["inlet_flow", "flow"]), ("flowsp", ["inlet_flow_sp", "flow_setpoint"])]:
-                for vn in v_names:
-                    if val := get_val(vn): o_cache[key] = {"val": val, "ts": now}
-                    
+            for var_name, v_data in variables.items():
+                if var_name == "time": continue
+                current_store[var_name] = {"val": v_data.get("data"), "ts": now}
+                updated = True
         except Exception as e:
-            L.error(f"KPI Parsing Error: {e}")
-            print(f"DEBUG Parsing Error: {e}")
-            raise PreventUpdate
+            L.error(f"Telemetry Parse Error: {e}")
+            
+    if not updated: raise PreventUpdate
+    return current_store
 
-    # 2. Rendering Logic (Applies to both WS events and Heartbeat ticks)
-    def fmt(c_dict):
-        val = c_dict["val"]
-        ts = c_dict["ts"]
-        if val == "--": return val
-        
-        # If older than threshold, turn the text red
-        if now - ts > stale_threshold:
-            return html.Span(str(val), className="text-danger fw-bold", title=f"Stale: Last updated {(now-ts)/60:.1f}m ago")
-        return str(val)
+# 5. RENDER TELEMETRY
+@callback(
+    Output("kpi-nav-latlon", "children"), Output("kpi-nav-spdhdg", "children"), Output("kpi-nav-pitchroll", "children"),
+    Output("kpi-met-wind", "children"), Output("kpi-met-temprh", "children"), Output("kpi-met-press", "children"), Output("kpi-met-rain", "children"), Output("kpi-met-irrad", "children"),
+    Output("kpi-aero-cn", "children"), Output("kpi-aero-scat", "children"), Output("kpi-aero-abs", "children"),
+    Output("kpi-gas-o3", "children"), Output("kpi-gas-co", "children"), Output("kpi-gas-nox", "children"),
+    Output("kpi-ops-relwind", "children"), Output("kpi-ops-flow", "children"), Output("kpi-ops-flowsp", "children"),
+    Input("unified-telemetry-store", "data"),
+    Input("kpi-staleness-interval", "n_intervals"), 
+    prevent_initial_call=True
+)
+def update_quick_looks(telemetry_store, n_intervals):
+    if not telemetry_store: raise PreventUpdate
+    now = time.time()
+
+    def get_val(keys):
+        """Checks list of synonyms. Returns formatted span if found, else '--'."""
+        for k in keys:
+            if k in telemetry_store:
+                val = telemetry_store[k]["val"]
+                ts = telemetry_store[k]["ts"]
+                fmt_val = f"{val:.2f}" if isinstance(val, float) else str(val)
+                # Stale check (120 seconds)
+                if now - ts > 120:
+                    return html.Span(fmt_val, className="text-danger fw-bold", title=f"Stale: {(now-ts)/60:.1f}m ago")
+                return fmt_val
+        return "--"
 
     return (
-        [fmt(n_cache['lat']), " / ", fmt(n_cache['lon'])],
-        [fmt(n_cache['spd']), " / ", fmt(n_cache['hdg'])],
-        [fmt(n_cache['pitch']), " / ", fmt(n_cache['roll'])],
-        [fmt(m_cache['tws']), " / ", fmt(m_cache['twdir'])],
-        [fmt(m_cache['temp']), " / ", fmt(m_cache['rh'])],
-        fmt(m_cache['press']),
-        fmt(m_cache['rain']),
-        fmt(m_cache['irrad']),
-        fmt(a_cache['cn']),
-        [fmt(a_cache['scat_b']), " / ", fmt(a_cache['scat_g']), " / ", fmt(a_cache['scat_r'])],
-        [fmt(a_cache['abs_b']), " / ", fmt(a_cache['abs_g']), " / ", fmt(a_cache['abs_r'])],
-        fmt(g_cache['o3']),
-        fmt(g_cache['co']),
-        [fmt(g_cache['no']), " / ", fmt(g_cache['no2'])],
-        [fmt(o_cache['rws']), " / ", fmt(o_cache['rwdir'])],
-        fmt(o_cache['flow']),
-        fmt(o_cache['flowsp'])
+        [get_val(["latitude", "lat"]), " / ", get_val(["longitude", "lon"])],
+        [get_val(["sog", "speed"]), " / ", get_val(["cog", "heading"])],
+        [get_val(["pitch"]), " / ", get_val(["roll"])],
+        [get_val(["true_wind_speed", "tws"]), " / ", get_val(["true_wind_dir", "twdir"])],
+        [get_val(["temperature", "air_temp"]), " / ", get_val(["rh", "relative_humidity"])],
+        get_val(["pressure", "baro"]),
+        get_val(["rain_rate", "precip"]),
+        get_val(["irradiance", "solar"]),
+        get_val(["cn_concentration", "cn"]),
+        [get_val(["scatter_blue", "scat_blue"]), " / ", get_val(["scatter_green", "scat_green"]), " / ", get_val(["scatter_red", "scat_red"])],
+        [get_val(["absorption_blue", "abs_blue"]), " / ", get_val(["absorption_green", "abs_green"]), " / ", get_val(["absorption_red", "abs_red"])],
+        get_val(["o3", "ozone"]),
+        get_val(["co", "carbon_monoxide"]),
+        [get_val(["no", "nitric_oxide"]), " / ", get_val(["no2", "nitrogen_dioxide"])],
+        [get_val(["relative_wind_speed", "rel_wind_speed", "rws"]), " / ", get_val(["relative_wind_dir", "rel_wind_dir", "rwdir"])],
+        get_val(["inlet_flow", "flow"]),
+        get_val(["inlet_flow_sp", "flow_setpoint"])
     )
