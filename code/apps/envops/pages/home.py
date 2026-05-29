@@ -157,11 +157,11 @@ def update_live_health(message, current_health):
     Input("store-projects", "data"),
     Input("store-deployments", "data"),
     Input("live-fleet-locations", "data"),
-    Input("live-health-store", "data"), # Re-renders UI when health changes
+    Input("live-health-store", "data"), 
     prevent_initial_call=True
 )
 def render_fleet_ui(projects, deployments, live_locations, health_store):
-    """Builds the nested Host/Sub UI and processes map logic."""
+    """Builds the nested Host/Sub UI and processes map logic based on host_platform_ref."""
     if health_store is None: health_store = {}
     if live_locations is None: live_locations = {}
     
@@ -174,16 +174,34 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
     if not projects and not deployments:
         return html.P("No active projects found.", className="text-muted"), fig
 
-    # --- 1. Organize Deployments by Project and Host vs Sub ---
-    # NOTE: Change 'parent_ref' to 'host_ref' if your GitOps uses a different key
-    parent_ref_key = "parent_ref" 
-    
+    # --- 1. Map Platforms to Deployments ---
+    platform_to_dep = {}
+    for dep in deployments:
+        dep_data = dep.get("data", {})
+        pref = dep_data.get("platform_ref")
+        if pref:
+            platform_to_dep[pref] = dep
+
+    # --- 2. Determine Top-Level Hosts vs Sub-Deployments ---
+    host_deployments = []
+    sub_deployments = []
+
+    for dep in deployments:
+        host_pref = dep.get("data", {}).get("host_platform_ref")
+        # If the host platform is ALSO actively deployed by us, this is a Sub.
+        if host_pref and host_pref in platform_to_dep:
+            sub_deployments.append(dep)
+        else:
+            # If the host platform is an external entity (Marina, Ship), this is the Host.
+            host_deployments.append(dep)
+
+    # --- 3. Organize by Project ---
     hosts_by_project = {} # { proj_name: { host_name: {"host": dep, "subs": []} } }
     planned_lats, planned_lons, planned_text = [], [], []
     live_lats, live_lons, live_text = [], [], []
 
-    # First pass: map the hosts and their map coordinates
-    for dep in deployments:
+    # Map the hosts and their coordinates
+    for dep in host_deployments:
         dep_data = dep.get("data", {})
         proj_ref = dep_data.get("project_ref", "unknown")
         dep_name = dep.get("metadata", {}).get("name", "Unknown_Deployment")
@@ -191,38 +209,40 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
         if proj_ref not in hosts_by_project:
             hosts_by_project[proj_ref] = {}
             
-        if not dep_data.get(parent_ref_key):
-            # It's a Host
-            hosts_by_project[proj_ref][dep_name] = {"host": dep, "subs": []}
-            
-            h_display = dep_data.get('display_name', dep_name)
-            
-            # Map coordinates: Check if live location exists by deployment name OR platform ref
-            platform_ref = dep_data.get('platform_ref', '')
-            live_loc = live_locations.get(dep_name) or live_locations.get(platform_ref)
-            
-            if live_loc:
-                live_lats.append(live_loc["lat"])
-                live_lons.append(live_loc["lon"])
-                live_text.append(f"{h_display}<br><b>(Live)</b>")
-            else:
-                # Fallback to planned location
-                lat_min = dep_data.get("planned_geospatial_lat_min")
-                lon_min = dep_data.get("planned_geospatial_lon_min")
-                if lat_min is not None and lon_min is not None:
-                    planned_lats.append(lat_min)
-                    planned_lons.append(lon_min)
-                    planned_text.append(f"{h_display}<br><i>(Estimated/Planned)</i>")
+        hosts_by_project[proj_ref][dep_name] = {"host": dep, "subs": []}
+        
+        h_display = dep_data.get('display_name', dep_name)
+        platform_ref = dep_data.get('platform_ref', '')
+        
+        # Map coordinates: Check if live location exists
+        live_loc = live_locations.get(dep_name) or live_locations.get(platform_ref)
+        if live_loc:
+            live_lats.append(live_loc["lat"])
+            live_lons.append(live_loc["lon"])
+            live_text.append(f"{h_display}<br><b>(Live)</b>")
+        else:
+            # Fallback to planned location
+            lat_min = dep_data.get("planned_geospatial_lat_min")
+            lon_min = dep_data.get("planned_geospatial_lon_min")
+            if lat_min is not None and lon_min is not None:
+                planned_lats.append(lat_min)
+                planned_lons.append(lon_min)
+                planned_text.append(f"{h_display}<br><i>(Estimated/Planned)</i>")
 
-    # Second pass: map the subs to their hosts
-    for dep in deployments:
+    # Map the subs to their parent hosts
+    for dep in sub_deployments:
         dep_data = dep.get("data", {})
-        parent = dep_data.get(parent_ref_key)
         proj_ref = dep_data.get("project_ref", "unknown")
-        if parent and proj_ref in hosts_by_project and parent in hosts_by_project[proj_ref]:
-            hosts_by_project[proj_ref][parent]["subs"].append(dep)
+        host_pref = dep_data.get("host_platform_ref")
+        
+        # Find the parent deployment using the platform linkage
+        parent_dep = platform_to_dep.get(host_pref)
+        if parent_dep:
+            parent_name = parent_dep.get("metadata", {}).get("name")
+            if parent_name and proj_ref in hosts_by_project and parent_name in hosts_by_project[proj_ref]:
+                hosts_by_project[proj_ref][parent_name]["subs"].append(dep)
 
-    # Add Map Traces
+    # --- 4. Render Map Traces ---
     if planned_lats:
         fig.add_trace(go.Scattermapbox(
             lat=planned_lats, lon=planned_lons, text=planned_text,
@@ -235,13 +255,11 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
             mode='markers', marker=go.scattermapbox.Marker(size=14, color='red'),
             name="Live Locations"
         ))
-        # Recenter map if we have live data
         fig.update_layout(mapbox=dict(center=dict(lat=sum(live_lats)/len(live_lats), lon=sum(live_lons)/len(live_lons)), zoom=4))
 
-    # --- 2. Build the UI Hierarchy ---
+    # --- 5. Build the UI Hierarchy ---
     accordion_items = []
     
-    # Helper for rendering health indicators
     def get_health_badge(uid, display_name):
         h_data = health_store.get(uid, {"health": "secondary", "text": "UNKNOWN"})
         color = "success" if h_data["health"] == "ok" else h_data["health"]
@@ -253,7 +271,7 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
         proj_hosts = hosts_by_project.get(proj_name, {})
         
         dep_list = []
-        proj_health_status = "ok" # Default to OK
+        proj_health_status = "ok"
 
         for host_name, group in proj_hosts.items():
             host_data = group["host"]
@@ -261,11 +279,10 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
             
             h_display = host_data.get("data", {}).get("display_name", host_name)
             
-            # Collect nested healths
             host_health_badge = get_health_badge(host_name, "Host")
             sub_badges = [get_health_badge(s.get("metadata", {}).get("name"), s.get("data", {}).get("display_name", "Sub")) for s in subs]
             
-            # Roll up project health logic (If any host/sub is warning, project is warning)
+            # Roll up project health logic
             host_state = health_store.get(host_name, {}).get("health", "ok")
             if host_state == "danger": proj_health_status = "danger"
             elif host_state == "warning" and proj_health_status != "danger": proj_health_status = "warning"
@@ -275,7 +292,6 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
                 if s_state == "danger": proj_health_status = "danger"
                 elif s_state == "warning" and proj_health_status != "danger": proj_health_status = "warning"
 
-            # Render Unified Card (Using get_relative_path!)
             btn = dbc.Button(
                 "Command & Control ⭢", 
                 href=dash.get_relative_path(f"/deployment/{host_name}"), 
@@ -285,8 +301,8 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
             dep_card = dbc.Card([
                 dbc.CardHeader(html.H6(h_display, className="mb-0")),
                 dbc.CardBody([
-                    html.P(f"Platform: {host_data.get('data', {}).get('platform_ref', 'N/A')}", className="small mb-2 text-muted"),
-                    html.Div([host_health_badge] + sub_badges, className="mb-3"), # Nested healths shown here
+                    html.P(f"Platform: {host_data.get('data', {}).get('platform_ref', 'N/A')} @ {host_data.get('data', {}).get('host_platform_ref', 'N/A')}", className="small mb-2 text-muted"),
+                    html.Div([host_health_badge] + sub_badges, className="mb-3"),
                     btn
                 ])
             ], className="mb-3 border-secondary shadow-sm")
@@ -295,7 +311,6 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
         if not dep_list:
             dep_list = [html.P("No active deployments in this project.", className="text-muted small")]
 
-        # Render Project Accordion Title with Rolled-Up Health
         title_color = "text-success" if proj_health_status == "ok" else f"text-{proj_health_status}"
         title_icon = "🟢" if proj_health_status == "ok" else ("🟡" if proj_health_status == "warning" else "🔴")
         accordion_title = html.Span([f"📁 {proj_display} ", html.Span(title_icon, className=title_color)])
