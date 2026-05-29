@@ -78,9 +78,12 @@ def get_deployment_bundle(host_id):
     # 2. Identify Variablesets tied to these platforms
     required_varsets = set()
     for vs in varsets:
-        for p in platforms:
-            if p and p in vs.get("metadata", {}).get("name", ""):
-                required_varsets.add(vs.get("metadata", {}).get("name"))
+        # FIX: Check the actual platform attribute, not the variableset name!
+        vs_platform = vs.get("data", {}).get("attributes", {}).get("platform", {}).get("data", "")
+        if vs_platform in platforms:
+            vs_name = vs.get("metadata", {}).get("name")
+            if vs_name:
+                required_varsets.add(vs_name)
 
     return host_dep, subs, list(required_varsets)
 

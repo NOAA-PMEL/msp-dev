@@ -14,8 +14,7 @@ L = logging.getLogger(__name__)
 
 dash.register_page(
     __name__,
-    # CHANGE THIS LINE
-    path_template="/variablesets/<deployment_id>",
+    path_template="/variablesets/<deployment_id>", # <-- Flattened route here
     title="Deployment Variablesets",
 )
 
@@ -30,6 +29,28 @@ class Settings(BaseSettings):
 config = Settings()
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
+
+# --- HELPER: REST FETCH ---
+def fetch_registry_data(resource_type: str):
+    """Directly fetch definitions from datastore so we don't rely on cross-page caches."""
+    url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
+    docs = []
+    try:
+        timeout = httpx.Timeout(10.0)
+        id_response = httpx.get(url, timeout=timeout)
+        if id_response.status_code == 200:
+            ids = id_response.json().get("results", [])
+            for doc_id in ids:
+                if doc_id:
+                    doc_url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
+                    doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
+                    if doc_response.status_code == 200:
+                        doc_results = doc_response.json().get("results", [])
+                        if doc_results: docs.append(doc_results[0])
+    except Exception as e:
+        L.error(f"Failed to fetch {resource_type} definitions: {e}")
+    return docs
+
 
 def layout(deployment_id=None):
     if not deployment_id:
@@ -60,16 +81,19 @@ def layout(deployment_id=None):
     Output("variablesets-container", "children"),
     Output("dynamic-websockets-container", "children"),
     Input("store-current-deployment", "data"),
-    State("store-deployments", "data") # Pulling the cache from app.py
+    # REMOVED: State("store-deployments", "data")
 )
-def fetch_deployment_variablesets(deployment_id, deployments_cache):
+def fetch_deployment_variablesets(deployment_id):
     """Cross-references the deployment to find the platform, then fetches its variablesets."""
-    if not deployment_id or not deployments_cache:
+    if not deployment_id:
         raise PreventUpdate
 
-    # 1. Find the platform_ref for this deployment
+    # 1. Fetch deployments directly from datastore
+    deployments = fetch_registry_data("deployment")
+
+    # 2. Find the platform_ref for this deployment
     platform_ref = None
-    for dep in deployments_cache:
+    for dep in deployments:
         if dep.get("metadata", {}).get("name") == deployment_id:
             platform_ref = dep.get("data", {}).get("platform_ref")
             break
@@ -77,7 +101,7 @@ def fetch_deployment_variablesets(deployment_id, deployments_cache):
     if not platform_ref:
         return dash.no_update, html.P("Deployment not found in active cache.", className="text-danger"), []
 
-    # 2. Query Datastore for Variablesets matching this platform
+    # 3. Query Datastore for Variablesets matching this platform
     active_varsets = {}
     try:
         url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
@@ -102,7 +126,7 @@ def fetch_deployment_variablesets(deployment_id, deployments_cache):
     if not active_varsets:
         return active_varsets, html.P(f"No active variablesets found for platform: {platform_ref}"), []
 
-    # 3. Build UI and WebSockets
+    # 4. Build UI and WebSockets
     ui_elements = []
     websockets = []
     
@@ -110,7 +134,6 @@ def fetch_deployment_variablesets(deployment_id, deployments_cache):
         # Inject the WebSocket listener
         websockets.append(WebSocket(
             id={"type": "ws-varset", "index": vs_name}, 
-            # CHANGED: /msp/dashboardtest -> /envds/envops
             url=f"{ws_url_base}/envds/envops/ws/variableset/{vs_name}" 
         ))
         
@@ -123,7 +146,7 @@ def fetch_deployment_variablesets(deployment_id, deployments_cache):
                         dag.AgGrid(
                             id={"type": "varset-table", "index": vs_name},
                             rowData=[],
-                            columnDefs=[{"field": "time", "headerName": "Time"}], # We dynamically update cols when data arrives
+                            columnDefs=[{"field": "time", "headerName": "Time"}], 
                             columnSizeOptions="autoSize",
                             dashGridOptions={"domLayout": "autoHeight"}
                         )
@@ -141,7 +164,7 @@ def fetch_deployment_variablesets(deployment_id, deployments_cache):
 
     return active_varsets, ui_elements, websockets
 
-# Pattern-Matching Callbacks to handle the incoming WebSockets (adapted from your system_data.py)
+# Pattern-Matching Callbacks to handle the incoming WebSockets
 @callback(
     Output({"type": "varset-plot", "index": MATCH}, "extendData"),
     Output({"type": "varset-table", "index": MATCH}, "rowTransaction"),
@@ -163,7 +186,6 @@ def stream_variableset_data(message, current_cols):
         if not time_val:
             raise PreventUpdate
             
-        # Extract first non-time numeric variable for the 1D Plot
         plot_var = None
         plot_val = None
         

@@ -14,10 +14,10 @@ app = Dash(
     use_pages=True,
     routes_pathname_prefix="/",
     requests_pathname_prefix="/envds/envops/",
-    # Removed the external CDN link for Bootstrap. 
-    # Dash will automatically load assets/bootstrap.min.css, assets/envops.css, and assets/sidebar.css
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
+    suppress_callback_exceptions=True,  # ADDED: Prevents multi-page React crashes
 )
+
 # --- SIDEBAR COMPONENT ---
 sidebar_header = dbc.Row([
     dbc.Col(html.H4("EnvOps", className="display-6 fw-bold text-primary")),
