@@ -53,7 +53,6 @@ def fetch_registry_data(resource_type: str):
     return docs
 
 def get_deployment_bundle(host_id):
-    """Finds the Host deployment, its Sub-deployments, and constructs the exact Variableset routing keys."""
     deployments = fetch_registry_data("deployment")
     varsets = fetch_registry_data("variableset")
     
@@ -61,7 +60,6 @@ def get_deployment_bundle(host_id):
     subs = []
     platforms = set()
     
-    # 1. Identify Host & Subs
     for dep in deployments:
         if dep.get("metadata", {}).get("name") == host_id:
             host_dep = dep
@@ -75,18 +73,19 @@ def get_deployment_bundle(host_id):
                 subs.append(dep)
                 platforms.add(dep.get("data", {}).get("platform_ref"))
                 
-    # 2. Identify Variablesets tied to these platforms and build their routing keys
     required_varsets = set()
     for vs in varsets:
-        vs_platform = vs.get("data", {}).get("attributes", {}).get("platform", {}).get("data", "")
+        attributes = vs.get("attributes", {})
+        
+        p_obj = attributes.get("platform")
+        vs_platform = p_obj.get("data") if isinstance(p_obj, dict) else p_obj
+        
         if vs_platform in platforms:
+            vmap_obj = attributes.get("variablemap") or attributes.get("variablemap_id")
+            vmap = vmap_obj.get("data") if isinstance(vmap_obj, dict) else vmap_obj
             
-            # Reconstruct the exact routing ID expected by main.py
-            vmap = vs.get("data", {}).get("attributes", {}).get("variablemap", {}).get("data")
-            if not vmap:
-                vmap = vs.get("data", {}).get("attributes", {}).get("variablemap_id", {}).get("data", "")
+            vs_name = vs.get("variableset")
             
-            vs_name = vs.get("metadata", {}).get("name")
             if vs_name:
                 routing_key = f"{vmap}::{vs_name}" if vmap else vs_name
                 required_varsets.add(routing_key)
@@ -296,10 +295,12 @@ def aggregate_health(messages, current_store):
     State("store-deployment-id", "data"),
     prevent_initial_call=True
 )
-# 3. RENDER OPERATIONS HEALTH
+# 3. RENDER OPERATIONS HEALTH & UPDATE C2 BUTTON STATES
 @callback(
-    Output("live-system-mode-badge", "children"),
     Output("ops-health-container", "children"),
+    Output("btn-mode-auto", "outline"),
+    Output("btn-mode-manual", "outline"),
+    Output("c2-manual-container", "style"),
     Input("c2-health-store", "data"),
     State("store-deployment-id", "data"),
     prevent_initial_call=True
@@ -308,79 +309,97 @@ def render_bundle_health(health_store, host_id):
     if not health_store: raise PreventUpdate
         
     def get_badge(val):
-        if isinstance(val, bool): 
-            return dbc.Badge("TRUE" if val else "FALSE", color="success" if val else "secondary", className="ms-2")
-        elif isinstance(val, str):
-            v = val.lower()
-            if v in ["auto", "normal", "nominal_sampling"]: color = "success"
-            elif v in ["manual", "startup", "system_startup"]: color = "warning"
-            else: color = "secondary"
-            return dbc.Badge(val.upper(), color=color, className="ms-2")
-        return dbc.Badge(str(val), color="light", className="ms-2 text-dark")
+        # Extract actual if it's a dict
+        if isinstance(val, dict):
+            val = val.get("actual", val.get("requested", "UNKNOWN"))
 
-    def render_list(data_dict):
-        if not data_dict: 
+        v_str = str(val).lower()
+        if v_str in ["auto", "normal", "nominal_sampling", "nominal"]: 
+            color = "success"
+        elif v_str in ["manual", "startup", "system_startup", "standby"]: 
+            color = "warning"
+        elif v_str in ["true", "active"]:
+            color = "success"
+        elif v_str in ["false", "inactive"]:
+            color = "secondary"
+        else: 
+            color = "primary"
+            
+        display_text = str(val).upper().replace("_", " ")
+        return dbc.Badge(display_text, color=color, className="ms-2")
+
+    def render_active_only(data_dict):
+        """Filters a dict to ONLY show keys where actual=true/active."""
+        if not data_dict or not isinstance(data_dict, dict): 
             return html.Div(html.Span("None currently active.", className="text-muted small ms-3"))
-        items = [
-            html.Li([
-                html.Span(k, className="font-monospace text-dark"), 
-                get_badge(v.get("actual") if isinstance(v, dict) else v)
-            ], className="mb-1") for k, v in data_dict.items()
-        ]
+        
+        items = []
+        for k, v in data_dict.items():
+            actual_val = str(v.get("actual", v) if isinstance(v, dict) else v).lower()
+            
+            # Only render if it's active! (Removes clutter of false states)
+            if actual_val in ["true", "active", "1", "yes"]:
+                items.append(html.Li([
+                    html.Span("● ", className="text-success"),
+                    html.Span(k.replace("_", " ").title(), className="font-monospace text-dark fw-bold")
+                ], className="mb-1"))
+                
+        if not items:
+            return html.Div(html.Span("None currently active.", className="text-muted small ms-3"))
+            
         return html.Ul(items, className="list-unstyled ms-3 mb-0")
 
-    # Top Badge for the Host
+    # --- DETERMINE HOST C2 STATE FOR BUTTONS ---
     host_state = health_store.get(host_id, {}).get("state", {})
-    current_mode = host_state.get("system_mode", {}).get("actual", "UNKNOWN")
-    top_badge_color = "success" if current_mode.lower() in ["auto", "normal"] else "warning"
-    top_badge = dbc.Badge(f"HOST MODE: {current_mode.upper()}", color=top_badge_color, className="p-2 fs-6")
     
+    # System Mode is usually a string or dict {"actual": "..."}
+    raw_host_mode = host_state.get("system_mode", "unknown")
+    if isinstance(raw_host_mode, dict):
+        actual_host_mode = str(raw_host_mode.get("actual", "unknown")).lower()
+    else:
+        actual_host_mode = str(raw_host_mode).lower()
+        
+    is_auto = actual_host_mode in ["auto", "normal"]
+    auto_outline = not is_auto
+    manual_outline = is_auto
+    manual_style = {"display": "none"} if is_auto else {"display": "block"}
+    
+    # --- BUILD HEALTH ACCORDIONS ---
     accordions = []
     for dep_id, s_data in health_store.items():
         state_dict = s_data.get("state", {})
-        actual_sys_mode = state_dict.get("system_mode", {}).get("actual", "UNKNOWN")
         
         # 1. System Mode
+        raw_sys_mode = state_dict.get("system_mode", "UNKNOWN")
         sys_mode_ui = html.Div([
             html.Span("System Mode:", className="fw-bold me-2"),
-            get_badge(actual_sys_mode)
+            get_badge(raw_sys_mode)
         ], className="mb-3")
         
-        # 2. Sampling Modes
+        # 2. Sampling Modes (Filtered to active)
         sm_ui = html.Div([
-            html.Div("Sampling Modes", className="fw-bold text-info border-bottom mb-1"),
-            render_list(state_dict.get("sampling_mode", {}))
+            html.Div("Active Sampling Modes", className="fw-bold text-info border-bottom mb-1"),
+            render_active_only(state_dict.get("sampling_mode", {}))
         ], className="mb-3")
         
-        # 3. Sampling States
+        # 3. Sampling States (Filtered to active)
         ss_ui = html.Div([
-            html.Div("Sampling States", className="fw-bold text-success border-bottom mb-1"),
-            render_list(state_dict.get("sampling_state", {}))
-        ], className="mb-3")
+            html.Div("Active Sampling States", className="fw-bold text-success border-bottom mb-1"),
+            render_active_only(state_dict.get("sampling_state", {}))
+        ], className="mb-2")
         
-        # 4. Sampling Conditions (Nested Accordion)
-        cond_data = state_dict.get("sampling_condition", {})
-        if cond_data:
-            sc_ui = dbc.Accordion([
-                dbc.AccordionItem(
-                    render_list(cond_data),
-                    title=html.Span("View Sampling Conditions", className="small text-muted fw-bold"),
-                    className="border-0 bg-light"
-                )
-            ], start_collapsed=True, flush=True)
-        else:
-            sc_ui = html.Div()
+        content = html.Div([sys_mode_ui, sm_ui, ss_ui], style={"fontSize": "0.85rem"})
         
-        content = html.Div([sys_mode_ui, sm_ui, ss_ui, sc_ui], style={"fontSize": "0.85rem"})
-        
-        # Formatted Accordion Item Title
         dep_name = dep_id.split('.')[-1]
-        title_color = "text-success" if actual_sys_mode.lower() in ["auto", "normal"] else "text-warning"
-        title = html.Span([f"{dep_name} ", html.Span("●", className=title_color)])
+        actual_sys = str(raw_sys_mode.get("actual", raw_sys_mode) if isinstance(raw_sys_mode, dict) else raw_sys_mode).lower()
+        title_color = "text-success" if actual_sys in ["auto", "normal"] else "text-warning"
         
+        title = html.Span([f"{dep_name} ", html.Span("●", className=title_color)])
         accordions.append(dbc.AccordionItem(content, title=title))
         
-    return top_badge, dbc.Accordion(accordions, start_collapsed=False, flush=True)
+    accordion_ui = dbc.Accordion(accordions, start_collapsed=False, flush=True)
+    
+    return accordion_ui, auto_outline, manual_outline, manual_style
 
 # 4. AGGREGATE TELEMETRY
 @callback(

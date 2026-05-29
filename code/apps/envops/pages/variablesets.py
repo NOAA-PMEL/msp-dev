@@ -52,40 +52,41 @@ def fetch_registry_data(resource_type: str):
     return docs
 
 def get_bundle_variablesets(host_id):
-    """Finds the Host deployment, Sub-deployments, and returns all associated variablesets."""
     deployments = fetch_registry_data("deployment")
     varsets = fetch_registry_data("variableset")
     
     platforms = set()
     
-    # 1. Identify Host & Subs Platforms
+    # 1. Identify Host & Subs Platforms (Deployments have 'data' wrappers)
     for dep in deployments:
         if dep.get("metadata", {}).get("name") == host_id:
             host_platform = dep.get("data", {}).get("platform_ref")
             if host_platform:
                 platforms.add(host_platform)
-                # Find subs attached to this host platform
                 for sub in deployments:
                     if sub.get("data", {}).get("host_platform_ref") == host_platform:
                         platforms.add(sub.get("data", {}).get("platform_ref"))
             break
                 
-    # 2. Identify Variablesets tied to any of these platforms
+    # 2. Identify Variablesets (Variablesets are flat Pydantic models!)
     active_varsets = {}
     for vs in varsets:
-        # Safely extract platform
-        vs_platform = vs.get("data", {}).get("attributes", {}).get("platform", {}).get("data", "")
+        attributes = vs.get("attributes", {})
+        
+        # Extract platform (handling if it's {"data": "X"} or just "X")
+        p_obj = attributes.get("platform")
+        vs_platform = p_obj.get("data") if isinstance(p_obj, dict) else p_obj
+        
         if vs_platform in platforms:
+            vmap_obj = attributes.get("variablemap") or attributes.get("variablemap_id")
+            vmap = vmap_obj.get("data") if isinstance(vmap_obj, dict) else vmap_obj
             
-            # Reconstruct the exact routing ID expected by main.py (e.g., 'payload_03::main')
-            vmap = vs.get("data", {}).get("attributes", {}).get("variablemap", {}).get("data")
-            if not vmap:
-                vmap = vs.get("data", {}).get("attributes", {}).get("variablemap_id", {}).get("data", "")
+            # Name is a top-level field in the Pydantic model
+            vs_name = vs.get("variableset")
             
-            vs_name = vs.get("metadata", {}).get("name", "unknown")
-            
-            routing_key = f"{vmap}::{vs_name}" if vmap else vs_name
-            active_varsets[routing_key] = vs
+            if vs_name:
+                routing_key = f"{vmap}::{vs_name}" if vmap else vs_name
+                active_varsets[routing_key] = vs
 
     return platforms, active_varsets
 
