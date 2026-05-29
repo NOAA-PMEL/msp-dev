@@ -312,25 +312,83 @@ def render_bundle_health(health_store, host_id):
     if not health_store:
         raise PreventUpdate
         
+    # Helpers for building the state machine tree
+    def get_badge(val):
+        """Converts booleans or common mode strings into color-coded badges."""
+        if isinstance(val, bool):
+            color = "success" if val else "secondary"
+            text = "TRUE" if val else "FALSE"
+        elif isinstance(val, str):
+            val_lower = val.lower()
+            if val_lower in ["auto", "normal", "nominal_sampling"]:
+                color = "success"
+            elif val_lower in ["manual", "startup", "system_startup"]:
+                color = "warning"
+            else:
+                color = "secondary"
+            text = val.upper()
+        else:
+            color = "light"
+            text = str(val)
+        return dbc.Badge(text, color=color, className="ms-2")
+
+    def render_list(title, title_color, data_dict):
+        """Renders a subsection (like Sampling Modes or States) as a clean unordered list."""
+        if not data_dict:
+            return html.Div()
+            
+        items = []
+        for k, v in data_dict.items():
+            # Handle if value is a dict ({"actual": bool}) or just a raw boolean
+            actual_val = v.get("actual") if isinstance(v, dict) else v
+            items.append(html.Li([
+                html.Span(k, className="font-monospace text-dark"), 
+                get_badge(actual_val)
+            ], className="mb-1"))
+            
+        return html.Div([
+            html.Div(title, className=f"fw-bold mt-3 mb-2 border-bottom {title_color}"),
+            html.Ul(items, className="list-unstyled ms-3 mb-0")
+        ])
+
+    # 1. Evaluate Host Status for the Top Badge
     host_data = health_store.get(host_id, {})
     host_state = host_data.get("state", {})
     
     current_mode = host_state.get("system_mode", {}).get("actual", "UNKNOWN")
-    badge_color = "success" if current_mode.lower() == "auto" else "warning"
-    badge = dbc.Badge(f"HOST MODE: {current_mode.upper()}", color=badge_color, className="p-2 fs-6")
+    badge_color = "success" if current_mode.lower() in ["auto", "normal"] else "warning"
+    top_badge = dbc.Badge(f"HOST MODE: {current_mode.upper()}", color=badge_color, className="p-2 fs-6")
     
+    # 2. Render Accordions for Host and Subs
     accordions = []
     for dep_id, s_data in health_store.items():
+        state_dict = s_data.get("state", {})
         title_prefix = "HOST: " if dep_id == host_id else "SUB: "
-        actual_mode = s_data.get("state", {}).get("system_mode", {}).get("actual", "unknown").lower()
-        text_color = "text-success" if actual_mode == "auto" else "text-warning"
         
+        # Calculate Title Color
+        actual_sys_mode = state_dict.get("system_mode", {}).get("actual", "unknown").lower()
+        text_color = "text-success" if actual_sys_mode in ["auto", "normal"] else "text-warning"
+        
+        # Build the hierarchical tree content
+        sys_mode_ui = html.Div([
+            html.Div("System Mode", className="fw-bold mb-2 text-primary border-bottom"),
+            html.Span("Current Active Mode:", className="ms-3 text-muted me-2"),
+            get_badge(state_dict.get("system_mode", {}).get("actual", "UNKNOWN"))
+        ])
+        
+        sm_ui = render_list("Sampling Modes", "text-info", state_dict.get("sampling_mode", {}))
+        ss_ui = render_list("Sampling States", "text-success", state_dict.get("sampling_state", {}))
+        sc_ui = render_list("Sampling Conditions", "text-secondary", state_dict.get("sampling_condition", {}))
+        
+        content = html.Div([sys_mode_ui, sm_ui, ss_ui, sc_ui], style={"fontSize": "0.85rem", "maxHeight": "400px", "overflowY": "auto"})
+        
+        # Assemble the accordion item
         title = html.Span([f"{title_prefix}{dep_id.split('.')[-1]} ", html.Span("●", className=text_color)])
-        content = html.Pre(json.dumps(s_data.get("state", {}), indent=2), style={"fontSize": "12px", "maxHeight": "300px", "overflowY": "auto"})
         accordions.append(dbc.AccordionItem(content, title=title))
         
     health_ui = dbc.Accordion(accordions, start_collapsed=False, flush=True) if accordions else dash.no_update
-    return badge, health_ui
+    
+    return top_badge, health_ui
 
 @callback(
     Output("kpi-nav-latlon", "children"),
@@ -364,11 +422,22 @@ def update_quick_looks(message, n_intervals, n_cache, m_cache, o_cache, a_cache,
     now = time.time()
     stale_threshold = 120  # Seconds until data is considered "Stale"
 
+    # --- DEBUGGING: Track the trigger ---
+    if trigger == "kpi-staleness-interval":
+        # print(f"DEBUG: Heartbeat tick at {now}")
+        pass
+    elif trigger == "ws-deployment-telemetry":
+        print(f"\n--- DEBUG: WEBSOCKET EVENT RECEIVED ---")
+
     # 1. Update caches ONLY if triggered by new WebSocket data
     if trigger == "ws-deployment-telemetry" and message and "data" in message:
         try:
             payload = json.loads(message["data"])
+            
+            print(f"DEBUG Payload Keys: {list(payload.keys())}")
+            
             variables = payload.get("variables", {})
+            print(f"DEBUG Received Variables: {list(variables.keys())}")
             
             def get_val(var_name):
                 if var_name in variables:
@@ -381,7 +450,9 @@ def update_quick_looks(message, n_intervals, n_cache, m_cache, o_cache, a_cache,
                                  ("spd", ["sog", "speed"]), ("hdg", ["cog", "heading"]),
                                  ("pitch", ["pitch"]), ("roll", ["roll"])]:
                 for vn in v_names:
-                    if val := get_val(vn): n_cache[key] = {"val": val, "ts": now}
+                    if val := get_val(vn): 
+                        n_cache[key] = {"val": val, "ts": now}
+                        print(f"DEBUG: Matched NAV {key} -> {val}")
 
             # MET
             for key, v_names in [("tws", ["true_wind_speed", "tws"]), ("twdir", ["true_wind_dir", "twdir"]),
@@ -389,7 +460,9 @@ def update_quick_looks(message, n_intervals, n_cache, m_cache, o_cache, a_cache,
                                  ("press", ["pressure", "baro"]), ("rain", ["rain_rate", "precip"]),
                                  ("irrad", ["irradiance", "solar"])]:
                 for vn in v_names:
-                    if val := get_val(vn): m_cache[key] = {"val": val, "ts": now}
+                    if val := get_val(vn): 
+                        m_cache[key] = {"val": val, "ts": now}
+                        print(f"DEBUG: Matched MET {key} -> {val}")
                         
             # AERO
             for key, v_names in [("cn", ["cn_concentration", "cn"])]:
@@ -414,6 +487,7 @@ def update_quick_looks(message, n_intervals, n_cache, m_cache, o_cache, a_cache,
                     
         except Exception as e:
             L.error(f"KPI Parsing Error: {e}")
+            print(f"DEBUG Parsing Error: {e}")
             raise PreventUpdate
 
     # 2. Rendering Logic (Applies to both WS events and Heartbeat ticks)
@@ -424,10 +498,9 @@ def update_quick_looks(message, n_intervals, n_cache, m_cache, o_cache, a_cache,
         
         # If older than threshold, turn the text red
         if now - ts > stale_threshold:
-            return html.Span(str(val), className="text-danger", title=f"Stale: Last updated {(now-ts)/60:.1f}m ago")
+            return html.Span(str(val), className="text-danger fw-bold", title=f"Stale: Last updated {(now-ts)/60:.1f}m ago")
         return str(val)
 
-    # Return lists of components so Dash renders the HTML Spans alongside the slashes cleanly
     return (
         [fmt(n_cache['lat']), " / ", fmt(n_cache['lon'])],
         [fmt(n_cache['spd']), " / ", fmt(n_cache['hdg'])],
