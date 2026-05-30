@@ -104,8 +104,7 @@ def layout(deployment_id=None):
     host_dep, subs, varsets = get_deployment_bundle(deployment_id)
     
     display_name = host_dep.get("data", {}).get("display_name", deployment_id) if host_dep else deployment_id
-    bundle_ids = [deployment_id] + [s.get("metadata", {}).get("name") for s in subs]
-
+    
     systemmodes = fetch_registry_data("systemmode")
     actions = fetch_registry_data("action")
     
@@ -113,18 +112,8 @@ def layout(deployment_id=None):
     act_options = [{"label": act.get("metadata", {}).get("name", "Unknown").replace("_", " ").title(), "value": act.get("metadata", {}).get("name", "Unknown")} for act in actions if act.get("metadata", {}).get("name")]
 
     websockets = []
-    
-    for b_id in bundle_ids:
-        websockets.append(WebSocket(
-            id={"type": "ws-dep-status", "index": b_id}, 
-            url=f"{ws_url_base}/envds/envops/ws/deployment/{b_id}/c2"
-        ))
-        
     for vs in varsets:
-        websockets.append(WebSocket(
-            id={"type": "ws-varset", "index": vs}, 
-            url=f"{ws_url_base}/envds/envops/ws/variableset/{vs}"
-        ))
+        websockets.append(WebSocket(id={"type": "ws-varset", "index": vs}, url=f"{ws_url_base}/envds/envops/ws/variableset/{vs}"))
 
     return html.Div([
         dbc.Row([
@@ -154,7 +143,6 @@ def layout(deployment_id=None):
                         ], id="c2-manual-container", style={"display": "none"}), 
                         
                         html.Hr(),
-                        
                         html.P("Trigger System Action:", className="text-muted small mb-1"),
                         dbc.InputGroup([
                             dbc.Select(id="c2-action-select", options=act_options, placeholder="Select Action..."),
@@ -227,7 +215,7 @@ def layout(deployment_id=None):
         ]),
 
         html.Div(websockets),
-        WebSocket(id="ws-c2-sender", url=f"{ws_url_base}/envds/envops/ws/deployment/{deployment_id}/c2"),
+        WebSocket(id="ws-system-ops", url=f"{ws_url_base}/envds/envops/ws/system-ops/main"),
         html.Div(id="ws-c2-send-buffer", style={"display": "none"}),
         
         dcc.Interval(id="kpi-staleness-interval", interval=5 * 1000, n_intervals=0),
@@ -249,7 +237,6 @@ def layout(deployment_id=None):
 )
 def handle_c2_commands(auto_clicks, manual_clicks, apply_clicks, exec_clicks, mode_val, action_val, deployment_id):
     if not ctx.triggered: raise PreventUpdate
-    
     trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
     
     event = {
@@ -259,48 +246,48 @@ def handle_c2_commands(auto_clicks, manual_clicks, apply_clicks, exec_clicks, mo
         "data": {}
     }
 
-    if trigger_id == "btn-mode-auto":
-        event["data"] = {"system_mode": {"requested": "auto"}}
-    elif trigger_id == "btn-mode-manual":
-        event["data"] = {"system_mode": {"requested": "manual"}}
-    elif trigger_id == "btn-apply-mode" and mode_val:
-        event["data"] = {"system_mode": {"requested": mode_val}}
-    elif trigger_id == "btn-execute-action" and action_val:
-        event["data"] = {"action": {"requested": action_val}}
-    else:
-        raise PreventUpdate
+    if trigger_id == "btn-mode-auto": event["data"] = {"system_mode": {"requested": "auto"}}
+    elif trigger_id == "btn-mode-manual": event["data"] = {"system_mode": {"requested": "manual"}}
+    elif trigger_id == "btn-apply-mode" and mode_val: event["data"] = {"system_mode": {"requested": mode_val}}
+    elif trigger_id == "btn-execute-action" and action_val: event["data"] = {"action": {"requested": action_val}}
+    else: raise PreventUpdate
 
     return json.dumps(event)
 
-@callback(Output("ws-c2-sender", "send"), Input("ws-c2-send-buffer", "children"))
+@callback(Output("ws-system-ops", "send"), Input("ws-c2-send-buffer", "children"))
 def send_c2_request(payload):
     if payload: return payload
     raise PreventUpdate
 
+# --- CORRECTED HEALTH AGGREGATION ---
 @callback(
     Output("c2-health-store", "data"),
-    Input({"type": "ws-dep-status", "index": ALL}, "message"),
+    Input("ws-system-ops", "message"),
     State("c2-health-store", "data"),
     prevent_initial_call=True
 )
-def aggregate_health(messages, current_store):
+def aggregate_health(message, current_store):
     if current_store is None: current_store = {}
-    updated = False
+    if not message or "data" not in message: raise PreventUpdate
     
-    for t in ctx.triggered:
-        if not t["value"] or "data" not in t["value"]: continue
-        try:
-            payload = json.loads(t["value"]["data"])
-            app_uid = payload.get("id", {}).get("app_uid", "")
-            if app_uid:
-                current_store[app_uid] = payload
-                updated = True
-        except Exception as e:
-            L.error(f"Health Parse Error: {e}")
+    try:
+        payload = json.loads(message["data"])
+        status_data = payload.get("data", {})
+        dep_ref = payload.get("deploymentref", "unknown")
+        app_uid = status_data.get("id", {}).get("app_uid", "")
+        
+        # Store hierarchically: deploymentref -> app_uid -> data
+        if dep_ref and app_uid:
+            if dep_ref not in current_store:
+                current_store[dep_ref] = {}
+            current_store[dep_ref][app_uid] = status_data
+            return current_store
+    except Exception as e:
+        L.error(f"Health Parse Error: {e}")
             
-    if not updated: raise PreventUpdate
-    return current_store
+    raise PreventUpdate
 
+# --- CORRECTED HEALTH RENDERER ---
 @callback(
     Output("ops-health-container", "children"),
     Output("btn-mode-auto", "outline"),
@@ -312,81 +299,65 @@ def aggregate_health(messages, current_store):
 )
 def render_bundle_health(health_store, host_id):
     if not health_store: raise PreventUpdate
-        
-    def get_badge(val):
-        if isinstance(val, dict):
-            val = val.get("actual", val.get("requested", "UNKNOWN"))
 
-        v_str = str(val).lower()
-        if v_str in ["auto", "normal", "nominal_sampling", "nominal"]: color = "success"
-        elif v_str in ["manual", "startup", "system_startup", "standby"]: color = "warning"
-        elif v_str in ["true", "active", "yes", "1"]: color = "success"
-        elif v_str in ["false", "inactive", "no", "0"]: color = "secondary"
-        else: color = "primary"
+    accordions = []
+    host_sys_mode = "unknown"
+
+    for dep_ref, statuses in health_store.items():
+        sys_modes = []
+        samp_modes = []
+        samp_states = []
+
+        for uid, status in statuses.items():
+            app_group = status.get("id", {}).get("app_group", "")
+            state_block = status.get("state", {})
             
-        display_text = str(val).upper().replace("_", " ")
-        return dbc.Badge(display_text, color=color, className="ms-2")
-
-    def render_active_only(data_dict):
-        """Filters a dict to ONLY show keys where actual=true/active."""
-        if not data_dict or not isinstance(data_dict, dict): 
-            return html.Div(html.Span("None currently active.", className="text-muted small ms-3"))
-        
-        items = []
-        for k, v in data_dict.items():
-            actual_val = str(v.get("actual", v) if isinstance(v, dict) else v).lower()
-            if actual_val in ["true", "active", "1", "yes"]:
-                items.append(html.Li([
-                    html.Span("● ", className="text-success"),
-                    html.Span(k.replace("_", " ").title(), className="font-monospace text-dark fw-bold")
-                ], className="mb-1"))
-                
-        if not items:
-            return html.Div(html.Span("None currently active.", className="text-muted small ms-3"))
+            is_active = False
+            for k, v in state_block.items():
+                actual = str(v.get("actual", "") if isinstance(v, dict) else v).lower()
+                if actual in ["true", "active", "1", "yes"]:
+                    is_active = True
+                    break
             
-        return html.Ul(items, className="list-unstyled ms-3 mb-0")
+            # CONDITIONS ARE EXPLICITLY IGNORED
+            if is_active:
+                clean_name = uid.replace("_", " ").title()
+                if app_group == "system": sys_modes.append(clean_name)
+                elif app_group == "mode": samp_modes.append(clean_name)
+                elif app_group == "state": samp_states.append(clean_name)
 
-    host_state = health_store.get(host_id, {}).get("state", {})
-    raw_host_mode = host_state.get("system_mode", "unknown")
-    if isinstance(raw_host_mode, dict):
-        actual_host_mode = str(raw_host_mode.get("actual", "unknown")).lower()
-    else:
-        actual_host_mode = str(raw_host_mode).lower()
-        
-    is_auto = actual_host_mode in ["auto", "normal"]
+        if dep_ref == host_id and sys_modes:
+            host_sys_mode = sys_modes[0]
+
+        def build_ul(items):
+            if not items: return html.Div("None currently active.", className="text-muted small ms-3")
+            return html.Ul([
+                html.Li([
+                    html.Span("● ", className="text-success"), 
+                    html.Span(m, className="font-monospace text-dark fw-bold")
+                ]) for m in items
+            ], className="list-unstyled ms-3 mb-0")
+
+        content = html.Div([
+            html.Div("System Mode", className="fw-bold text-primary border-bottom mb-1"),
+            build_ul(sys_modes),
+            html.Div("Sampling Modes", className="fw-bold text-info border-bottom mb-1 mt-2"),
+            build_ul(samp_modes),
+            html.Div("Sampling States", className="fw-bold text-success border-bottom mb-1 mt-2"),
+            build_ul(samp_states)
+        ], style={"fontSize": "0.85rem"})
+
+        title_color = "text-success" if any(m.lower() in ["auto", "normal"] for m in sys_modes) else "text-warning"
+        dep_name = dep_ref.split('.')[-1]
+        title = html.Span([f"{dep_name} ", html.Span("●", className=title_color)])
+
+        accordions.append(dbc.AccordionItem(content, title=title))
+
+    is_auto = host_sys_mode.lower() in ["auto", "normal", "nominal", "nominal sampling"]
     auto_outline = not is_auto
     manual_outline = is_auto
     manual_style = {"display": "none"} if is_auto else {"display": "block"}
     
-    accordions = []
-    for dep_id, s_data in health_store.items():
-        state_dict = s_data.get("state", {})
-        
-        raw_sys_mode = state_dict.get("system_mode", "UNKNOWN")
-        sys_mode_ui = html.Div([
-            html.Span("System Mode:", className="fw-bold me-2"),
-            get_badge(raw_sys_mode)
-        ], className="mb-3")
-        
-        sm_ui = html.Div([
-            html.Div("Active Sampling Modes", className="fw-bold text-info border-bottom mb-1"),
-            render_active_only(state_dict.get("sampling_mode", {}))
-        ], className="mb-3")
-        
-        ss_ui = html.Div([
-            html.Div("Active Sampling States", className="fw-bold text-success border-bottom mb-1"),
-            render_active_only(state_dict.get("sampling_state", {}))
-        ], className="mb-2")
-        
-        content = html.Div([sys_mode_ui, sm_ui, ss_ui], style={"fontSize": "0.85rem"})
-        
-        dep_name = dep_id.split('.')[-1]
-        actual_sys = str(raw_sys_mode.get("actual", raw_sys_mode) if isinstance(raw_sys_mode, dict) else raw_sys_mode).lower()
-        title_color = "text-success" if actual_sys in ["auto", "normal"] else "text-warning"
-        
-        title = html.Span([f"{dep_name} ", html.Span("●", className=title_color)])
-        accordions.append(dbc.AccordionItem(content, title=title))
-        
     accordion_ui = dbc.Accordion(accordions, start_collapsed=False, flush=True)
     return accordion_ui, auto_outline, manual_outline, manual_style
 
