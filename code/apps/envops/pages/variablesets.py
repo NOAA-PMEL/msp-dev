@@ -30,9 +30,7 @@ config = Settings()
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 
-# --- HELPER: REST FETCH ---
 def fetch_registry_data(resource_type: str):
-    """Directly fetch definitions from datastore."""
     url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
     docs = []
     try:
@@ -53,11 +51,8 @@ def fetch_registry_data(resource_type: str):
 
 def get_bundle_variablesets(host_id):
     deployments = fetch_registry_data("deployment")
-    varsets = fetch_registry_data("variableset")
-    
     platforms = set()
     
-    # 1. Identify Host & Subs Platforms (Deployments have 'data' wrappers)
     for dep in deployments:
         if dep.get("metadata", {}).get("name") == host_id:
             host_platform = dep.get("data", {}).get("platform_ref")
@@ -68,30 +63,28 @@ def get_bundle_variablesets(host_id):
                         platforms.add(sub.get("data", {}).get("platform_ref"))
             break
                 
-    # 2. Identify Variablesets (Variablesets are flat Pydantic models!)
+    # Fetch IDs directly and split to avoid the Pydantic param mismatch
+    url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
+    try:
+        timeout = httpx.Timeout(10.0)
+        response = httpx.get(url, timeout=timeout)
+        all_vs_ids = response.json().get("results", []) if response.status_code == 200 else []
+    except Exception as e:
+        L.error(f"Failed to fetch variableset IDs: {e}")
+        all_vs_ids = []
+
     active_varsets = {}
-    for vs in varsets:
-        attributes = vs.get("attributes", {})
-        
-        # Extract platform (handling if it's {"data": "X"} or just "X")
-        p_obj = attributes.get("platform")
-        vs_platform = p_obj.get("data") if isinstance(p_obj, dict) else p_obj
-        
-        if vs_platform in platforms:
-            vmap_obj = attributes.get("variablemap") or attributes.get("variablemap_id")
-            vmap = vmap_obj.get("data") if isinstance(vmap_obj, dict) else vmap_obj
-            
-            # Name is a top-level field in the Pydantic model
-            vs_name = vs.get("variableset")
-            
-            if vs_name:
-                routing_key = f"{vmap}::{vs_name}" if vmap else vs_name
-                active_varsets[routing_key] = vs
+    for full_id in all_vs_ids:
+        if not full_id: continue
+        parts = full_id.split("::")
+        if len(parts) >= 4:
+            vs_platform = parts[0]
+            if vs_platform in platforms:
+                routing_key = f"{parts[1]}::{parts[3]}"
+                active_varsets[routing_key] = full_id 
 
     return platforms, active_varsets
 
-
-# --- LAYOUT ---
 def layout(deployment_id=None):
     if not deployment_id:
         return html.Div("No Deployment ID provided.")
@@ -132,8 +125,7 @@ def fetch_deployment_variablesets(deployment_id):
     ui_elements = []
     websockets = []
     
-    for routing_key, vs_def in active_varsets.items():
-        # Inject the WebSocket listener using the exact ID from main.py
+    for routing_key, full_id in active_varsets.items():
         websockets.append(WebSocket(
             id={"type": "ws-varset", "index": routing_key}, 
             url=f"{ws_url_base}/envds/envops/ws/variableset/{routing_key}" 
@@ -165,7 +157,6 @@ def fetch_deployment_variablesets(deployment_id):
 
     return active_varsets, ui_elements, websockets
 
-# --- PATTERN MATCHING CALLBACKS ---
 @callback(
     Output({"type": "varset-plot", "index": MATCH}, "extendData"),
     Output({"type": "varset-table", "index": MATCH}, "rowTransaction"),
@@ -180,8 +171,6 @@ def stream_variableset_data(message, current_cols):
 
     try:
         payload = json.loads(message["data"])
-        
-        # FIX: Removed the imaginary "data-update" wrapper. main.py sends ce.data directly!
         variables = payload.get("variables", {})
         
         time_val = variables.get("time", {}).get("data")

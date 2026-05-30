@@ -19,7 +19,6 @@ dash.register_page(
     nav_bar=False 
 )
 
-# --- CONFIG ---
 class Settings(BaseSettings):
     daq_id: str = "default"
     ws_port: int = 80
@@ -32,7 +31,6 @@ config = Settings()
 ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
-# --- HELPER: REST FETCH ---
 def fetch_registry_data(resource_type: str):
     url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
     docs = []
@@ -93,15 +91,12 @@ def get_deployment_bundle(host_id):
 
     return host_dep, subs, list(required_varsets)
 
-# --- UI HELPERS ---
 def make_kpi_col(label, id_str):
     return dbc.Col([
         html.Div(label, className="text-muted small fw-bold text-uppercase", style={"fontSize": "0.7rem"}),
         html.Div("--", id=id_str, className="fs-6 fw-semibold")
     ], width=6, className="mb-2")
 
-
-# --- LAYOUT ---
 def layout(deployment_id=None):
     if not deployment_id:
         return html.Div("No Deployment ID provided.", className="p-4 text-danger")
@@ -119,7 +114,6 @@ def layout(deployment_id=None):
 
     websockets = []
     
-    # FIX: Restored the dynamic c2 websockets that main.py actually expects
     for b_id in bundle_ids:
         websockets.append(WebSocket(
             id={"type": "ws-dep-status", "index": b_id}, 
@@ -296,7 +290,6 @@ def aggregate_health(messages, current_store):
     for t in ctx.triggered:
         if not t["value"] or "data" not in t["value"]: continue
         try:
-            # FIX: Removed the imaginary wrapper. payload is ce.data
             payload = json.loads(t["value"]["data"])
             app_uid = payload.get("id", {}).get("app_uid", "")
             if app_uid:
@@ -327,14 +320,15 @@ def render_bundle_health(health_store, host_id):
         v_str = str(val).lower()
         if v_str in ["auto", "normal", "nominal_sampling", "nominal"]: color = "success"
         elif v_str in ["manual", "startup", "system_startup", "standby"]: color = "warning"
-        elif v_str in ["true", "active"]: color = "success"
-        elif v_str in ["false", "inactive"]: color = "secondary"
+        elif v_str in ["true", "active", "yes", "1"]: color = "success"
+        elif v_str in ["false", "inactive", "no", "0"]: color = "secondary"
         else: color = "primary"
             
         display_text = str(val).upper().replace("_", " ")
         return dbc.Badge(display_text, color=color, className="ms-2")
 
     def render_active_only(data_dict):
+        """Filters a dict to ONLY show keys where actual=true/active."""
         if not data_dict or not isinstance(data_dict, dict): 
             return html.Div(html.Span("None currently active.", className="text-muted small ms-3"))
         
@@ -410,7 +404,6 @@ def aggregate_telemetry(messages, current_store):
     for t in ctx.triggered:
         if not t["value"] or "data" not in t["value"]: continue
         try:
-            # FIX: Removed the imaginary data-update wrapper!
             payload = json.loads(t["value"]["data"])
             variables = payload.get("variables", {})
             for var_name, v_data in variables.items():
