@@ -113,13 +113,6 @@ def layout(deployment_id=None):
     # --- DYNAMIC WEBSOCKET GENERATION ---
     websockets = []
     
-    # Status Sockets for the Host and ALL Subs
-    for b_id in bundle_ids:
-        websockets.append(WebSocket(
-            id={"type": "ws-dep-status", "index": b_id}, 
-            url=f"{ws_url_base}/envds/envops/ws/deployment/{b_id}/c2"
-        ))
-        
     # Telemetry Sockets for all discovered Variablesets
     for vs in varsets:
         websockets.append(WebSocket(
@@ -147,6 +140,15 @@ def layout(deployment_id=None):
                             dbc.Button("AUTO", id="btn-mode-auto", color="success", outline=True, className="fw-bold"),
                             dbc.Button("MANUAL", id="btn-mode-manual", color="warning", outline=True, className="fw-bold"),
                         ], className="w-100 mb-3"),
+                        
+                        html.Div([
+                            html.P("Manual Mode Override:", className="text-muted small mb-1"),
+                            dbc.InputGroup([
+                                dbc.Select(id="c2-mode-select", options=[], placeholder="Select Mode..."),
+                                dbc.Button("Apply", id="btn-apply-mode", color="primary")
+                            ])
+                        ], id="c2-manual-container", style={"display": "none"}), 
+                        
                         html.Hr(),
                         dbc.Button("Trigger Calibration", id="btn-trigger-cal", color="secondary", size="sm", className="w-100 mb-2", disabled=True),
                         dbc.Button("Initiate Flow Check", id="btn-trigger-flow", color="secondary", size="sm", className="w-100", disabled=True),
@@ -166,7 +168,6 @@ def layout(deployment_id=None):
                         dbc.ListGroup([
                             dbc.ListGroupItem(
                                 "View Variableset Plots", 
-                                # CHANGE THIS LINE
                                 href=dash.get_relative_path(f"/variablesets/{deployment_id}"), 
                                 action=True, color="info", className="fw-bold"
                             ),
@@ -224,7 +225,9 @@ def layout(deployment_id=None):
 
         # --- DYNAMIC WEBSOCKETS & CENTRAL CACHES ---
         html.Div(websockets),
-        WebSocket(id="ws-c2-sender", url=f"{ws_url_base}/envds/envops/ws/deployment/{deployment_id}/c2"),
+        
+        # Single global socket for operations data as defined in main.py
+        WebSocket(id="ws-system-ops", url=f"{ws_url_base}/envds/envops/ws/system-ops/main"),
         html.Div(id="ws-c2-send-buffer", style={"display": "none"}),
         
         dcc.Interval(id="kpi-staleness-interval", interval=5 * 1000, n_intervals=0),
@@ -256,7 +259,7 @@ def handle_c2_mode_switch(auto_clicks, manual_clicks, deployment_id):
     }
     return json.dumps(event)
 
-@callback(Output("ws-c2-sender", "send"), Input("ws-c2-send-buffer", "children"))
+@callback(Output("ws-system-ops", "send"), Input("ws-c2-send-buffer", "children"))
 def send_c2_request(payload):
     if payload: return payload
     raise PreventUpdate
@@ -264,37 +267,28 @@ def send_c2_request(payload):
 # 2. AGGREGATE OPERATIONS HEALTH
 @callback(
     Output("c2-health-store", "data"),
-    Input({"type": "ws-dep-status", "index": ALL}, "message"),
+    Input("ws-system-ops", "message"),
     State("c2-health-store", "data"),
     prevent_initial_call=True
 )
-def aggregate_health(messages, current_store):
+def aggregate_health(message, current_store):
     if current_store is None: current_store = {}
-    updated = False
+    if not message or "data" not in message: raise PreventUpdate
     
-    # Process only the websockets that actually fired this tick
-    for t in ctx.triggered:
-        if not t["value"] or "data" not in t["value"]: continue
-        try:
-            status_data = json.loads(t["value"]["data"])
-            app_uid = status_data.get("id", {}).get("app_uid", "")
-            if app_uid:
-                current_store[app_uid] = status_data
-                updated = True
-        except Exception as e:
-            L.error(f"Health Parse Error: {e}")
+    try:
+        # Unwrap the payload from main.py
+        payload = json.loads(message["data"])
+        status_data = payload.get("data", {})
+        
+        app_uid = status_data.get("id", {}).get("app_uid", "")
+        if app_uid:
+            current_store[app_uid] = status_data
+            return current_store
+    except Exception as e:
+        L.error(f"Health Parse Error: {e}")
             
-    if not updated: raise PreventUpdate
-    return current_store
+    raise PreventUpdate
 
-# 3. RENDER OPERATIONS HEALTH
-@callback(
-    Output("live-system-mode-badge", "children"),
-    Output("ops-health-container", "children"),
-    Input("c2-health-store", "data"),
-    State("store-deployment-id", "data"),
-    prevent_initial_call=True
-)
 # 3. RENDER OPERATIONS HEALTH & UPDATE C2 BUTTON STATES
 @callback(
     Output("ops-health-container", "children"),
@@ -417,10 +411,15 @@ def aggregate_telemetry(messages, current_store):
         if not t["value"] or "data" not in t["value"]: continue
         try:
             payload = json.loads(t["value"]["data"])
-            variables = payload.get("variables", {})
+            
+            # FIX: Unwrap the 'data-update' key added by main.py
+            event_data = payload.get("data-update", {})
+            variables = event_data.get("variables", {})
+            
             for var_name, v_data in variables.items():
                 if var_name == "time": continue
-                current_store[var_name] = {"val": v_data.get("data"), "ts": now}
+                safe_key = var_name.lower() 
+                current_store[safe_key] = {"val": v_data.get("data"), "ts": now}
                 updated = True
         except Exception as e:
             L.error(f"Telemetry Parse Error: {e}")
@@ -458,12 +457,12 @@ def update_quick_looks(telemetry_store, n_intervals):
 
     return (
         [get_val(["latitude", "lat"]), " / ", get_val(["longitude", "lon"])],
-        [get_val(["sog", "speed"]), " / ", get_val(["cog", "heading"])],
-        [get_val(["pitch"]), " / ", get_val(["roll"])],
+        [get_val(["platform_speed", "sog", "speed"]), " / ", get_val(["platform_heading", "cog", "heading"])],
+        [get_val(["platform_pitch", "pitch"]), " / ", get_val(["platform_roll", "roll"])],
         [get_val(["true_wind_speed", "tws"]), " / ", get_val(["true_wind_dir", "twdir"])],
-        [get_val(["temperature", "air_temp"]), " / ", get_val(["rh", "relative_humidity"])],
+        [get_val(["air_temperature", "temperature", "air_temp"]), " / ", get_val(["relative_humidity", "rh"])],
         get_val(["pressure", "baro"]),
-        get_val(["rain_rate", "precip"]),
+        get_val(["rain_intensity", "rain_rate", "precip"]),
         get_val(["irradiance", "solar"]),
         get_val(["cn_concentration", "cn"]),
         [get_val(["scatter_blue", "scat_blue"]), " / ", get_val(["scatter_green", "scat_green"]), " / ", get_val(["scatter_red", "scat_red"])],
@@ -471,7 +470,7 @@ def update_quick_looks(telemetry_store, n_intervals):
         get_val(["o3", "ozone"]),
         get_val(["co", "carbon_monoxide"]),
         [get_val(["no", "nitric_oxide"]), " / ", get_val(["no2", "nitrogen_dioxide"])],
-        [get_val(["relative_wind_speed", "rel_wind_speed", "rws"]), " / ", get_val(["relative_wind_dir", "rel_wind_dir", "rwdir"])],
+        [get_val(["relative_wind_speed", "rel_wind_speed", "rws"]), " / ", get_val(["relative_wind_direction", "rel_wind_dir", "rwdir"])],
         get_val(["inlet_flow", "flow"]),
         get_val(["inlet_flow_sp", "flow_setpoint"])
     )

@@ -179,7 +179,10 @@ def stream_variableset_data(message, current_cols):
         raise PreventUpdate
 
     try:
-        event = json.loads(message["data"])
+        payload = json.loads(message["data"])
+        
+        # FIX: Unwrap the 'data-update' key added by main.py
+        event = payload.get("data-update", {})
         variables = event.get("variables", {})
         
         time_val = variables.get("time", {}).get("data")
