@@ -54,7 +54,6 @@ def fetch_registry_data(resource_type: str):
 
 def get_deployment_bundle(host_id):
     deployments = fetch_registry_data("deployment")
-    varsets = fetch_registry_data("variableset")
     
     host_dep = None
     subs = []
@@ -73,21 +72,23 @@ def get_deployment_bundle(host_id):
                 subs.append(dep)
                 platforms.add(dep.get("data", {}).get("platform_ref"))
                 
+    url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
+    try:
+        timeout = httpx.Timeout(10.0)
+        response = httpx.get(url, timeout=timeout)
+        all_vs_ids = response.json().get("results", []) if response.status_code == 200 else []
+    except Exception as e:
+        L.error(f"Failed to fetch variableset IDs: {e}")
+        all_vs_ids = []
+
     required_varsets = set()
-    for vs in varsets:
-        attributes = vs.get("attributes", {})
-        
-        p_obj = attributes.get("platform")
-        vs_platform = p_obj.get("data") if isinstance(p_obj, dict) else p_obj
-        
-        if vs_platform in platforms:
-            vmap_obj = attributes.get("variablemap") or attributes.get("variablemap_id")
-            vmap = vmap_obj.get("data") if isinstance(vmap_obj, dict) else vmap_obj
-            
-            vs_name = vs.get("variableset")
-            
-            if vs_name:
-                routing_key = f"{vmap}::{vs_name}" if vmap else vs_name
+    for full_id in all_vs_ids:
+        if not full_id: continue
+        parts = full_id.split("::")
+        if len(parts) >= 4:
+            vs_platform = parts[0]
+            if vs_platform in platforms:
+                routing_key = f"{parts[1]}::{parts[3]}"
                 required_varsets.add(routing_key)
 
     return host_dep, subs, list(required_varsets)
@@ -110,10 +111,21 @@ def layout(deployment_id=None):
     display_name = host_dep.get("data", {}).get("display_name", deployment_id) if host_dep else deployment_id
     bundle_ids = [deployment_id] + [s.get("metadata", {}).get("name") for s in subs]
 
-    # --- DYNAMIC WEBSOCKET GENERATION ---
+    systemmodes = fetch_registry_data("systemmode")
+    actions = fetch_registry_data("action")
+    
+    sm_options = [{"label": sm.get("metadata", {}).get("name", "Unknown").upper(), "value": sm.get("metadata", {}).get("name", "Unknown")} for sm in systemmodes if sm.get("metadata", {}).get("name")]
+    act_options = [{"label": act.get("metadata", {}).get("name", "Unknown").replace("_", " ").title(), "value": act.get("metadata", {}).get("name", "Unknown")} for act in actions if act.get("metadata", {}).get("name")]
+
     websockets = []
     
-    # Telemetry Sockets for all discovered Variablesets
+    # FIX: Restored the dynamic c2 websockets that main.py actually expects
+    for b_id in bundle_ids:
+        websockets.append(WebSocket(
+            id={"type": "ws-dep-status", "index": b_id}, 
+            url=f"{ws_url_base}/envds/envops/ws/deployment/{b_id}/c2"
+        ))
+        
     for vs in varsets:
         websockets.append(WebSocket(
             id={"type": "ws-varset", "index": vs}, 
@@ -125,17 +137,15 @@ def layout(deployment_id=None):
             dbc.Col([
                 html.H2(f"C2: {display_name}", className="text-primary mb-0"),
                 html.P(f"Host Deployment ID: {deployment_id}", className="text-muted small")
-            ]),
-            dbc.Col(html.Div(id="live-system-mode-badge", className="float-end mt-2"))
+            ])
         ], className="mb-4 mt-3"),
 
         dbc.Row([
-            # --- LEFT COLUMN: C2 & Bundled Health ---
             dbc.Col([
                 dbc.Card([
                     dbc.CardHeader(html.H5("Command & Control", className="mb-0")),
                     dbc.CardBody([
-                        html.P("Set the overarching operational mode for this bundle.", className="text-muted small"),
+                        html.P("Set the overarching operational mode for this bundle.", className="text-muted small mb-2"),
                         dbc.ButtonGroup([
                             dbc.Button("AUTO", id="btn-mode-auto", color="success", outline=True, className="fw-bold"),
                             dbc.Button("MANUAL", id="btn-mode-manual", color="warning", outline=True, className="fw-bold"),
@@ -144,14 +154,18 @@ def layout(deployment_id=None):
                         html.Div([
                             html.P("Manual Mode Override:", className="text-muted small mb-1"),
                             dbc.InputGroup([
-                                dbc.Select(id="c2-mode-select", options=[], placeholder="Select Mode..."),
+                                dbc.Select(id="c2-mode-select", options=sm_options, placeholder="Select Mode..."),
                                 dbc.Button("Apply", id="btn-apply-mode", color="primary")
                             ])
                         ], id="c2-manual-container", style={"display": "none"}), 
                         
                         html.Hr(),
-                        dbc.Button("Trigger Calibration", id="btn-trigger-cal", color="secondary", size="sm", className="w-100 mb-2", disabled=True),
-                        dbc.Button("Initiate Flow Check", id="btn-trigger-flow", color="secondary", size="sm", className="w-100", disabled=True),
+                        
+                        html.P("Trigger System Action:", className="text-muted small mb-1"),
+                        dbc.InputGroup([
+                            dbc.Select(id="c2-action-select", options=act_options, placeholder="Select Action..."),
+                            dbc.Button("Execute", id="btn-execute-action", color="danger")
+                        ])
                     ])
                 ], className="shadow-sm mb-3 border-dark"),
 
@@ -166,18 +180,13 @@ def layout(deployment_id=None):
                     dbc.CardHeader(html.H5("Data & Telemetry Links", className="mb-0")),
                     dbc.CardBody([
                         dbc.ListGroup([
-                            dbc.ListGroupItem(
-                                "View Variableset Plots", 
-                                href=dash.get_relative_path(f"/variablesets/{deployment_id}"), 
-                                action=True, color="info", className="fw-bold"
-                            ),
+                            dbc.ListGroupItem("View Variableset Plots", href=dash.get_relative_path(f"/variablesets/{deployment_id}"), action=True, color="info", className="fw-bold"),
                             dbc.ListGroupItem("View Raw Asset Telemetry", href=dash.get_relative_path("/assets"), action=True, className="fw-bold")
                         ])
                     ])
                 ], className="shadow-sm border-dark")
             ], width=4),
 
-            # --- RIGHT COLUMN: Expanded Quick Looks ---
             dbc.Col([
                 dbc.Row([
                     dbc.Col([
@@ -223,73 +232,82 @@ def layout(deployment_id=None):
             ], width=8)
         ]),
 
-        # --- DYNAMIC WEBSOCKETS & CENTRAL CACHES ---
         html.Div(websockets),
-        
-        # Single global socket for operations data as defined in main.py
-        WebSocket(id="ws-system-ops", url=f"{ws_url_base}/envds/envops/ws/system-ops/main"),
+        WebSocket(id="ws-c2-sender", url=f"{ws_url_base}/envds/envops/ws/deployment/{deployment_id}/c2"),
         html.Div(id="ws-c2-send-buffer", style={"display": "none"}),
         
         dcc.Interval(id="kpi-staleness-interval", interval=5 * 1000, n_intervals=0),
-        
         dcc.Store(id="store-deployment-id", data=deployment_id),
         dcc.Store(id="c2-health-store", data={}),
         dcc.Store(id="unified-telemetry-store", data={})
     ])
 
-# --- CALLBACKS ---
-
-# 1. SEND COMMANDS
 @callback(
     Output("ws-c2-send-buffer", "children"),
     Input("btn-mode-auto", "n_clicks"),
     Input("btn-mode-manual", "n_clicks"),
+    Input("btn-apply-mode", "n_clicks"),
+    Input("btn-execute-action", "n_clicks"),
+    State("c2-mode-select", "value"),
+    State("c2-action-select", "value"),
     State("store-deployment-id", "data"),
     prevent_initial_call=True
 )
-def handle_c2_mode_switch(auto_clicks, manual_clicks, deployment_id):
+def handle_c2_commands(auto_clicks, manual_clicks, apply_clicks, exec_clicks, mode_val, action_val, deployment_id):
     if not ctx.triggered: raise PreventUpdate
-    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    req_mode = "auto" if button_id == "btn-mode-auto" else "manual"
+    
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    
     event = {
         "type": "envds.control.request", "source": f"envds.{config.daq_id}.dashboard",
         "id": str(ULID()), "datacontenttype": "application/json",
-        "data": {"system_mode": {"requested": req_mode}},
-        "destpath": f"envds/{config.daq_id}/system/control/request", "deploymentref": deployment_id
+        "destpath": f"envds/{config.daq_id}/system/control/request", "deploymentref": deployment_id,
+        "data": {}
     }
+
+    if trigger_id == "btn-mode-auto":
+        event["data"] = {"system_mode": {"requested": "auto"}}
+    elif trigger_id == "btn-mode-manual":
+        event["data"] = {"system_mode": {"requested": "manual"}}
+    elif trigger_id == "btn-apply-mode" and mode_val:
+        event["data"] = {"system_mode": {"requested": mode_val}}
+    elif trigger_id == "btn-execute-action" and action_val:
+        event["data"] = {"action": {"requested": action_val}}
+    else:
+        raise PreventUpdate
+
     return json.dumps(event)
 
-@callback(Output("ws-system-ops", "send"), Input("ws-c2-send-buffer", "children"))
+@callback(Output("ws-c2-sender", "send"), Input("ws-c2-send-buffer", "children"))
 def send_c2_request(payload):
     if payload: return payload
     raise PreventUpdate
 
-# 2. AGGREGATE OPERATIONS HEALTH
 @callback(
     Output("c2-health-store", "data"),
-    Input("ws-system-ops", "message"),
+    Input({"type": "ws-dep-status", "index": ALL}, "message"),
     State("c2-health-store", "data"),
     prevent_initial_call=True
 )
-def aggregate_health(message, current_store):
+def aggregate_health(messages, current_store):
     if current_store is None: current_store = {}
-    if not message or "data" not in message: raise PreventUpdate
+    updated = False
     
-    try:
-        # Unwrap the payload from main.py
-        payload = json.loads(message["data"])
-        status_data = payload.get("data", {})
-        
-        app_uid = status_data.get("id", {}).get("app_uid", "")
-        if app_uid:
-            current_store[app_uid] = status_data
-            return current_store
-    except Exception as e:
-        L.error(f"Health Parse Error: {e}")
+    for t in ctx.triggered:
+        if not t["value"] or "data" not in t["value"]: continue
+        try:
+            # FIX: Removed the imaginary wrapper. payload is ce.data
+            payload = json.loads(t["value"]["data"])
+            app_uid = payload.get("id", {}).get("app_uid", "")
+            if app_uid:
+                current_store[app_uid] = payload
+                updated = True
+        except Exception as e:
+            L.error(f"Health Parse Error: {e}")
             
-    raise PreventUpdate
+    if not updated: raise PreventUpdate
+    return current_store
 
-# 3. RENDER OPERATIONS HEALTH & UPDATE C2 BUTTON STATES
 @callback(
     Output("ops-health-container", "children"),
     Output("btn-mode-auto", "outline"),
@@ -303,35 +321,26 @@ def render_bundle_health(health_store, host_id):
     if not health_store: raise PreventUpdate
         
     def get_badge(val):
-        # Extract actual if it's a dict
         if isinstance(val, dict):
             val = val.get("actual", val.get("requested", "UNKNOWN"))
 
         v_str = str(val).lower()
-        if v_str in ["auto", "normal", "nominal_sampling", "nominal"]: 
-            color = "success"
-        elif v_str in ["manual", "startup", "system_startup", "standby"]: 
-            color = "warning"
-        elif v_str in ["true", "active"]:
-            color = "success"
-        elif v_str in ["false", "inactive"]:
-            color = "secondary"
-        else: 
-            color = "primary"
+        if v_str in ["auto", "normal", "nominal_sampling", "nominal"]: color = "success"
+        elif v_str in ["manual", "startup", "system_startup", "standby"]: color = "warning"
+        elif v_str in ["true", "active"]: color = "success"
+        elif v_str in ["false", "inactive"]: color = "secondary"
+        else: color = "primary"
             
         display_text = str(val).upper().replace("_", " ")
         return dbc.Badge(display_text, color=color, className="ms-2")
 
     def render_active_only(data_dict):
-        """Filters a dict to ONLY show keys where actual=true/active."""
         if not data_dict or not isinstance(data_dict, dict): 
             return html.Div(html.Span("None currently active.", className="text-muted small ms-3"))
         
         items = []
         for k, v in data_dict.items():
             actual_val = str(v.get("actual", v) if isinstance(v, dict) else v).lower()
-            
-            # Only render if it's active! (Removes clutter of false states)
             if actual_val in ["true", "active", "1", "yes"]:
                 items.append(html.Li([
                     html.Span("● ", className="text-success"),
@@ -343,10 +352,7 @@ def render_bundle_health(health_store, host_id):
             
         return html.Ul(items, className="list-unstyled ms-3 mb-0")
 
-    # --- DETERMINE HOST C2 STATE FOR BUTTONS ---
     host_state = health_store.get(host_id, {}).get("state", {})
-    
-    # System Mode is usually a string or dict {"actual": "..."}
     raw_host_mode = host_state.get("system_mode", "unknown")
     if isinstance(raw_host_mode, dict):
         actual_host_mode = str(raw_host_mode.get("actual", "unknown")).lower()
@@ -358,25 +364,21 @@ def render_bundle_health(health_store, host_id):
     manual_outline = is_auto
     manual_style = {"display": "none"} if is_auto else {"display": "block"}
     
-    # --- BUILD HEALTH ACCORDIONS ---
     accordions = []
     for dep_id, s_data in health_store.items():
         state_dict = s_data.get("state", {})
         
-        # 1. System Mode
         raw_sys_mode = state_dict.get("system_mode", "UNKNOWN")
         sys_mode_ui = html.Div([
             html.Span("System Mode:", className="fw-bold me-2"),
             get_badge(raw_sys_mode)
         ], className="mb-3")
         
-        # 2. Sampling Modes (Filtered to active)
         sm_ui = html.Div([
             html.Div("Active Sampling Modes", className="fw-bold text-info border-bottom mb-1"),
             render_active_only(state_dict.get("sampling_mode", {}))
         ], className="mb-3")
         
-        # 3. Sampling States (Filtered to active)
         ss_ui = html.Div([
             html.Div("Active Sampling States", className="fw-bold text-success border-bottom mb-1"),
             render_active_only(state_dict.get("sampling_state", {}))
@@ -392,10 +394,8 @@ def render_bundle_health(health_store, host_id):
         accordions.append(dbc.AccordionItem(content, title=title))
         
     accordion_ui = dbc.Accordion(accordions, start_collapsed=False, flush=True)
-    
     return accordion_ui, auto_outline, manual_outline, manual_style
 
-# 4. AGGREGATE TELEMETRY
 @callback(
     Output("unified-telemetry-store", "data"),
     Input({"type": "ws-varset", "index": ALL}, "message"),
@@ -410,12 +410,9 @@ def aggregate_telemetry(messages, current_store):
     for t in ctx.triggered:
         if not t["value"] or "data" not in t["value"]: continue
         try:
+            # FIX: Removed the imaginary data-update wrapper!
             payload = json.loads(t["value"]["data"])
-            
-            # FIX: Unwrap the 'data-update' key added by main.py
-            event_data = payload.get("data-update", {})
-            variables = event_data.get("variables", {})
-            
+            variables = payload.get("variables", {})
             for var_name, v_data in variables.items():
                 if var_name == "time": continue
                 safe_key = var_name.lower() 
@@ -427,7 +424,6 @@ def aggregate_telemetry(messages, current_store):
     if not updated: raise PreventUpdate
     return current_store
 
-# 5. RENDER TELEMETRY
 @callback(
     Output("kpi-nav-latlon", "children"), Output("kpi-nav-spdhdg", "children"), Output("kpi-nav-pitchroll", "children"),
     Output("kpi-met-wind", "children"), Output("kpi-met-temprh", "children"), Output("kpi-met-press", "children"), Output("kpi-met-rain", "children"), Output("kpi-met-irrad", "children"),
@@ -443,13 +439,11 @@ def update_quick_looks(telemetry_store, n_intervals):
     now = time.time()
 
     def get_val(keys):
-        """Checks list of synonyms. Returns formatted span if found, else '--'."""
         for k in keys:
             if k in telemetry_store:
                 val = telemetry_store[k]["val"]
                 ts = telemetry_store[k]["ts"]
                 fmt_val = f"{val:.2f}" if isinstance(val, float) else str(val)
-                # Stale check (120 seconds)
                 if now - ts > 120:
                     return html.Span(fmt_val, className="text-danger fw-bold", title=f"Stale: {(now-ts)/60:.1f}m ago")
                 return fmt_val

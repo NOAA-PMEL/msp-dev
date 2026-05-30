@@ -181,9 +181,8 @@ def stream_variableset_data(message, current_cols):
     try:
         payload = json.loads(message["data"])
         
-        # FIX: Unwrap the 'data-update' key added by main.py
-        event = payload.get("data-update", {})
-        variables = event.get("variables", {})
+        # FIX: Removed the imaginary "data-update" wrapper. main.py sends ce.data directly!
+        variables = payload.get("variables", {})
         
         time_val = variables.get("time", {}).get("data")
         if not time_val:
