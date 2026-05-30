@@ -535,7 +535,11 @@ class SamplingModesManager:
         while True:
             try:
                 for mode in list(self.modes.values()): 
-                    await mode.evaluate()
+                    # --- EDGE AUTONOMY FILTER ---
+                    exec_node = mode.config.get("metadata", {}).get("execution_node", "global")
+                    if exec_node == "global" or exec_node == self.config.daq_id:
+                        await mode.evaluate()
+                    # ----------------------------
             except Exception as e:
                 self.logger.error("mode_evaluation_loop error", extra={"reason": str(e)})
                 
@@ -629,14 +633,24 @@ class SamplingModesManager:
     async def action_execution_monitor(self):
         while True:
             req = await self.actions_buffer.get()
-            if not self.config.is_primary_controller:
-                self.actions_buffer.task_done()
-                continue
             name = req.get("action", {}).get("name")
+            
             if name in self.actions:
-                # Rename "name" to "res_name"
-                L.info("executing_action", extra={"res_name": name})
-                await self.actions[name].run()
+                action_obj = self.actions[name]
+                
+                # --- EDGE AUTONOMY / DIGITAL TWIN FILTER ---
+                exec_node = action_obj.config.get("metadata", {}).get("execution_node", "global")
+                
+                if exec_node == "global" or exec_node == self.config.daq_id:
+                    self.logger.info("executing_action", extra={"res_name": name})
+                    await action_obj.run()
+                else:
+                    self.logger.debug(
+                        "skipping_action_execution (Digital Twin mode)", 
+                        extra={"res_name": name, "assigned_node": exec_node}
+                    )
+                # -------------------------------------------
+                
             self.actions_buffer.task_done()
             
     # async def action_target_monitor(self):
@@ -689,6 +703,9 @@ class SamplingModesManager:
                     t_type = meta.get("target_type")
                     t_id = meta.get("target_id")
                     
+                    # Track the actual sensor variable name (defaults to v_name)
+                    sensor_var_name = v_name
+                    
                     # --- DYNAMIC TARGET RESOLUTION ---
                     if not t_id or not t_type:
                         if v_map_name:
@@ -709,6 +726,9 @@ class SamplingModesManager:
                                     # Use the hardware ID mapped in the VariableMap
                                     t_id = t_id or source_info.get("source_id")
                                     t_type = t_type or source_info.get("source_type")
+                                    
+                                    # Capture the exact variable name the sensor expects
+                                    sensor_var_name = source_info.get("source_variable", v_name)
                         
                         # Ultimate fallbacks if resolution fails
                         t_id = t_id or v_map_name or "unknown"
@@ -718,23 +738,33 @@ class SamplingModesManager:
                     t_type = t_type.lower()
                     source_id = f"envds.{self.config.daq_id}.sampling-modes"
                     
-                    topic = f"envds/{self.config.daq_id}/{t_type}/{t_id}/settings/request"
-                    ce_type = f"envds.{t_type}.settings.request"
+                    # --- HANDLE CONTROLLER VS DEVICE ROUTING ---
+                    if t_type == "controller":
+                        topic = "envds/controller/settings/request"
+                        ce_type = "envds.controller.settings.request"
+                        extra_header = {"controllerid": t_id}
+                    else:
+                        topic = f"envds/{self.config.daq_id}/{t_type}/{t_id}/settings/request"
+                        ce_type = f"envds.{t_type}.settings.request"
+                        extra_header = {"deviceid": t_id}
+                    # -------------------------------------------
                     
-                    # USE THE ENVDS HELPER INSTEAD OF RAW CLOUDEVENT
+                    # Use standard envds factory
                     event = SamplingEvent.create(
                         type=ce_type, 
                         source=source_id,
                         data={
-                            "settings": v_name,
+                            "settings": sensor_var_name,
                             "requested": val
                         },
-                        extra_header={"deviceid": t_id}
+                        extra_header=extra_header
                     )
                     event["destpath"] = topic
                     
-                    self.logger.info(f"Broadcasting Action Command -> [{t_type.upper()}] {t_id}: {v_name} = {val}")
-                    await self.send_event(event)
+                    self.logger.info(f"Broadcasting Action Command -> [{t_type.upper()}] {t_id}: {sensor_var_name} = {val}")
+                    
+                    # Route to Mosquitto (Hardware) instead of Knative (Datastore)
+                    await self.send_to_mqtt(topic, event) 
 
             except Exception as e:
                 self.logger.error("action_target_monitor", extra={"reason": str(e)})

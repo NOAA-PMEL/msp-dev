@@ -74,7 +74,7 @@ async def set_isokinetic_inlet_flow(**kwargs):
     # Later, calculate real flow using kwargs.get("relative_wind_speed")
     L.info("action_triggered", extra={"action": "set_isokinetic_inlet_flow", "target_val": 50.0})
     
-    return {"fan_speed_sp": 50.0}
+    return {"inlet_fan_speed_sp": 50.0}
 
 
 async def set_reverse_inlet_flow(**kwargs):
@@ -83,7 +83,7 @@ async def set_reverse_inlet_flow(**kwargs):
     """
     L.info("action_triggered", extra={"action": "set_reverse_inlet_flow", "target_val": -80.0})
     
-    return {"fan_speed_sp": -80.0}
+    return {"inlet_fan_speed_sp": -80.0}
 
 async def turn_on_main_power(**kwargs):
     L.info("action_triggered", extra={"action": "turn_on_main_power", "target_val": 1})
