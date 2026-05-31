@@ -20,6 +20,8 @@ class NP05B(Controller):
         self.data_task = None
         self.data_rate = 1
 
+        self.include_metadata = True
+        
         self.default_client_module = "envds.daq.clients.tcp_client"
         self.default_client_class = "TCPClient"
         self.default_client_host = "localhost"

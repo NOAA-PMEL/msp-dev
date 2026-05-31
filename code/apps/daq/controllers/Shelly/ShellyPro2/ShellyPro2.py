@@ -20,6 +20,8 @@ class ShellyPro2(Controller):
         self.data_task = None
         self.data_rate = 1
 
+        self.include_metadata = True
+        
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
         self.default_client_host = "mqtt.default"
