@@ -36,6 +36,8 @@ class SystemModesConfig(BaseSettings):
 
     daq_id: str | None = None
 
+    deployment_ref: str = "unknown"
+
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
     mqtt_topic_subscriptions: str = ""
@@ -538,7 +540,8 @@ class SystemModesManager:
                 # Uses the daq_id from ConfigMap to allow raz1, crk8s, etc., to coexist
                 destpath = f"envds/{self.config.daq_id}/system-modes/status/update"
                 event["destpath"] = destpath
-                
+                event["deploymentref"] = self.config.deployment_ref
+
                 # 4. Broadcast via the manager's MQTT publish queue
                 await self.send_to_mqtt(destpath, event)
 

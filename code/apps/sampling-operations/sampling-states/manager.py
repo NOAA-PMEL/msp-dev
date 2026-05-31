@@ -66,6 +66,8 @@ class SamplingStatesManagerConfig(BaseSettings):
     # TODO fix ns prefix
     daq_id: str | None = None
 
+    deployment_ref: str = "unknown"
+
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
     # mqtt_topic_filter: str = 'aws-id/acg-daq/+'
@@ -1138,7 +1140,8 @@ class SamplingStatesManager:
                 event["destpath"] = destpath
                 event["samplingnamespace"] = state_ns
                 event["validconfigtime"] = state_valid_time
-
+                event["deploymentref"] = self.config.deployment_ref
+                
                 self.logger.debug("state_status_monitor", extra={"event-type": event["type"], "destpath": destpath})
 
                 await self.send_to_mqtt(destpath, event)

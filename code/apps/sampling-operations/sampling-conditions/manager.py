@@ -66,6 +66,8 @@ class SamplingConditionsManagerConfig(BaseSettings):
     # TODO fix ns prefix
     daq_id: str | None = None
 
+    deployment_ref: str = "unknown"
+    
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
     # mqtt_topic_filter: str = 'aws-id/acg-daq/+'
@@ -1290,6 +1292,7 @@ class SamplingConditionsManager:
                 event["destpath"] = destpath
                 event["samplingnamespace"] = cond_ns
                 event["validconfigtime"] = cond_valid_time
+                event["deploymentref"] = self.config.deployment_ref
                 
                 self.logger.debug(
                     "evaluate_criteria",

@@ -36,6 +36,8 @@ class SamplingModesConfig(BaseSettings):
 
     daq_id: str | None = None
 
+    deployment_ref: str = "unknown"
+
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
     mqtt_topic_subscriptions: str = ""
@@ -619,6 +621,7 @@ class SamplingModesManager:
                 # 3. Route to the sampling-modes status update topic
                 destpath = f"envds/{self.config.daq_id}/sampling-modes/status/update"
                 event["destpath"] = destpath
+                event["deploymentref"] = self.config.deployment_ref
                 
                 # 4. Broadcast via MQTT
                 await self.send_to_mqtt(destpath, event)
