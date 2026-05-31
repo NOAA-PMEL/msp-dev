@@ -676,14 +676,12 @@ class SamplingCondition:
     async def cleanup_loop(self):
         """
         Runs in the background every 10 seconds to purge stale data from the source_map.
-        Takes advantage of dictionary insertion order to operate in O(1) time.
         """
         while True:
             try:
                 # Give the event loop room to breathe
                 await asyncio.sleep(10)
                 
-                # We use get_datetime() directly to avoid string parsing overhead
                 now_raw = get_datetime()
                 if not now_raw:
                     continue
@@ -692,16 +690,9 @@ class SamplingCondition:
                 cutoff_str = datetime_to_string(cutoff_dt)
                 
                 for src_name, src_dict in self.source_map.items():
-                    stale_keys = []
-                    
-                    for ts in src_dict:
-                        if ts < cutoff_str:
-                            stale_keys.append(ts)
-                        else:
-                            # Because timestamps are inserted chronologically,
-                            # once we hit a timestamp newer than the cutoff, 
-                            # we know ALL subsequent timestamps are also new.
-                            break
+                    # FIX: Evaluate all keys. Do not break early, as out-of-order 
+                    # MQTT arrivals will get trapped behind newer insertions.
+                    stale_keys = [ts for ts in src_dict if ts < cutoff_str]
                             
                     for ts in stale_keys:
                         src_dict.pop(ts, None)
