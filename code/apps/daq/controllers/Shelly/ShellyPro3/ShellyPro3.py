@@ -21,7 +21,7 @@ class ShellyPro3(Controller):
         self.data_rate = 1
 
         self.include_metadata = True
-        
+
         self.default_client_module = "envds.daq.clients.mqtt_client"
         self.default_client_class = "MQTT_Client"
         self.default_client_host = "mqtt.payload01-system"
@@ -129,8 +129,8 @@ class ShellyPro3(Controller):
     async def get_status_loop(self):
         """Actively requests status updates from the Shelly over MQTT RPC"""
         while True:
-            # Note: The ShellyPro3 JSON definition is 1-indexed (channels 1, 2, 3)
-            for channel in range(1, 4):
+            # changed this to 0-based indexing be consistent with other Shellys
+            for channel in range(0, 3):
                 data = {
                     "path": f"{self.controller_id_prefix}/command/switch:{channel}",
                     "message": "status_update"
@@ -272,7 +272,7 @@ class ShellyPro3(Controller):
                         if name == "sampling_state":
                             self.settings.set_actual(name, target_val)
                             
-                        elif name in ["channel_1_power", "channel_2_power", "channel_3_power"]:
+                        elif name in ["channel_0_power", "channel_1_power", "channel_2_power"]:
                             ch = self.metadata["variables"][name]["attributes"]["channel"]["data"]
                             await self.set_channel_power(ch, target_val)
 
