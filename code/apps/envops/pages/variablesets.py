@@ -102,37 +102,44 @@ def build_tables(table_columns_dict):
             dbc.AccordionItem([
                 dag.AgGrid(
                     id={"type": "system-data-table-1d", "index": varset_id}, 
-                    rowData=[], columnDefs=columns, columnSizeOptions="autoSize", 
+                    rowData=[], columnDefs=columns, columnSizeOptions="autoSize",
+                    dashGridOptions={"domLayout": "autoHeight"},
+                    style={"height": None, "maxHeight": "400px", "overflow": "auto"}
                 )
-            ], title=f"Data 1-D ({varset_id})")
+            ], title=f"Data Table ({varset_id})")
         )
     return table_list
 
 def build_graph_1d(dropdown_list, xaxis="time"):
     return dbc.Card([
         dbc.CardHeader([
+            html.Span("Select Y-Axis Variable:", className="small fw-bold text-muted me-2"),
             dcc.Dropdown(
                 id={"type": "system-graph-1d-dropdown", "index": xaxis},
-                options=dropdown_list, value=""
+                options=dropdown_list, value="",
+                className="mt-1"
             )
-        ]),
-        dcc.Graph(
-            id={"type": "system-graph-1d", "index": xaxis},
-            figure=go.Figure(data=go.Scatter(x=[], y=[], type="scatter")),
-            style={"height": 500}
-        )
-    ], className="border-0 shadow-sm")
+        ], className="bg-light"),
+        dbc.CardBody([
+            dcc.Graph(
+                id={"type": "system-graph-1d", "index": xaxis},
+                figure=go.Figure(data=go.Scatter(x=[], y=[], type="scatter")),
+                style={"height": 450}
+            )
+        ], className="p-0")
+    ], className="border-0 shadow-sm mb-3")
 
 def build_graph_2d(dropdown_list, xaxis="time", yaxis=""):
     idx = f"{xaxis}::{yaxis}"
     return dbc.Card([
         dbc.CardHeader([
-            dcc.Dropdown(id={"type": "graph-2d-dropdown", "index": idx}, options=dropdown_list, value="")
-        ]),
-        dbc.Row([
-            dbc.Col(dcc.Graph(id={"type": "graph-2d-heatmap", "index": idx}, style={"height": 500}))
-        ])
-    ], className="border-0 shadow-sm")
+            html.Span("Select Z-Axis Variable:", className="small fw-bold text-muted me-2"),
+            dcc.Dropdown(id={"type": "graph-2d-dropdown", "index": idx}, options=dropdown_list, value="", className="mt-1")
+        ], className="bg-light"),
+        dbc.CardBody([
+            dcc.Graph(id={"type": "graph-2d-heatmap", "index": idx}, style={"height": 450})
+        ], className="p-0")
+    ], className="border-0 shadow-sm mb-3")
 
 def build_graphs(layout_options, unique_varsets):
     graph_list = []
@@ -141,26 +148,27 @@ def build_graphs(layout_options, unique_varsets):
         opts = layout_options["layout-1d"]["shared"]
         graph_list.append(
             dbc.AccordionItem([
-                dbc.Row([
-                    dcc.Checklist(
+                html.Div([
+                    html.Span("Filter Variablesets:", className="small fw-bold text-muted d-block mb-2"),
+                    dbc.Checklist(
                         id={"type": "graph-varset-filter", "index": "shared"},
                         options=[{"label": f" {v}", "value": v} for v in unique_varsets],
                         value=unique_varsets, inline=True,
-                        inputStyle={"margin-right": "5px", "margin-left": "15px"},
-                        style={"margin-bottom": "15px", "font-weight": "bold"}
+                        labelClassName="me-3 fw-bold text-primary",
+                        inputClassName="me-1"
                     )
-                ]),
-                dbc.Row([build_graph_1d(opts["variable-list"], xaxis="shared")])
-            ], title="Plots 1-D (Combined)")
+                ], className="p-3 bg-light border rounded mb-3"),
+                build_graph_1d(opts["variable-list"], xaxis="shared")
+            ], title="1-Dimensional Telemetry (Combined)")
         )
 
     if "layout-2d" in layout_options:
         for dim_key, opts in layout_options["layout-2d"].items():
             varset_id, dim_name = dim_key.split("::", 1)
-            title = f"Plots 2-D ({varset_id}: time vs {dim_name})"
+            title = f"2-Dimensional Telemetry ({varset_id}: time vs {dim_name})"
             graph_list.append(
                 dbc.AccordionItem(
-                    [dbc.Row([build_graph_2d(opts["variable-list"], xaxis="time", yaxis=dim_key)])],
+                    [build_graph_2d(opts["variable-list"], xaxis="time", yaxis=dim_key)],
                     title=title
                 )
             )
@@ -169,7 +177,7 @@ def build_graphs(layout_options, unique_varsets):
 
 # --- LAYOUT ---
 def layout(deployment_id=None):
-    if not deployment_id: return html.Div("No Deployment ID provided.")
+    if not deployment_id: return html.Div("No Deployment ID provided.", className="p-4 text-danger")
 
     platforms, active_varsets = get_bundle_varsets(deployment_id)
     unique_varsets = list(active_varsets.keys())
@@ -221,17 +229,52 @@ def layout(deployment_id=None):
     shared_graph_dropdown = layout_options["layout-1d"]["shared"]["variable-list"]
 
     return html.Div([
+        # --- HEADER ---
         dbc.Row([
-            dbc.Col(html.H3(f"Variablesets: {deployment_id}", className="text-primary")),
+            dbc.Col([
+                html.H2(f"Telemetry Plots: {deployment_id}", className="text-primary mb-0"),
+                html.P("Live variableset data visualization", className="text-muted small")
+            ]),
             dbc.Col(dbc.Button(
-                "Back to C2", href=dash.get_relative_path(f"/deployment/{deployment_id}"), 
-                color="secondary", outline=True, className="float-end"
+                "⭠ Back to C2", href=dash.get_relative_path(f"/deployment/{deployment_id}"), 
+                color="secondary", outline=True, className="float-end fw-bold shadow-sm"
             ))
         ], className="mb-4 mt-3"),
 
-        dbc.Accordion(build_tables(table_columns_1d), id="system-data-accordion"),
-        dbc.Accordion(build_graphs(layout_options, unique_varsets), id="sensor-plot-accordion", style={"margin-top": "30px"}),
+        # --- DYNAMIC PLOTS CARD ---
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader(html.H5("Live Telemetry Plots", className="mb-0")),
+                    dbc.CardBody([
+                        dbc.Accordion(
+                            build_graphs(layout_options, unique_varsets), 
+                            id="sensor-plot-accordion", 
+                            always_open=True, 
+                            flush=True
+                        )
+                    ])
+                ], className="shadow-sm border-dark mb-4")
+            ], width=12)
+        ]),
 
+        # --- DYNAMIC TABLES CARD ---
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader(html.H5("Live Data Tables", className="mb-0")),
+                    dbc.CardBody([
+                        dbc.Accordion(
+                            build_tables(table_columns_1d), 
+                            id="system-data-accordion", 
+                            flush=True
+                        )
+                    ])
+                ], className="shadow-sm border-dark mb-4")
+            ], width=12)
+        ]),
+
+        # --- HIDDEN STORES & WEBSOCKETS ---
         dcc.Store(id="master-dropdown-options", data=shared_graph_dropdown),
         dcc.Store(id="system-graph-axes", data={}),
         dcc.Store(id="variableset-defs-store", data=all_defs),

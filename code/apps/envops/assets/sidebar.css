@@ -1,32 +1,53 @@
 /* assets/sidebar.css */
 #sidebar {
-  text-align: center;
-  padding: 2rem 1rem;
-  background-color: #212529; /* Dark theme */
-  color: white;
+  padding: 1.5rem 1rem;
+  background-color: #f8f9fa; /* Crisp light background */
+  border-right: 1px solid #dee2e6; /* Soft boundary */
   transition: all 0.3s;
-}
-
-#sidebar h4 {
-  text-align: left;
-  margin-bottom: 0;
-  color: white;
+  overflow-y: auto;
 }
 
 #sidebar .nav-link {
-  color: rgba(255, 255, 255, 0.75);
+  color: #495057;
+  transition: all 0.2s ease-in-out;
 }
 
 #sidebar .nav-link.active {
   background-color: #0d6efd;
   color: white;
+  box-shadow: 0 0.125rem 0.25rem rgba(13, 110, 253, 0.25);
 }
 
-#sidebar .nav-link:hover {
-  color: white;
+#sidebar .nav-link:not(.active):hover {
+  background-color: #e9ecef;
+  color: #0d6efd;
+  transform: translateX(3px); /* Subtle interaction lift */
 }
 
-/* Hide the toggle on a large screen */
+/* Make the dynamic mission accordion blend into the sidebar */
+#sidebar .accordion-item {
+  background-color: transparent;
+}
+
+#sidebar .accordion-button {
+  background-color: transparent;
+  padding: 0.75rem 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #343a40;
+  box-shadow: none !important;
+}
+
+#sidebar .accordion-button:not(.collapsed) {
+  color: #0d6efd;
+  background-color: transparent;
+}
+
+#sidebar .accordion-body {
+  padding: 0.5rem 0 0.5rem 1rem;
+}
+
+/* Responsive Handling */
 #toggle {
   display: none;
 }
@@ -37,14 +58,13 @@
     top: 0;
     left: 0;
     bottom: 0;
-    width: 18rem;
-    text-align: left;
+    width: 20rem; /* Slightly wider for the new hierarchy */
     z-index: 1000;
   }
 
   #page-content {
-    margin-left: 18rem;
-    padding: 2rem;
+    margin-left: 20rem;
+    padding: 2rem 3rem; /* Extra breathing room for the modern cards */
   }
 }
 
@@ -55,8 +75,11 @@
   }
   #sidebar {
     width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #dee2e6;
   }
   #page-content {
     padding: 1rem;
+    margin-left: 0;
   }
 }

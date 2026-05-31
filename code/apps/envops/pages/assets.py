@@ -29,11 +29,24 @@ datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 def layout():
     return html.Div([
+        # --- HEADER ---
         dbc.Row([
-            dbc.Col(html.H2("Asset Registry", className="text-primary"), width=8),
-            dbc.Col(dbc.Button("Refresh Registry", id="asset-refresh-btn", color="secondary", className="float-end"), width=4)
+            dbc.Col([
+                html.H2("Asset Registry", className="text-primary mb-0"),
+                html.P("Fleet hardware, controllers, and platform inventory", className="text-muted small")
+            ], width=8),
+            dbc.Col(
+                dbc.Button(
+                    "↻ Refresh Registry", 
+                    id="asset-refresh-btn", 
+                    color="primary", 
+                    className="float-end fw-bold shadow-sm mt-2"
+                ), 
+                width=4
+            )
         ], className="mb-4 mt-3"),
 
+        # --- TABS ---
         dbc.Tabs([
             # --- TAB 1: HARDWARE (Sensors, Operational, Controllers) ---
             dbc.Tab(
@@ -43,20 +56,27 @@ def layout():
                             id="hardware-registry-grid",
                             rowData=[],
                             columnDefs=[
-                                {"field": "type", "headerName": "Type", "filter": True, "width": 120},
+                                {"field": "type", "headerName": "Type", "filter": True, "width": 130},
                                 {"field": "make", "headerName": "Make", "filter": True, "width": 150},
-                                {"field": "model", "headerName": "Model", "filter": True, "width": 150},
-                                {"field": "serial_number", "headerName": "S/N", "width": 120},
+                                {"field": "model", "headerName": "Model", "filter": True, "width": 160},
+                                {
+                                    "field": "serial_number", 
+                                    "headerName": "S/N", 
+                                    "width": 140,
+                                    "cellClass": "font-monospace text-muted"
+                                },
                                 {"field": "description", "headerName": "Description", "flex": 2},
-                                {"field": "action", "headerName": "Action", "cellRenderer": "markdown", "width": 180}
+                                {"field": "action", "headerName": "Action", "cellRenderer": "markdown", "width": 200}
                             ],
-                            dashGridOptions={"pagination": True, "paginationPageSize": 20},
-                            style={"height": "600px"}
+                            dashGridOptions={"pagination": True, "paginationPageSize": 50},
+                            style={"height": "calc(100vh - 250px)", "width": "100%"},
+                            className="ag-theme-alpine"
                         )
-                    ])
-                ], className="shadow-sm border-dark border-top-0"),
+                    ], className="p-0")
+                ], className="shadow-sm border-0 mt-3"),
                 label="Hardware & Controllers",
-                tab_id="tab-hardware"
+                tab_id="tab-hardware",
+                label_class_name="fw-bold"
             ),
             
             # --- TAB 2: PLATFORMS ---
@@ -67,19 +87,27 @@ def layout():
                             id="platform-registry-grid",
                             rowData=[],
                             columnDefs=[
-                                {"field": "platform_id", "headerName": "Platform ID", "flex": 1, "filter": True},
+                                {
+                                    "field": "platform_id", 
+                                    "headerName": "Platform ID", 
+                                    "flex": 1, 
+                                    "filter": True,
+                                    "cellClass": "font-monospace text-muted"
+                                },
                                 {"field": "display_name", "headerName": "Display Name", "flex": 1, "filter": True},
                                 {"field": "description", "headerName": "Description", "flex": 2}
                             ],
-                            dashGridOptions={"pagination": True, "paginationPageSize": 20},
-                            style={"height": "600px"}
+                            dashGridOptions={"pagination": True, "paginationPageSize": 50},
+                            style={"height": "calc(100vh - 250px)", "width": "100%"},
+                            className="ag-theme-alpine"
                         )
-                    ])
-                ], className="shadow-sm border-dark border-top-0"),
+                    ], className="p-0")
+                ], className="shadow-sm border-0 mt-3"),
                 label="Platforms",
-                tab_id="tab-platforms"
+                tab_id="tab-platforms",
+                label_class_name="fw-bold"
             )
-        ], id="assets-tabs", active_tab="tab-hardware", className="mt-3")
+        ], id="assets-tabs", active_tab="tab-hardware", className="mt-2")
     ])
 
 @callback(
@@ -98,7 +126,6 @@ def fetch_all_registries(n_clicks):
     # ==========================================
     # 1. FETCH HARDWARE (Sensors & Operational)
     # ==========================================
-    # We hit device-instance/registry/get/ for both sensor and operational types
     for dev_type in ["sensor", "operational"]:
         try:
             url = f"http://{datastore_url}/device-instance/registry/get/"
@@ -111,7 +138,6 @@ def fetch_all_registries(n_clicks):
                     sn = doc.get("serial_number", "")
                     device_id = f"{make}::{model}::{sn}"
                     
-                    # Extract rich description from attributes
                     attrs = doc.get("attributes", {})
                     description = attrs.get("description", {}).get("data", "N/A")
                     
@@ -121,7 +147,6 @@ def fetch_all_registries(n_clicks):
                         "model": model,
                         "serial_number": sn,
                         "description": description,
-                        # Route sensors/operational to the settings & telemetry page
                         "action": f"[Telemetry & Settings]({dash.get_relative_path(f'/sensor/{device_id}')})" 
                     })
         except Exception as e:
@@ -141,7 +166,6 @@ def fetch_all_registries(n_clicks):
                 sn = doc.get("serial_number", "")
                 device_id = f"{make}::{model}::{sn}"
                 
-                # Extract rich description from attributes
                 attrs = doc.get("attributes", {})
                 description = attrs.get("description", {}).get("data", "N/A")
                 
@@ -151,7 +175,6 @@ def fetch_all_registries(n_clicks):
                     "model": model,
                     "serial_number": sn,
                     "description": description,
-                    # Route controllers to a dedicated page for controls
                     "action": f"[Telemetry & Controls]({dash.get_relative_path(f'/controller/{device_id}')})" 
                 })
     except Exception as e:

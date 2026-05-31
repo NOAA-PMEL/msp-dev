@@ -56,7 +56,7 @@ def layout():
         dbc.Row([
             dbc.Col(html.H2("Fleet Operations", className="text-primary"), width=8),
             dbc.Col(
-                dbc.Button("Refresh Fleet Data", id="home-refresh-btn", color="secondary", className="float-end"),
+                dbc.Button("Refresh Fleet Data", id="home-refresh-btn", color="secondary", className="float-end fw-bold shadow-sm"),
                 width=4
             )
         ], className="mb-4 mt-3"),
@@ -66,7 +66,7 @@ def layout():
         dcc.Store(id="store-deployments", data=[]),
         dcc.Store(id="store-platforms", data=[]),
         dcc.Store(id="live-fleet-locations", data={}),
-        dcc.Store(id="live-health-store", data={}), # Holds live status map
+        dcc.Store(id="live-health-store", data={}), 
         
         # WebSockets & Timers
         dcc.Interval(id="home-sync-interval", interval=5*60*1000, n_intervals=0),
@@ -117,7 +117,6 @@ def sync_fleet_state(n_intervals, n_clicks):
     prevent_initial_call=True
 )
 def update_live_health(message, current_health):
-    """Listens to fleet-wide status events and updates the health dictionary."""
     if not message or "data" not in message:
         return dash.no_update
         
@@ -127,7 +126,6 @@ def update_live_health(message, current_health):
         app_group = status_data.get("id", {}).get("app_group", "")
         state_dict = status_data.get("state", {})
         
-        # Determine a basic health state (You can customize this logic based on conditions)
         health = "ok"
         status_text = "AUTO"
         
@@ -139,7 +137,6 @@ def update_live_health(message, current_health):
             elif actual == "error" or actual == "degraded":
                 health = "danger"
 
-        # Update the store for this specific deployment/UID
         if app_uid:
             if current_health is None:
                 current_health = {}
@@ -161,7 +158,6 @@ def update_live_health(message, current_health):
     prevent_initial_call=True
 )
 def render_fleet_ui(projects, deployments, live_locations, health_store):
-    """Builds the nested Host/Sub UI and processes map logic based on host_platform_ref."""
     if health_store is None: health_store = {}
     if live_locations is None: live_locations = {}
     
@@ -174,7 +170,7 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
     if not projects and not deployments:
         return html.P("No active projects found.", className="text-muted"), fig
 
-    # --- 1. Map Platforms to Deployments ---
+    # Map Platforms to Deployments
     platform_to_dep = {}
     for dep in deployments:
         dep_data = dep.get("data", {})
@@ -182,25 +178,20 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
         if pref:
             platform_to_dep[pref] = dep
 
-    # --- 2. Determine Top-Level Hosts vs Sub-Deployments ---
     host_deployments = []
     sub_deployments = []
 
     for dep in deployments:
         host_pref = dep.get("data", {}).get("host_platform_ref")
-        # If the host platform is ALSO actively deployed by us, this is a Sub.
         if host_pref and host_pref in platform_to_dep:
             sub_deployments.append(dep)
         else:
-            # If the host platform is an external entity (Marina, Ship), this is the Host.
             host_deployments.append(dep)
 
-    # --- 3. Organize by Project ---
-    hosts_by_project = {} # { proj_name: { host_name: {"host": dep, "subs": []} } }
+    hosts_by_project = {}
     planned_lats, planned_lons, planned_text = [], [], []
     live_lats, live_lons, live_text = [], [], []
 
-    # Map the hosts and their coordinates
     for dep in host_deployments:
         dep_data = dep.get("data", {})
         proj_ref = dep_data.get("project_ref", "unknown")
@@ -214,14 +205,12 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
         h_display = dep_data.get('display_name', dep_name)
         platform_ref = dep_data.get('platform_ref', '')
         
-        # Map coordinates: Check if live location exists
         live_loc = live_locations.get(dep_name) or live_locations.get(platform_ref)
         if live_loc:
             live_lats.append(live_loc["lat"])
             live_lons.append(live_loc["lon"])
             live_text.append(f"{h_display}<br><b>(Live)</b>")
         else:
-            # Fallback to planned location
             lat_min = dep_data.get("planned_geospatial_lat_min")
             lon_min = dep_data.get("planned_geospatial_lon_min")
             if lat_min is not None and lon_min is not None:
@@ -229,20 +218,17 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
                 planned_lons.append(lon_min)
                 planned_text.append(f"{h_display}<br><i>(Estimated/Planned)</i>")
 
-    # Map the subs to their parent hosts
     for dep in sub_deployments:
         dep_data = dep.get("data", {})
         proj_ref = dep_data.get("project_ref", "unknown")
         host_pref = dep_data.get("host_platform_ref")
         
-        # Find the parent deployment using the platform linkage
         parent_dep = platform_to_dep.get(host_pref)
         if parent_dep:
             parent_name = parent_dep.get("metadata", {}).get("name")
             if parent_name and proj_ref in hosts_by_project and parent_name in hosts_by_project[proj_ref]:
                 hosts_by_project[proj_ref][parent_name]["subs"].append(dep)
 
-    # --- 4. Render Map Traces ---
     if planned_lats:
         fig.add_trace(go.Scattermapbox(
             lat=planned_lats, lon=planned_lons, text=planned_text,
@@ -257,13 +243,17 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
         ))
         fig.update_layout(mapbox=dict(center=dict(lat=sum(live_lats)/len(live_lats), lon=sum(live_lons)/len(live_lons)), zoom=4))
 
-    # --- 5. Build the UI Hierarchy ---
+    # --- UI HIERARCHY BUILDER ---
     accordion_items = []
     
+    # Modernized Badge Builder
     def get_health_badge(uid, display_name):
         h_data = health_store.get(uid, {"health": "secondary", "text": "UNKNOWN"})
         color = "success" if h_data["health"] == "ok" else h_data["health"]
-        return dbc.Badge(f"{display_name}: {h_data['text']}", color=color, className="me-2 mb-1")
+        return html.Div([
+            html.Span(f"{display_name}:", className="small fw-bold text-muted me-1"),
+            dbc.Badge(h_data['text'], color=color, className="me-3 shadow-sm")
+        ], className="d-inline-flex align-items-center mb-1")
 
     for proj in projects:
         proj_name = proj.get("metadata", {}).get("name", "Unknown")
@@ -279,10 +269,9 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
             
             h_display = host_data.get("data", {}).get("display_name", host_name)
             
-            host_health_badge = get_health_badge(host_name, "Host")
-            sub_badges = [get_health_badge(s.get("metadata", {}).get("name"), s.get("data", {}).get("display_name", "Sub")) for s in subs]
+            host_health_badge = get_health_badge(host_name, "HOST")
+            sub_badges = html.Div([get_health_badge(s.get("metadata", {}).get("name"), s.get("data", {}).get("display_name", "Sub")) for s in subs], className="d-flex flex-wrap")
             
-            # Roll up project health logic
             host_state = health_store.get(host_name, {}).get("health", "ok")
             if host_state == "danger": proj_health_status = "danger"
             elif host_state == "warning" and proj_health_status != "danger": proj_health_status = "warning"
@@ -293,31 +282,40 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
                 elif s_state == "warning" and proj_health_status != "danger": proj_health_status = "warning"
 
             btn = dbc.Button(
-                "Command & Control ⭢", 
+                "Command & Control \u2192", 
                 href=dash.get_relative_path(f"/deployment/{host_name}"), 
-                color="info", size="sm", className="mt-2 w-100 fw-bold"
+                color="primary", size="sm", className="mt-3 w-100 fw-bold shadow-sm"
             )
             
+            # Modernized Card Layout
             dep_card = dbc.Card([
-                dbc.CardHeader(html.H6(h_display, className="mb-0")),
+                dbc.CardHeader([
+                    html.H6(h_display, className="mb-0 fw-bold text-dark"),
+                    html.Span(f"{host_data.get('data', {}).get('platform_ref', 'N/A')}", className="font-monospace small text-muted")
+                ], className="d-flex justify-content-between align-items-center bg-light p-2 border-bottom"),
                 dbc.CardBody([
-                    html.P(f"Platform: {host_data.get('data', {}).get('platform_ref', 'N/A')} @ {host_data.get('data', {}).get('host_platform_ref', 'N/A')}", className="small mb-2 text-muted"),
-                    html.Div([host_health_badge] + sub_badges, className="mb-3"),
+                    dbc.Row([
+                        dbc.Col(host_health_badge, width=12, className="mb-2 border-bottom pb-2")
+                    ]),
+                    dbc.Row([
+                        dbc.Col(sub_badges, width=12)
+                    ]),
                     btn
-                ])
-            ], className="mb-3 border-secondary shadow-sm")
+                ], className="p-3")
+            ], className="mb-3 border-0 shadow-sm")
+            
             dep_list.append(dep_card)
 
         if not dep_list:
-            dep_list = [html.P("No active deployments in this project.", className="text-muted small")]
+            dep_list = [html.P("No active deployments in this project.", className="text-muted small px-2")]
 
         title_color = "text-success" if proj_health_status == "ok" else f"text-{proj_health_status}"
-        title_icon = "🟢" if proj_health_status == "ok" else ("🟡" if proj_health_status == "warning" else "🔴")
-        accordion_title = html.Span([f"📁 {proj_display} ", html.Span(title_icon, className=title_color)])
+        title_icon = "●" if proj_health_status == "ok" else ("▲" if proj_health_status == "warning" else "■")
+        accordion_title = html.Span([f"🗂 {proj_display} ", html.Span(title_icon, className=title_color)])
 
         accordion_items.append(dbc.AccordionItem(dep_list, title=accordion_title))
 
-    return dbc.Accordion(accordion_items, start_collapsed=False), fig
+    return dbc.Accordion(accordion_items, start_collapsed=False, flush=True), fig
 
 @callback(
     Output("live-fleet-locations", "data"),
@@ -326,18 +324,16 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
     prevent_initial_call=True
 )
 def update_live_locations(message, current_locations):
-    """Listens to fleet-wide nav events and updates the map coordinates."""
     if not message or "data" not in message: 
         return dash.no_update
         
     try:
         payload = json.loads(message["data"])
-        target_id = payload.get("target_id") # This could be the deployment or platform name
+        target_id = payload.get("target_id") 
         data = payload.get("data", {})
         
         variables = data.get("variables", {})
         
-        # Check for either 'latitude' or 'lat' depending on your config mapping
         lat = variables.get("latitude", {}).get("data") or variables.get("lat", {}).get("data")
         lon = variables.get("longitude", {}).get("data") or variables.get("lon", {}).get("data")
         
@@ -345,13 +341,11 @@ def update_live_locations(message, current_locations):
             if current_locations is None: 
                 current_locations = {}
             
-            # Rounding to 5 decimal places (~1.1 meters) to avoid micro-jitter re-renders
             lat_val, lon_val = round(float(lat), 5), round(float(lon), 5)
             
             curr_lat = current_locations.get(target_id, {}).get("lat")
             curr_lon = current_locations.get(target_id, {}).get("lon")
             
-            # Only update the store (which triggers a map redraw) if they actually moved
             if curr_lat != lat_val or curr_lon != lon_val:
                 current_locations[target_id] = {"lat": lat_val, "lon": lon_val}
                 return current_locations

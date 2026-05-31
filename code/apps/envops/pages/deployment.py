@@ -102,7 +102,6 @@ def layout(deployment_id=None):
         return html.Div("No Deployment ID provided.", className="p-4 text-danger")
 
     host_dep, subs, varsets = get_deployment_bundle(deployment_id)
-    
     display_name = host_dep.get("data", {}).get("display_name", deployment_id) if host_dep else deployment_id
     
     systemmodes = fetch_registry_data("systemmode")
@@ -111,9 +110,7 @@ def layout(deployment_id=None):
     sm_options = [{"label": sm.get("metadata", {}).get("name", "Unknown").upper(), "value": sm.get("metadata", {}).get("name", "Unknown")} for sm in systemmodes if sm.get("metadata", {}).get("name")]
     act_options = [{"label": act.get("metadata", {}).get("name", "Unknown").replace("_", " ").title(), "value": act.get("metadata", {}).get("name", "Unknown")} for act in actions if act.get("metadata", {}).get("name")]
 
-    websockets = []
-    for vs in varsets:
-        websockets.append(WebSocket(id={"type": "ws-varset", "index": vs}, url=f"{ws_url_base}/envds/envops/ws/variableset/{vs}"))
+    websockets = [WebSocket(id={"type": "ws-varset", "index": vs}, url=f"{ws_url_base}/envds/envops/ws/variableset/{vs}") for vs in varsets]
 
     return html.Div([
         dbc.Row([
@@ -130,15 +127,15 @@ def layout(deployment_id=None):
                     dbc.CardBody([
                         html.P("Set the overarching operational mode for this bundle.", className="text-muted small mb-2"),
                         dbc.ButtonGroup([
-                            dbc.Button("AUTO", id="btn-mode-auto", color="success", outline=True, className="fw-bold"),
-                            dbc.Button("MANUAL", id="btn-mode-manual", color="warning", outline=True, className="fw-bold"),
+                            dbc.Button("AUTO", id="btn-mode-auto", color="success", outline=True, className="fw-bold w-50"),
+                            dbc.Button("MANUAL", id="btn-mode-manual", color="warning", outline=True, className="fw-bold w-50"),
                         ], className="w-100 mb-3"),
                         
                         html.Div([
                             html.P("Manual Mode Override:", className="text-muted small mb-1"),
                             dbc.InputGroup([
                                 dbc.Select(id="c2-mode-select", options=sm_options, placeholder="Select Mode..."),
-                                dbc.Button("Apply", id="btn-apply-mode", color="primary")
+                                dbc.Button("Apply", id="btn-apply-mode", color="primary", className="fw-bold")
                             ])
                         ], id="c2-manual-container", style={"display": "none"}), 
                         
@@ -146,16 +143,14 @@ def layout(deployment_id=None):
                         html.P("Trigger System Action:", className="text-muted small mb-1"),
                         dbc.InputGroup([
                             dbc.Select(id="c2-action-select", options=act_options, placeholder="Select Action..."),
-                            dbc.Button("Execute", id="btn-execute-action", color="danger")
+                            dbc.Button("Execute", id="btn-execute-action", color="danger", className="fw-bold")
                         ])
                     ])
                 ], className="shadow-sm mb-3 border-dark"),
 
                 dbc.Card([
                     dbc.CardHeader(html.H5("Bundled Operations Health", className="mb-0")),
-                    dbc.CardBody([
-                        html.Div(id="ops-health-container", children=html.P("Waiting for status events...", className="text-muted text-center"))
-                    ])
+                    dbc.CardBody(id="ops-health-container", className="p-2 bg-light")
                 ], className="shadow-sm mb-3 border-dark"),
 
                 dbc.Card([
@@ -167,51 +162,40 @@ def layout(deployment_id=None):
                         ])
                     ])
                 ], className="shadow-sm border-dark")
-            ], width=4),
+            ], width=5),
 
             dbc.Col([
                 dbc.Row([
                     dbc.Col([
                         dbc.Card([
                             dbc.CardHeader("Navigation", className="p-2 bg-light fw-bold"),
-                            dbc.CardBody(dbc.Row([
-                                make_kpi_col("Lat / Lon", "kpi-nav-latlon"), make_kpi_col("Speed / Hdg", "kpi-nav-spdhdg"), make_kpi_col("Pitch / Roll", "kpi-nav-pitchroll"),
-                            ], className="g-2"), className="p-2")
+                            dbc.CardBody(dbc.Row([make_kpi_col("Lat / Lon", "kpi-nav-latlon"), make_kpi_col("Speed / Hdg", "kpi-nav-spdhdg"), make_kpi_col("Pitch / Roll", "kpi-nav-pitchroll")], className="g-2"), className="p-2")
                         ], className="mb-3 shadow-sm"),
                         
                         dbc.Card([
                             dbc.CardHeader("Aerosols", className="p-2 bg-light fw-bold"),
-                            dbc.CardBody(dbc.Row([
-                                make_kpi_col("CN", "kpi-aero-cn"), make_kpi_col("Scat (B/G/R)", "kpi-aero-scat"), make_kpi_col("Abs (B/G/R)", "kpi-aero-abs"),
-                            ], className="g-2"), className="p-2")
+                            dbc.CardBody(dbc.Row([make_kpi_col("CN", "kpi-aero-cn"), make_kpi_col("Scat (B/G/R)", "kpi-aero-scat"), make_kpi_col("Abs (B/G/R)", "kpi-aero-abs")], className="g-2"), className="p-2")
                         ], className="mb-3 shadow-sm"),
 
                         dbc.Card([
                             dbc.CardHeader("Gas Phase", className="p-2 bg-light fw-bold"),
-                            dbc.CardBody(dbc.Row([
-                                make_kpi_col("O3", "kpi-gas-o3"), make_kpi_col("CO", "kpi-gas-co"), make_kpi_col("NO / NO2", "kpi-gas-nox"),
-                            ], className="g-2"), className="p-2")
+                            dbc.CardBody(dbc.Row([make_kpi_col("O3", "kpi-gas-o3"), make_kpi_col("CO", "kpi-gas-co"), make_kpi_col("NO / NO2", "kpi-gas-nox")], className="g-2"), className="p-2")
                         ], className="mb-3 shadow-sm")
                     ], width=6),
                     
                     dbc.Col([
                         dbc.Card([
                             dbc.CardHeader("Meteorology", className="p-2 bg-light fw-bold"),
-                            dbc.CardBody(dbc.Row([
-                                make_kpi_col("True WS/WDIR", "kpi-met-wind"), make_kpi_col("Temp / RH", "kpi-met-temprh"), make_kpi_col("Pressure", "kpi-met-press"),
-                                make_kpi_col("Rain Rate", "kpi-met-rain"), make_kpi_col("Irradiance", "kpi-met-irrad"),
-                            ], className="g-2"), className="p-2")
+                            dbc.CardBody(dbc.Row([make_kpi_col("True WS/WDIR", "kpi-met-wind"), make_kpi_col("Temp / RH", "kpi-met-temprh"), make_kpi_col("Pressure", "kpi-met-press"), make_kpi_col("Rain Rate", "kpi-met-rain"), make_kpi_col("Irradiance", "kpi-met-irrad")], className="g-2"), className="p-2")
                         ], className="mb-3 shadow-sm"),
 
                         dbc.Card([
                             dbc.CardHeader("Operational", className="p-2 bg-light fw-bold"),
-                            dbc.CardBody(dbc.Row([
-                                make_kpi_col("Rel WS/WDIR", "kpi-ops-relwind"), make_kpi_col("Inlet Flow", "kpi-ops-flow"), make_kpi_col("Inlet SP", "kpi-ops-flowsp"),
-                            ], className="g-2"), className="p-2")
+                            dbc.CardBody(dbc.Row([make_kpi_col("Rel WS/WDIR", "kpi-ops-relwind"), make_kpi_col("Inlet Flow", "kpi-ops-flow"), make_kpi_col("Inlet SP", "kpi-ops-flowsp")], className="g-2"), className="p-2")
                         ], className="mb-3 shadow-sm")
                     ], width=6)
                 ])
-            ], width=8)
+            ], width=7)
         ]),
 
         html.Div(websockets),
@@ -259,7 +243,6 @@ def send_c2_request(payload):
     if payload: return payload
     raise PreventUpdate
 
-# --- CORRECTED HEALTH AGGREGATION ---
 @callback(
     Output("c2-health-store", "data"),
     Input("ws-system-ops", "message"),
@@ -276,10 +259,8 @@ def aggregate_health(message, current_store):
         dep_ref = payload.get("deploymentref", "unknown")
         app_uid = status_data.get("id", {}).get("app_uid", "")
         
-        # Store hierarchically: deploymentref -> app_uid -> data
         if dep_ref and app_uid:
-            if dep_ref not in current_store:
-                current_store[dep_ref] = {}
+            if dep_ref not in current_store: current_store[dep_ref] = {}
             current_store[dep_ref][app_uid] = status_data
             return current_store
     except Exception as e:
@@ -287,7 +268,6 @@ def aggregate_health(message, current_store):
             
     raise PreventUpdate
 
-# --- CORRECTED HEALTH RENDERER ---
 @callback(
     Output("ops-health-container", "children"),
     Output("btn-mode-auto", "outline"),
@@ -298,15 +278,17 @@ def aggregate_health(message, current_store):
     prevent_initial_call=True
 )
 def render_bundle_health(health_store, host_id):
-    if not health_store: raise PreventUpdate
+    if not health_store: return html.P("Waiting for telemetry...", className="text-muted text-center m-3"), True, False, {"display": "none"}
 
-    accordions = []
     host_sys_mode = "unknown"
+    node_cards = []
 
-    for dep_ref, statuses in health_store.items():
-        sys_modes = []
-        samp_modes = []
-        samp_states = []
+    # Sort deployments so the Host is always at the top
+    sorted_deps = sorted(health_store.keys(), key=lambda x: 0 if x == host_id else 1)
+
+    for dep_ref in sorted_deps:
+        statuses = health_store[dep_ref]
+        sys_modes, samp_modes, samp_states = [], [], []
 
         for uid, status in statuses.items():
             app_group = status.get("id", {}).get("app_group", "")
@@ -319,7 +301,6 @@ def render_bundle_health(health_store, host_id):
                     is_active = True
                     break
             
-            # CONDITIONS ARE EXPLICITLY IGNORED
             if is_active:
                 clean_name = uid.replace("_", " ").title()
                 if app_group == "system": sys_modes.append(clean_name)
@@ -329,37 +310,45 @@ def render_bundle_health(health_store, host_id):
         if dep_ref == host_id and sys_modes:
             host_sys_mode = sys_modes[0]
 
-        def build_ul(items):
-            if not items: return html.Div("None currently active.", className="text-muted small ms-3")
-            return html.Ul([
-                html.Li([
-                    html.Span("● ", className="text-success"), 
-                    html.Span(m, className="font-monospace text-dark fw-bold")
-                ]) for m in items
-            ], className="list-unstyled ms-3 mb-0")
+        # UI Badge Builders
+        def build_badge_group(items, color):
+            if not items: return html.Span("None", className="text-muted small fst-italic")
+            return html.Div([dbc.Badge(m, color=color, className="me-1 mb-1") for m in items], className="d-flex flex-wrap")
 
-        content = html.Div([
-            html.Div("System Mode", className="fw-bold text-primary border-bottom mb-1"),
-            build_ul(sys_modes),
-            html.Div("Sampling Modes", className="fw-bold text-info border-bottom mb-1 mt-2"),
-            build_ul(samp_modes),
-            html.Div("Sampling States", className="fw-bold text-success border-bottom mb-1 mt-2"),
-            build_ul(samp_states)
-        ], style={"fontSize": "0.85rem"})
+        # Visual distinction for Host vs Sub
+        is_host = (dep_ref == host_id)
+        card_header_color = "bg-primary text-white" if is_host else "bg-secondary text-white"
+        node_label = "HOST NODE" if is_host else "SUB-NODE"
 
-        title_color = "text-success" if any(m.lower() in ["auto", "normal"] for m in sys_modes) else "text-warning"
-        dep_name = dep_ref.split('.')[-1]
-        title = html.Span([f"{dep_name} ", html.Span("●", className=title_color)])
-
-        accordions.append(dbc.AccordionItem(content, title=title))
+        node_card = dbc.Card([
+            dbc.CardHeader([
+                html.Span(node_label, className="small fw-bold me-2"),
+                html.Span(f"| {dep_ref}", className="small font-monospace")
+            ], className=f"p-1 px-2 {card_header_color}"),
+            dbc.CardBody([
+                dbc.Row([
+                    dbc.Col(html.Span("Sys Mode:", className="small fw-bold text-muted"), width=4),
+                    dbc.Col(build_badge_group(sys_modes, "dark"), width=8)
+                ], className="mb-2 border-bottom pb-1"),
+                dbc.Row([
+                    dbc.Col(html.Span("Active Logic:", className="small fw-bold text-muted"), width=4),
+                    dbc.Col(build_badge_group(samp_modes, "info"), width=8)
+                ], className="mb-2 border-bottom pb-1"),
+                dbc.Row([
+                    dbc.Col(html.Span("Stabilized:", className="small fw-bold text-muted"), width=4),
+                    dbc.Col(build_badge_group(samp_states, "success"), width=8)
+                ])
+            ], className="p-2")
+        ], className="mb-2 shadow-sm border-0")
+        
+        node_cards.append(node_card)
 
     is_auto = host_sys_mode.lower() in ["auto", "normal", "nominal", "nominal sampling"]
     auto_outline = not is_auto
     manual_outline = is_auto
     manual_style = {"display": "none"} if is_auto else {"display": "block"}
     
-    accordion_ui = dbc.Accordion(accordions, start_collapsed=False, flush=True)
-    return accordion_ui, auto_outline, manual_outline, manual_style
+    return html.Div(node_cards), auto_outline, manual_outline, manual_style
 
 @callback(
     Output("unified-telemetry-store", "data"),

@@ -1,3 +1,5 @@
+/* assets/envops.css */
+
 /* Custom Health State Overrides */
 .bg-soft-success {
     background-color: rgba(25, 135, 84, 0.05) !important;
@@ -25,4 +27,20 @@
 /* Smooth color transitions */
 .transition-all {
     transition: all 0.3s ease-in-out;
+}
+
+/* AG Grid Modernization - Removes the ugly double-borders inside cards */
+.ag-theme-alpine {
+    --ag-borders: none;
+    --ag-header-background-color: #f8f9fa;
+    --ag-border-color: #dee2e6;
+    border: none !important;
+}
+
+.ag-theme-alpine .ag-root-wrapper {
+    border: none !important;
+}
+
+.ag-theme-alpine .ag-header {
+    border-bottom: 2px solid #dee2e6 !important;
 }
