@@ -968,10 +968,16 @@ class SamplingSystem:
                             continue
                     # ---------------------------------------------------------
 
+                    # current_vm["variablesets"][vs_name]["variables"][v_name] = {
+                    #     "type": v["type"],
+                    #     "shape": v["shape"],
+                    #     "attributes": v["attributes"].copy(),
+                    # }
                     current_vm["variablesets"][vs_name]["variables"][v_name] = {
-                        "type": v["type"],
-                        "shape": v["shape"],
-                        "attributes": v["attributes"].copy(),
+                        "type": v.get("type", "float"),
+                        "variable_type": v.get("variable_type", "sensor"), # <-- FIX: Stop stripping this!
+                        "shape": v.get("shape", ["time"]),
+                        "attributes": v.get("attributes", {}).copy(),
                     }
 
                     for sh in v["shape"]:
@@ -1672,6 +1678,8 @@ class SamplingSystem:
                     await self.device_data_update(ce)
                 elif ce["type"] == "envds.controller.data.update":
                     await self.controller_data_update(ce)
+                elif ce["type"] in ["envds.settings.update", "envds.controller.settings.update"]:
+                    await self.controller_settings_update(ce)
                 elif ce["type"] == "envds.operations.log":
                     await self.handle_operations_log(ce)
 
@@ -1830,6 +1838,50 @@ class SamplingSystem:
         except Exception as e:
             self.logger.error("device_data_update", extra={"reason": e})
         pass
+
+    async def controller_settings_update(self, ce: CloudEvent):
+        """
+        Normalizes discrete settings updates (like Shelly switch states) into 
+        standard telemetry data records so they can be processed and forward-filled
+        by the variable mapping engine.
+        """
+        try:
+            # Extract the raw settings dictionary
+            raw_settings = ce.data.get("settings", {})
+            if not raw_settings:
+                # Fallback if the payload is packed directly in the data block
+                raw_settings = ce.data
+            
+            # Reformat the settings to perfectly mimic the telemetry variables structure
+            mock_variables = {}
+            for setting_name, setting_state in raw_settings.items():
+                if isinstance(setting_state, dict) and "actual" in setting_state:
+                    # Extract the "actual" state of the setting
+                    mock_variables[setting_name] = {"data": setting_state["actual"]}
+                else:
+                    mock_variables[setting_name] = {"data": setting_state}
+
+            # Inject the timestamp so the time-indexer works
+            timestamp = ce.data.get("timestamp", get_datetime_string())
+            mock_variables["time"] = {"data": timestamp}
+
+            # Replace the event data with our normalized mock variables
+            ce.data["variables"] = mock_variables
+
+            # Extract source routing info to find the correct variable maps
+            # Format is typically: envds.<namespace>.<group>.<make::model::serial>
+            source_parts = ce["source"].split(".")
+            if len(source_parts) >= 4:
+                # Grabs the actual hardware ID (e.g., Shelly::ShellyPro3::shel28)
+                source_id = source_parts[-1] 
+                
+                self.logger.debug("controller_settings_update - normalized", extra={"source_id": source_id, "vars": mock_variables})
+                
+                # Push into the standard variable mapping pipeline
+                await self.update_by_source(source_id=source_id, source_data=ce)
+
+        except Exception as e:
+            self.logger.error("controller_settings_update", extra={"reason": str(e)})
 
     def is_valid_variable_set(self, vs_id: str, time:str) -> bool:
         valid_vs_id = self.get_valid_variableset_id_by_time(self, variableset_id=vs_id, source_time=time)
