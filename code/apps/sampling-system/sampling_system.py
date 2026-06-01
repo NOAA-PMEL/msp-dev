@@ -2510,8 +2510,12 @@ class SamplingSystem:
         try:
             # Define our Two-Tier Thresholds
             if timebase <= 5:
-                thresh_direct = 0.8 * timebase
-                thresh_calc = 1.5 * timebase  # 1.5 seconds for 1Hz
+                # thresh_direct = 0.8 * timebase
+                # thresh_calc = 1.5 * timebase  # 1.5 seconds for 1Hz
+                # --- WIDENED WINDOW FOR NETWORK LAG ---
+                thresh_direct = 4.0 
+                thresh_calc = 5.0 
+                # --------------------------------------
             else:
                 thresh_direct = 0.7 * timebase
                 thresh_calc = 1.2 * timebase
