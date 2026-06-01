@@ -164,9 +164,9 @@ class SamplingSystem:
         self.logger.info("Running SamplingSystem async setup...")
         # Create queues inside the active event loop
         # FIX: Apply backpressure bounds to queues
-        self.mqtt_buffer = asyncio.Queue(maxsize=100)
+        self.mqtt_buffer = asyncio.Queue(maxsize=1000)
         self.index_ready_buffer = asyncio.Queue(maxsize=1000)
-        self.outbound_mqtt_buffer = asyncio.Queue(maxsize=100)
+        self.outbound_mqtt_buffer = asyncio.Queue(maxsize=1000)
 
         # ADD THIS: Cache for Forward-Filling jittery data
         self.forward_fill_cache = {}
@@ -1129,20 +1129,20 @@ class SamplingSystem:
         """Publishes a CloudEvent directly to the local MQTT broker."""
         try:
             payload = to_json(ce) # Convert CloudEvent to JSON string
-            
-            # --- RING BUFFER LOGIC ---
-            # If the queue is full, aggressively drop the oldest message
-            if self.outbound_mqtt_buffer.full():
-                try:
-                    dropped_msg = self.outbound_mqtt_buffer.get_nowait()
-                    self.outbound_mqtt_buffer.task_done()
-                    self.logger.warning("Outbound queue full! Dropped oldest variableset telemetry to stay in real-time.")
-                except asyncio.QueueEmpty:
-                    pass
-            
-            # Now that there is guaranteed space, put the newest message
             await self.outbound_mqtt_buffer.put((topic, payload))
-            # -------------------------
+            # # --- RING BUFFER LOGIC ---
+            # # If the queue is full, aggressively drop the oldest message
+            # if self.outbound_mqtt_buffer.full():
+            #     try:
+            #         dropped_msg = self.outbound_mqtt_buffer.get_nowait()
+            #         self.outbound_mqtt_buffer.task_done()
+            #         self.logger.warning("Outbound queue full! Dropped oldest variableset telemetry to stay in real-time.")
+            #     except asyncio.QueueEmpty:
+            #         pass
+            
+            # # Now that there is guaranteed space, put the newest message
+            # await self.outbound_mqtt_buffer.put((topic, payload))
+            # # -------------------------
             
         except Exception as e:
             self.logger.error("send_to_mqtt error", extra={"reason": e})
@@ -1735,22 +1735,22 @@ class SamplingSystem:
                             topic = message.topic.value
                             ce["sourcepath"] = topic
 
-                            # --- RING BUFFER LOGIC ---
-                            # If the queue is full, aggressively drop the oldest message
-                            if self.mqtt_buffer.full():
-                                try:
-                                    dropped_ce = self.mqtt_buffer.get_nowait()
-                                    self.mqtt_buffer.task_done()
-                                    self.logger.warning("Queue full! Dropped oldest telemetry to stay in real-time.")
-                                except asyncio.QueueEmpty:
-                                    pass
+                            # # --- RING BUFFER LOGIC ---
+                            # # If the queue is full, aggressively drop the oldest message
+                            # if self.mqtt_buffer.full():
+                            #     try:
+                            #         dropped_ce = self.mqtt_buffer.get_nowait()
+                            #         self.mqtt_buffer.task_done()
+                            #         self.logger.warning("Queue full! Dropped oldest telemetry to stay in real-time.")
+                            #     except asyncio.QueueEmpty:
+                            #         pass
                             
-                            # Now that there is guaranteed space, put the newest message
-                            await self.mqtt_buffer.put(ce)
-                            # -------------------------
-
-
+                            # # Now that there is guaranteed space, put the newest message
                             # await self.mqtt_buffer.put(ce)
+                            # # -------------------------
+
+
+                            await self.mqtt_buffer.put(ce)
 
 
                             self.logger.debug(
@@ -2325,16 +2325,40 @@ class SamplingSystem:
         )
         return indexed_time
 
-    async def get_index_value(self, index: dict, source_time: str):
+    # async def get_index_value(self, index: dict, source_time: str):
 
-        if index["index_type"] == "time":
-            tb = index["index_value"]
+    #     if index["index_type"] == "time":
+    #         tb = index["index_value"]
 
-            # source_time = source_data.data["variables"]["time"]["data"]
-            tb_time = self.round_to_nearest_N_seconds(
-                dt_string=source_time, timebase=tb
-            )
+    #         # source_time = source_data.data["variables"]["time"]["data"]
+    #         tb_time = self.round_to_nearest_N_seconds(
+    #             dt_string=source_time, timebase=tb
+    #         )
 
+    async def get_indexed_time_value(self, index_time: int, source_time: str):
+        # --- 1. Initialize the math cache if it doesn't exist ---
+        if not hasattr(self, "_time_math_cache"):
+            self._time_math_cache = {}
+            
+        # --- 2. Check the cache first (Ultra-fast O(1) lookup) ---
+        cache_key = f"{index_time}_{source_time}"
+        if cache_key in self._time_math_cache:
+            return self._time_math_cache[cache_key]
+            
+        # --- 3. Perform the true, mathematically accurate ISO rounding ---
+        indexed_time = self.get_timebase_period(
+            dt_string=source_time, timebase=index_time
+        )
+        
+        # --- 4. Save the result and prevent memory leaks ---
+        self._time_math_cache[cache_key] = indexed_time
+        
+        # Keep the cache small. 500 entries is plenty to cover the active tick window.
+        if len(self._time_math_cache) > 500:
+            self._time_math_cache.pop(next(iter(self._time_math_cache)))
+            
+        return indexed_time
+    
     def get_timebase_period(self, dt_string: str, timebase: int) -> str:
         # self.logger.debug("get_timebase_period", extra={"dt_string": dt_string, "timebase": timebase})
         dt = string_to_datetime(dt_string)
@@ -3677,7 +3701,7 @@ class SamplingSystem:
         update_type = time_index["update_type"] 
         target_time = time_index["index_ready"]
         
-        self.logger.error(f"--- TICK START: {update_type.upper()} at {target_time} ---")
+        # self.logger.error(f"--- TICK START: {update_type.upper()} at {target_time} ---")
 
         try:
             indexed_dict = variablemap.get("indexed", {})
@@ -3731,7 +3755,7 @@ class SamplingSystem:
                         
                 has_calculated = len(calc_vars) > 0
                 
-                self.logger.error(f"EVAL {vs_name}: has_calculated={has_calculated}, calculated_vars={calc_vars}")
+                # self.logger.error(f"EVAL {vs_name}: has_calculated={has_calculated}, calculated_vars={calc_vars}")
 
                 # Tier Routing: Decide if we should publish THIS variableset right now
                 if update_type == "direct" and has_calculated:
@@ -3782,7 +3806,7 @@ class SamplingSystem:
                 event["deploymentref"] = getattr(self, "active_deployment_ref", "unknown")
                 # -----------------------------------------------------
 
-                self.logger.error(f"PUBLISHING: {vs_name} via MQTT")
+                # self.logger.error(f"PUBLISHING: {vs_name} via MQTT")
                 await self.send_to_mqtt(event["destpath"], event)
 
         except Exception as e:
