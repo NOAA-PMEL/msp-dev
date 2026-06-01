@@ -125,6 +125,7 @@ class SamplingSystem:
     """docstring for SamplingSystem."""
 
     def __init__(self):
+        self.config = SamplingSystemConfig()
         self.logger = logging.getLogger(self.__class__.__name__)
         # self.logger.setLevel(logging.DEBUG)
         numeric_level = getattr(logging, self.config.log_level.upper(), logging.INFO)
@@ -147,7 +148,7 @@ class SamplingSystem:
 
         self.http_client = None
 
-        self.config = SamplingSystemConfig()
+        # self.config = SamplingSystemConfig()
         self.configure()
         print("here:7")
 
@@ -4629,8 +4630,8 @@ async def shutdown(system_instance=None):
     # for task in task_list:
     #     print(f"cancel: {task}")
     #     task.cancel()
-    if getattr(sampling_system, 'http_client', None):
-        await sampling_system.http_client.aclose()
+    if getattr(system_instance, 'http_client', None):
+        await system_instance.http_client.aclose()
 
 async def main(config):
     # Pass our global sampling_system instance into the app state if needed, 
