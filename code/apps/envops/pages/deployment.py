@@ -199,7 +199,7 @@ def layout(deployment_id=None):
         ]),
 
         html.Div(websockets),
-        WebSocket(id="ws-system-ops", url=f"{ws_url_base}/envds/envops/ws/system-ops/main"),
+        WebSocket(id="ws-system-ops", url=f"{ws_url_base}/envds/envops/ws/deployment/{deployment_id}/c2"),
         html.Div(id="ws-c2-send-buffer", style={"display": "none"}),
         
         dcc.Interval(id="kpi-staleness-interval", interval=5 * 1000, n_intervals=0),

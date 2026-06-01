@@ -112,20 +112,22 @@ async def mqtt_listen_task():
                         L.debug("mqtt_listen_task", extra={"ce-source": source})
                         
                         # payload_str = json.dumps({"data": message.payload.decode()})
-                        payload_str = json.dumps(ce.data)
+                        # payload_str = json.dumps(ce.data)
+                        # Create both formatted strings
+                        ce_str = message.payload.decode()  # The Full CloudEvent
+                        payload_str = json.dumps(ce.data)     # Just the payload
                         L.debug("mqtt_listen_task", extra={"payload_str": payload_str})
 
-                        # 1. Route Operations Health (Status Updates) to Deployment C2 WebSockets
-                        # if "status.update" in ce_type:
+                        # 1. Route Operations Health (Status Updates)
                         if any(x in ce_type for x in ["systemmode", "samplingmode", "samplingstate", "samplingcondition"]):
-                            # You can extract deployment mapping here if needed. 
-                            # For now, broadcasting to a general deployment scope or mapping it via source.
-                            # Example: broadcast to ALL active deployment C2 dashboards
+                            
                             for dep_id in manager.active_connections.get("deployment_c2", {}).keys():
-                                await manager.broadcast(payload_str, "deployment_c2", dep_id)
+                                # deployment.py REQUIRES the full CloudEvent to group by deploymentref
+                                await manager.broadcast(ce_str, "deployment_c2", dep_id)
                             
                             for fleet_id in manager.active_connections.get("fleet", {}).keys():
-                                await manager.broadcast(payload_str, "fleet", fleet_id)
+                                # home.py expects ONLY the inner payload
+                                await manager.broadcast(data_str, "fleet", fleet_id)
 
                         # 2. Route Variableset Telemetry to Variableset WebSockets
                         elif ce_type in ["envds.variableset.data.update"]:
