@@ -80,6 +80,7 @@ class SamplingSystemConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     debug: bool = True
+    log_level: str = "INFO"
     # knative_broker: str = (
     #     "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     # )
@@ -125,7 +126,9 @@ class SamplingSystem:
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        # self.logger.setLevel(logging.DEBUG)
+        numeric_level = getattr(logging, self.config.log_level.upper(), logging.INFO)
+        self.logger.setLevel(numeric_level)
         self.logger.debug("SamplingSystem instantiated")
         self.platforms = dict()
         self.platform_layouts = dict()
