@@ -3,7 +3,7 @@ import json
 import time
 import logging
 import httpx
-from dash import html, dcc, callback, Input, Output, State, MATCH, ALL, ctx
+from dash import html, dcc, callback, Input, Output, State, MATCH, ALL, ctx, Patch
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 from dash_extensions import WebSocket
@@ -202,7 +202,7 @@ def layout(deployment_id=None):
         WebSocket(id="ws-system-ops", url=f"{ws_url_base}/envds/envops/ws/deployment/{deployment_id}/c2"),
         html.Div(id="ws-c2-send-buffer", style={"display": "none"}),
         
-        dcc.Interval(id="kpi-staleness-interval", interval=5 * 1000, n_intervals=0),
+        dcc.Interval(id="kpi-staleness-interval", interval=1000, n_intervals=0),
         dcc.Store(id="store-deployment-id", data=deployment_id),
         dcc.Store(id="c2-health-store", data={}),
         dcc.Store(id="unified-telemetry-store", data={})
@@ -353,11 +353,13 @@ def render_bundle_health(health_store, host_id):
 @callback(
     Output("unified-telemetry-store", "data"),
     Input({"type": "ws-varset", "index": ALL}, "message"),
-    State("unified-telemetry-store", "data"),
+    # REMOVED the State parameter!
     prevent_initial_call=True
 )
-def aggregate_telemetry(messages, current_store):
-    if current_store is None: current_store = {}
+def aggregate_telemetry(messages):
+    if not ctx.triggered: raise PreventUpdate
+    
+    patched_store = Patch() # Atomically updates only the keys we touch
     updated = False
     now = time.time()
     
@@ -369,13 +371,13 @@ def aggregate_telemetry(messages, current_store):
             for var_name, v_data in variables.items():
                 if var_name == "time": continue
                 safe_key = var_name.lower() 
-                current_store[safe_key] = {"val": v_data.get("data"), "ts": now}
+                patched_store[safe_key] = {"val": v_data.get("data"), "ts": now}
                 updated = True
         except Exception as e:
             L.error(f"Telemetry Parse Error: {e}")
             
     if not updated: raise PreventUpdate
-    return current_store
+    return patched_store
 
 @callback(
     Output("kpi-nav-latlon", "children"), Output("kpi-nav-spdhdg", "children"), Output("kpi-nav-pitchroll", "children"),
@@ -387,7 +389,19 @@ def aggregate_telemetry(messages, current_store):
     Input("kpi-staleness-interval", "n_intervals"), 
     prevent_initial_call=True
 )
-def update_quick_looks(telemetry_store, n_intervals):
+@callback(
+    Output("kpi-nav-latlon", "children"), Output("kpi-nav-spdhdg", "children"), Output("kpi-nav-pitchroll", "children"),
+    Output("kpi-met-wind", "children"), Output("kpi-met-temprh", "children"), Output("kpi-met-press", "children"), Output("kpi-met-rain", "children"), Output("kpi-met-irrad", "children"),
+    Output("kpi-aero-cn", "children"), Output("kpi-aero-scat", "children"), Output("kpi-aero-abs", "children"),
+    Output("kpi-gas-o3", "children"), Output("kpi-gas-co", "children"), Output("kpi-gas-nox", "children"),
+    Output("kpi-ops-relwind", "children"), Output("kpi-ops-flow", "children"), Output("kpi-ops-flowsp", "children"),
+    
+    Input("kpi-staleness-interval", "n_intervals"), # <--- The 1-second UI Tick Driver
+    State("unified-telemetry-store", "data"),       # <--- Silently read the live memory
+    
+    prevent_initial_call=True
+)
+def update_quick_looks(n_intervals, telemetry_store):
     if not telemetry_store: raise PreventUpdate
     now = time.time()
 
