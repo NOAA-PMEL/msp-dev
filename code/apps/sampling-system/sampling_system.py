@@ -160,9 +160,9 @@ class SamplingSystem:
         self.logger.info("Running SamplingSystem async setup...")
         # Create queues inside the active event loop
         # FIX: Apply backpressure bounds to queues
-        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        self.mqtt_buffer = asyncio.Queue(maxsize=100)
         self.index_ready_buffer = asyncio.Queue(maxsize=1000)
-        self.outbound_mqtt_buffer = asyncio.Queue(maxsize=2000)
+        self.outbound_mqtt_buffer = asyncio.Queue(maxsize=100)
 
         # ADD THIS: Cache for Forward-Filling jittery data
         self.forward_fill_cache = {}
@@ -172,7 +172,11 @@ class SamplingSystem:
             self._background_tasks = set()
 
         t1 = asyncio.create_task(self.get_from_mqtt_loop())
-        t2 = asyncio.create_task(self.handle_mqtt_buffer())
+        # t2 = asyncio.create_task(self.handle_mqtt_buffer())
+        # --- THE FIX: Spawn a pool of 10 workers to drain the RAM queue ---
+        for _ in range(3):
+            self._background_tasks.add(asyncio.create_task(self.handle_mqtt_buffer()))
+        # ------------------------------------------------------------------
         t3 = asyncio.create_task(self.index_monitor())
         t4 = asyncio.create_task(self.publish_local_definitions())
         t5 = asyncio.create_task(self.sync_sampling_definitions_loop())
@@ -1120,9 +1124,21 @@ class SamplingSystem:
         """Publishes a CloudEvent directly to the local MQTT broker."""
         try:
             payload = to_json(ce) # Convert CloudEvent to JSON string
-            # async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
-            #     await client.publish(topic, payload=payload)
+            
+            # --- RING BUFFER LOGIC ---
+            # If the queue is full, aggressively drop the oldest message
+            if self.outbound_mqtt_buffer.full():
+                try:
+                    dropped_msg = self.outbound_mqtt_buffer.get_nowait()
+                    self.outbound_mqtt_buffer.task_done()
+                    self.logger.warning("Outbound queue full! Dropped oldest variableset telemetry to stay in real-time.")
+                except asyncio.QueueEmpty:
+                    pass
+            
+            # Now that there is guaranteed space, put the newest message
             await self.outbound_mqtt_buffer.put((topic, payload))
+            # -------------------------
+            
         except Exception as e:
             self.logger.error("send_to_mqtt error", extra={"reason": e})
 
@@ -1555,7 +1571,7 @@ class SamplingSystem:
         
         while True:
             try:
-                
+
                 # Check for and inject missing hardware limits before broadcasting
                 await self.hydrate_local_variablemaps()
 
@@ -1713,7 +1729,25 @@ class SamplingSystem:
                             ce = from_json(message.payload)
                             topic = message.topic.value
                             ce["sourcepath"] = topic
+
+                            # --- RING BUFFER LOGIC ---
+                            # If the queue is full, aggressively drop the oldest message
+                            if self.mqtt_buffer.full():
+                                try:
+                                    dropped_ce = self.mqtt_buffer.get_nowait()
+                                    self.mqtt_buffer.task_done()
+                                    self.logger.warning("Queue full! Dropped oldest telemetry to stay in real-time.")
+                                except asyncio.QueueEmpty:
+                                    pass
+                            
+                            # Now that there is guaranteed space, put the newest message
                             await self.mqtt_buffer.put(ce)
+                            # -------------------------
+
+
+                            # await self.mqtt_buffer.put(ce)
+
+
                             self.logger.debug(
                                 "get_from_mqtt_loop",
                                 extra={"cetype": ce["type"], "topic": topic},
