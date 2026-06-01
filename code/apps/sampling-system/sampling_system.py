@@ -2986,7 +2986,6 @@ class SamplingSystem:
         map_type = "direct"
         try:
             target_time = time_index["index_ready"]
-            timebase = time_index["index_value"]
 
             if data_buffer is not None:
                 indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
@@ -2997,38 +2996,25 @@ class SamplingSystem:
             v_type = var_record.get("type", "float")
             shape = var_record.get("shape", ["time"])
             
-            # FIX: Get index_method from raw definition, as load_variablemap strips it
+            # Get index_method from raw definition
             raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
             idx_meth_raw = raw_var_def.get("index_method", "average")
             if isinstance(idx_meth_raw, list) and len(idx_meth_raw) > 0:
-                index_method = idx_meth_raw[-1].lower() # e.g. ["round", "average"] -> "average"
+                index_method = idx_meth_raw[-1].lower()
             elif isinstance(idx_meth_raw, str):
                 index_method = idx_meth_raw.lower()
             else:
                 index_method = "average"
 
-            cache_key = f"{variableset_name}::{variable_name}"
             val = None
             
-            # --- ZOH / FORWARD-FILL LOGIC ---
+            # --- CLEAN, RAW EVALUATION LOGIC (NO ZOH) ---
             if len(indexed_data) == 0:
                 if v_type in ["string", "str", "char"]:
                     val = ""
                 else:
-                    last_record = getattr(self, "forward_fill_cache", {}).get(cache_key)
-                    if last_record:
-                        target_dt = string_to_datetime(target_time)
-                        last_dt = string_to_datetime(last_record["time"])
-                        age_seconds = (target_dt - last_dt).total_seconds()
-                        
-                        if age_seconds <= (timebase * 1.5):
-                            val = last_record["val"]
-                        else:
-                            val = None 
-                    else:
-                        val = None
+                    val = None
             
-            # --- STANDARD EVALUATION LOGIC ---
             elif len(indexed_data) == 1:
                 val = indexed_data[0]
                 
@@ -3053,12 +3039,6 @@ class SamplingSystem:
                                 val = indexed_data[-1]
                         else:
                             val = round(sum(indexed_data) / len(indexed_data), 3)
-
-            # --- SAVE TO CACHE (Only if new data actually arrived) ---
-            if len(indexed_data) > 0 and v_type not in ["string", "str", "char"] and val is not None:
-                if not hasattr(self, "forward_fill_cache"):
-                    self.forward_fill_cache = {}
-                self.forward_fill_cache[cache_key] = {"val": val, "time": target_time}
 
             variableset_record["variables"][variable_name]["data"] = val
 
