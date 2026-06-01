@@ -183,7 +183,8 @@ class SamplingSystem:
         t6 = asyncio.create_task(self.outbound_mqtt_worker())
         
         # Store strong references
-        self._background_tasks.update({t1, t2, t3, t4, t5, t6})
+        # self._background_tasks.update({t1, t2, t3, t4, t5, t6})
+        self._background_tasks.update({t1, t3, t4, t5, t6})
         
         self.logger.info("SamplingSystem background tasks started successfully.")
 
@@ -4620,7 +4621,7 @@ class SamplingSystem:
     #     return {"results": []}
 
 
-async def shutdown():
+async def shutdown(system_instance=None):
     print("shutting down")
     # for task in task_list:
     #     print(f"cancel: {task}")
