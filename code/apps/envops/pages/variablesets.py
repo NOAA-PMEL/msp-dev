@@ -1,7 +1,7 @@
 import dash
 import json
 import logging
-from dash import html, dcc, callback, Input, Output, State, MATCH, ALL, ctx
+from dash import html, dcc, callback, Input, Output, State, MATCH, ALL, ctx, Patch
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 from dash_extensions import WebSocket
@@ -359,6 +359,7 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
     except Exception:
         return default_fig
 
+# NOTE: For 1D graphs, `extendData` is naturally optimal and functions perfectly as a patch.
 @callback(
     Output({"type": "system-graph-1d", "index": ALL}, "extendData"),
     Input({"type": "variableset-data-buffer", "index": ALL}, "data"),
@@ -410,6 +411,7 @@ def update_graph_1d(buffers_data, selected_values):
     except Exception:
         raise PreventUpdate
 
+# NOTE: Uses rowTransaction, perfectly optimal. Does not cause flashing. 
 @callback(
     Output({"type": "system-data-table-1d", "index": MATCH}, "rowTransaction"),
     Input({"type": "variableset-data-buffer", "index": MATCH}, "data"),
@@ -487,6 +489,7 @@ def select_graph_2d(z_axis_val, varset_defs, graph_id):
         L.error(f"select_graph_2d error: {e}")
         raise PreventUpdate
 
+# --- REWRITTEN TO USE SURGICAL PATCH INSTEAD OF FULL FIGURE RENDER ---
 @callback(
     Output({"type": "graph-2d-heatmap", "index": ALL}, "figure", allow_duplicate=True),
     Input({"type": "variableset-data-buffer", "index": ALL}, "data"),
@@ -530,7 +533,12 @@ def update_graph_2d_heatmap(buffers_data, z_axis_list, varset_defs, current_figs
             heatmaps.append(dash.no_update)
             continue
 
-        for nx in x: current_fig["data"][0]["x"].append(nx)
+        # Initialize the Magic Patch!
+        heatmap_patch = Patch()
+
+        # Update the X-axis Time Column
+        for nx in x: 
+            heatmap_patch["data"][0]["x"].append(nx)
 
         y_is_coord = False
         def_vars = varset_defs.get(short_id, {}).get("variables", {})
@@ -545,11 +553,14 @@ def update_graph_2d_heatmap(buffers_data, z_axis_list, varset_defs, current_figs
         orig_z = variables[z_axis]["data"]
         if not isinstance(orig_z, list): orig_z = [orig_z] 
 
+        # Surgically append the new Z data values to each respective Y row
         for yi, yval in enumerate(y):
-            try: current_fig["data"][0]["z"][yi].append(orig_z[yi])
-            except IndexError: pass
+            try: 
+                heatmap_patch["data"][0]["z"][yi].append(orig_z[yi])
+            except IndexError: 
+                pass
 
-        heatmaps.append(current_fig)
+        heatmaps.append(heatmap_patch)
 
     if all(h == dash.no_update for h in heatmaps): raise PreventUpdate
     return heatmaps
