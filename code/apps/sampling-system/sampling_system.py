@@ -116,6 +116,13 @@ class SamplingSystemConfig(BaseSettings):
 
     knative_broker: str | None = None
 
+    # --- DYNAMIC TICK DELAYS ---
+    # How long to wait after a bucket closes for network packets to arrive.
+    # Defaults are optimized for Edge hardware (Local MQTT = ~0ms latency).
+    tick_delay_direct: float = 0.3  
+    tick_delay_calc: float = 1.0    
+    # ---------------------------
+
     class Config:
         env_prefix = "SAMPLING_SYSTEM_"
         case_sensitive = False
@@ -1789,6 +1796,8 @@ class SamplingSystem:
                     await self.controller_data_update(ce)
                 elif ce["type"] in ["envds.settings.update", "envds.controller.settings.update"]:
                     await self.controller_settings_update(ce)
+                elif ce["type"] == "envds.variableset.data.update":
+                    await self.handle_foreign_variableset(ce)
                 elif ce["type"] == "envds.operations.log":
                     await self.handle_operations_log(ce)
 
@@ -1991,6 +2000,19 @@ class SamplingSystem:
 
         except Exception as e:
             self.logger.error("controller_settings_update", extra={"reason": str(e)})
+
+    async def handle_foreign_variableset(self, ce: CloudEvent):
+        """Caches variablesets evaluated by other nodes so we can use them in local calculations."""
+        try:
+            if not hasattr(self, "foreign_vsets"):
+                self.foreign_vsets = {}
+                
+            vset_name = ce.data.get("metadata", {}).get("name", "")
+            if vset_name:
+                self.foreign_vsets[vset_name] = ce.data
+                
+        except Exception as e:
+            self.logger.error("handle_foreign_variableset", extra={"reason": str(e)})
 
     def is_valid_variable_set(self, vs_id: str, time:str) -> bool:
         valid_vs_id = self.get_valid_variableset_id_by_time(self, variableset_id=vs_id, source_time=time)
@@ -2507,20 +2529,33 @@ class SamplingSystem:
     #         await asyncio.sleep(0.1)
 
     async def index_time_monitor(self, timebase: int):
+        # try:
+        #     # Define our Two-Tier Thresholds
+        #     if timebase <= 5:
+        #         # thresh_direct = 0.8 * timebase
+        #         # thresh_calc = 1.5 * timebase  # 1.5 seconds for 1Hz
+        #         # --- WIDENED WINDOW FOR NETWORK LAG ---
+        #         thresh_direct = 4.0 
+        #         thresh_calc = 5.0 
+        #         # --------------------------------------
+        #     else:
+        #         thresh_direct = 0.7 * timebase
+        #         thresh_calc = 1.2 * timebase
+        # except Exception as e:
+        #     self.logger.error("index_time_monitor-init", extra={"reason": str(e)})
+
         try:
-            # Define our Two-Tier Thresholds
-            if timebase <= 5:
-                # thresh_direct = 0.8 * timebase
-                # thresh_calc = 1.5 * timebase  # 1.5 seconds for 1Hz
-                # --- WIDENED WINDOW FOR NETWORK LAG ---
-                thresh_direct = 4.0 
-                thresh_calc = 5.0 
-                # --------------------------------------
-            else:
-                thresh_direct = 0.7 * timebase
-                thresh_calc = 1.2 * timebase
+            # --- UNIVERSAL MATH (No more if/else limits) ---
+            # 1. The rounded time bucket mathematically finishes accumulating data at (timebase / 2.0)
+            bucket_close = timebase / 2.0
+            
+            # 2. Add our configurable grace period for network transit
+            thresh_direct = bucket_close + self.config.tick_delay_direct
+            thresh_calc = bucket_close + self.config.tick_delay_calc
+            # -----------------------------------------------
         except Exception as e:
             self.logger.error("index_time_monitor-init", extra={"reason": str(e)})
+
 
         # Dictionary to track multiple overlapping time periods safely
         active_periods = {}
@@ -4078,7 +4113,18 @@ class SamplingSystem:
                             else:
                                 val = target_var_def.get("data")
                     
-                    # 4. Fallback to local
+                    # --- NEW: 4. Hunt in the foreign variableset cache (Bridged from Payload 01/02) ---
+                    elif hasattr(self, "foreign_vsets") and target_vset_name in self.foreign_vsets:
+                        target_vset = self.foreign_vsets[target_vset_name]
+                        if real_src_var in target_vset["variables"]:
+                            target_var_def = target_vset["variables"][real_src_var]
+                            var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+                            if var_type == "coordinate":
+                                val = target_var_def.get("attributes", {}).get("data", {}).get("data")
+                            else:
+                                val = target_var_def.get("data")
+
+                    # 5. Fallback to local
                     elif real_src_var in variableset_record["variables"]:
                         target_var_def = variableset_record["variables"][real_src_var]
                         
