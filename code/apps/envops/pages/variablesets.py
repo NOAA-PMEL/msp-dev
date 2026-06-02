@@ -1,6 +1,7 @@
 import dash
 import json
 import logging
+import time
 from dash import html, dcc, callback, Input, Output, State, MATCH, ALL, ctx, Patch
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
@@ -101,43 +102,44 @@ def build_tables(table_columns_dict):
         table_list.append(
             dbc.AccordionItem([
                 dag.AgGrid(
-                    id={"type": "system-data-table-1d", "index": varset_id}, 
+                    id={"type": "data-table", "varset": varset_id}, 
                     rowData=[], columnDefs=columns, columnSizeOptions="autoSize",
-                    dashGridOptions={"domLayout": "autoHeight"},
-                    style={"height": None, "maxHeight": "400px", "overflow": "auto"}
+                    # FIX: Fixed height + getRowId completely eliminates flashing!
+                    dashGridOptions={"domLayout": "normal"},
+                    style={"height": "350px", "width": "100%"},
+                    getRowId="params.data.id" 
                 )
             ], title=f"Data Table ({varset_id})")
         )
     return table_list
 
-def build_graph_1d(dropdown_list, xaxis="time"):
+def build_graph_1d(dropdown_list):
     return dbc.Card([
         dbc.CardHeader([
             html.Span("Select Y-Axis Variable:", className="small fw-bold text-muted me-2"),
             dcc.Dropdown(
-                id={"type": "system-graph-1d-dropdown", "index": xaxis},
+                id="graph-1d-dropdown",
                 options=dropdown_list, value="",
                 className="mt-1"
             )
         ], className="bg-light"),
         dbc.CardBody([
             dcc.Graph(
-                id={"type": "system-graph-1d", "index": xaxis},
+                id="graph-1d",
                 figure=go.Figure(data=go.Scatter(x=[], y=[], type="scatter")),
                 style={"height": 450}
             )
         ], className="p-0")
     ], className="border-0 shadow-sm mb-3")
 
-def build_graph_2d(dropdown_list, xaxis="time", yaxis=""):
-    idx = f"{xaxis}::{yaxis}"
+def build_graph_2d(dropdown_list, dim_key):
     return dbc.Card([
         dbc.CardHeader([
             html.Span("Select Z-Axis Variable:", className="small fw-bold text-muted me-2"),
-            dcc.Dropdown(id={"type": "graph-2d-dropdown", "index": idx}, options=dropdown_list, value="", className="mt-1")
+            dcc.Dropdown(id={"type": "graph-2d-dropdown", "dim": dim_key}, options=dropdown_list, value="", className="mt-1")
         ], className="bg-light"),
         dbc.CardBody([
-            dcc.Graph(id={"type": "graph-2d-heatmap", "index": idx}, style={"height": 450})
+            dcc.Graph(id={"type": "graph-2d-heatmap", "dim": dim_key}, style={"height": 450})
         ], className="p-0")
     ], className="border-0 shadow-sm mb-3")
 
@@ -151,14 +153,14 @@ def build_graphs(layout_options, unique_varsets):
                 html.Div([
                     html.Span("Filter Variablesets:", className="small fw-bold text-muted d-block mb-2"),
                     dbc.Checklist(
-                        id={"type": "graph-varset-filter", "index": "shared"},
+                        id="graph-varset-filter",
                         options=[{"label": f" {v}", "value": v} for v in unique_varsets],
                         value=unique_varsets, inline=True,
                         labelClassName="me-3 fw-bold text-primary",
                         inputClassName="me-1"
                     )
                 ], className="p-3 bg-light border rounded mb-3"),
-                build_graph_1d(opts["variable-list"], xaxis="shared")
+                build_graph_1d(opts["variable-list"])
             ], title="1-Dimensional Telemetry (Combined)")
         )
 
@@ -168,7 +170,7 @@ def build_graphs(layout_options, unique_varsets):
             title = f"2-Dimensional Telemetry ({varset_id}: time vs {dim_name})"
             graph_list.append(
                 dbc.AccordionItem(
-                    [build_graph_2d(opts["variable-list"], xaxis="time", yaxis=dim_key)],
+                    [build_graph_2d(opts["variable-list"], dim_key)],
                     title=title
                 )
             )
@@ -276,36 +278,108 @@ def layout(deployment_id=None):
 
         # --- HIDDEN STORES & WEBSOCKETS ---
         dcc.Store(id="master-dropdown-options", data=shared_graph_dropdown),
-        dcc.Store(id="system-graph-axes", data={}),
         dcc.Store(id="variableset-defs-store", data=all_defs),
 
         html.Div([
-            WebSocket(id={"type": "ws-variableset-instance", "index": v_id}, url=f"{ws_url_base}/envds/envops/ws/variableset/{v_id}")
+            WebSocket(id={"type": "ws-variableset", "varset": v_id}, url=f"{ws_url_base}/envds/envops/ws/variableset/{v_id}")
             for v_id in unique_varsets
         ]),
         html.Div([
-            dcc.Store(id={"type": "variableset-data-buffer", "index": v_id}, data={})
+            dcc.Store(id={"type": "table-buffer", "varset": v_id}, data={})
             for v_id in unique_varsets
-        ])
+        ]),
+        dcc.Store(id="graph-1d-buffer", data={})
     ])
+
 
 # --- CALLBACKS ---
 
+# 1. Route Table Buffers (Perfectly Isolated)
 @callback(
-    Output({"type": "variableset-data-buffer", "index": MATCH}, "data"),
-    Input({"type": "ws-variableset-instance", "index": MATCH}, "message"),
+    Output({"type": "table-buffer", "varset": MATCH}, "data"),
+    Input({"type": "ws-variableset", "varset": MATCH}, "message"),
     prevent_initial_call=True
 )
-def update_variableset_buffers(message): 
+def update_table_buffers(message): 
     if not message or "data" not in message: raise PreventUpdate
+    try: return json.loads(message["data"])
+    except: raise PreventUpdate
+
+# 2. Update Tables (No Flashing, Fast Row Splice)
+@callback(
+    Output({"type": "data-table", "varset": MATCH}, "rowData"),
+    Input({"type": "table-buffer", "varset": MATCH}, "data"),
+    State({"type": "data-table", "varset": MATCH}, "rowData"),
+    State({"type": "data-table", "varset": MATCH}, "columnDefs"),
+    prevent_initial_call=True
+)
+def update_tables(buffer_data, current_rows, col_defs):
+    if not buffer_data: raise PreventUpdate
     try:
-        return [json.loads(message["data"])]
+        variables = buffer_data.get("variables", {})
+        data = {}
+        for col in col_defs:
+            name = col["field"]
+            data[name] = variables.get(name, {}).get("data", "")
+        
+        # Unique ID tells AG Grid to update text instead of thrashing HTML nodes
+        data["id"] = data.get("time", str(time.time()))
+        
+        current_rows = current_rows or []
+        current_rows.insert(0, data)
+        return current_rows[:15] # Keep UI snappy and DOM small
+    except Exception:
+        raise PreventUpdate
+
+# 3. Route to 1D Graph Buffer (Fixes the 5-Second Lag!)
+@callback(
+    Output("graph-1d-buffer", "data"),
+    Input({"type": "ws-variableset", "varset": ALL}, "message"),
+    State("graph-1d-dropdown", "value"),
+    prevent_initial_call=True
+)
+def route_graph_1d(messages, selected_val):
+    if not selected_val: raise PreventUpdate
+    target_varset = selected_val.rsplit("::", 1)[0]
+    
+    # Fast-fail: We ONLY parse the message if it came from the exact WebSocket you are looking at
+    for trigger in ctx.triggered:
+        prop_id = trigger["prop_id"]
+        if target_varset in prop_id:
+            val = trigger["value"]
+            if val and "data" in val:
+                try: return json.loads(val["data"])
+                except: pass
+    raise PreventUpdate
+
+# 4. Update 1D Graph (Evaluates 1 time per second!)
+@callback(
+    Output("graph-1d", "extendData"),
+    Input("graph-1d-buffer", "data"),
+    State("graph-1d-dropdown", "value"),
+    prevent_initial_call=True
+)
+def update_graph_1d(event_data, selected_value):
+    if not event_data or not selected_value: raise PreventUpdate
+    try:
+        _, y_axis = selected_value.rsplit("::", 1)
+        variables = event_data.get("variables", {})
+        
+        x_val = variables.get("time", {}).get("data")
+        y_val = variables.get(y_axis, {}).get("data")
+        
+        if x_val is None or y_val is None: raise PreventUpdate
+        
+        if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[-1]
+        if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[-1]
+        
+        return ({"x": [[x_val]], "y": [[y_val]]}, [0], 1000)
     except Exception:
         raise PreventUpdate
 
 @callback(
-    Output({"type": "system-graph-1d-dropdown", "index": MATCH}, "options"),
-    Input({"type": "graph-varset-filter", "index": MATCH}, "value"),
+    Output("graph-1d-dropdown", "options"),
+    Input("graph-varset-filter", "value"),
     State("master-dropdown-options", "data"),
     prevent_initial_call=False
 )
@@ -320,15 +394,12 @@ def filter_graph_dropdown(selected_varsets, master_options):
     return filtered_options
 
 @callback(
-    Output({"type": "system-graph-1d", "index": MATCH}, "figure"),
-    Input({"type": "system-graph-1d-dropdown", "index": MATCH}, "value"),
-    [
-        State("system-graph-axes", "data"),
-        State("variableset-defs-store", "data"),
-        State({"type": "system-graph-1d-dropdown", "index": MATCH}, "id"),
-    ],
+    Output("graph-1d", "figure"),
+    Input("graph-1d-dropdown", "value"),
+    State("variableset-defs-store", "data"),
+    prevent_initial_call=False
 )
-def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
+def select_graph_1d(selected_value, variableset_defs):
     default_fig = go.Figure(data=go.Scatter(x=[], y=[], type="scatter", mode="lines+markers"), layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}})
     if not selected_value: return default_fig
     
@@ -359,83 +430,70 @@ def select_graph_1d(selected_value, graph_axes, variableset_defs, graph_id):
     except Exception:
         return default_fig
 
-# NOTE: For 1D graphs, `extendData` is naturally optimal and functions perfectly as a patch.
+# 5. Route to 2D Graph Buffer (Isolated Patch logic)
 @callback(
-    Output({"type": "system-graph-1d", "index": ALL}, "extendData"),
-    Input({"type": "variableset-data-buffer", "index": ALL}, "data"),
-    State({"type": "system-graph-1d-dropdown", "index": ALL}, "value"),
+    Output({"type": "graph-2d-heatmap", "dim": MATCH}, "figure", allow_duplicate=True),
+    Input({"type": "ws-variableset", "varset": ALL}, "message"),
+    State({"type": "graph-2d-dropdown", "dim": MATCH}, "value"),
+    State({"type": "graph-2d-heatmap", "dim": MATCH}, "figure"),
+    State({"type": "graph-2d-heatmap", "dim": MATCH}, "id"),
+    State("variableset-defs-store", "data"),
     prevent_initial_call=True
 )
-def update_graph_1d(buffers_data, selected_values):
-    if not ctx.triggered: raise PreventUpdate
-    triggered_id = ctx.triggered_id
-    if not triggered_id or not isinstance(triggered_id, dict): raise PreventUpdate
+def update_graph_2d_heatmap(messages, z_axis_val, current_fig, graph_id, varset_defs):
+    if not z_axis_val or not current_fig: raise PreventUpdate
+    short_id, z_axis = z_axis_val.rsplit("::", 1)
+    
+    # Fast-fail: Find the triggered message for THIS variableset only
+    triggered_payload = None
+    for trigger in ctx.triggered:
+        if short_id in trigger["prop_id"]:
+            val = trigger["value"]
+            if val and "data" in val:
+                try:
+                    triggered_payload = json.loads(val["data"])
+                except: pass
+    
+    if not triggered_payload: raise PreventUpdate
+    
+    variables = triggered_payload.get("variables", {})
+    if "time" not in variables or z_axis not in variables: raise PreventUpdate
+    
+    x = variables["time"]["data"]
+    if not isinstance(x, list): x = [x]
+    
+    if len(current_fig["data"]) > 0 and x[0] in current_fig["data"][0].get("x", []):
+        raise PreventUpdate
         
-    incoming_short_id = str(triggered_id.get("index"))
-    triggered_val = ctx.triggered[0].get("value")
-    if not triggered_val: raise PreventUpdate
-
-    try:
-        event_data = triggered_val[0]
-        variables = event_data.get("variables", {})
-        figs_to_update = []
-
-        for selected_value in selected_values:
-            if not selected_value:
-                figs_to_update.append(dash.no_update)
-                continue
-
-            try: varset_id, y_axis = selected_value.rsplit("::", 1)
-            except ValueError:
-                figs_to_update.append(dash.no_update)
-                continue
-
-            if incoming_short_id != str(varset_id):
-                figs_to_update.append(dash.no_update)
-                continue
-
-            x_val = variables.get("time", {}).get("data")
-            y_val = variables.get(y_axis, {}).get("data")
-
-            if not x_val or y_val is None:
-                figs_to_update.append(dash.no_update)
-                continue
-
-            if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[-1]
-            if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[-1]
-
-            figs_to_update.append(( {"x": [[x_val]], "y": [[y_val]]}, [0], 1000 ))
-
-        if not any(f != dash.no_update for f in figs_to_update): raise PreventUpdate
-        return figs_to_update
-    except Exception:
-        raise PreventUpdate
-
-# NOTE: Uses rowTransaction, perfectly optimal. Does not cause flashing. 
-@callback(
-    Output({"type": "system-data-table-1d", "index": MATCH}, "rowTransaction"),
-    Input({"type": "variableset-data-buffer", "index": MATCH}, "data"),
-    State({"type": "system-data-table-1d", "index": MATCH}, "columnDefs"),
-    prevent_initial_call=True
-)
-def update_table_1d(buffer_data, col_defs):
-    if not buffer_data: raise PreventUpdate
-    try:
-        variables = buffer_data[0].get("variables", {})
-        data = {}
-        for col in col_defs:
-            name = col["field"]
-            data[name] = variables.get(name, {}).get("data", "")
-        return {"add": [data], "addIndex": 0}
-    except Exception:
-        raise PreventUpdate
+    heatmap_patch = Patch()
+    for nx in x: heatmap_patch["data"][0]["x"].append(nx)
+    
+    y_axis = graph_id["dim"].split("::")[1]
+    y_is_coord = False
+    def_vars = varset_defs.get(short_id, {}).get("variables", {})
+    if y_axis in def_vars and def_vars[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+        y_is_coord = True
+        
+    y = current_fig["data"][0].get("y", [])
+    if len(y) == 0:
+        if y_is_coord: y = def_vars[y_axis].get("data", [])
+        else: y = variables[y_axis]["data"]
+        
+    orig_z = variables[z_axis]["data"]
+    if not isinstance(orig_z, list): orig_z = [orig_z]
+    
+    for yi, yval in enumerate(y):
+        try: heatmap_patch["data"][0]["z"][yi].append(orig_z[yi])
+        except IndexError: pass
+        
+    return heatmap_patch
 
 @callback(
-    Output({"type": "graph-2d-heatmap", "index": MATCH}, "figure", allow_duplicate=True),
-    Input({"type": "graph-2d-dropdown", "index": MATCH}, "value"),
+    Output({"type": "graph-2d-heatmap", "dim": MATCH}, "figure", allow_duplicate=True),
+    Input({"type": "graph-2d-dropdown", "dim": MATCH}, "value"),
     [
         State("variableset-defs-store", "data"),
-        State({"type": "graph-2d-dropdown", "index": MATCH}, "id"),
+        State({"type": "graph-2d-dropdown", "dim": MATCH}, "id"),
     ],
     prevent_initial_call=True,
 )
@@ -444,8 +502,7 @@ def select_graph_2d(z_axis_val, varset_defs, graph_id):
 
     try:
         short_id, z_axis = z_axis_val.rsplit("::", 1)
-        _, y_axis_val = graph_id["index"].split("::", 1) 
-        _, y_axis = y_axis_val.rsplit("::", 1)
+        y_axis = graph_id["dim"].split("::")[1]
 
         x, y, orig_z = [], [], []
         y_is_coord = False
@@ -488,79 +545,3 @@ def select_graph_2d(z_axis_val, varset_defs, graph_id):
     except Exception as e:
         L.error(f"select_graph_2d error: {e}")
         raise PreventUpdate
-
-# --- REWRITTEN TO USE SURGICAL PATCH INSTEAD OF FULL FIGURE RENDER ---
-@callback(
-    Output({"type": "graph-2d-heatmap", "index": ALL}, "figure", allow_duplicate=True),
-    Input({"type": "variableset-data-buffer", "index": ALL}, "data"),
-    [
-        State({"type": "graph-2d-dropdown", "index": ALL}, "value"),
-        State("variableset-defs-store", "data"),
-        State({"type": "graph-2d-heatmap", "index": ALL}, "figure"),
-        State({"type": "graph-2d-heatmap", "index": ALL}, "id"),
-    ],
-    prevent_initial_call=True,
-)
-def update_graph_2d_heatmap(buffers_data, z_axis_list, varset_defs, current_figs, graph_ids):
-    if not ctx.triggered: raise PreventUpdate
-    incoming_short_id = str(ctx.triggered_id.get("index"))
-    triggered_val = ctx.triggered[0].get("value")
-    if not triggered_val: raise PreventUpdate
-
-    heatmaps = []
-    for z_axis_val, graph_id, current_fig in zip(z_axis_list, graph_ids, current_figs):
-        if not current_fig or not z_axis_val:
-            heatmaps.append(dash.no_update)
-            continue
-
-        short_id, z_axis = z_axis_val.rsplit("::", 1)
-        if incoming_short_id != short_id:
-            heatmaps.append(dash.no_update)
-            continue
-
-        _, y_axis_val = graph_id["index"].split("::", 1)
-        _, y_axis = y_axis_val.rsplit("::", 1)
-
-        variables = triggered_val[0].get("variables", {})
-        if "time" not in variables or z_axis not in variables:
-            heatmaps.append(dash.no_update)
-            continue
-
-        x = variables["time"]["data"]
-        if not isinstance(x, list): x = [x]
-
-        if x[0] in current_fig["data"][0].get("x", []):
-            heatmaps.append(dash.no_update)
-            continue
-
-        # Initialize the Magic Patch!
-        heatmap_patch = Patch()
-
-        # Update the X-axis Time Column
-        for nx in x: 
-            heatmap_patch["data"][0]["x"].append(nx)
-
-        y_is_coord = False
-        def_vars = varset_defs.get(short_id, {}).get("variables", {})
-        if y_axis in def_vars and def_vars[y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-            y_is_coord = True
-
-        y = current_fig["data"][0].get("y", [])
-        if len(y) == 0:
-            if y_is_coord: y = def_vars[y_axis].get("data", [])
-            else: y = variables[y_axis]["data"]
-
-        orig_z = variables[z_axis]["data"]
-        if not isinstance(orig_z, list): orig_z = [orig_z] 
-
-        # Surgically append the new Z data values to each respective Y row
-        for yi, yval in enumerate(y):
-            try: 
-                heatmap_patch["data"][0]["z"][yi].append(orig_z[yi])
-            except IndexError: 
-                pass
-
-        heatmaps.append(heatmap_patch)
-
-    if all(h == dash.no_update for h in heatmaps): raise PreventUpdate
-    return heatmaps
