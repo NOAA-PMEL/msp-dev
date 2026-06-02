@@ -252,6 +252,26 @@ async def mqtt_listen_task():
                             sensor_id = source.split(".")[-1]
                             await manager.broadcast(payload_str, "sensor", sensor_id)
 
+                        # 1. Route Sensor Settings
+                        elif ce_type == "envds.sensor.settings.update":
+                            attrs = ce.data.get("attributes", {})
+                            make = attrs.get("make", {}).get("data", "unknown")
+                            model = attrs.get("model", {}).get("data", "unknown")
+                            sn = attrs.get("serial_number", {}).get("data", "unknown")
+                            
+                            device_id = f"{make}::{model}::{sn}"
+                            await manager.broadcast(payload_str, "sensor", device_id)
+                            
+                        # 2. Route Controller Settings
+                        elif ce_type == "envds.controller.settings.update":
+                            attrs = ce.data.get("attributes", {})
+                            make = attrs.get("make", {}).get("data", "unknown")
+                            model = attrs.get("model", {}).get("data", "unknown")
+                            sn = attrs.get("serial_number", {}).get("data", "unknown")
+                            
+                            controller_id = f"{make}::{model}::{sn}"
+                            await manager.broadcast(payload_str, "controller", controller_id)
+                            
                     except Exception as e:
                         L.error(f"Error processing MQTT message on topic {topic}: {e}")
                         
@@ -318,22 +338,65 @@ async def ws_variableset(websocket: WebSocket, variableset_id: str):
     except WebSocketDisconnect:
         manager.disconnect(websocket, "variableset", variableset_id)
 
-@app.websocket("/ws/sensor/{sensor_id}")
-async def ws_sensor(websocket: WebSocket, sensor_id: str):
-    await manager.connect(websocket, "sensor", sensor_id)
+@app.websocket("/ws/sensor/{device_id}")
+async def ws_sensor(websocket: WebSocket, device_id: str):
+    await manager.connect(websocket, "sensor", device_id)
     try:
         while True:
             data = await websocket.receive_text()
-            # Handle settings/config updates from the raw sensor page
             try:
-                event = json.loads(data)
-                topic = event.get("destpath")
-                if topic:
-                    await mqtt_publish_queue.put((topic, data))
-            except json.JSONDecodeError:
-                pass
+                payload = json.loads(data)
+                destpath = payload.get("destpath")
+                if destpath:
+                    # Construct a STRICT CloudEvent envelope matching your DAQ library
+                    ce_payload = {
+                        "specversion": "1.0",
+                        "id": str(ULID()),
+                        "source": payload.get("source", f"envds.{config.daq_id}.dashboard"),
+                        "type": "envds.sensor.settings.request",
+                        "datacontenttype": "application/json",
+                        "deviceid": payload.get("deviceid", ""), # Required by sensor.py
+                        "destpath": "envds/sensor/settings/request",
+                        "data": payload.get("data", {})
+                    }
+                    
+                    async with Client(config.mqtt_broker, port=config.mqtt_port) as client:
+                        await client.publish(destpath, payload=json.dumps(ce_payload))
+                        L.debug(f"Bridged Sensor Settings to MQTT: {destpath}")
+            except Exception as e:
+                L.error(f"Sensor Bridge Error: {e}")
     except WebSocketDisconnect:
-        manager.disconnect(websocket, "sensor", sensor_id)
+        manager.disconnect(websocket, "sensor", device_id)
+
+@app.websocket("/ws/controller/{controller_id}")
+async def ws_controller(websocket: WebSocket, controller_id: str):
+    await manager.connect(websocket, "controller", controller_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                payload = json.loads(data)
+                destpath = payload.get("destpath")
+                if destpath:
+                    # Construct a STRICT CloudEvent envelope matching your DAQ library
+                    ce_payload = {
+                        "specversion": "1.0",
+                        "id": str(ULID()),
+                        "source": payload.get("source", f"envds.{config.daq_id}.dashboard"),
+                        "type": "envds.controller.settings.request",
+                        "datacontenttype": "application/json",
+                        "controllerid": payload.get("controllerid", ""), # Required by controller.py
+                        "destpath": "envds/controller/settings/request",
+                        "data": payload.get("data", {})
+                    }
+                    
+                    async with Client(config.mqtt_broker, port=config.mqtt_port) as client:
+                        await client.publish(destpath, payload=json.dumps(ce_payload))
+                        L.debug(f"Bridged Controller Settings to MQTT: {destpath}")
+            except Exception as e:
+                L.error(f"Controller Bridge Error: {e}")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, "controller", controller_id)
 
 @app.websocket("/ws/fleet/telemetry")
 async def ws_fleet_telemetry(websocket: WebSocket):

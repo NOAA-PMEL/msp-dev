@@ -243,7 +243,8 @@ def build_graphs(layout_options):
 # --- DATA FETCHERS ---
 
 def get_controller_data(controller_id: str):
-    query = {"device_id": controller_id}
+    # FIX: Backend expects "controller_id"
+    query = {"controller_id": controller_id}
     url = f"http://{datastore_url}/controller/data/get/"
     try:
         timeout = httpx.Timeout(30.0, read=None)
@@ -256,7 +257,8 @@ def get_controller_data(controller_id: str):
     return []
 
 def get_controller_instance(controller_id: str):
-    query = {"device_id": controller_id}
+    # FIX: Backend expects "controller_id"
+    query = {"controller_id": controller_id}
     url = f"http://{datastore_url}/controller-instance/registry/get/"
     try:
         timeout = httpx.Timeout(30.0, read=None)
@@ -294,7 +296,7 @@ def get_controller_definition(controller_definition_id: str):
     except Exception as e:
         L.error("get_controller_definition", extra={"reason": e})
         return {}
-
+    
 # --- LAYOUT ---
 
 def layout(controller_id=None):
@@ -477,7 +479,7 @@ def layout(controller_id=None):
         ]),
 
         # --- WEBSOCKETS & STORES ---
-        WebSocket(id="ws-controller-instance", url=f"{ws_url_base}/envds/envops/ws/sensor/{controller_id}"),
+        WebSocket(id="ws-controller-instance", url=f"{ws_url_base}/envds/envops/ws/controller/{controller_id}"),
         html.Div(id="ws-send-controller-buffer", children=json.dumps(initial_request), style={"display": "none"}),
         dcc.Store(id="controller-calibration-vars", data=calibration_vars),
         dcc.Store(id="controller-definition", data=controller_definition),

@@ -30,21 +30,56 @@ config = Settings()
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 
-def get_variableset_definition(short_id: str):
+# --- RESTORED: Precise ID Mapping via Architecture Traversal ---
+def fetch_registry_data(resource_type: str):
+    url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
+    docs = []
+    try:
+        timeout = httpx.Timeout(10.0)
+        id_response = httpx.get(url, timeout=timeout)
+        if id_response.status_code == 200:
+            ids = id_response.json().get("results", [])
+            for doc_id in ids:
+                if doc_id:
+                    doc_url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
+                    doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
+                    if doc_response.status_code == 200:
+                        doc_results = doc_response.json().get("results", [])
+                        if doc_results: docs.append(doc_results[0])
+    except Exception as e:
+        L.error(f"Failed to fetch {resource_type}: {e}")
+    return docs
+
+def get_bundle_varsets(host_id):
+    deployments = fetch_registry_data("deployment")
+    platforms = set()
+    for dep in deployments:
+        if dep.get("metadata", {}).get("name") == host_id:
+            host_platform = dep.get("data", {}).get("platform_ref")
+            if host_platform:
+                platforms.add(host_platform)
+                for sub in deployments:
+                    if sub.get("data", {}).get("host_platform_ref") == host_platform:
+                        platforms.add(sub.get("data", {}).get("platform_ref"))
+            break
+
     url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
     try:
         response = httpx.get(url, timeout=10.0)
         all_vs_ids = response.json().get("results", []) if response.status_code == 200 else []
-        for full_id in all_vs_ids:
-            if full_id and short_id in full_id:
-                def_url = f"http://{datastore_url}/variableset-definition/registry/get/"
-                resp = httpx.get(def_url, params={"variableset_definition_id": full_id}, timeout=10.0)
-                if resp.status_code == 200:
-                    results = resp.json().get("results", [])
-                    if results: return results[0]
-    except Exception as e:
-        L.error(f"get_variableset_definition error: {e}")
-    return {}
+    except Exception:
+        all_vs_ids = []
+
+    active_varsets = {}
+    for full_id in all_vs_ids:
+        if not full_id: continue
+        parts = full_id.split("::")
+        if len(parts) >= 4:
+            vs_platform = parts[0]
+            if vs_platform in platforms:
+                short_id = f"{parts[1]}::{parts[3]}"
+                active_varsets[short_id] = full_id
+    return active_varsets
 
 def get_variableset_data(short_id: str):
     query = {"variableset_id": short_id}
@@ -107,7 +142,20 @@ def layout(deployment_id=None, variableset_id=None):
     if not deployment_id or not variableset_id: 
         return html.Div("Invalid Routing.", className="p-4 text-danger")
 
-    varset_def = get_variableset_definition(variableset_id)
+    # RESTORED: Look up full definition ID by explicitly mapping Deployment -> Platform -> Short_ID
+    active_varsets = get_bundle_varsets(deployment_id)
+    full_id = active_varsets.get(variableset_id)
+
+    varset_def = {}
+    if full_id:
+        def_url = f"http://{datastore_url}/variableset-definition/registry/get/"
+        try:
+            resp = httpx.get(def_url, params={"variableset_definition_id": full_id}, timeout=10.0)
+            if resp.status_code == 200:
+                results = resp.json().get("results", [])
+                if results: varset_def = results[0]
+        except Exception as e:
+            L.error(f"Failed to fetch Variableset definition: {e}")
     
     layout_options = {"layout-1d": {"time": {"variable-list": []}}, "layout-2d": {}}
     table_columns = [{"field": "time", "headerName": "Time"}]
