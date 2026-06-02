@@ -897,6 +897,149 @@ class SamplingSystem:
     #             if index_value not in self.index_monitor_tasks[index_type] or not self.index_monitor_tasks[index_type][index_value]:
     #                 self.index_monitor_tasks[index_type][index_value] = asyncio.create_task(self.index_time_monitor(timebase=index_value))
 
+    # def load_variablemap(self, vm: dict):
+    #     if vm.get("kind") != "PlatformVariableMap":
+    #         return
+            
+    #     metadata = vm.get("metadata", {})
+    #     vm_name = metadata.get("name")
+    #     platform_name = metadata.get("platform")
+    #     sampling_namespace = metadata.get("sampling_namespace", "")
+    #     valid_config_time = metadata.get("valid_config_time")
+        
+    #     if not all([vm_name, platform_name, valid_config_time]):
+    #         self.logger.error("load_variablemap missing critical metadata")
+    #         return
+
+    #     # Check allowed platforms
+    #     if hasattr(self, 'is_platform_allowed') and not self.is_platform_allowed(platform_name):
+    #         return
+
+    #     if "platform" not in self.variablemaps:
+    #         self.variablemaps["platform"] = dict()
+    #     if platform_name not in self.variablemaps["platform"]:
+    #         self.variablemaps["platform"][platform_name] = dict()
+    #     if vm_name not in self.variablemaps["platform"][platform_name]:
+    #         self.variablemaps["platform"][platform_name][vm_name] = dict()
+            
+    #     if valid_config_time in self.variablemaps["platform"][platform_name][vm_name]:
+    #         return # Already parsed
+            
+    #     # Initialize structure to hold execution maps and definitions
+    #     self.variablemaps["platform"][platform_name][vm_name][valid_config_time] = {
+    #         "variablemap": vm,
+    #         "variablesets": dict(),
+    #         "indexed": dict(),
+    #         "sources": dict()
+    #     }
+
+    #     vm_data = vm.get("data", {})
+    #     current_vm = self.variablemaps["platform"][platform_name][vm_name][valid_config_time]
+        
+    #     for vs_name, vs_def in vm_data.get("variablesets", {}).items():
+    #         if vs_name not in current_vm["variablesets"]:
+    #             current_vm["variablesets"][vs_name] = {
+    #                 "attributes": dict(),
+    #                 "dimensions": dict(),
+    #                 "variables": dict()
+    #             }
+    #         current_vm["variablesets"][vs_name]["attributes"] = dict()
+    #         for att_name, att_val in vm_data.get("attributes", {}).items():
+    #             current_vm["variablesets"][vs_name]["attributes"][att_name] = {
+    #                 "type": f"{type(att_val).__name__}",
+    #                 "data": att_val
+    #             }
+    #         current_vm["variablesets"][vs_name]["attributes"]["index_type"] = {"type": "string", "data": vs_def["index"]["index_type"]}
+    #         vtype = f"{type(vs_def['index']['index_value']).__name__}"
+    #         current_vm["variablesets"][vs_name]["attributes"]["index_value"] = {"type": vtype, "data": vs_def["index"]["index_value"]}
+    #         current_vm["variablesets"][vs_name]["attributes"]["variablemap_kind"] = {"type": "string", "data": vm["kind"]}
+
+    #         # Inject the routing metadata
+    #         current_vm["variablesets"][vs_name]["attributes"]["variablemap"] = {"type": "string", "data": vm_name}
+    #         current_vm["variablesets"][vs_name]["attributes"]["platform"] = {"type": "string", "data": platform_name}
+    #         current_vm["variablesets"][vs_name]["attributes"]["valid_config_time"] = {"type": "string", "data": valid_config_time}
+
+    #         current_vm["variablesets"][vs_name]["dimensions"] = {"time": 0}
+
+    #         # Add variables for variableset
+    #         for v_name, v in vm_data.get("variables", {}).items():
+    #             if v.get("variableset") == vs_name:
+                    
+    #                 # ---------------------------------------------------------
+    #                 # ROLE-BASED COMPUTE DELEGATION
+    #                 # ---------------------------------------------------------
+    #                 eval_attr = v.get("attributes", {}).get("evaluate_by", {})
+    #                 if eval_attr:
+    #                     # Parse allowed roles from the definition
+    #                     allowed_roles = [r.strip().lower() for r in eval_attr.get("data", "").split(",")]
+    #                     # Parse this node's roles from environment configuration
+    #                     my_roles = [r.strip().lower() for r in getattr(self.config, "node_roles", "").split(",")]
+                        
+    #                     # If this node shares NO roles with the allowed roles, skip setup!
+    #                     if not set(allowed_roles).intersection(set(my_roles)):
+    #                         self.logger.debug(
+    #                             "load_variablemap skipping execution setup", 
+    #                             extra={"variable": v_name, "node_roles": my_roles, "required_roles": allowed_roles}
+    #                         )
+    #                         continue
+    #                 # ---------------------------------------------------------
+
+    #                 # current_vm["variablesets"][vs_name]["variables"][v_name] = {
+    #                 #     "type": v["type"],
+    #                 #     "shape": v["shape"],
+    #                 #     "attributes": v["attributes"].copy(),
+    #                 # }
+    #                 current_vm["variablesets"][vs_name]["variables"][v_name] = {
+    #                     "type": v.get("type", "float"),
+    #                     "variable_type": v.get("variable_type", "sensor"), # <-- FIX: Stop stripping this!
+    #                     "shape": v.get("shape", ["time"]),
+    #                     "attributes": v.get("attributes", {}).copy(),
+    #                 }
+
+    #                 for sh in v["shape"]:
+    #                     if sh not in current_vm["variablesets"][vs_name]["dimensions"]:
+    #                         current_vm["variablesets"][vs_name]["dimensions"][sh] = 0
+
+    #                 current_v = current_vm["variablesets"][vs_name]["variables"][v_name]
+    #                 current_v["attributes"]["map_type"] = {"type": "string", "data": v.get("map_type", "")}
+                    
+    #                 # Map sources to the internal cache to drive local MQTT evaluation triggers
+    #                 if v.get("map_type") == "direct":
+    #                     direct_var = v.get("direct_value", {}).get("source_variable")
+    #                     if direct_var and "source" in v and direct_var in v["source"]:
+    #                         current_v["attributes"]["source_type"] = {"type": "string", "data": v["source"][direct_var]["source_type"]}
+    #                         current_v["attributes"]["source_id"] = {"type": "string", "data": v["source"][direct_var]["source_id"]}
+    #                         current_v["attributes"]["source_variable"] = {"type": "string", "data": v["source"][direct_var]["source_variable"]}
+                            
+    #                         source_id_val = v["source"][direct_var]["source_id"]
+    #                         if source_id_val not in current_vm["sources"]:
+    #                             current_vm["sources"][source_id_val] = []
+                                
+    #                         source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
+    #                         if source_entry not in current_vm["sources"][source_id_val]:
+    #                             current_vm["sources"][source_id_val].append(source_entry)
+
+    #         # Indexed xrefs and task creation
+    #         index_type = vs_def["index"]["index_type"]
+    #         index_value = vs_def["index"]["index_value"]
+            
+    #         if index_type not in current_vm["indexed"]:
+    #             current_vm["indexed"][index_type] = dict()
+    #         if index_value not in current_vm["indexed"][index_type]:
+    #             current_vm["indexed"][index_type][index_value] = {
+    #                 "variablesets": [],
+    #                 "data": dict()
+    #             }
+
+    #         if vs_name not in current_vm["indexed"][index_type][index_value]["variablesets"]:
+    #             current_vm["indexed"][index_type][index_value]["variablesets"].append(vs_name)
+
+    #         if index_type not in self.index_monitor_tasks:
+    #             self.index_monitor_tasks[index_type] = dict()
+    #         if index_type == "time":
+    #             if index_value not in self.index_monitor_tasks[index_type] or not self.index_monitor_tasks[index_type][index_value]:
+    #                 self.index_monitor_tasks[index_type][index_value] = asyncio.create_task(self.index_time_monitor(timebase=index_value))
+
     def load_variablemap(self, vm: dict):
         if vm.get("kind") != "PlatformVariableMap":
             return
@@ -937,18 +1080,46 @@ class SamplingSystem:
         current_vm = self.variablemaps["platform"][platform_name][vm_name][valid_config_time]
         
         for vs_name, vs_def in vm_data.get("variablesets", {}).items():
+            
+            # ---------------------------------------------------------
+            # ATOMIC VARIABLESET-LEVEL COMPUTE DELEGATION
+            # ---------------------------------------------------------
+            eval_attr = vs_def.get("attributes", {}).get("evaluate_by", {})
+            if eval_attr:
+                # Parse allowed roles from the variableset definition
+                allowed_roles = [r.strip().lower() for r in eval_attr.get("data", "").split(",")]
+                # Parse this node's roles from environment configuration
+                my_roles = [r.strip().lower() for r in getattr(self.config, "node_roles", "").split(",")]
+                
+                # If this node shares NO roles with the allowed roles, skip the ENTIRE variableset instantly!
+                if not set(allowed_roles).intersection(set(my_roles)):
+                    self.logger.debug(
+                        "load_variablemap skipping variableset execution setup", 
+                        extra={"variableset": vs_name, "node_roles": my_roles, "required_roles": allowed_roles}
+                    )
+                    continue
+            # ---------------------------------------------------------
+
             if vs_name not in current_vm["variablesets"]:
                 current_vm["variablesets"][vs_name] = {
                     "attributes": dict(),
                     "dimensions": dict(),
                     "variables": dict()
                 }
+                
             current_vm["variablesets"][vs_name]["attributes"] = dict()
+            
+            # Load global VariableMap attributes into the Variableset
             for att_name, att_val in vm_data.get("attributes", {}).items():
                 current_vm["variablesets"][vs_name]["attributes"][att_name] = {
                     "type": f"{type(att_val).__name__}",
                     "data": att_val
                 }
+                
+            # Load local Variableset attributes (including the evaluate_by tag we just parsed)
+            for att_name, att_val in vs_def.get("attributes", {}).items():
+                current_vm["variablesets"][vs_name]["attributes"][att_name] = att_val.copy()
+                
             current_vm["variablesets"][vs_name]["attributes"]["index_type"] = {"type": "string", "data": vs_def["index"]["index_type"]}
             vtype = f"{type(vs_def['index']['index_value']).__name__}"
             current_vm["variablesets"][vs_name]["attributes"]["index_value"] = {"type": vtype, "data": vs_def["index"]["index_value"]}
@@ -961,37 +1132,13 @@ class SamplingSystem:
 
             current_vm["variablesets"][vs_name]["dimensions"] = {"time": 0}
 
-            # Add variables for variableset
+            # Add variables for variableset (No role checks needed here anymore!)
             for v_name, v in vm_data.get("variables", {}).items():
                 if v.get("variableset") == vs_name:
                     
-                    # ---------------------------------------------------------
-                    # ROLE-BASED COMPUTE DELEGATION
-                    # ---------------------------------------------------------
-                    eval_attr = v.get("attributes", {}).get("evaluate_by", {})
-                    if eval_attr:
-                        # Parse allowed roles from the definition
-                        allowed_roles = [r.strip().lower() for r in eval_attr.get("data", "").split(",")]
-                        # Parse this node's roles from environment configuration
-                        my_roles = [r.strip().lower() for r in getattr(self.config, "node_roles", "").split(",")]
-                        
-                        # If this node shares NO roles with the allowed roles, skip setup!
-                        if not set(allowed_roles).intersection(set(my_roles)):
-                            self.logger.debug(
-                                "load_variablemap skipping execution setup", 
-                                extra={"variable": v_name, "node_roles": my_roles, "required_roles": allowed_roles}
-                            )
-                            continue
-                    # ---------------------------------------------------------
-
-                    # current_vm["variablesets"][vs_name]["variables"][v_name] = {
-                    #     "type": v["type"],
-                    #     "shape": v["shape"],
-                    #     "attributes": v["attributes"].copy(),
-                    # }
                     current_vm["variablesets"][vs_name]["variables"][v_name] = {
                         "type": v.get("type", "float"),
-                        "variable_type": v.get("variable_type", "sensor"), # <-- FIX: Stop stripping this!
+                        "variable_type": v.get("variable_type", "sensor"),
                         "shape": v.get("shape", ["time"]),
                         "attributes": v.get("attributes", {}).copy(),
                     }
@@ -1039,7 +1186,7 @@ class SamplingSystem:
             if index_type == "time":
                 if index_value not in self.index_monitor_tasks[index_type] or not self.index_monitor_tasks[index_type][index_value]:
                     self.index_monitor_tasks[index_type][index_value] = asyncio.create_task(self.index_time_monitor(timebase=index_value))
-
+                    
     # def open_http_client(self):
     #     self.http_client = httpx.AsyncClient()
 
