@@ -283,7 +283,6 @@ def render_bundle_health(health_store, host_id):
     host_sys_mode = "unknown"
     node_cards = []
 
-    # Sort deployments so the Host is always at the top
     sorted_deps = sorted(health_store.keys(), key=lambda x: 0 if x == host_id else 1)
 
     for dep_ref in sorted_deps:
@@ -310,12 +309,10 @@ def render_bundle_health(health_store, host_id):
         if dep_ref == host_id and sys_modes:
             host_sys_mode = sys_modes[0]
 
-        # UI Badge Builders
         def build_badge_group(items, color):
             if not items: return html.Span("None", className="text-muted small fst-italic")
             return html.Div([dbc.Badge(m, color=color, className="me-1 mb-1") for m in items], className="d-flex flex-wrap")
 
-        # Visual distinction for Host vs Sub
         is_host = (dep_ref == host_id)
         card_header_color = "bg-primary text-white" if is_host else "bg-secondary text-white"
         node_label = "HOST NODE" if is_host else "SUB-NODE"
@@ -350,35 +347,51 @@ def render_bundle_health(health_store, host_id):
     
     return html.Div(node_cards), auto_outline, manual_outline, manual_style
 
-@callback(
+# --- 1. THE DATA PIPELINE: Parses WebSockets 100% in Browser Memory (Zero Lag) ---
+dash.clientside_callback(
+    """
+    function(messages, current_store) {
+        if (!dash_clientside.callback_context.triggered) {
+            return window.dash_clientside.no_update;
+        }
+        
+        let store = current_store ? Object.assign({}, current_store) : {};
+        let updated = false;
+        let now = Date.now() / 1000.0;
+        
+        let triggered = dash_clientside.callback_context.triggered;
+        for (let i = 0; i < triggered.length; i++) {
+            let t = triggered[i];
+            if (!t.value || !t.value.data) continue;
+            try {
+                let payload = JSON.parse(t.value.data);
+                let variables = payload.variables || {};
+                for (let key in variables) {
+                    if (key === "time") continue;
+                    store[key.toLowerCase()] = {
+                        val: variables[key].data,
+                        ts: now
+                    };
+                    updated = true;
+                }
+            } catch(e) {
+                console.error("Telemetry Parse Error:", e);
+            }
+        }
+        
+        if (!updated) {
+            return window.dash_clientside.no_update;
+        }
+        return store;
+    }
+    """,
     Output("unified-telemetry-store", "data"),
     Input({"type": "ws-varset", "index": ALL}, "message"),
-    # REMOVED the State parameter!
+    State("unified-telemetry-store", "data"),
     prevent_initial_call=True
 )
-def aggregate_telemetry(messages):
-    if not ctx.triggered: raise PreventUpdate
-    
-    patched_store = Patch() # Atomically updates only the keys we touch
-    updated = False
-    now = time.time()
-    
-    for t in ctx.triggered:
-        if not t["value"] or "data" not in t["value"]: continue
-        try:
-            payload = json.loads(t["value"]["data"])
-            variables = payload.get("variables", {})
-            for var_name, v_data in variables.items():
-                if var_name == "time": continue
-                safe_key = var_name.lower() 
-                patched_store[safe_key] = {"val": v_data.get("data"), "ts": now}
-                updated = True
-        except Exception as e:
-            L.error(f"Telemetry Parse Error: {e}")
-            
-    if not updated: raise PreventUpdate
-    return patched_store
 
+# --- 2. THE RENDER PIPELINE: Evaluates exactly once per second ---
 @callback(
     Output("kpi-nav-latlon", "children"), Output("kpi-nav-spdhdg", "children"), Output("kpi-nav-pitchroll", "children"),
     Output("kpi-met-wind", "children"), Output("kpi-met-temprh", "children"), Output("kpi-met-press", "children"), Output("kpi-met-rain", "children"), Output("kpi-met-irrad", "children"),
@@ -386,16 +399,12 @@ def aggregate_telemetry(messages):
     Output("kpi-gas-o3", "children"), Output("kpi-gas-co", "children"), Output("kpi-gas-nox", "children"),
     Output("kpi-ops-relwind", "children"), Output("kpi-ops-flow", "children"), Output("kpi-ops-flowsp", "children"),
     
-    # 1st Input matches 1st Argument
-    Input("unified-telemetry-store", "data"),        
-    # 2nd Input matches 2nd Argument
+    # Render is triggered ONLY by the timer, NEVER by the data flow directly.
     Input("kpi-staleness-interval", "n_intervals"),  
-    
+    State("unified-telemetry-store", "data"),        
     prevent_initial_call=True
 )
-def update_quick_looks(telemetry_store, n_intervals):
-    
-    # Failsafe: If store is completely empty or the inputs got swapped into an integer
+def update_quick_looks(n_intervals, telemetry_store):
     if not telemetry_store or not isinstance(telemetry_store, dict): 
         raise PreventUpdate
         
@@ -405,18 +414,21 @@ def update_quick_looks(telemetry_store, n_intervals):
         for k in keys:
             if k in telemetry_store:
                 item = telemetry_store.get(k, {})
-                
-                # Safely extract values
                 val = item.get("val")
                 ts = item.get("ts", now) 
                 
                 if val is None:
                     continue
+                
+                # Safely handle arrays (like single-row matrices)
+                if isinstance(val, list):
+                    val = val[-1] if len(val) > 0 else None
+                    if val is None: continue
                     
-                # Format floats to 2 decimal places, safely convert arrays/strings
+                # Format floats cleanly
                 fmt_val = f"{val:.2f}" if isinstance(val, float) else str(val)
                 
-                # Check staleness
+                # Staleness check (turns red if no data for 2 minutes)
                 if now - ts > 120:
                     return html.Span(fmt_val, className="text-danger fw-bold", title=f"Stale: {(now-ts)/60:.1f}m ago")
                 return fmt_val
