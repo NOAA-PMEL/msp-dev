@@ -46,69 +46,133 @@ numeric_level = getattr(logging, config.log_level.upper(), logging.INFO)
 L.setLevel(numeric_level)
 
 # --- CONNECTION MANAGER ---
+# class ConnectionManager:
+#     """Manages granular WebSocket connections for Dash drill-down pages."""
+#     def __init__(self):
+#         # We store connections grouped by type (e.g., 'deployment', 'variableset', 'sensor')
+#         # and then by their specific ID.
+#         self.active_connections: dict[str, dict[str, list[WebSocket]]] = {
+#             "fleet": {},
+#             "fleet_telemetry": {},
+#             "deployment_c2": {},
+#             "deployment_telemetry": {},
+#             "variableset": {},
+#             "sensor": {},
+#             "registry": {}
+#         }
+
+#     async def connect(self, websocket: WebSocket, client_type: str, client_id: str):
+#         await websocket.accept()
+#         if client_id not in self.active_connections[client_type]:
+#             self.active_connections[client_type][client_id] = []
+#         self.active_connections[client_type][client_id].append(websocket)
+#         L.debug(f"WS Connected: {client_type}/{client_id}. Total: {len(self.active_connections[client_type][client_id])}")
+
+#     def disconnect(self, websocket: WebSocket, client_type: str, client_id: str):
+#         if client_id in self.active_connections[client_type]:
+#             self.active_connections[client_type][client_id].remove(websocket)
+#             if not self.active_connections[client_type][client_id]:
+#                 del self.active_connections[client_type][client_id]
+#             L.debug(f"WS Disconnected: {client_type}/{client_id}")
+
+#     # async def broadcast(self, message: str, client_type: str, client_id: str):
+#     #     """Send a message strictly to the WebSockets listening to this specific client_id."""
+#     #     if client_id in self.active_connections.get(client_type, {}):
+#     #         for connection in self.active_connections[client_type][client_id]:
+#     #             try:
+#     #                 L.debug("broadcast", extra={"client_type": client_type, "client_id": client_id, "bcast_message": message})
+#     #                 await connection.send_text(message)
+#     #             except Exception as e:
+#     #                 L.error(f"WS Broadcast error on {client_type}/{client_id}: {e}")
+
+#     async def broadcast(self, message: str, client_type: str, client_id: str):
+#         """Instantly drops messages into the connection queues. Uses a Ring Buffer 
+#         approach to drop the oldest packets if the client browser is lagging."""
+#         if client_id in self.active_connections.get(client_type, {}):
+#             for websocket, (queue, worker_task) in list(self.active_connections[client_type][client_id].items()):
+#                 try:
+#                     queue.put_nowait(message)
+#                 except asyncio.QueueFull:
+#                     # --- RING BUFFER LOGIC: Drop the oldest to keep the newest ---
+#                     try:
+#                         # Yank the oldest message off the front of the line and throw it away
+#                         queue.get_nowait()
+#                         queue.task_done()
+#                         L.warning(f"Browser lagging on {client_type}/{client_id}. Dropped stale packet.")
+#                     except asyncio.QueueEmpty:
+#                         pass
+                    
+#                     # Now that there is guaranteed space, put the brand new message at the back
+#                     try:
+#                         queue.put_nowait(message)
+#                     except asyncio.QueueFull:
+#                         pass
+
+# --- CONNECTION MANAGER ---
 class ConnectionManager:
-    """Manages granular WebSocket connections for Dash drill-down pages."""
+    """Manages granular WebSocket connections with bounded queues and load shedding."""
     def __init__(self):
-        # We store connections grouped by type (e.g., 'deployment', 'variableset', 'sensor')
-        # and then by their specific ID.
-        self.active_connections: dict[str, dict[str, list[WebSocket]]] = {
-            "fleet": {},
-            "fleet_telemetry": {},
-            "deployment_c2": {},
-            "deployment_telemetry": {},
-            "variableset": {},
-            "sensor": {},
-            "registry": {}
+        # Format: { client_type: { client_id: { websocket: (queue, worker_task) } } }
+        self.active_connections = {
+            "fleet": {}, "fleet_telemetry": {}, "deployment_c2": {},
+            "deployment_telemetry": {}, "variableset": {}, "sensor": {}, "registry": {}
         }
 
     async def connect(self, websocket: WebSocket, client_type: str, client_id: str):
         await websocket.accept()
+        
+        # Create a STRICTLY BOUNDED queue for this specific browser tab
+        ws_queue = asyncio.Queue(maxsize=50) 
+        
+        # Spawn a dedicated background worker to drain this queue over the network
+        worker_task = asyncio.create_task(self._ws_sender_worker(websocket, ws_queue, client_type, client_id))
+        
         if client_id not in self.active_connections[client_type]:
-            self.active_connections[client_type][client_id] = []
-        self.active_connections[client_type][client_id].append(websocket)
-        L.debug(f"WS Connected: {client_type}/{client_id}. Total: {len(self.active_connections[client_type][client_id])}")
+            self.active_connections[client_type][client_id] = {}
+            
+        self.active_connections[client_type][client_id][websocket] = (ws_queue, worker_task)
+        L.debug(f"WS Connected: {client_type}/{client_id}")
+
+    async def _ws_sender_worker(self, websocket: WebSocket, queue: asyncio.Queue, client_type: str, client_id: str):
+        """Dedicated background task that pushes data to the browser."""
+        try:
+            while True:
+                message = await queue.get()
+                await websocket.send_text(message)
+                queue.task_done()
+        except Exception:
+            pass # Socket closures are handled cleanly by the disconnect method
 
     def disconnect(self, websocket: WebSocket, client_type: str, client_id: str):
         if client_id in self.active_connections[client_type]:
-            self.active_connections[client_type][client_id].remove(websocket)
+            if websocket in self.active_connections[client_type][client_id]:
+                queue, worker_task = self.active_connections[client_type][client_id][websocket]
+                worker_task.cancel() # Kill the background worker to free memory
+                del self.active_connections[client_type][client_id][websocket]
+                
             if not self.active_connections[client_type][client_id]:
                 del self.active_connections[client_type][client_id]
             L.debug(f"WS Disconnected: {client_type}/{client_id}")
 
-    # async def broadcast(self, message: str, client_type: str, client_id: str):
-    #     """Send a message strictly to the WebSockets listening to this specific client_id."""
-    #     if client_id in self.active_connections.get(client_type, {}):
-    #         for connection in self.active_connections[client_type][client_id]:
-    #             try:
-    #                 L.debug("broadcast", extra={"client_type": client_type, "client_id": client_id, "bcast_message": message})
-    #                 await connection.send_text(message)
-    #             except Exception as e:
-    #                 L.error(f"WS Broadcast error on {client_type}/{client_id}: {e}")
-
     async def broadcast(self, message: str, client_type: str, client_id: str):
-        """Instantly drops messages into the connection queues. Uses a Ring Buffer 
-        approach to drop the oldest packets if the client browser is lagging."""
+        """Instantly drops messages into the connection queues. Uses a Ring Buffer."""
         if client_id in self.active_connections.get(client_type, {}):
             for websocket, (queue, worker_task) in list(self.active_connections[client_type][client_id].items()):
                 try:
                     queue.put_nowait(message)
                 except asyncio.QueueFull:
-                    # --- RING BUFFER LOGIC: Drop the oldest to keep the newest ---
                     try:
-                        # Yank the oldest message off the front of the line and throw it away
                         queue.get_nowait()
                         queue.task_done()
-                        L.warning(f"Browser lagging on {client_type}/{client_id}. Dropped stale packet.")
                     except asyncio.QueueEmpty:
                         pass
-                    
-                    # Now that there is guaranteed space, put the brand new message at the back
                     try:
                         queue.put_nowait(message)
                     except asyncio.QueueFull:
                         pass
 
 manager = ConnectionManager()
+
 mqtt_publish_queue = asyncio.Queue()
 
 # --- MQTT BACKGROUND TASKS ---

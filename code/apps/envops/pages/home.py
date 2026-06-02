@@ -137,12 +137,17 @@ def update_live_health(message, current_health):
             elif actual == "error" or actual == "degraded":
                 health = "danger"
 
+        # if app_uid:
+        #     if current_health is None:
+        #         current_health = {}
+        #     current_health[app_uid] = {"health": health, "text": status_text}
+        #     return current_health
         if app_uid:
-            if current_health is None:
-                current_health = {}
-            current_health[app_uid] = {"health": health, "text": status_text}
-            return current_health
-            
+            # FIX: Must copy the dict so Dash knows state changed!
+            new_health = current_health.copy() if current_health else {}
+            new_health[app_uid] = {"health": health, "text": status_text}
+            return new_health
+        
     except Exception as e:
         L.error(f"Fleet Health Stream Error: {e}")
         
@@ -364,10 +369,16 @@ def update_live_locations(message, current_locations):
             curr_lat = current_locations.get(target_id, {}).get("lat")
             curr_lon = current_locations.get(target_id, {}).get("lon")
             
-            if curr_lat != lat_val or curr_lon != lon_val:
-                current_locations[target_id] = {"lat": lat_val, "lon": lon_val}
-                return current_locations
+            # if curr_lat != lat_val or curr_lon != lon_val:
+            #     current_locations[target_id] = {"lat": lat_val, "lon": lon_val}
+            #     return current_locations
                 
+            if curr_lat != lat_val or curr_lon != lon_val:
+                # FIX: Must copy the dict so Dash knows state changed!
+                new_locations = current_locations.copy() if current_locations else {}
+                new_locations[target_id] = {"lat": lat_val, "lon": lon_val}
+                return new_locations
+            
     except Exception as e:
         L.error(f"Live Location Parse Error: {e}")
         
