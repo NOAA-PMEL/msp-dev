@@ -386,24 +386,41 @@ def aggregate_telemetry(messages):
     Output("kpi-gas-o3", "children"), Output("kpi-gas-co", "children"), Output("kpi-gas-nox", "children"),
     Output("kpi-ops-relwind", "children"), Output("kpi-ops-flow", "children"), Output("kpi-ops-flowsp", "children"),
     
-    Input("unified-telemetry-store", "data"),        # INSTANT trigger when new data arrives
-    Input("kpi-staleness-interval", "n_intervals"),  # 1-SECOND trigger to check for staleness
+    # 1st Input matches 1st Argument
+    Input("unified-telemetry-store", "data"),        
+    # 2nd Input matches 2nd Argument
+    Input("kpi-staleness-interval", "n_intervals"),  
     
     prevent_initial_call=True
 )
-def update_quick_looks(n_intervals, telemetry_store):
-    if not telemetry_store: raise PreventUpdate
+def update_quick_looks(telemetry_store, n_intervals):
+    
+    # Failsafe: If store is completely empty or the inputs got swapped into an integer
+    if not telemetry_store or not isinstance(telemetry_store, dict): 
+        raise PreventUpdate
+        
     now = time.time()
 
     def get_val(keys):
         for k in keys:
             if k in telemetry_store:
-                val = telemetry_store[k]["val"]
-                ts = telemetry_store[k]["ts"]
+                item = telemetry_store.get(k, {})
+                
+                # Safely extract values
+                val = item.get("val")
+                ts = item.get("ts", now) 
+                
+                if val is None:
+                    continue
+                    
+                # Format floats to 2 decimal places, safely convert arrays/strings
                 fmt_val = f"{val:.2f}" if isinstance(val, float) else str(val)
+                
+                # Check staleness
                 if now - ts > 120:
                     return html.Span(fmt_val, className="text-danger fw-bold", title=f"Stale: {(now-ts)/60:.1f}m ago")
                 return fmt_val
+                
         return "--"
 
     return (

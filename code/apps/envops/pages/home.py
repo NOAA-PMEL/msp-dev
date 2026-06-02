@@ -188,36 +188,19 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
         else:
             host_deployments.append(dep)
 
+    # 1. Group the Hosts
     hosts_by_project = {}
-    planned_lats, planned_lons, planned_text = [], [], []
-    live_lats, live_lons, live_text = [], [], []
-
     for dep in host_deployments:
         dep_data = dep.get("data", {})
         proj_ref = dep_data.get("project_ref", "unknown")
         dep_name = dep.get("metadata", {}).get("name", "Unknown_Deployment")
-        
+
         if proj_ref not in hosts_by_project:
             hosts_by_project[proj_ref] = {}
-            
-        hosts_by_project[proj_ref][dep_name] = {"host": dep, "subs": []}
-        
-        h_display = dep_data.get('display_name', dep_name)
-        platform_ref = dep_data.get('platform_ref', '')
-        
-        live_loc = live_locations.get(dep_name) or live_locations.get(platform_ref)
-        if live_loc:
-            live_lats.append(live_loc["lat"])
-            live_lons.append(live_loc["lon"])
-            live_text.append(f"{h_display}<br><b>(Live)</b>")
-        else:
-            lat_min = dep_data.get("planned_geospatial_lat_min")
-            lon_min = dep_data.get("planned_geospatial_lon_min")
-            if lat_min is not None and lon_min is not None:
-                planned_lats.append(lat_min)
-                planned_lons.append(lon_min)
-                planned_text.append(f"{h_display}<br><i>(Estimated/Planned)</i>")
 
+        hosts_by_project[proj_ref][dep_name] = {"host": dep, "subs": []}
+
+    # 2. Attach the Subs
     for dep in sub_deployments:
         dep_data = dep.get("data", {})
         proj_ref = dep_data.get("project_ref", "unknown")
@@ -228,6 +211,41 @@ def render_fleet_ui(projects, deployments, live_locations, health_store):
             parent_name = parent_dep.get("metadata", {}).get("name")
             if parent_name and proj_ref in hosts_by_project and parent_name in hosts_by_project[proj_ref]:
                 hosts_by_project[proj_ref][parent_name]["subs"].append(dep)
+
+    # 3. Extract Locations (Checking both Host and Subs!)
+    planned_lats, planned_lons, planned_text = [], [], []
+    live_lats, live_lons, live_text = [], [], []
+
+    for proj_ref, proj_hosts in hosts_by_project.items():
+        for host_name, group in proj_hosts.items():
+            host_dep = group["host"]
+            dep_data = host_dep.get("data", {})
+            h_display = dep_data.get('display_name', host_name)
+            platform_ref = dep_data.get('platform_ref', '')
+
+            # Check if the Host itself has GPS data
+            live_loc = live_locations.get(host_name) or live_locations.get(platform_ref)
+
+            # Fallback: Check if any attached Sub-Node has the GPS data
+            if not live_loc:
+                for sub in group["subs"]:
+                    sub_name = sub.get("metadata", {}).get("name")
+                    sub_pref = sub.get("data", {}).get("platform_ref")
+                    live_loc = live_locations.get(sub_name) or live_locations.get(sub_pref)
+                    if live_loc:
+                        break  # Found the GPS! Stop looking.
+
+            if live_loc:
+                live_lats.append(live_loc["lat"])
+                live_lons.append(live_loc["lon"])
+                live_text.append(f"{h_display}<br><b>(Live)</b>")
+            else:
+                lat_min = dep_data.get("planned_geospatial_lat_min")
+                lon_min = dep_data.get("planned_geospatial_lon_min")
+                if lat_min is not None and lon_min is not None:
+                    planned_lats.append(lat_min)
+                    planned_lons.append(lon_min)
+                    planned_text.append(f"{h_display}<br><i>(Estimated/Planned)</i>")
 
     if planned_lats:
         fig.add_trace(go.Scattermapbox(

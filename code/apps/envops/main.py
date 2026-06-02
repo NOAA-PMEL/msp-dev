@@ -167,8 +167,10 @@ async def mqtt_listen_task():
                             # Check the actual payload keys instead of the variableset name
                             if "latitude" in variables and "longitude" in variables:
                                 try:
-                                    target_id = ce["deploymentref"] if "deploymentref" in ce else None
-                                    if not target_id:
+                                    target_id = None
+                                    try:
+                                        target_id = ce["deploymentref"]
+                                    except Exception:
                                         target_id = ce.data.get("attributes", {}).get("deployment_ref", {}).get("data", "unknown")
                                     
                                     loc_payload = json.dumps({"target_id": target_id, "data": ce.data})
