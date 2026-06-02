@@ -385,19 +385,9 @@ def aggregate_telemetry(messages):
     Output("kpi-aero-cn", "children"), Output("kpi-aero-scat", "children"), Output("kpi-aero-abs", "children"),
     Output("kpi-gas-o3", "children"), Output("kpi-gas-co", "children"), Output("kpi-gas-nox", "children"),
     Output("kpi-ops-relwind", "children"), Output("kpi-ops-flow", "children"), Output("kpi-ops-flowsp", "children"),
-    Input("unified-telemetry-store", "data"),
-    Input("kpi-staleness-interval", "n_intervals"), 
-    prevent_initial_call=True
-)
-@callback(
-    Output("kpi-nav-latlon", "children"), Output("kpi-nav-spdhdg", "children"), Output("kpi-nav-pitchroll", "children"),
-    Output("kpi-met-wind", "children"), Output("kpi-met-temprh", "children"), Output("kpi-met-press", "children"), Output("kpi-met-rain", "children"), Output("kpi-met-irrad", "children"),
-    Output("kpi-aero-cn", "children"), Output("kpi-aero-scat", "children"), Output("kpi-aero-abs", "children"),
-    Output("kpi-gas-o3", "children"), Output("kpi-gas-co", "children"), Output("kpi-gas-nox", "children"),
-    Output("kpi-ops-relwind", "children"), Output("kpi-ops-flow", "children"), Output("kpi-ops-flowsp", "children"),
     
-    Input("kpi-staleness-interval", "n_intervals"), # <--- The 1-second UI Tick Driver
-    State("unified-telemetry-store", "data"),       # <--- Silently read the live memory
+    Input("unified-telemetry-store", "data"),        # INSTANT trigger when new data arrives
+    Input("kpi-staleness-interval", "n_intervals"),  # 1-SECOND trigger to check for staleness
     
     prevent_initial_call=True
 )

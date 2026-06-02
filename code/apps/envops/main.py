@@ -75,15 +75,38 @@ class ConnectionManager:
                 del self.active_connections[client_type][client_id]
             L.debug(f"WS Disconnected: {client_type}/{client_id}")
 
+    # async def broadcast(self, message: str, client_type: str, client_id: str):
+    #     """Send a message strictly to the WebSockets listening to this specific client_id."""
+    #     if client_id in self.active_connections.get(client_type, {}):
+    #         for connection in self.active_connections[client_type][client_id]:
+    #             try:
+    #                 L.debug("broadcast", extra={"client_type": client_type, "client_id": client_id, "bcast_message": message})
+    #                 await connection.send_text(message)
+    #             except Exception as e:
+    #                 L.error(f"WS Broadcast error on {client_type}/{client_id}: {e}")
+
     async def broadcast(self, message: str, client_type: str, client_id: str):
-        """Send a message strictly to the WebSockets listening to this specific client_id."""
+        """Instantly drops messages into the connection queues. Uses a Ring Buffer 
+        approach to drop the oldest packets if the client browser is lagging."""
         if client_id in self.active_connections.get(client_type, {}):
-            for connection in self.active_connections[client_type][client_id]:
+            for websocket, (queue, worker_task) in list(self.active_connections[client_type][client_id].items()):
                 try:
-                    L.debug("broadcast", extra={"client_type": client_type, "client_id": client_id, "bcast_message": message})
-                    await connection.send_text(message)
-                except Exception as e:
-                    L.error(f"WS Broadcast error on {client_type}/{client_id}: {e}")
+                    queue.put_nowait(message)
+                except asyncio.QueueFull:
+                    # --- RING BUFFER LOGIC: Drop the oldest to keep the newest ---
+                    try:
+                        # Yank the oldest message off the front of the line and throw it away
+                        queue.get_nowait()
+                        queue.task_done()
+                        L.warning(f"Browser lagging on {client_type}/{client_id}. Dropped stale packet.")
+                    except asyncio.QueueEmpty:
+                        pass
+                    
+                    # Now that there is guaranteed space, put the brand new message at the back
+                    try:
+                        queue.put_nowait(message)
+                    except asyncio.QueueFull:
+                        pass
 
 manager = ConnectionManager()
 mqtt_publish_queue = asyncio.Queue()
@@ -131,7 +154,7 @@ async def mqtt_listen_task():
                             
                             for fleet_id in manager.active_connections.get("fleet", {}).keys():
                                 # home.py expects ONLY the inner payload
-                                await manager.broadcast(data_str, "fleet", fleet_id)
+                                await manager.broadcast(payload_str, "fleet", fleet_id)
 
                         # 2. Route Variableset Telemetry to Variableset WebSockets
                         elif ce_type in ["envds.variableset.data.update"]:
@@ -144,9 +167,9 @@ async def mqtt_listen_task():
                             # Check the actual payload keys instead of the variableset name
                             if "latitude" in variables and "longitude" in variables:
                                 try:
-                                    target_id = ce.get("deploymentref")
+                                    target_id = ce["deploymentref"] if "deploymentref" in ce else None
                                     if not target_id:
-                                        target_id = ce["deploymentref"] if "deploymentref" in ce else None
+                                        target_id = ce.data.get("attributes", {}).get("deployment_ref", {}).get("data", "unknown")
                                     
                                     loc_payload = json.dumps({"target_id": target_id, "data": ce.data})
                                     
@@ -254,6 +277,15 @@ async def ws_fleet_telemetry(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, "fleet_telemetry", "global")
+
+@app.websocket("/ws/fleet/status")
+async def ws_fleet_status(websocket: WebSocket):
+    await manager.connect(websocket, "fleet", "global") 
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, "fleet", "global")
 
 # --- MOUNT DASH FRONTEND ---
 # Traefik strips `/envds/envops`, so FastAPI mounts this at the root.
