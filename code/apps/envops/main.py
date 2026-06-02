@@ -15,12 +15,6 @@ from logfmter import Logfmter
 # Import the initialized Dash app from app.py
 from app import app as dash_app
 
-# --- LOGGING ---
-handler = logging.StreamHandler()
-handler.setFormatter(Logfmter())
-logging.basicConfig(handlers=[handler])
-L = logging.getLogger("EnvOps-Main")
-L.setLevel(logging.DEBUG)
 
 # --- CONFIG ---
 class Settings(BaseSettings):
@@ -28,6 +22,7 @@ class Settings(BaseSettings):
     port: int = 8080
     debug: bool = False
     daq_id: str = "default"
+    log_level: str = "INFO"
 
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
@@ -40,6 +35,15 @@ class Settings(BaseSettings):
         case_sensitive = False
 
 config = Settings()
+
+# --- LOGGING ---
+handler = logging.StreamHandler()
+handler.setFormatter(Logfmter())
+logging.basicConfig(handlers=[handler])
+L = logging.getLogger("EnvOps-Main")
+# L.setLevel(logging.DEBUG)
+numeric_level = getattr(logging, config.log_level.upper(), logging.INFO)
+L.setLevel(numeric_level)
 
 # --- CONNECTION MANAGER ---
 class ConnectionManager:
@@ -142,7 +146,7 @@ async def mqtt_listen_task():
                                 try:
                                     target_id = ce.get("deploymentref")
                                     if not target_id:
-                                        target_id = ce.data.get("attributes", {}).get("deployment_ref", {}).get("data", "unknown")
+                                        target_id = ce["deploymentref"] if "deploymentref" in ce else None
                                     
                                     loc_payload = json.dumps({"target_id": target_id, "data": ce.data})
                                     
