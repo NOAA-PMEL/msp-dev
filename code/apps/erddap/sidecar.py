@@ -7,7 +7,7 @@ import shutil
 import re
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import StreamingResponse, HTMLResponse
 from starlette.background import BackgroundTask
 import httpx
@@ -15,7 +15,7 @@ import uvicorn
 from pydantic import BaseSettings
 from ulid import ULID
 from aiomqtt import Client, MqttError
-from cloudevents.http import from_json
+from cloudevents.http import from_json, from_http
 from logfmter import Logfmter
 from jinja2 import Environment, FileSystemLoader
 import time
@@ -452,6 +452,29 @@ async def startup_event():
 async def shutdown_event():
     await http_client.aclose()
 
+# ---------------------------------------------------------
+# KNATIVE INGESTION (HTTP) - For Definitions & Registries
+# ---------------------------------------------------------
+@app.post("/registry/update/")
+async def registry_update(request: Request):
+    """Catches Knative Eventing HTTP POSTs for all definition updates."""
+    try:
+        body = await request.body()
+        ce = from_http(request.headers, body)
+        ce_type = ce.get("type", "")
+        
+        L.debug(f"Received Knative Registry Update", extra={"type": ce_type})
+        
+        if "sampling" in ce_type or "system" in ce_type:
+            await handle_ops_registry_insert(ce)
+        else:
+            compiler.handle_definition(ce)
+            
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except Exception as e:
+        L.error("Knative registry update failed", extra={"reason": str(e)})
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    
 # ---------------------------------------------------------
 # MAINTENANCE ADMIN UI
 # ---------------------------------------------------------
