@@ -1,0 +1,46 @@
+<dataset type="EDDTableFromHttpGet" datasetID="envds_ops_status" active="true">
+    <reloadEveryNMinutes>1440</reloadEveryNMinutes>
+    <updateEveryNMillis>-1</updateEveryNMillis>
+    
+    <fileDir>/erddapData/status/operations/</fileDir>
+    
+    <fileNameRegex>.*\.jsonl</fileNameRegex>
+    <recursive>true</recursive>
+    <pathRegex>.*</pathRegex>
+    <metadataFrom>last</metadataFrom>
+    <sortedColumnSourceName></sortedColumnSourceName>
+    <sortFilesBySourceNames>app_group,app_uid,time</sortFilesBySourceNames>
+    <fileTableInMemory>true</fileTableInMemory>
+    <accessibleViaFiles>true</accessibleViaFiles>
+
+    <addAttributes>
+        <att name="cdm_data_type">TimeSeries</att>
+        <att name="cdm_timeseries_variables">time, app_group, app_uid</att>
+        <att name="Conventions">COARDS, CF-1.6, ACDD-1.3</att>
+        <att name="infoUrl">http://envds.local</att>
+        <att name="institution">MSP</att>
+        
+        <att name="httpGetDirectoryStructure">app_uid/1year/1day</att>
+
+        <att name="envds_stream_type">status</att>
+        <att name="title">ENVDS Operational Status Stream</att>
+        <att name="summary">1Hz evaluations of ENVDS sampling conditions, states, and modes.</att>
+    </addAttributes>
+
+    <dataVariable><sourceName>app_group</sourceName><destinationName>app_group</destinationName><dataType>String</dataType></dataVariable>
+    <dataVariable><sourceName>app_uid</sourceName><destinationName>app_uid</destinationName><dataType>String</dataType></dataVariable>
+    <dataVariable><sourceName>namespace</sourceName><destinationName>namespace</destinationName><dataType>String</dataType></dataVariable>
+
+    <dataVariable>
+        <sourceName>time</sourceName>
+        <destinationName>time</destinationName>
+        <dataType>double</dataType>
+        <addAttributes>
+            <att name="units">seconds since 1970-01-01T00:00:00Z</att>
+        </addAttributes>
+    </dataVariable>
+
+    <dataVariable><sourceName>valid_config_time</sourceName><destinationName>valid_config_time</destinationName><dataType>String</dataType></dataVariable>
+    <dataVariable><sourceName>requested_state</sourceName><destinationName>requested_state</destinationName><dataType>String</dataType></dataVariable>
+    <dataVariable><sourceName>actual_state</sourceName><destinationName>actual_state</destinationName><dataType>String</dataType></dataVariable>
+</dataset>

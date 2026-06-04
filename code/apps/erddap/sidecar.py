@@ -4,10 +4,11 @@ import logging
 import urllib.parse
 import os
 import shutil
+import re
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 from starlette.background import BackgroundTask
 import httpx
 import uvicorn
@@ -180,6 +181,64 @@ class ERDDAPConfigCompiler:
             master_xml.append(snippet_file.read_text())
         master_xml.append('\n</erddap>')
         self.master_xml_path.write_text("\n".join(master_xml))
+
+    def get_all_datasets(self):
+        """Scans datasets.d/ and returns metadata for the UI."""
+        datasets = []
+        for xml_file in self.datasets_d.glob("*.xml"):
+            content = xml_file.read_text()
+            
+            # Extract basic info using regex to avoid heavy XML parsing
+            id_match = re.search(r'datasetID="([^"]+)"', content)
+            active_match = re.search(r'active="([^"]+)"', content)
+            dir_match = re.search(r'<fileDir>([^<]+)</fileDir>', content)
+            
+            if id_match:
+                datasets.append({
+                    "id": id_match.group(1),
+                    "active": active_match.group(1) == "true" if active_match else False,
+                    "file_dir": dir_match.group(1) if dir_match else "N/A",
+                    "xml_file": xml_file.name
+                })
+        # Sort alphabetically by dataset ID
+        return sorted(datasets, key=lambda x: x["id"])
+
+    def toggle_active(self, dataset_id: str):
+        """Flips the active boolean in the XML and rebuilds."""
+        for xml_file in self.datasets_d.glob("*.xml"):
+            content = xml_file.read_text()
+            if f'datasetID="{dataset_id}"' in content:
+                if 'active="true"' in content:
+                    content = content.replace('active="true"', 'active="false"')
+                else:
+                    content = content.replace('active="false"', 'active="true"')
+                    
+                xml_file.write_text(content)
+                self.rebuild_master_xml()
+                (self.flags_dir / "datasets.xml").touch()
+                return True
+        return False
+
+    def delete_dataset(self, dataset_id: str):
+        """Nukes the data directory, the XML snippet, and rebuilds."""
+        for xml_file in self.datasets_d.glob("*.xml"):
+            content = xml_file.read_text()
+            if f'datasetID="{dataset_id}"' in content:
+                
+                # 1. Find and delete the data directory
+                dir_match = re.search(r'<fileDir>([^<]+)</fileDir>', content)
+                if dir_match:
+                    data_dir = Path(dir_match.group(1))
+                    if data_dir.exists() and data_dir.is_dir():
+                        shutil.rmtree(data_dir, ignore_errors=True)
+                        L.info(f"Deleted data directory: {data_dir}")
+
+                # 2. Delete the XML snippet and rebuild
+                xml_file.unlink()
+                self.rebuild_master_xml()
+                (self.flags_dir / "datasets.xml").touch()
+                return True
+        return False
 
 compiler = ERDDAPConfigCompiler(data_dir=config.data_dir)
 
@@ -392,6 +451,87 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await http_client.aclose()
+
+# ---------------------------------------------------------
+# MAINTENANCE ADMIN UI
+# ---------------------------------------------------------
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    datasets = compiler.get_all_datasets()
+    
+    html = """
+    <html>
+    <head>
+        <title>ENVDS ERDDAP Maintenance</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 40px; background-color: #f8f9fa;}
+            .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            h2 { color: #343a40; border-bottom: 2px solid #e9ecef; padding-bottom: 10px; }
+            table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+            th, td { border: 1px solid #dee2e6; padding: 12px; text-align: left; }
+            th { background-color: #e9ecef; color: #495057; }
+            .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; }
+            .bg-active { background-color: #28a745; }
+            .bg-inactive { background-color: #6c757d; }
+            .btn { padding: 6px 12px; text-decoration: none; border-radius: 4px; color: white; cursor: pointer; border: none; font-size: 14px; margin-right: 5px; }
+            .btn-toggle { background-color: #f0ad4e; color: #fff; }
+            .btn-delete { background-color: #dc3545; color: #fff; }
+            .btn-delete:hover { background-color: #c82333; }
+        </style>
+        <script>
+            async function toggle(id) {
+                await fetch(`./admin/datasets/${id}/toggle`, {method: 'POST'});
+                location.reload();
+            }
+            async function delDataset(id) {
+                if(confirm(`WARNING! Are you absolutely sure you want to permanently delete all data and configurations for ${id}?`)) {
+                    await fetch(`./admin/datasets/${id}`, {method: 'DELETE'});
+                    location.reload();
+                }
+            }
+        </script>
+    </head>
+    <body>
+        <div class="container">
+            <h2>ERDDAP Datasets Maintenance</h2>
+            <p>Use this panel to safely disable or purge historical datasets from the ERDDAP engine.</p>
+            <table>
+                <tr><th>Dataset ID</th><th>Status</th><th>File Directory</th><th>Actions</th></tr>
+    """
+    
+    for ds in datasets:
+        status_text = "Active" if ds["active"] else "Inactive"
+        status_class = "bg-active" if ds["active"] else "bg-inactive"
+        
+        html += f"""
+            <tr>
+                <td style="font-family: monospace;">{ds['id']}</td>
+                <td><span class="badge {status_class}">{status_text}</span></td>
+                <td style="font-size: 12px; color: #666;">{ds['file_dir']}</td>
+                <td>
+                    <button class="btn btn-toggle" onclick="toggle('{ds['id']}')">Toggle</button>
+                    <button class="btn btn-delete" onclick="delDataset('{ds['id']}')">Delete</button>
+                </td>
+            </tr>
+        """
+        
+    html += """
+            </table>
+        </div>
+    </body>
+    </html>
+    """
+    return html
+
+@app.post("/admin/datasets/{dataset_id}/toggle")
+async def toggle_dataset(dataset_id: str):
+    success = compiler.toggle_active(dataset_id)
+    return {"success": success}
+
+@app.delete("/admin/datasets/{dataset_id}")
+async def delete_dataset(dataset_id: str):
+    success = compiler.delete_dataset(dataset_id)
+    return {"success": success}
 
 @app.api_route("/erddap/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_erddap(request: Request, path_name: str):
