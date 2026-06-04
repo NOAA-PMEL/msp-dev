@@ -2,8 +2,6 @@
     <reloadEveryNMinutes>1440</reloadEveryNMinutes>
     <updateEveryNMillis>-1</updateEveryNMillis>
     
-    <httpGetRequiredVariables>author,password</httpGetRequiredVariables>
-
     <fileDir>/erddapData/logs/operations/</fileDir>
     
     <fileNameRegex>.*\.jsonl</fileNameRegex>
@@ -25,6 +23,7 @@
         <att name="author">envds_sidecar</att>
         <att name="password">default_secret</att>
 
+        <att name="httpGetRequiredVariables">author,password</att>
         <att name="httpGetDirectoryStructure">deployment_ref/1year/1month</att>
 
         <att name="envds_stream_type">log</att>
