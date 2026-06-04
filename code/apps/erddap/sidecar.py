@@ -27,7 +27,7 @@ handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger("erddap_sidecar")
-L.setLevel(logging.INFO)
+L.setLevel(logging.DEBUG)
 
 class ERDDAPSidecarConfig(BaseSettings):
     host: str = "0.0.0.0"
@@ -47,7 +47,7 @@ class ERDDAPSidecarConfig(BaseSettings):
 
 config = ERDDAPSidecarConfig()
 app = FastAPI()
-http_client = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=100))
+http_client = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=100),timeout=60.0)
 
 # Limit ERDDAP ingestion to 50 concurrent HTTP requests to protect Tomcat
 http_semaphore = asyncio.Semaphore(50)
