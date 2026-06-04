@@ -592,8 +592,8 @@ async def proxy_erddap(request: Request, path_name: str):
     url = f"{config.erddap_internal_url}/{target_path}"
     
     req_headers = dict(request.headers)
-    req_headers.pop("host", None)
-    req_headers["X-Forwarded-Prefix"] = "/msp/data" 
+    req_headers["host"] = request.headers.get("x-forwarded-host", request.headers.get("host"))
+    req_headers["X-Forwarded-Prefix"] = "/envds/data" 
     
     rp_req = http_client.build_request(
         request.method,
