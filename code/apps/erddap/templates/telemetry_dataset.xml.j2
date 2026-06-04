@@ -2,6 +2,8 @@
     <reloadEveryNMinutes>1440</reloadEveryNMinutes>
     <updateEveryNMillis>-1</updateEveryNMillis>
     
+    <httpGetRequiredVariables>author,password</httpGetRequiredVariables>
+
     <fileDir>/erddapData/telemetry/{{ make }}/{{ model }}/{{ version }}/{{ shape_joined }}/</fileDir>
     
     <fileNameRegex>.*\.jsonl</fileNameRegex>
@@ -19,6 +21,9 @@
         <att name="Conventions">COARDS, CF-1.6, ACDD-1.3</att>
         <att name="infoUrl">http://envds.local</att>
         <att name="institution">MSP</att>
+        
+        <att name="author">envds_sidecar</att>
+        <att name="password">default_secret</att>
         
         <att name="httpGetDirectoryStructure">serial_number/1year/1day</att>
 

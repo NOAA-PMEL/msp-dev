@@ -2,6 +2,8 @@
     <reloadEveryNMinutes>1440</reloadEveryNMinutes>
     <updateEveryNMillis>-1</updateEveryNMillis>
     
+    <httpGetRequiredVariables>author,password</httpGetRequiredVariables>
+
     <fileDir>/erddapData/registry/operations/</fileDir>
     
     <fileNameRegex>.*\.jsonl</fileNameRegex>
@@ -20,6 +22,9 @@
         <att name="infoUrl">http://envds.local</att>
         <att name="institution">MSP</att>
         
+        <att name="author">envds_sidecar</att>
+        <att name="password">default_secret</att>
+
         <att name="httpGetDirectoryStructure">kind/10years</att>
 
         <att name="envds_stream_type">registry</att>
