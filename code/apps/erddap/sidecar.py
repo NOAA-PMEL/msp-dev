@@ -175,11 +175,11 @@ class ERDDAPConfigCompiler:
             (self.flags_dir / "datasets.xml").touch()
 
     def rebuild_master_xml(self):
-        master_xml = ['<?xml version="1.0" encoding="ISO-8859-1" ?>\n<erddap>']
+        master_xml = ['<?xml version="1.0" encoding="ISO-8859-1" ?>\n<erddapDatasets>']
         for snippet_file in sorted(self.datasets_d.glob("*.xml")):
             master_xml.append(f"\n")
             master_xml.append(snippet_file.read_text())
-        master_xml.append('\n</erddap>')
+        master_xml.append('\n</erddapDatasets>')
         self.master_xml_path.write_text("\n".join(master_xml))
 
     def get_all_datasets(self):
