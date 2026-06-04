@@ -38,6 +38,7 @@ class FilemanagerConfig(BaseSettings):
     save_device_data: bool = True
     save_controller_data: bool = True
     save_sampling_status: bool = True
+    save_operations_log: bool = True
 
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
@@ -308,6 +309,10 @@ class Filemanager:
                         status_type = status_map[ctype]
                         await self.process_status_record(ce, status_type=status_type)
 
+                elif ctype == "envds.operations.log":
+                    if self.config.save_operations_log:
+                        await self.process_log_record(ce)
+
             except Exception as e:
                 L.error("handle_save_buffer loop", extra={"reason": str(e)})
 
@@ -374,6 +379,45 @@ class Filemanager:
         except Exception as e:
             self.logger.error("process_status_record error", extra={"reason": str(e)})
 
+    async def process_log_record(self, ce: CloudEvent):
+        try:
+            data = ce.data
+            
+            # 1. Extract Time (Fallback to the CloudEvent envelope time)
+            ts_str = self._extract_time(data)
+            if not ts_str:
+                ts_str = ce.get("time") 
+                
+            if not ts_str:
+                self.logger.warning("Dropped log file write: No timestamp found.", extra={"source": ce.get("source")})
+                return
+                
+            d_and_t = str(ts_str).split("T")
+            ymd = d_and_t[0]
+            hour = d_and_t[1].split(":")[0] if len(d_and_t) > 1 else "00"
+
+            # 2. Re-inject Knative header extensions into the data payload if missing
+            if "deployment_ref" not in data and ce.get("deploymentref"):
+                data["deployment_ref"] = ce.get("deploymentref")
+            if "project_ref" not in data and ce.get("projectref"):
+                data["project_ref"] = ce.get("projectref")
+            if "subject" not in data and ce.get("subject"):
+                data["subject"] = ce.get("subject")
+            
+            # 3. Flat Path construction (e.g., /data/logs/operations/)
+            file_path = os.path.join(self.config.base_path, "logs", "operations")
+
+            if file_path not in self.file_map:
+                self.file_map[file_path] = GenericRecordFile(
+                    base_path=file_path, 
+                    save_interval=self.config.save_interval, 
+                    file_interval=self.config.file_interval
+                )
+            
+            await self.file_map[file_path].write(data, ymd, hour)
+
+        except Exception as e:
+            self.logger.error("process_log_record error", extra={"reason": str(e)})
 
 async def shutdown():
     print("shutting down")
