@@ -2,7 +2,7 @@ fastapi
 uvicorn
 httpx
 aiomqtt
-cloudevents
+cloudevents>=1.2.0
 logfmter
 jinja2
 ulid-py
