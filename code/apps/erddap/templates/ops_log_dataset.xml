@@ -1,0 +1,50 @@
+<dataset type="EDDTableFromHttpGet" datasetID="envds_ops_log" active="true">
+    <reloadEveryNMinutes>1440</reloadEveryNMinutes>
+    <updateEveryNMillis>-1</updateEveryNMillis>
+    
+    <fileDir>/erddapData/logs/operations/</fileDir>
+    
+    <fileNameRegex>.*\.jsonl</fileNameRegex>
+    <recursive>true</recursive>
+    <pathRegex>.*</pathRegex>
+    <metadataFrom>last</metadataFrom>
+    <sortedColumnSourceName></sortedColumnSourceName>
+    <sortFilesBySourceNames>deployment_ref,time</sortFilesBySourceNames>
+    <fileTableInMemory>true</fileTableInMemory>
+    <accessibleViaFiles>true</accessibleViaFiles>
+
+    <addAttributes>
+        <att name="cdm_data_type">TimeSeries</att>
+        <att name="cdm_timeseries_variables">time, deployment_ref</att>
+        <att name="Conventions">COARDS, CF-1.6, ACDD-1.3</att>
+        <att name="infoUrl">http://envds.local</att>
+        <att name="institution">MSP</att>
+        
+        <att name="httpGetDirectoryStructure">deployment_ref/1year/1month</att>
+
+        <att name="envds_stream_type">log</att>
+        <att name="title">ENVDS Operational Event Logs</att>
+        <att name="summary">Discrete, human-readable operational events and state transitions.</att>
+    </addAttributes>
+
+    <dataVariable><sourceName>deployment_ref</sourceName><destinationName>deployment_ref</destinationName><dataType>String</dataType></dataVariable>
+    <dataVariable><sourceName>project_ref</sourceName><destinationName>project_ref</destinationName><dataType>String</dataType></dataVariable>
+
+    <dataVariable>
+        <sourceName>time</sourceName>
+        <destinationName>time</destinationName>
+        <dataType>double</dataType>
+        <addAttributes>
+            <att name="units">seconds since 1970-01-01T00:00:00Z</att>
+        </addAttributes>
+    </dataVariable>
+
+    <dataVariable><sourceName>event_type</sourceName><destinationName>event_type</destinationName><dataType>String</dataType></dataVariable>
+    <dataVariable><sourceName>subject</sourceName><destinationName>subject</destinationName><dataType>String</dataType></dataVariable>
+    
+    <dataVariable>
+        <sourceName>description</sourceName>
+        <destinationName>description</destinationName>
+        <dataType>String</dataType>
+    </dataVariable>
+</dataset>

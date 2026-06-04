@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse
 from starlette.background import BackgroundTask
 import httpx
 import uvicorn
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 from ulid import ULID
 from aiomqtt import Client, MqttError
 from cloudevents.http import from_json, from_http
@@ -75,7 +75,7 @@ class ERDDAPConfigCompiler:
 
     def initialize_static_datasets(self):
         """Seeds the Persistent Volume with Ops Registry/Status datasets on startup."""
-        static_files = ["ops_registry_dataset.xml", "ops_status_dataset.xml"]
+        static_files = ["ops_registry_dataset.xml", "ops_status_dataset.xml", "ops_log_dataset.xml"]
         needs_rebuild = False
         
         for static_file in static_files:
@@ -402,6 +402,31 @@ async def handle_ops_status_insert(ce: dict):
     insert_url = f"{config.erddap_internal_url}/tabledap/envds_ops_status.insert?{query_string}"
     await _send_insert(insert_url)
 
+async def handle_ops_log_insert(ce: dict):
+    """Inserts discrete operational event logs into ERDDAP."""
+    data = ce.get("data", {})
+    if not data: return
+
+    # Standard CloudEvent time string (e.g., 2026-06-04T12:00:00Z)
+    time_str = ce.get("time") 
+    from envds.util.util import string_to_timestamp
+    timestamp = string_to_timestamp(time_str) if time_str else time.time()
+
+    params = {
+        "author": config.author_name,
+        "password": config.insert_password,
+        "time": timestamp,
+        "deployment_ref": ce.get("deploymentref", "unknown"),
+        "project_ref": ce.get("projectref", "unknown"),
+        "event_type": data.get("event_type", "unknown"),
+        "subject": ce.get("subject", "system"),
+        "description": data.get("description", "")
+    }
+    
+    query_string = urllib.parse.urlencode(params)
+    insert_url = f"{config.erddap_internal_url}/tabledap/envds_ops_log.insert?{query_string}"
+    await _send_insert(insert_url)
+
 # ---------------------------------------------------------
 # 3. BACKGROUND TASKS & API ROUTING
 # ---------------------------------------------------------
@@ -435,6 +460,10 @@ async def mqtt_loop():
                         elif "status.update" in ce_type:
                             if any(ops in ce_type for ops in ["samplingcondition", "samplingstate", "samplingmode", "systemmode"]):
                                 await handle_ops_status_insert(ce)
+
+                        # 4. Discrete Operational Logs
+                        elif "operations.log" in ce_type:
+                            await handle_ops_log_insert(ce)
 
                     except Exception as e:
                         L.error("Error processing MQTT message", extra={"reason": str(e)})
