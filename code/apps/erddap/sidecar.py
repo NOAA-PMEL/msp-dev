@@ -79,11 +79,18 @@ class ERDDAPConfigCompiler:
         """Seeds the Persistent Volume templates and unconditionally compiles the master XML."""
         L.info("Initializing ERDDAP datasets configuration...")
         
-        # # 1. Handle the file-based System Registry
-        # sys_reg_source = self.templates_dir / "system_registry_dataset.xml"
-        # sys_reg_dest = self.datasets_d / "system_registry_dataset.xml"
-        # if sys_reg_source.exists():
-        #     shutil.copy(sys_reg_source, sys_reg_dest)
+        # 1. Clean out the NOAA mock
+        for old_file in self.datasets_d.glob("*.xml"):
+            old_file.unlink()
+
+        # 1. Handle the file-based System Registry
+        sys_reg_source = self.templates_dir / "system_registry_dataset.xml"
+        sys_reg_dest = self.datasets_d / "system_registry_dataset.xml"
+        if sys_reg_source.exists():
+            shutil.copy(sys_reg_source, sys_reg_dest)
+            L.info("Copied system_registry_dataset.xml to active datasets.")
+        else:
+            L.error("Could not find system_registry_dataset.xml in templates!")
 
         # # 2. Render the HTTP-based Status and Log datasets dynamically
         # http_templates = ["ops_status_dataset.xml.j2", "ops_log_dataset.xml.j2"]
@@ -101,20 +108,7 @@ class ERDDAPConfigCompiler:
         #     except Exception as e:
         #         L.error(f"Failed to render {template_name}", extra={"error": str(e)})
 
-        # --- TEMPORARY MOCK DATASET ---
-        # 1. Clean out existing snippets to guarantee a clean slate
-        for old_file in self.datasets_d.glob("*.xml"):
-            old_file.unlink()
-            
-        # 2. Inject ONLY the mock dataset
-        mock_dest = self.datasets_d / "mock_test_dataset.xml"
-        mock_xml = """<dataset type="EDDTableFromErddap" datasetID="mock_noaa_test" active="true">
-    <sourceUrl>https://coastwatch.pfeg.noaa.gov/erddap/tabledap/cwwcNDBCMet</sourceUrl>
-</dataset>"""
-        mock_dest.write_text(mock_xml)
-        L.info("Injected mock_noaa_test dataset.")
-        # ------------------------------
-        
+
         # 3. UNCONDITIONALLY rebuild the master datasets.xml on every single startup
         L.info("Compiling master datasets.xml from active directory state...")
         self.rebuild_master_xml()
