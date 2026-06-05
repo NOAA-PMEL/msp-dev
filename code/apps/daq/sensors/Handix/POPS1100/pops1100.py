@@ -423,7 +423,8 @@ class POPS1100(Sensor):
                     
                     try:
                         if var_name == "POPS_ID":
-                            record["variables"][var_name]["data"] = "POPS-094"
+                            val_str = "POPS-094"
+                            record["variables"][var_name]["data"] = val_str
                         else:
                             val_str = parts[index].strip()
                             record["variables"][var_name]["data"] = eval(v_type)(val_str)
