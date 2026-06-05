@@ -16,8 +16,9 @@
         <att name="cdm_data_type">TimeSeries</att>
         <att name="cdm_timeseries_variables">time, kind, make, model, version</att>
         <att name="Conventions">COARDS, CF-1.6, ACDD-1.3</att>
-        <att name="infoUrl">http://envds.local</att>
-        <att name="institution">MSP</att>
+        <att name="summary">This is a summary of the dataset for ERDDAP.</att>
+        <att name="institution">NOAA PMEL</att>
+        <att name="infoUrl">https://www.pmel.noaa.gov/</att>
         <att name="envds_stream_type">registry</att>
         <att name="title">ENVDS Hardware Definitions Registry</att>
     </addAttributes>

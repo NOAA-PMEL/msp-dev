@@ -302,13 +302,29 @@ def unroll_multidimensional_data(base_row, shape_dims, coords_dict, var_dict):
             
     yield from recurse(0, [], base_row)
 
-async def _send_insert(url: str):
+async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5):
+    """Executes the HTTP POST request with a concurrency limit and retries for ERDDAP reloads."""
     async with http_semaphore:
-        try:
-            resp = await http_client.get(url)
-            resp.raise_for_status()
-        except Exception as e:
-            L.error("ERDDAP Insert Failed", extra={"url": url.split('?')[0], "reason": str(e)})
+        for attempt in range(retries):
+            try:
+                # Use POST and pass the dictionary natively to the 'data' parameter (Form URL-Encoded)
+                resp = await http_client.post(url, data=payload)
+                resp.raise_for_status()
+                return  # Success, exit the retry loop
+                
+            except httpx.HTTPStatusError as e:
+                # If 404, ERDDAP might still be reloading datasets.xml. Wait and retry.
+                if e.response.status_code == 404 and attempt < retries - 1:
+                    L.debug(f"ERDDAP 404 on insert (reloading?). Retrying in {delay}s...", extra={"url": url})
+                    await asyncio.sleep(delay)
+                    continue
+                
+                L.error("ERDDAP Insert Failed", extra={"url": url, "reason": str(e)})
+                return
+                
+            except Exception as e:
+                L.error("ERDDAP Connection Failed", extra={"url": url, "reason": str(e)})
+                return
 
 async def insert_telemetry_to_erddap(ce: dict):
     data = ce.data if hasattr(ce, "data") else ce.get("data", {})
@@ -369,9 +385,9 @@ async def insert_telemetry_to_erddap(ce: dict):
                 if payload_coord: coords_dict[dim] = payload_coord
                     
             for flat_row in unroll_multidimensional_data(base_params, extra_dims, coords_dict, var_dict):
-                query_string = urllib.parse.urlencode(flat_row)
-                insert_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.insert?{query_string}"
-                insert_tasks.append(_send_insert(insert_url))
+                # We no longer need the ?query_string!
+                insert_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.insert"
+                insert_tasks.append(_send_insert(insert_url, payload=flat_row))
 
     if insert_tasks:
         await asyncio.gather(*insert_tasks, return_exceptions=True)
@@ -459,9 +475,8 @@ async def handle_ops_status_insert(ce: dict):
         "actual_state": actual
     }
     
-    query_string = urllib.parse.urlencode(params)
-    insert_url = f"{config.erddap_internal_url}/tabledap/envds_ops_status.insert?{query_string}"
-    await _send_insert(insert_url)
+    insert_url = f"{config.erddap_internal_url}/tabledap/envds_ops_status.insert"
+    await _send_insert(insert_url, payload=params)
 
 async def handle_ops_log_insert(ce: dict):
     data = ce.data if hasattr(ce, "data") else ce.get("data", {})
@@ -484,10 +499,9 @@ async def handle_ops_log_insert(ce: dict):
         "description": data.get("description", "")
     }
     
-    query_string = urllib.parse.urlencode(params)
-    insert_url = f"{config.erddap_internal_url}/tabledap/envds_ops_log.insert?{query_string}"
-    await _send_insert(insert_url)
-
+    insert_url = f"{config.erddap_internal_url}/tabledap/envds_ops_log.insert"
+    await _send_insert(insert_url, payload=params)
+    
 async def handle_hardware_registry_insert(ce: dict):
     attrs = ce.get("attributes", ce) if isinstance(ce, dict) else ce.get_attributes()
     data = ce.data if hasattr(ce, "data") else ce.get("data", {})
