@@ -2,7 +2,6 @@
     <reloadEveryNMinutes>10</reloadEveryNMinutes>
     <updateEveryNMillis>10000</updateEveryNMillis>
     
-    <sourceUrl>(local files)</sourceUrl>
     <fileDir>/erddapData/registry/hardware/</fileDir>
     <fileNameRegex>.*\.jsonl</fileNameRegex>
     <recursive>true</recursive>
@@ -22,6 +21,7 @@
         <att name="infoUrl">https://www.pmel.noaa.gov/</att>
         <att name="envds_stream_type">registry</att>
         <att name="title">ENVDS Hardware Definitions Registry</att>
+        <att name="sourceUrl">(local files)</att>
     </addAttributes>
 
     <dataVariable>

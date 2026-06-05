@@ -2,7 +2,6 @@
     <reloadEveryNMinutes>1440</reloadEveryNMinutes>
     <updateEveryNMillis>-1</updateEveryNMillis>
     
-    <sourceUrl>(local files)</sourceUrl>
     <fileDir>/erddapData/logs/operations/</fileDir>
     
     <fileNameRegex>.*\.jsonl</fileNameRegex>
@@ -25,7 +24,7 @@
         <att name="httpGetRequiredVariables">author,password</att>
         <att name="httpGetKeys">{{ author }}_{{ password }}</att>
         <att name="httpGetDirectoryStructure">deployment_ref/1year/1month</att>
-
+        <att name="sourceUrl">(local files)</att>
         <att name="envds_stream_type">log</att>
         <att name="title">ENVDS Operational Event Logs</att>
         <att name="summary">Discrete, human-readable operational events and state transitions.</att>

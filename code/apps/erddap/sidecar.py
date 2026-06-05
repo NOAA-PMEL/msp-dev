@@ -191,6 +191,36 @@ class ERDDAPConfigCompiler:
                 L.info(f"Generated new ERDDAP dataset: {dataset_id}")
                 needs_rebuild = True
 
+            # --- AUTOMATED SEEDING LOGIC PER SHAPE ---
+            # ALWAYS ensure the directory exists and is seeded (Un-indented from the if block!)
+            dir_match = re.search(r'<fileDir>([^<]+)</fileDir>', xml_content)
+            if dir_match:
+                dataset_dir = Path(dir_match.group(1))
+                dataset_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Safety Valve: Only drop the seed if the file does not exist yet
+                seed_file = dataset_dir / "seed.jsonl"
+                if not seed_file.exists():
+                    col_names = [c["name"] for c in cols]
+                    
+                    # ERDDAP strictly requires the second array to be Data Types
+                    col_types = []
+                    dummy_vals = []
+                    
+                    for c in cols:
+                        c_type = str(c.get("type", "float")).lower()
+                        if c_type in ["string", "char", "text", "boolean"]:
+                            col_types.append("String")
+                            dummy_vals.append("1970-01-01T00:00:00Z" if c["name"] == "time" else "seed")
+                        else:
+                            col_types.append("double")
+                            dummy_vals.append(0.0)
+                            
+                    # Write the 3-line JSONL-CSV format ERDDAP expects
+                    seed_content = f"{json.dumps(col_names)}\n{json.dumps(col_types)}\n{json.dumps(dummy_vals)}\n"
+                    seed_file.write_text(seed_content)
+                    L.info(f"Dropped seed.jsonl into {dataset_dir}")
+
         if needs_rebuild:
             self.rebuild_master_xml()
             (self.flags_dir / "datasets.xml").touch()

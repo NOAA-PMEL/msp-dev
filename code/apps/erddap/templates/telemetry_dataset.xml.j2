@@ -1,7 +1,7 @@
 <dataset type="EDDTableFromHttpGet" datasetID="{{ dataset_id }}" active="true">
     <reloadEveryNMinutes>1440</reloadEveryNMinutes>
     <updateEveryNMillis>-1</updateEveryNMillis>
-    <sourceUrl>(local files)</sourceUrl>
+    
     <fileDir>/erddapData/datasets.d/{{ dataset_id }}</fileDir>
     <fileNameRegex>.*\.jsonl</fileNameRegex>
     <recursive>true</recursive>
@@ -22,6 +22,7 @@
         <att name="subsetVariables">make,model</att>
         <att name="summary">{{ make }} {{ model }} Telemetry Dataset</att>
         <att name="title">{{ make }} {{ model }} Telemetry</att>
+        <att name="sourceUrl">(local files)</att>
     </addAttributes>
 
     <dataVariable>
