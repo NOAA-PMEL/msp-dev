@@ -377,7 +377,7 @@ class POPS1100(Sensor):
             # 1. Identify scalar variables for mapping.
             # MUST filter out "setting" variables (like sampling_state, pump_power) 
             # and calculated/coordinate variables.
-            exclude_vars = ["time", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN", "bin_count"]
+            exclude_vars = ["time", "TimeSSM", "DataStatus", "HistSum", "MaxSTD", "PumpLife_hrs", "WidthSTD", "AveWidth", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN", "bin_count"]
             
             variables = []
             for v, meta in self.metadata["variables"].items():
@@ -392,7 +392,6 @@ class POPS1100(Sensor):
             # 2. Populate timestamps
             record["timestamp"] = data.data["timestamp"]
             record["variables"]["time"]["data"] = data.data["timestamp"]
-            self.logger.debug("default_parse_094", extra={"new_rec": record})
 
             # 3. Clean raw serial string
             parts = data.data["data"].strip().split(",")
@@ -409,7 +408,7 @@ class POPS1100(Sensor):
             parts = [p for p in parts if "/media/uSD" not in p]
 
             self.logger.debug("default_parse_094", extra={"in_parts": parts})
-            
+
             self.logger.debug("parse_trace_start", extra={"total_chunks": len(parts), "json_vars": len(variables)})
 
             # 4. Map Scalars: Iterate through filtered JSON variables
