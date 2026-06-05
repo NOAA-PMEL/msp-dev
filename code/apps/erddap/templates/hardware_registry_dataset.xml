@@ -2,6 +2,7 @@
     <reloadEveryNMinutes>10</reloadEveryNMinutes>
     <updateEveryNMillis>10000</updateEveryNMillis>
     
+    <sourceUrl>(local files)</sourceUrl>
     <fileDir>/erddapData/registry/hardware/</fileDir>
     <fileNameRegex>.*\.jsonl</fileNameRegex>
     <recursive>true</recursive>
@@ -23,27 +24,64 @@
         <att name="title">ENVDS Hardware Definitions Registry</att>
     </addAttributes>
 
-    <dataVariable><sourceName>kind</sourceName><destinationName>kind</destinationName><dataType>String</dataType></dataVariable>
-    <dataVariable><sourceName>make</sourceName><destinationName>make</destinationName><dataType>String</dataType></dataVariable>
-    <dataVariable><sourceName>model</sourceName><destinationName>model</destinationName><dataType>String</dataType></dataVariable>
-    <dataVariable><sourceName>version</sourceName><destinationName>version</destinationName><dataType>String</dataType></dataVariable>
+    <dataVariable>
+        <sourceName>kind</sourceName>
+        <destinationName>kind</destinationName>
+        <dataType>String</dataType>
+        <addAttributes>
+            <att name="ioos_category">Unknown</att>
+        </addAttributes>
+    </dataVariable>
+    <dataVariable>
+        <sourceName>make</sourceName>
+        <destinationName>make</destinationName>
+        <dataType>String</dataType>
+        <addAttributes>
+            <att name="ioos_category">Unknown</att>
+        </addAttributes>
+    </dataVariable>
+    <dataVariable>
+        <sourceName>model</sourceName>
+        <destinationName>model</destinationName>
+        <dataType>String</dataType>
+        <addAttributes>
+            <att name="ioos_category">Unknown</att>
+        </addAttributes>
+    </dataVariable>
+    <dataVariable>
+        <sourceName>version</sourceName>
+        <destinationName>version</destinationName>
+        <dataType>String</dataType>
+        <addAttributes>
+            <att name="ioos_category">Unknown</att>
+        </addAttributes>
+    </dataVariable>
 
     <dataVariable>
         <sourceName>time</sourceName>
         <destinationName>time</destinationName>
         <dataType>double</dataType>
         <addAttributes>
+            <att name="ioos_category">Time</att>
             <att name="units">seconds since 1970-01-01T00:00:00Z</att>
         </addAttributes>
     </dataVariable>
 
-    <dataVariable><sourceName>valid_config_time</sourceName><destinationName>valid_config_time</destinationName><dataType>String</dataType></dataVariable>
+    <dataVariable>
+        <sourceName>valid_config_time</sourceName>
+        <destinationName>valid_config_time</destinationName>
+        <dataType>String</dataType>
+        <addAttributes>
+            <att name="ioos_category">Unknown</att>
+        </addAttributes>
+    </dataVariable>
 
     <dataVariable>
         <sourceName>payload</sourceName>
         <destinationName>payload</destinationName>
         <dataType>String</dataType>
         <addAttributes>
+            <att name="ioos_category">Unknown</att>
             <att name="description">Stringified JSON of the full hardware definition</att>
         </addAttributes>
     </dataVariable>
