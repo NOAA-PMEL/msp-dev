@@ -120,7 +120,7 @@ class ERDDAPConfigCompiler:
 
     def handle_definition(self, ce: dict):
         """Parses sensor definitions, groups by shape, caches metadata, and builds XML."""
-        definition = ce.get("data", {})
+        definition = ce.data if hasattr(ce, "data") else ce.get("data", {})
         attributes = definition.get("attributes", {})
         variables = definition.get("variables", {})
         
@@ -329,7 +329,7 @@ async def _send_insert(url: str):
             L.error("ERDDAP Insert Failed", extra={"url": url.split('?')[0], "reason": str(e)})
 
 async def insert_telemetry_to_erddap(ce: dict):
-    data = ce.get("data", {})
+    data = ce.data if hasattr(ce, "data") else ce.get("data", {})
     attributes = data.get("attributes", {})
     variables = data.get("variables", {})
     
@@ -469,7 +469,7 @@ async def handle_ops_registry_insert(ce: dict):
 
 async def handle_ops_status_insert(ce: dict):
     """Inserts 1Hz logic evaluations into the real-time Ops Status dataset."""
-    data = ce.get("data", {})
+    data = ce.data if hasattr(ce, "data") else ce.get("data", {})
     id_block = data.get("id", {})
     timestamp = data.get("timestamp")
     if not timestamp: return
@@ -500,7 +500,7 @@ async def handle_ops_status_insert(ce: dict):
 
 async def handle_ops_log_insert(ce: dict):
     """Inserts discrete operational event logs into ERDDAP."""
-    data = ce.get("data", {})
+    data = ce.data if hasattr(ce, "data") else ce.get("data", {})
     if not data: return
 
     # Standard CloudEvent time string (e.g., 2026-06-04T12:00:00Z)
@@ -526,7 +526,7 @@ async def handle_ops_log_insert(ce: dict):
 async def handle_hardware_registry_insert(ce: dict):
     """Appends Hardware Definitions (Device, Controller) directly to a JSONL file."""
     attrs = ce.get("attributes", ce)
-    data = ce.get("data", {})
+    data = ce.data if hasattr(ce, "data") else ce.get("data", {})
     if not data: return
 
     # Dynamically find the definition block
