@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import sys
+import time
 from time import sleep
 from typing import List
 
@@ -101,7 +102,7 @@ class DatastoreConfig(BaseSettings):
 
     erddap_enable: bool = False
     erddap_http_connection: str | None = None
-    # erddap_author: str = "fake_author"
+    erddap_author: str = "fake_author"
 
     mqtt_broker: str = 'mosquitto.default'
     mqtt_port: int = 1883
