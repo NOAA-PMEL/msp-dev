@@ -385,7 +385,7 @@ class POPS1100(Sensor):
                 if v_type == "main" and v not in exclude_vars:
                     variables.append(v)
             
-            self.logger.debug("default_parse_094", extra={"var_list": variables})
+            # self.logger.debug("default_parse_094", extra={"var_list": variables})
             record = self.build_data_record(meta=self.include_metadata)
             self.include_metadata = False
             
@@ -395,13 +395,13 @@ class POPS1100(Sensor):
 
             # 3. Clean raw serial string
             parts = data.data["data"].strip().split(",")
-            self.logger.debug("default_parse_094", extra={"in_parts": parts})
+            # self.logger.debug("default_parse_094", extra={"in_parts": parts})
 
             # Remove ONLY the "POPS" header
             if parts and parts[0] == "POPS":
                 parts.pop(0)
             
-            self.logger.debug("default_parse_094", extra={"in_parts": parts})
+            # self.logger.debug("default_parse_094", extra={"in_parts": parts})
 
             # Remove ONLY the SD Path string (e.g., /media/uSD...)
             # We DO NOT remove "POPS-347" because it maps to POPS_ID!
@@ -410,9 +410,9 @@ class POPS1100(Sensor):
             # rm unknown column
             parts.pop(19) 
 
-            self.logger.debug("default_parse_094", extra={"in_parts": parts})
+            # self.logger.debug("default_parse_094", extra={"in_parts": parts})
 
-            self.logger.debug("parse_trace_start", extra={"total_chunks": len(parts), "json_vars": len(variables)})
+            # self.logger.debug("parse_trace_start", extra={"total_chunks": len(parts), "json_vars": len(variables)})
 
             # 4. Map Scalars: Iterate through filtered JSON variables
             for index, var_name in enumerate(variables):
@@ -425,19 +425,22 @@ class POPS1100(Sensor):
                         if var_name == "POPS_ID":
                             val_str = "POPS-094"
                             record["variables"][var_name]["data"] = val_str
+                        # elif var_name == "TH_Mult": 
+                        #     val_str = 3
+                        #     record["variables"][var_name]["data"] = val_str
                         else:
                             val_str = parts[index].strip()
                             record["variables"][var_name]["data"] = eval(v_type)(val_str)
                         
-                        self.logger.debug(
-                            "var_mapping", 
-                            extra={
-                                "col_idx": index, 
-                                "target_var": var_name, 
-                                "raw_val": val_str, 
-                                "cast_to": v_type
-                            }
-                        )
+                        # self.logger.debug(
+                        #     "var_mapping", 
+                        #     extra={
+                        #         "col_idx": index, 
+                        #         "target_var": var_name, 
+                        #         "raw_val": val_str, 
+                        #         "cast_to": v_type
+                        #     }
+                        # )
                     except (ValueError, TypeError, IndexError) as e:
                         self.logger.error("mapping_failure", extra={"at_idx": index, "var": var_name, "err": str(e)})
                         record["variables"][var_name]["data"] = None
@@ -445,7 +448,7 @@ class POPS1100(Sensor):
             # 5. Bin Extraction: Histogram starts after the last mapped scalar
             raw_bins = parts[len(variables):]
             
-            self.logger.debug("bin_trace", extra={"bins_count": len(raw_bins), "bin_list": str(raw_bins)})
+            # self.logger.debug("bin_trace", extra={"bins_count": len(raw_bins), "bin_list": str(raw_bins)})
 
             # STRICT VALIDATION: Manual Rev 8 confirms 16 bins is the standard [cite: 885, 891]
             if len(raw_bins) != 16:
