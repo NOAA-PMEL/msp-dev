@@ -193,8 +193,17 @@ class ERDDAPConfigCompiler:
     def rebuild_master_xml(self):
         master_xml = ['<?xml version="1.0" encoding="ISO-8859-1" ?>\n<erddapDatasets>']
         for snippet_file in sorted(self.datasets_d.glob("*.xml")):
+            content = snippet_file.read_text()
             master_xml.append(f"\n")
-            master_xml.append(snippet_file.read_text())
+            master_xml.append(content)
+            
+            # --- AUTO-CREATE ERDDAP DATA DIRECTORIES ---
+            dir_match = re.search(r'<fileDir>([^<]+)</fileDir>', content)
+            if dir_match:
+                data_dir = Path(dir_match.group(1))
+                data_dir.mkdir(parents=True, exist_ok=True)
+            # -------------------------------------------
+                
         master_xml.append('\n</erddapDatasets>')
         self.master_xml_path.write_text("\n".join(master_xml))
 
