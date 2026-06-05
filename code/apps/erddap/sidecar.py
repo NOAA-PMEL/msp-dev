@@ -19,6 +19,7 @@ from cloudevents.http import from_json, from_http
 from logfmter import Logfmter
 from jinja2 import Environment, FileSystemLoader
 import time
+from xml.sax.saxutils import escape
 
 # ---------------------------------------------------------
 # LOGGING & CONFIGURATION
@@ -93,8 +94,8 @@ class ERDDAPConfigCompiler:
             try:
                 template = self.env.get_template(template_name)
                 xml_content = template.render(
-                    author=config.author_name,
-                    password=config.insert_password
+                    author=escape(config.author_name),
+                    password=escape(config.insert_password)
                 )
                 dest_path.write_text(xml_content)
             except Exception as e:
@@ -168,15 +169,15 @@ class ERDDAPConfigCompiler:
 
             xml_content = self.telemetry_template.render(
                 dataset_id=dataset_id,
-                make=make,
-                model=model,
-                sn=sn,
+                make=escape(make),
+                model=escape(model),
+                sn=escape(sn),
                 version=version,
                 format_version=str(version_raw),
                 shape_joined=shape_joined,
                 columns=cols,
-                author=config.author_name,        
-                password=config.insert_password
+                author=escape(config.author_name),        
+                password=escape(config.insert_password)
             )
             
             snippet_path = self.datasets_d / f"{dataset_id}.xml"
