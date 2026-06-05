@@ -377,7 +377,7 @@ class POPS1100(Sensor):
             # 1. Identify scalar variables for mapping.
             # MUST filter out "setting" variables (like sampling_state, pump_power) 
             # and calculated/coordinate variables.
-            exclude_vars = ["time", "TimeSSM", "DataStatus", "HistSum", "MaxSTD", "PumpLife_hrs", "WidthSTD", "AveWidth", "MinPeakPts", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN", "bin_count"]
+            exclude_vars = ["time", "TimeSSM", "DataStatus", "HistSum", "MaxSTD", "PumpLife_hrs", "WidthSTD", "AveWidth", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN", "bin_count"]
             
             variables = []
             for v, meta in self.metadata["variables"].items():
