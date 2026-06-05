@@ -20,11 +20,11 @@
         <att name="infoUrl">http://envds.local</att>
         <att name="institution">MSP</att>
         
-        <att name="author">envds_sidecar</att>
-        <att name="password">default_secret</att>
+        <att name="author">{{ author }}</att>
+        <att name="password">{{ password }}</att>
 
         <att name="httpGetRequiredVariables">author,password</att>
-        <att name="httpGetKeys">envds_sidecar_default_secret</att>
+        <att name="httpGetKeys">{{ author }}_{{ password }}</att>
         <att name="httpGetDirectoryStructure">serial_number/1year/1day</att>
 
         <att name="envds_stream_type">telemetry</att>

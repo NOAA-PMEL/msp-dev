@@ -55,6 +55,7 @@ http_semaphore = asyncio.Semaphore(50)
 # In-memory cache for sensor dimensional shapes and static coordinate values
 # Format: {"make_model_v1": {"shapes": {...}, "coords": {...}}}
 definition_cache = {}
+definition_registry_cache = {}
 
 # ---------------------------------------------------------
 # 1. ERDDAP CONFIG COMPILER
@@ -74,21 +75,34 @@ class ERDDAPConfigCompiler:
         self.telemetry_template = self.env.get_template("telemetry_dataset.xml.j2")
 
     def initialize_static_datasets(self):
-        """Seeds the Persistent Volume with Ops Registry/Status datasets on startup."""
-        static_files = ["ops_registry_dataset.xml", "ops_status_dataset.xml", "ops_log_dataset.xml"]
+        """Seeds the Persistent Volume with Registry/Status datasets on startup."""
         needs_rebuild = False
         
-        for static_file in static_files:
-            source_path = self.templates_dir / static_file
-            dest_path = self.datasets_d / static_file
+        # 1. Handle the file-based System Registry (No HTTP passwords needed)
+        sys_reg_source = self.templates_dir / "system_registry_dataset.xml"
+        sys_reg_dest = self.datasets_d / "system_registry_dataset.xml"
+        if sys_reg_source.exists() and (not sys_reg_dest.exists() or sys_reg_source.read_text() != sys_reg_dest.read_text()):
+            shutil.copy(sys_reg_source, sys_reg_dest)
+            needs_rebuild = True
+
+        # 2. Render the HTTP-based Status and Log datasets dynamically
+        http_templates = ["ops_status_dataset.xml.j2", "ops_log_dataset.xml.j2"]
+        for template_name in http_templates:
+            target_name = template_name.replace(".j2", "")
+            dest_path = self.datasets_d / target_name
             
-            if not dest_path.exists() or source_path.read_text() != dest_path.read_text():
-                if source_path.exists():
-                    shutil.copy(source_path, dest_path)
-                    L.info(f"Seeded static dataset: {static_file}")
+            try:
+                template = self.env.get_template(template_name)
+                xml_content = template.render(
+                    author=config.author_name,
+                    password=config.insert_password
+                )
+                if not dest_path.exists() or dest_path.read_text() != xml_content:
+                    dest_path.write_text(xml_content)
+                    L.info(f"Rendered dynamic dataset: {target_name}")
                     needs_rebuild = True
-                else:
-                    L.error(f"Missing static template in image: {source_path}")
+            except Exception as e:
+                L.error(f"Failed to render {template_name}", extra={"error": str(e)})
 
         if needs_rebuild or not self.master_xml_path.exists():
             self.rebuild_master_xml()
@@ -161,7 +175,9 @@ class ERDDAPConfigCompiler:
                 version=version,
                 format_version=str(version_raw),
                 shape_joined=shape_joined,
-                columns=cols
+                columns=cols,
+                author=config.author_name,        
+                password=config.insert_password
             )
             
             snippet_path = self.datasets_d / f"{dataset_id}.xml"
@@ -349,27 +365,49 @@ async def insert_telemetry_to_erddap(ce: dict):
         await asyncio.gather(*insert_tasks, return_exceptions=True)
 
 async def handle_ops_registry_insert(ce: dict):
-    """Inserts definitions (e.g. SamplingConditions) into the historical Ops Registry."""
+    """Appends definitions directly to a JSONL file on disk for ERDDAP to scan."""
     data = ce.get("data", {})
     kind = data.get("kind")
     metadata = data.get("metadata", {})
     if not kind or not metadata: return
 
-    params = {
-        "author": config.author_name,
-        "password": config.insert_password,
+    namespace = metadata.get("sampling_namespace", "unknown")
+    name = metadata.get("name", "unknown")
+    revision = metadata.get("revision", 1)
+
+    # --- DEDUPLICATION CHECK ---
+    cache_key = f"{kind}_{namespace}_{name}"
+    if definition_registry_cache.get(cache_key, 0) >= revision:
+        # We already have this revision (or a newer one) saved to disk. Ignore it.
+        return
+    
+    # Update the cache with the new revision
+    definition_registry_cache[cache_key] = revision
+    # ---------------------------
+
+    # Target directory: /erddapData/registry/system/<kind>/
+    registry_dir = Path(config.data_dir) / "registry" / "system" / kind
+    registry_dir.mkdir(parents=True, exist_ok=True)
+    file_path = registry_dir / f"{kind}_registry.jsonl"
+
+    record = {
         "time": time.time(),
         "kind": kind,
-        "name": metadata.get("name", "unknown"),
-        "namespace": metadata.get("sampling_namespace", "unknown"),
+        "namespace": namespace,
+        "name": name,
         "valid_config_time": metadata.get("valid_config_time", "unknown"),
-        "revision": metadata.get("revision", 1),
+        "revision": revision,
         "payload": json.dumps(data, separators=(',', ':'))
     }
-    
-    query_string = urllib.parse.urlencode(params)
-    insert_url = f"{config.erddap_internal_url}/tabledap/envds_ops_registry.insert?{query_string}"
-    await _send_insert(insert_url)
+
+    # Append to the JSONL file
+    with open(file_path, "a") as f:
+        f.write(json.dumps(record) + "\n")
+        
+    # Drop a hardFlag so ERDDAP immediately rescans the directory
+    flag_dir = Path(config.data_dir) / "hardFlag"
+    flag_dir.mkdir(parents=True, exist_ok=True)
+    (flag_dir / "envds_system_registry").touch()
 
 async def handle_ops_status_insert(ce: dict):
     """Inserts 1Hz logic evaluations into the real-time Ops Status dataset."""
@@ -447,9 +485,12 @@ async def mqtt_loop():
                         
                         # 1. Definitions / Registries
                         if "registry.update" in ce_type:
-                            if "sampling" in ce_type or "system" in ce_type:
-                                await handle_ops_registry_insert(ce)
-                            else:
+                            
+                            # Always push EVERY definition to the envds_ops_registry table
+                            await handle_ops_registry_insert(ce)
+                            
+                            # ONLY compile dataset XMLs if it's hardware
+                            if any(hw in ce_type for hw in ["device", "controller"]):
                                 compiler.handle_definition(ce)
                                 
                         # 2. Hardware Telemetry Data
@@ -494,9 +535,11 @@ async def registry_update(request: Request):
         
         L.debug(f"Received Knative Registry Update", extra={"type": ce_type})
         
-        if "sampling" in ce_type or "system" in ce_type:
-            await handle_ops_registry_insert(ce)
-        else:
+        # 1. ALWAYS archive EVERY definition in the historical JSON ledger
+        await handle_ops_registry_insert(ce)
+        
+        # 2. ONLY generate ERDDAP telemetry datasets for hardware
+        if any(hw in ce_type for hw in ["device", "controller"]):
             compiler.handle_definition(ce)
             
         return Response(status_code=status.HTTP_204_NO_CONTENT)

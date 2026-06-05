@@ -101,7 +101,7 @@ class DatastoreConfig(BaseSettings):
 
     erddap_enable: bool = False
     erddap_http_connection: str | None = None
-    erddap_author: str = "fake_author"
+    # erddap_author: str = "fake_author"
 
     mqtt_broker: str = 'mosquitto.default'
     mqtt_port: int = 1883
@@ -167,8 +167,24 @@ class Datastore:
         self.logger.debug("configure", extra={"db_client_config": db_client_config})
         self.db_client = DBClientManager.create(db_client_config)
 
+        # 2. Setup ERDDAP (Deep Archive) - Dynamically Instantiated
         if self.config.erddap_enable:
-            pass
+            from erddap_client import ErddapClient
+            
+            # Pass ERDDAP specific configs using the same config wrapper ErddapClient expects
+            erddap_config = DBClientConfig(
+                type="erddap",
+                config={
+                    "log_level": self.config.log_level,
+                    "erddap_http_connection": self.config.erddap_http_connection,
+                    "erddap_author": self.config.erddap_author
+                }
+            )
+            self.erddap_client = ErddapClient(erddap_config)
+            self.logger.info("ERDDAP Client dynamically instantiated.")
+        else:
+            self.erddap_client = None
+            self.logger.info("ERDDAP disabled. Operating in Edge/Cache-only mode.")
 
     def open_http_client(self):
         self.logger.debug("open_http_client")
@@ -574,6 +590,8 @@ class Datastore:
 
     async def device_data_get(self, query: DataRequest):
         self.logger.debug("device_data_get:3", extra={"query": query})
+        
+        # 1. Parse incoming time constraints
         if query.start_time:
             query.start_timestamp = string_to_timestamp(query.start_time)
 
@@ -585,11 +603,39 @@ class Datastore:
             query.start_timestamp = start_dt.timestamp()
             query.end_timestamp = None
 
-        if self.db_client:
-            self.logger.debug("device_data_get:4", extra={"query": query})
-            return await self.db_client.device_data_get(query)
+        self.logger.debug("device_data_get:4", extra={"query": query})
 
-        return {"results": []}
+        results = []
+
+        # 2. Always check the Hot Cache (Redis) first
+        if self.db_client:
+            redis_response = await self.db_client.device_data_get(query)
+            results.extend(redis_response.get("results", []))
+
+        # 3. Check Deep Archive (ERDDAP) if enabled
+        if self.erddap_client:
+            current_time = time.time()
+            cache_limit = current_time - self.config.db_data_ttl
+            
+            # If the user wants data older than what Redis holds (or all historical data)
+            if not query.start_timestamp or query.start_timestamp < cache_limit:
+                
+                # Copy the Pydantic model so we don't mutate the original query
+                archive_query = query.copy()
+                
+                # Cap the ERDDAP request's end time at the cache limit. 
+                # ERDDAP only fetches what Redis dropped, preventing overlapping data.
+                archive_query.end_timestamp = min(query.end_timestamp or current_time, cache_limit)
+                
+                try:
+                    erddap_response = await self.erddap_client.device_data_get(archive_query)
+                    
+                    # Prepend the historical ERDDAP data to the recent Redis data
+                    results = erddap_response.get("results", []) + results
+                except Exception as e:
+                    self.logger.error("device_data_get ERDDAP fallback failed", extra={"reason": str(e)})
+
+        return {"results": results}
 
     # async def device_definition_registry_update(self, ce: CloudEvent):
     #     try:
@@ -1103,6 +1149,8 @@ class Datastore:
 
     async def controller_data_get(self, query: DataRequest):
         self.logger.debug("controller_data_get:3", extra={"query": query})
+        
+        # 1. Parse incoming time constraints
         if query.start_time:
             query.start_timestamp = string_to_timestamp(query.start_time)
 
@@ -1114,12 +1162,39 @@ class Datastore:
             query.start_timestamp = start_dt.timestamp()
             query.end_timestamp = None
 
+        self.logger.debug("controller_data_get:4", extra={"query": query})
+
+        results = []
+
+        # 2. Always check the Hot Cache (Redis) first
         if self.db_client:
-            self.logger.debug("controller_data_get:4", extra={"query": query})
-            return await self.db_client.controller_data_get(query)
+            redis_response = await self.db_client.controller_data_get(query)
+            results.extend(redis_response.get("results", []))
 
-        return {"results": []}
+        # 3. Check Deep Archive (ERDDAP) if enabled
+        if self.erddap_client:
+            current_time = time.time()
+            cache_limit = current_time - self.config.db_data_ttl
+            
+            # If the user wants data older than what Redis holds (or all historical data)
+            if not query.start_timestamp or query.start_timestamp < cache_limit:
+                
+                # Copy the Pydantic model so we don't mutate the original query
+                archive_query = query.copy()
+                
+                # Cap the ERDDAP request's end time at the cache limit
+                archive_query.end_timestamp = min(query.end_timestamp or current_time, cache_limit)
+                
+                try:
+                    erddap_response = await self.erddap_client.controller_data_get(archive_query)
+                    
+                    # Prepend the historical ERDDAP data to the recent Redis data
+                    results = erddap_response.get("results", []) + results
+                except Exception as e:
+                    self.logger.error("controller_data_get ERDDAP fallback failed", extra={"reason": str(e)})
 
+        return {"results": results}
+    
     # async def controller_definition_registry_update(self, ce: CloudEvent):
     #     try:
     #         for definition_type, controller_def in ce.data.items():
@@ -1770,19 +1845,52 @@ class Datastore:
             self.logger.error("variableset_data_update", extra={"reason": str(e)})
 
     async def variableset_data_get(self, query: VariableSetDataRequest):
+        self.logger.debug("variableset_data_get:3", extra={"query": query})
+        
+        # 1. Parse incoming time constraints
         if query.start_time:
             query.start_timestamp = string_to_timestamp(query.start_time)
+            
         if query.end_time:
             query.end_timestamp = string_to_timestamp(query.end_time)
+            
         if query.last_n_seconds:
             start_dt = get_datetime_with_delta(-(query.last_n_seconds))
             query.start_timestamp = start_dt.timestamp()
             query.end_timestamp = None
 
-        if self.db_client:
-            return await self.db_client.variableset_data_get(query)
+        self.logger.debug("variableset_data_get:4", extra={"query": query})
 
-        return {"results": []}
+        results = []
+
+        # 2. Always check the Hot Cache (Redis) first
+        if self.db_client:
+            redis_response = await self.db_client.variableset_data_get(query)
+            results.extend(redis_response.get("results", []))
+
+        # 3. Check Deep Archive (ERDDAP) if enabled
+        if self.erddap_client:
+            current_time = time.time()
+            cache_limit = current_time - self.config.db_data_ttl
+            
+            # If the user wants data older than what Redis holds (or all historical data)
+            if not query.start_timestamp or query.start_timestamp < cache_limit:
+                
+                # Copy the Pydantic model so we don't mutate the original query
+                archive_query = query.copy()
+                
+                # Cap the ERDDAP request's end time at the cache limit
+                archive_query.end_timestamp = min(query.end_timestamp or current_time, cache_limit)
+                
+                try:
+                    erddap_response = await self.erddap_client.variableset_data_get(archive_query)
+                    
+                    # Prepend the historical ERDDAP data to the recent Redis data
+                    results = erddap_response.get("results", []) + results
+                except Exception as e:
+                    self.logger.error("variableset_data_get ERDDAP fallback failed", extra={"reason": str(e)})
+
+        return {"results": results}
     
     async def variableset_instance_registry_get_ids(self) -> dict:
         if self.db_client:

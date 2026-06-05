@@ -1,16 +1,15 @@
-<dataset type="EDDTableFromHttpGet" datasetID="envds_ops_registry" active="true">
-    <reloadEveryNMinutes>1440</reloadEveryNMinutes>
-    <updateEveryNMillis>-1</updateEveryNMillis>
+<dataset type="EDDTableFromJsonlCSVFiles" datasetID="envds_system_registry" active="true">
+    <reloadEveryNMinutes>10</reloadEveryNMinutes>
+    <updateEveryNMillis>10000</updateEveryNMillis>
     
-    <fileDir>/erddapData/registry/operations/</fileDir>
-    
+    <fileDir>/erddapData/registry/system/</fileDir>
     <fileNameRegex>.*\.jsonl</fileNameRegex>
     <recursive>true</recursive>
     <pathRegex>.*</pathRegex>
     <metadataFrom>last</metadataFrom>
-    <sortedColumnSourceName></sortedColumnSourceName>
-    <sortFilesBySourceNames>kind,namespace,name,time</sortFilesBySourceNames>
-    <fileTableInMemory>true</fileTableInMemory>
+    <sortedColumnSourceName>time</sortedColumnSourceName>
+    <sortFilesBySourceNames>time</sortFilesBySourceNames>
+    <fileTableInMemory>false</fileTableInMemory>
     <accessibleViaFiles>true</accessibleViaFiles>
 
     <addAttributes>
@@ -19,16 +18,8 @@
         <att name="Conventions">COARDS, CF-1.6, ACDD-1.3</att>
         <att name="infoUrl">http://envds.local</att>
         <att name="institution">MSP</att>
-        
-        <att name="author">envds_sidecar</att>
-        <att name="password">default_secret</att>
-
-        <att name="httpGetRequiredVariables">author,password</att>
-        <att name="httpGetKeys">envds_sidecar_default_secret</att>
-        <att name="httpGetDirectoryStructure">kind/10years</att>
-
         <att name="envds_stream_type">registry</att>
-        <att name="title">ENVDS Operational Definitions Registry</att>
+        <att name="title">ENVDS System Definitions Registry</att>
     </addAttributes>
 
     <dataVariable><sourceName>kind</sourceName><destinationName>kind</destinationName><dataType>String</dataType></dataVariable>
@@ -52,7 +43,7 @@
         <destinationName>payload</destinationName>
         <dataType>String</dataType>
         <addAttributes>
-            <att name="description">Stringified JSON of the full operational definition</att>
+            <att name="description">Stringified JSON of the full system definition</att>
         </addAttributes>
     </dataVariable>
 </dataset>
