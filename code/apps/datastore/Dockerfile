@@ -23,6 +23,7 @@ COPY ./datastore_requests.py .
 COPY ./main.py .
 COPY ./db_client.py .
 COPY ./redis_client.py .
+COPY ./erddap_client.py .
 # WORKDIR $APP_HOME/envds
 # COPY ./apis ./apis
 # COPY ./registry.py ./registry.py
