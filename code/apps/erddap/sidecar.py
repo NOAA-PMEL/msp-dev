@@ -84,14 +84,14 @@ class ERDDAPConfigCompiler:
             old_file.unlink()
 
         # 1. Handle the file-based System Registry
-        sys_reg_source = self.templates_dir / "system_registry_dataset.xml"
-        sys_reg_dest = self.datasets_d / "system_registry_dataset.xml"
+        sys_reg_source = self.templates_dir / "ops_registry_dataset.xml"
+        sys_reg_dest = self.datasets_d / "ops_registry_dataset.xml"
         if sys_reg_source.exists():
             shutil.copy(sys_reg_source, sys_reg_dest)
-            L.info("Copied system_registry_dataset.xml to active datasets.")
+            L.info("Copied ops_registry_dataset.xml to active datasets.")
         else:
-            L.error("Could not find system_registry_dataset.xml in templates!")
-
+            L.error("Could not find ops_registry_dataset.xml in templates!")
+            
         # # 2. Render the HTTP-based Status and Log datasets dynamically
         # http_templates = ["ops_status_dataset.xml.j2", "ops_log_dataset.xml.j2"]
         # for template_name in http_templates:
