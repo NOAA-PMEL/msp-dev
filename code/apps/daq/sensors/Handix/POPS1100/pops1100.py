@@ -377,7 +377,7 @@ class POPS1100(Sensor):
             # 1. Identify scalar variables for mapping.
             # MUST filter out "setting" variables (like sampling_state, pump_power) 
             # and calculated/coordinate variables.
-            exclude_vars = ["time", "TimeSSM", "DataStatus", "HistSum", "MaxSTD", "PumpLife_hrs", "WidthSTD", "AveWidth", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN", "bin_count"]
+            exclude_vars = ["time", "TimeSSM", "DataStatus", "HistSum", "MaxSTD", "PumpLife_hrs", "WidthSTD", "AveWidth", "MinPeakPts", "diameter", "diameter_bnd_lower", "diameter_bnd_upper", "dN", "dNdlogDp", "dlogDp", "intN", "bin_count"]
             
             variables = []
             for v, meta in self.metadata["variables"].items():
@@ -407,6 +407,9 @@ class POPS1100(Sensor):
             # We DO NOT remove "POPS-347" because it maps to POPS_ID!
             parts = [p for p in parts if "/media/uSD" not in p]
 
+            # rm unknown column
+            parts.pop(19) 
+
             self.logger.debug("default_parse_094", extra={"in_parts": parts})
 
             self.logger.debug("parse_trace_start", extra={"total_chunks": len(parts), "json_vars": len(variables)})
@@ -419,8 +422,11 @@ class POPS1100(Sensor):
                     if v_type == "string": v_type = "str"
                     
                     try:
-                        val_str = parts[index].strip()
-                        record["variables"][var_name]["data"] = eval(v_type)(val_str)
+                        if var_name == "POPS_ID":
+                            record["variables"][var_name]["data"] = "POPS-094"
+                        else:
+                            val_str = parts[index].strip()
+                            record["variables"][var_name]["data"] = eval(v_type)(val_str)
                         
                         self.logger.debug(
                             "var_mapping", 
