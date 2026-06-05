@@ -75,15 +75,14 @@ class ERDDAPConfigCompiler:
         self.telemetry_template = self.env.get_template("telemetry_dataset.xml.j2")
 
     def initialize_static_datasets(self):
-        """Seeds the Persistent Volume with Registry/Status datasets on startup."""
-        needs_rebuild = False
+        """Seeds the Persistent Volume templates and unconditionally compiles the master XML."""
+        L.info("Initializing ERDDAP datasets configuration...")
         
-        # 1. Handle the file-based System Registry (No HTTP passwords needed)
+        # 1. Handle the file-based System Registry
         sys_reg_source = self.templates_dir / "system_registry_dataset.xml"
         sys_reg_dest = self.datasets_d / "system_registry_dataset.xml"
-        if sys_reg_source.exists() and (not sys_reg_dest.exists() or sys_reg_source.read_text() != sys_reg_dest.read_text()):
+        if sys_reg_source.exists():
             shutil.copy(sys_reg_source, sys_reg_dest)
-            needs_rebuild = True
 
         # 2. Render the HTTP-based Status and Log datasets dynamically
         http_templates = ["ops_status_dataset.xml.j2", "ops_log_dataset.xml.j2"]
@@ -97,17 +96,17 @@ class ERDDAPConfigCompiler:
                     author=config.author_name,
                     password=config.insert_password
                 )
-                if not dest_path.exists() or dest_path.read_text() != xml_content:
-                    dest_path.write_text(xml_content)
-                    L.info(f"Rendered dynamic dataset: {target_name}")
-                    needs_rebuild = True
+                dest_path.write_text(xml_content)
             except Exception as e:
                 L.error(f"Failed to render {template_name}", extra={"error": str(e)})
 
-        if needs_rebuild or not self.master_xml_path.exists():
-            self.rebuild_master_xml()
-            (self.flags_dir / "datasets.xml").touch()
-            L.info("Triggered initial ERDDAP datasets.xml load.")
+        # 3. UNCONDITIONALLY rebuild the master datasets.xml on every single startup
+        L.info("Compiling master datasets.xml from active directory state...")
+        self.rebuild_master_xml()
+        
+        # 4. Poke ERDDAP to ensure it reloads the newly compiled master file
+        (self.flags_dir / "datasets.xml").touch()
+        L.info("ERDDAP initialization sequence complete.")
 
     def handle_definition(self, ce: dict):
         """Parses sensor definitions, groups by shape, caches metadata, and builds XML."""
