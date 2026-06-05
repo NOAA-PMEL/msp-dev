@@ -79,41 +79,42 @@ class ERDDAPConfigCompiler:
         """Seeds the Persistent Volume templates and unconditionally compiles the master XML."""
         L.info("Initializing ERDDAP datasets configuration...")
         
-        # 1. Clean out the NOAA mock
+        # 1. Clean out old XMLs
         for old_file in self.datasets_d.glob("*.xml"):
             old_file.unlink()
 
-        # 1. Handle the file-based System Registry
-        sys_reg_source = self.templates_dir / "ops_registry_dataset.xml"
-        sys_reg_dest = self.datasets_d / "ops_registry_dataset.xml"
-        if sys_reg_source.exists():
-            shutil.copy(sys_reg_source, sys_reg_dest)
-            L.info("Copied ops_registry_dataset.xml to active datasets.")
-        else:
-            L.error("Could not find ops_registry_dataset.xml in templates!")
-            
-        # # 2. Render the HTTP-based Status and Log datasets dynamically
-        # http_templates = ["ops_status_dataset.xml.j2", "ops_log_dataset.xml.j2"]
-        # for template_name in http_templates:
-        #     target_name = template_name.replace(".j2", "")
-        #     dest_path = self.datasets_d / target_name
-            
-        #     try:
-        #         template = self.env.get_template(template_name)
-        #         xml_content = template.render(
-        #             author=escape(config.author_name),
-        #             password=escape(config.insert_password)
-        #         )
-        #         dest_path.write_text(xml_content)
-        #     except Exception as e:
-        #         L.error(f"Failed to render {template_name}", extra={"error": str(e)})
+        # 2. Handle file-based Registries (Ops AND Hardware)
+        for reg_file in ["ops_registry_dataset.xml", "hardware_registry_dataset.xml"]:
+            reg_source = self.templates_dir / reg_file
+            reg_dest = self.datasets_d / reg_file
+            if reg_source.exists():
+                shutil.copy(reg_source, reg_dest)
+                L.info(f"Copied {reg_file} to active datasets.")
+            else:
+                L.warning(f"Could not find {reg_file} in templates!")
 
+        # 3. Render the HTTP-based Status and Log datasets dynamically
+        http_templates = ["ops_status_dataset.xml.j2", "ops_log_dataset.xml.j2"]
+        for template_name in http_templates:
+            target_name = template_name.replace(".j2", "")
+            dest_path = self.datasets_d / target_name
+            
+            try:
+                template = self.env.get_template(template_name)
+                xml_content = template.render(
+                    author=escape(config.author_name),
+                    password=escape(config.insert_password)
+                )
+                dest_path.write_text(xml_content)
+                L.info(f"Rendered {template_name} successfully.")
+            except Exception as e:
+                L.error(f"Failed to render {template_name}", extra={"error": str(e)})
 
-        # 3. UNCONDITIONALLY rebuild the master datasets.xml on every single startup
+        # 4. UNCONDITIONALLY rebuild the master datasets.xml on every single startup
         L.info("Compiling master datasets.xml from active directory state...")
         self.rebuild_master_xml()
         
-        # 4. Poke ERDDAP to ensure it reloads the newly compiled master file
+        # 5. Poke ERDDAP to ensure it reloads the newly compiled master file
         (self.flags_dir / "datasets.xml").touch()
         L.info("ERDDAP initialization sequence complete.")
 
@@ -338,71 +339,107 @@ async def insert_telemetry_to_erddap(ce: dict):
     version_raw = _extract_val(attributes, "format_version", "1.0.0")
     version = f"v{str(version_raw).split('.')[0]}"
     
-    time_val = _extract_val(variables, "time")
-    if not time_val: return
+    # 1. Grab time["data"]
+    time_data = _extract_val(variables, "time")
+    if not time_data: return
+
+    # Normalize to a list so we can seamlessly handle both single measurements and chunked arrays
+    time_array = time_data if isinstance(time_data, list) else [time_data]
 
     # Check cache for shapes and coordinates
     def_key = f"{make}_{model}_{version}"
     cached_def = definition_cache.get(def_key, {"shapes": {}, "coords": {}})
     
-    shape_groups = {}
-    for var_name, var_payload in variables.items():
-        if var_name == "time": continue
-        shape = tuple(cached_def["shapes"].get(var_name, ["time"]))
-        if shape not in shape_groups: shape_groups[shape] = {}
-        shape_groups[shape][var_name] = _extract_val(variables, var_name)
-
-    base_params = {
-        "author": config.author_name,
-        "password": config.insert_password,
-        "make": make,
-        "model": model,
-        "serial_number": sn,
-        "format_version": str(version_raw),
-        "time": time_val
-    }
-
     insert_tasks = []
-    for shape, var_dict in shape_groups.items():
-        shape_joined = "_".join(shape)
-        dataset_id = f"telemetry_{make}_{model}_{version}_{shape_joined}".replace("-", "_")
-        extra_dims = [dim for dim in shape if dim != "time"]
+    
+    # 2. Iterate through the time dimension (unrolling chunked data)
+    for i, current_time in enumerate(time_array):
+        base_params = {
+            "author": config.author_name,
+            "password": config.insert_password,
+            "make": make,
+            "model": model,
+            "serial_number": sn,
+            "format_version": str(version_raw),
+            "time": current_time
+        }
         
-        coords_dict = cached_def["coords"].copy()
-        for dim in extra_dims:
-            payload_coord = _extract_val(variables, dim)
-            if payload_coord: coords_dict[dim] = payload_coord
-                
-        for flat_row in unroll_multidimensional_data(base_params, extra_dims, coords_dict, var_dict):
-            query_string = urllib.parse.urlencode(flat_row)
-            insert_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.insert?{query_string}"
-            insert_tasks.append(_send_insert(insert_url))
+        # Extract the values for this specific time slice
+        slice_vars = {}
+        for v_name, v_data in variables.items():
+            if v_name == "time": continue
+            v_val = _extract_val(variables, v_name)
+            
+            # If the data is chunked and matches the time array length, slice it!
+            if isinstance(v_val, list) and len(v_val) == len(time_array):
+                slice_vars[v_name] = v_val[i]
+            else:
+                slice_vars[v_name] = v_val
 
+        # Group by shape for this specific time slice
+        shape_groups = {}
+        for v_name, v_val in slice_vars.items():
+            shape = tuple(cached_def["shapes"].get(v_name, ["time"]))
+            if shape not in shape_groups: shape_groups[shape] = {}
+            shape_groups[shape][v_name] = v_val
+            
+        # 3. Build the insert URLs
+        for shape, var_dict in shape_groups.items():
+            shape_joined = "_".join(shape)
+            dataset_id = f"telemetry_{make}_{model}_{version}_{shape_joined}".replace("-", "_")
+            extra_dims = [dim for dim in shape if dim != "time"]
+            
+            coords_dict = cached_def["coords"].copy()
+            for dim in extra_dims:
+                payload_coord = slice_vars.get(dim)
+                if payload_coord: coords_dict[dim] = payload_coord
+                    
+            # Unroll any nested N-dimensional arrays (like spectral bins)
+            for flat_row in unroll_multidimensional_data(base_params, extra_dims, coords_dict, var_dict):
+                query_string = urllib.parse.urlencode(flat_row)
+                insert_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.insert?{query_string}"
+                insert_tasks.append(_send_insert(insert_url))
+
+    # 4. Fire them all into ERDDAP concurrently
     if insert_tasks:
         await asyncio.gather(*insert_tasks, return_exceptions=True)
 
 async def handle_ops_registry_insert(ce: dict):
-    """Appends definitions directly to a JSONL file on disk for ERDDAP to scan."""
+    """Appends Ops Definitions (Deployments, Platforms, etc.) directly to a JSONL file."""
+    attrs = ce.get("attributes", ce)
     data = ce.get("data", {})
-    kind = data.get("kind")
-    metadata = data.get("metadata", {})
-    if not kind or not metadata: return
+    if not data: return
 
+    # Dynamically find the definition block
+    def_key = next((k for k in data.keys() if "definition" in k), None)
+    if not def_key: return
+    
+    def_block = data.get(def_key, {})
+    metadata = def_block.get("metadata", {})
+    
+    # Safety check: If it has no metadata block, it does not belong in the ops registry
+    if not metadata: 
+        return
+
+    kind = def_key
     namespace = metadata.get("sampling_namespace", "unknown")
     name = metadata.get("name", "unknown")
     revision = metadata.get("revision", 1)
-
-    # --- DEDUPLICATION CHECK ---
-    cache_key = f"{kind}_{namespace}_{name}"
-    if definition_registry_cache.get(cache_key, 0) >= revision:
-        # We already have this revision (or a newer one) saved to disk. Ignore it.
-        return
     
-    # Update the cache with the new revision
-    definition_registry_cache[cache_key] = revision
-    # ---------------------------
+    # Standardized time extraction for Ops definitions
+    valid_config_time = (
+        def_block.get("revision-time") or 
+        metadata.get("revision-time") or 
+        def_block.get("valid_config_time") or 
+        metadata.get("valid_config_time") or 
+        attrs.get("time", "2026-01-01T00:00:00Z")
+    )
 
-    # Target directory: /erddapData/registry/system/<kind>/
+    try:
+        revision = int(revision)
+    except (ValueError, TypeError):
+        revision = 1
+
     registry_dir = Path(config.data_dir) / "registry" / "system" / kind
     registry_dir.mkdir(parents=True, exist_ok=True)
     file_path = registry_dir / f"{kind}_registry.jsonl"
@@ -412,16 +449,20 @@ async def handle_ops_registry_insert(ce: dict):
         "kind": kind,
         "namespace": namespace,
         "name": name,
-        "valid_config_time": metadata.get("valid_config_time", "unknown"),
+        "valid_config_time": valid_config_time,
         "revision": revision,
         "payload": json.dumps(data, separators=(',', ':'))
     }
 
-    # Append to the JSONL file
+    # Write the file, prepending ERDDAP JsonlCSV headers if it's brand new
+    is_new = not file_path.exists() or file_path.stat().st_size == 0
     with open(file_path, "a") as f:
+        if is_new:
+            f.write('{"time":"time","kind":"kind","namespace":"namespace","name":"name","valid_config_time":"valid_config_time","revision":"revision","payload":"payload"}\n')
+            f.write('{"time":"double","kind":"String","namespace":"String","name":"String","valid_config_time":"String","revision":"int","payload":"String"}\n')
         f.write(json.dumps(record) + "\n")
         
-    # Drop a hardFlag so ERDDAP immediately rescans the directory
+    # Trigger ERDDAP reload
     flag_dir = Path(config.data_dir) / "hardFlag"
     flag_dir.mkdir(parents=True, exist_ok=True)
     (flag_dir / "envds_system_registry").touch()
@@ -481,6 +522,59 @@ async def handle_ops_log_insert(ce: dict):
     query_string = urllib.parse.urlencode(params)
     insert_url = f"{config.erddap_internal_url}/tabledap/envds_ops_log.insert?{query_string}"
     await _send_insert(insert_url)
+
+async def handle_hardware_registry_insert(ce: dict):
+    """Appends Hardware Definitions (Device, Controller) directly to a JSONL file."""
+    attrs = ce.get("attributes", ce)
+    data = ce.get("data", {})
+    if not data: return
+
+    # Dynamically find the definition block
+    def_key = next((k for k in data.keys() if "definition" in k), None)
+    if not def_key: return
+    
+    def_block = data.get(def_key, {})
+    def_attrs = def_block.get("attributes", {})
+    if not def_attrs: return
+
+    kind = def_key
+    
+    # Extract Exact Hardware Schema
+    make = def_attrs.get("make", {}).get("data", "unknown")
+    model = def_attrs.get("model", {}).get("data", "unknown")
+    exact_version = str(def_block.get("version") or def_attrs.get("format_version", {}).get("data", "1.0.0")).strip()
+
+    valid_config_time = (
+        def_block.get("valid_time") or 
+        def_attrs.get("valid_time", {}).get("data") or 
+        attrs.get("time", "2026-01-01T00:00:00Z")
+    )
+    
+    registry_dir = Path(config.data_dir) / "registry" / "hardware" / kind
+    registry_dir.mkdir(parents=True, exist_ok=True)
+    file_path = registry_dir / f"{kind}_registry.jsonl"
+
+    record = {
+        "time": time.time(),
+        "kind": kind,
+        "make": make,
+        "model": model,
+        "version": exact_version,
+        "valid_config_time": valid_config_time,
+        "payload": json.dumps(data, separators=(',', ':'))
+    }
+
+    is_new = not file_path.exists() or file_path.stat().st_size == 0
+    with open(file_path, "a") as f:
+        if is_new:
+            f.write('{"time":"time","kind":"kind","make":"make","model":"model","version":"version","valid_config_time":"valid_config_time","payload":"payload"}\n')
+            f.write('{"time":"double","kind":"String","make":"String","model":"String","version":"String","valid_config_time":"String","payload":"String"}\n')
+        f.write(json.dumps(record) + "\n")
+        
+    # Trigger ERDDAP reload for hardware registry
+    flag_dir = Path(config.data_dir) / "hardFlag"
+    flag_dir.mkdir(parents=True, exist_ok=True)
+    (flag_dir / "envds_hardware_registry").touch()
 
 # ---------------------------------------------------------
 # 3. BACKGROUND TASKS & API ROUTING
@@ -552,12 +646,14 @@ async def registry_update(request: Request):
         
         L.debug(f"Received Knative Registry Update", extra={"type": ce_type})
         
-        # 1. ALWAYS archive EVERY definition in the historical JSON ledger
-        await handle_ops_registry_insert(ce)
-        
-        # 2. ONLY generate ERDDAP telemetry datasets for hardware
-        if any(hw in ce_type for hw in ["device", "controller"]):
+        # 1. HARDWARE: Route to the XML Compiler (Do NOT send to Ops Registry)
+        if any(hw in ce_type for hw in ["device-definition", "controller-definition"]):
             compiler.handle_definition(ce)
+            await handle_hardware_registry_insert(ce)
+            
+        # 2. OPERATIONS: Route to the System Registry JSONL 
+        else:
+            await handle_ops_registry_insert(ce)
             
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as e:
