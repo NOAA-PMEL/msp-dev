@@ -43,7 +43,7 @@ class ERDDAPSidecarConfig(BaseSettings):
     author_name: str = "envds_sidecar"
     
     # URL for the Sync Loop to poll the Datastore
-    datastore_url: str = os.environ.get("ERDDAP_SIDECAR_DATASTORE_URL", "http://filemanager:8080")
+    # datastore_url: str = os.environ.get("ERDDAP_SIDECAR_DATASTORE_URL", "http://filemanager:8080")
 
     class Config:
         env_prefix = "ERDDAP_SIDECAR_"
@@ -543,27 +543,139 @@ async def handle_hardware_registry_insert(ce: dict):
 async def sync_definitions_loop():
     """Periodically fetches active definitions from the Datastore to ensure ERDDAP is in sync."""
     await asyncio.sleep(10) # Give ERDDAP and Datastore time to fully boot
+    
+    datastore_host = f"datastore.{config.daq_id}-system.svc.cluster.local"
+    datastore_url = f"http://{datastore_host}" 
+    
+    HARDWARE_RESOURCES = ["device", "controller"]
+    
+    OPS_RESOURCES = [
+        "platform", "project", "deployment", "contact", 
+        "systemmode", "samplingmode", "samplingstate", 
+        "samplingcondition", "action",
+        "variablemap", "variableset"
+    ]
+    
+    # Initialize the memory cache
+    all_resources = HARDWARE_RESOURCES + OPS_RESOURCES
+    known_ids = {f"{res}-definition": set() for res in all_resources}
+    
+    # -----------------------------------------------------------------
+    # PRE-FLIGHT DISK DISCOVERY: Seed known_ids from what ERDDAP already has
+    # -----------------------------------------------------------------
+    L.info("Sync Loop starting pre-flight storage discovery...")
+    base_data_path = Path(config.data_dir) / "registry"
+    
+    # Scan Hardware Registry Directory
+    hw_path = base_data_path / "hardware"
+    if hw_path.exists():
+        for jsonl_file in hw_path.glob("*/*_registry.jsonl"):
+            try:
+                with open(jsonl_file, "r") as f:
+                    for line in f:
+                        if line.startswith("["): # Only parse ERDDAP jsonlCSV arrays
+                            row = json.loads(line)
+                            if len(row) > 4 and row[0] != "time": # Skip headers
+                                # Hardware ID format from row arrays: make::model::version
+                                make, model, version = row[2], row[3], row[4]
+                                endpoint_key = jsonl_file.parent.name # 'device-definition' or 'controller-definition'
+                                known_ids[endpoint_key].add(f"{make}::{model}::{version}")
+            except Exception as e:
+                L.error(f"Discovery failed to parse hardware file {jsonl_file.name}", extra={"reason": str(e)})
+
+    # Scan Operations/System Registry Directory
+    sys_path = base_data_path / "system"
+    if sys_path.exists():
+        for jsonl_file in sys_path.glob("*/*_registry.jsonl"):
+            try:
+                with open(jsonl_file, "r") as f:
+                    for line in f:
+                        if line.startswith("["):
+                            row = json.loads(line)
+                            if len(row) > 3 and row[0] != "time": # Skip headers
+                                # System ID format from row arrays: namespace::name::valid_config_time
+                                namespace, name = row[2], row[3]
+                                endpoint_key = jsonl_file.parent.name # e.g., 'platform-definition'
+                                
+                                # Variablesets and Variablemaps use compound IDs in Datastore
+                                if endpoint_key in ["variablemap-definition", "variableset-definition"]:
+                                    # For compound structures, the final array row element payload contains the true tracking ID
+                                    payload = json.loads(row[6])
+                                    def_id = payload.get(f"{endpoint_key.replace('-', '_')}_id")
+                                    if def_id:
+                                        known_ids[endpoint_key].add(def_id)
+                                else:
+                                    # Standard sampling definitions register by name string
+                                    known_ids[endpoint_key].add(name)
+            except Exception as e:
+                L.error(f"Discovery failed to parse system file {jsonl_file.name}", extra={"reason": str(e)})
+
+    L.info("Pre-flight discovery complete.", extra={k: len(v) for k, v in known_ids.items()})
+
+    # -----------------------------------------------------------------
+    # THE ACTIVE SYNC POLLING LOOP
+    # -----------------------------------------------------------------
     while True:
         try:
-            L.debug("Syncing hardware definitions from Datastore...")
-            for endpoint in ["device-definition", "controller-definition"]:
-                # Adjust this URL string if your Datastore API is structured slightly differently
-                url = f"{config.datastore_url}/{endpoint}/registry"
-                resp = await http_client.get(url)
+            # SECTION 1: HARDWARE DEFINITIONS (Triggers ERDDAP XML Builds)
+            for resource in HARDWARE_RESOURCES:
+                endpoint = f"{resource}-definition"
+                ids_url = f"{datastore_url}/{endpoint}/registry/ids/get/"
+                ids_resp = await http_client.get(ids_url)
                 
-                if resp.status_code == 200:
-                    payload = resp.json()
+                if ids_resp.status_code == 200:
+                    remote_ids = ids_resp.json().get("results", [])
+                    missing_ids = [rid for rid in remote_ids if rid not in known_ids[endpoint]]
                     
-                    # Normalize whatever the API returns into an iterable list of dicts
-                    definitions = payload.values() if isinstance(payload, dict) else payload
+                    if missing_ids:
+                        L.info(f"Sync Loop found {len(missing_ids)} missing {endpoint}s. Fetching payloads...")
+                        for missing_id in missing_ids:
+                            param_name = f"{endpoint.replace('-', '_')}_id"
+                            get_url = f"{datastore_url}/{endpoint}/registry/get/"
+                            
+                            def_resp = await http_client.get(get_url, params={param_name: missing_id})
+                            if def_resp.status_code == 200:
+                                definitions = def_resp.json().get("results", [])
+                                
+                                for def_payload in definitions:
+                                    ce_mock = {"data": {endpoint: def_payload}}
+                                    compiler.handle_definition(ce_mock)
+                                    await handle_hardware_registry_insert(ce_mock)
+                                    
+                                known_ids[endpoint].add(missing_id)
+
+            # SECTION 2: OPERATIONS & SAMPLING DEFINITIONS (JSONL Registries Only)
+            for resource in OPS_RESOURCES:
+                endpoint = f"{resource}-definition"
+                ids_url = f"{datastore_url}/{endpoint}/registry/ids/get/"
+                ids_resp = await http_client.get(ids_url)
+                
+                if ids_resp.status_code == 200:
+                    remote_ids = ids_resp.json().get("results", [])
+                    missing_ids = [rid for rid in remote_ids if rid not in known_ids[endpoint]]
                     
-                    for def_payload in definitions:
-                        # Wrap the raw definition in a mock CloudEvent structure
-                        ce_mock = {"data": def_payload}
-                        compiler.handle_definition(ce_mock)
-                        # We don't need to call handle_hardware_registry_insert here, 
-                        # because Knative will permanently save the JSONLs on creation.
-                        # The sync loop simply ensures the XML cache is warmed up!
+                    if missing_ids:
+                        L.info(f"Sync Loop found {len(missing_ids)} missing {endpoint}s. Fetching payloads...")
+                        for missing_id in missing_ids:
+                            if resource == "variablemap":
+                                params = {"variablemap_definition_id": missing_id}
+                            elif resource == "variableset":
+                                params = {"variableset_definition_id": missing_id}
+                            else:
+                                params = {"name": missing_id}
+                            
+                            get_url = f"{datastore_url}/{endpoint}/registry/get/"
+                            
+                            def_resp = await http_client.get(get_url, params=params)
+                            if def_resp.status_code == 200:
+                                definitions = def_resp.json().get("results", [])
+                                
+                                for def_payload in definitions:
+                                    ce_mock = {"data": {endpoint: def_payload}}
+                                    await handle_ops_registry_insert(ce_mock)
+                                    
+                                known_ids[endpoint].add(missing_id)
+
         except Exception as e:
             L.error("Failed to sync definitions from Datastore", extra={"reason": str(e)})
         
