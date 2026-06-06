@@ -41,9 +41,6 @@ class ERDDAPSidecarConfig(BaseSettings):
     data_dir: str = "/erddapData"
     insert_password: str = os.environ.get("ERDDAP_INSERT_PASSWORD", "default_secret")
     author_name: str = "envds_sidecar"
-    
-    # URL for the Sync Loop to poll the Datastore
-    # datastore_url: str = os.environ.get("ERDDAP_SIDECAR_DATASTORE_URL", "http://filemanager:8080")
 
     class Config:
         env_prefix = "ERDDAP_SIDECAR_"
@@ -56,6 +53,118 @@ http_semaphore = asyncio.Semaphore(50)
 
 definition_cache = {}
 definition_registry_cache = {}
+
+# ---------------------------------------------------------
+# TYPE MAPPING HELPER
+# ---------------------------------------------------------
+def map_erddap_type(raw_type: str) -> str:
+    """Translates arbitrary datastore/sensor types into ERDDAP PrimitiveArray types."""
+    t = str(raw_type).lower()
+    if t in ["string", "str", "char", "text", "boolean", "bool"]:
+        return "String"
+    if t in ["int", "integer", "short"]:
+        return "int"
+    if t in ["long"]:
+        return "long"
+    if t in ["float"]:
+        return "float"
+    return "double"
+
+# ---------------------------------------------------------
+# DYNAMIC NCO-JSON UNFLATTENER
+# ---------------------------------------------------------
+def unflatten_telemetry_to_ncojson(flat_data: dict, definition: dict) -> list:
+    """Dynamically reconstructs n-dimensional NCO-JSON from flat ERDDAP rows."""
+    if not definition:
+        return flat_data.get("table", {}).get("rows", [])
+        
+    cols = flat_data.get("table", {}).get("columnNames", [])
+    rows = flat_data.get("table", {}).get("rows", [])
+    
+    if not cols or not rows:
+        return []
+        
+    # Identify the Shape Dimensions (Coordinates)
+    def_dims = list(definition.get("dimensions", {}).keys())
+    shape_dims = [dim for dim in def_dims if dim in cols]
+    shape_dims = sorted(shape_dims, key=lambda d: def_dims.index(d))
+    
+    sys_cols = {"timestamp", "author", "command"}
+    var_cols = [c for c in cols if c not in shape_dims and c not in sys_cols]
+    
+    # Build the N-Dimensional Grouping Tree
+    grouped = {}
+    for row in rows:
+        row_dict = dict(zip(cols, row))
+        current_level = grouped
+        for i, dim in enumerate(shape_dims):
+            dim_val = row_dict[dim]
+            if i == len(shape_dims) - 1:
+                current_level[dim_val] = row_dict 
+            else:
+                if dim_val not in current_level:
+                    current_level[dim_val] = {}
+                current_level = current_level[dim_val]
+    
+    def _cast(val, target_type):
+        if val is None or val == "NaN": return None
+        t = str(target_type).lower()
+        try:
+            if t in ["int", "integer", "short", "long"]: return int(float(val))
+            if t in ["float", "double"]: return float(val)
+            if t in ["bool", "boolean"]: return str(val).lower() in ["true", "1", "t", "y", "yes"]
+            return str(val)
+        except (ValueError, TypeError):
+            return val
+
+    def extract_array(node, var_name, dims_left):
+        if not dims_left:
+            return _cast(node.get(var_name), definition["variables"].get(var_name, {}).get("type", "float"))
+        return [extract_array(node[k], var_name, dims_left[1:]) for k in sorted(node.keys())]
+        
+    def extract_coords(node, dims_left, coords_dict):
+        if not dims_left: return
+        current_dim = dims_left[0]
+        sorted_keys = sorted(node.keys())
+        if current_dim not in coords_dict:
+            coords_dict[current_dim] = [_cast(k, definition["variables"].get(current_dim, {}).get("type", "float")) for k in sorted_keys]
+        if sorted_keys:
+            extract_coords(node[sorted_keys[0]], dims_left[1:], coords_dict)
+
+    nco_results = []
+    for time_val, time_node in grouped.items():
+        leaf = time_node
+        for _ in range(len(shape_dims) - 1):
+            leaf = leaf[list(leaf.keys())[0]]
+            
+        make = definition['attributes'].get('make', {}).get('data', 'unknown')
+        model = definition['attributes'].get('model', {}).get('data', 'unknown')
+        sn = leaf.get('serial_number') or definition['attributes'].get('serial_number', {}).get('data', 'unknown')
+        
+        record = {
+            "device_id": f"{make}::{model}::{sn}",
+            "timestamp": leaf.get("timestamp", 0.0),
+            "attributes": definition.get("attributes", {}),
+            "dimensions": {},
+            "variables": {"time": {"data": time_val}}
+        }
+        
+        if len(shape_dims) > 1:
+            coords_dict = {}
+            extract_coords(time_node, shape_dims[1:], coords_dict)
+            for c_name, c_data in coords_dict.items():
+                record["dimensions"][c_name] = {"data": c_data}
+                
+        for var_name in var_cols:
+            if var_name == "serial_number": continue
+            if len(shape_dims) == 1:
+                record["variables"][var_name] = {"data": _cast(leaf.get(var_name), definition["variables"].get(var_name, {}).get("type", "float"))}
+            else:
+                record["variables"][var_name] = {"data": extract_array(time_node, var_name, shape_dims[1:])}
+                
+        nco_results.append(record)
+        
+    return nco_results
 
 # ---------------------------------------------------------
 # 1. ERDDAP CONFIG COMPILER
@@ -77,7 +186,6 @@ class ERDDAPConfigCompiler:
     def initialize_static_datasets(self):
         L.info("Initializing ERDDAP datasets configuration...")
         
-        # 1. Handle file-based Registries (Ops AND Hardware)
         for reg_file in ["ops_registry_dataset.xml", "hardware_registry_dataset.xml"]:
             reg_source = self.templates_dir / reg_file
             reg_dest = self.datasets_d / reg_file
@@ -87,7 +195,6 @@ class ERDDAPConfigCompiler:
             else:
                 L.warning(f"Could not find {reg_file} in templates!")
 
-        # 2. Render the HTTP-based Status and Log datasets dynamically
         http_templates = ["ops_status_dataset.xml.j2", "ops_log_dataset.xml.j2"]
         for template_name in http_templates:
             target_name = template_name.replace(".j2", "")
@@ -103,11 +210,9 @@ class ERDDAPConfigCompiler:
             except Exception as e:
                 L.error(f"Failed to render {template_name}", extra={"error": str(e)})
 
-        # 3. UNCONDITIONALLY rebuild the master datasets.xml on every single startup
         L.info("Compiling master datasets.xml from active directory state...")
         self.rebuild_master_xml()
         
-        # 4. Poke ERDDAP to ensure it reloads the newly compiled master file
         (self.flags_dir / "datasets.xml").touch()
         L.info("ERDDAP initialization sequence complete.")
 
@@ -115,7 +220,6 @@ class ERDDAPConfigCompiler:
         """Parses sensor definitions, groups by shape, caches metadata, and builds XML."""
         data = ce.data if hasattr(ce, "data") else ce.get("data", {})
         
-        # Dynamically unnest the definition block
         def_key = next((k for k in data.keys() if "definition" in k), None)
         if not def_key: 
             return
@@ -148,9 +252,11 @@ class ERDDAPConfigCompiler:
             if shape_tuple not in shape_groups:
                 shape_groups[shape_tuple] = []
             
+            raw_type = var_data.get("type", "float")
             shape_groups[shape_tuple].append({
                 "name": var_name,
-                "type": var_data.get("type", "float"),
+                "type": map_erddap_type(raw_type),
+                "original_type": raw_type,
                 "units": var_data.get("attributes", {}).get("units", {}).get("data", ""),
                 "long_name": var_data.get("attributes", {}).get("long_name", {}).get("data", var_name),
                 "variable_type": var_data.get("attributes", {}).get("variable_type", {}).get("data", "")
@@ -165,9 +271,11 @@ class ERDDAPConfigCompiler:
                 if dim != "time" and not any(c["name"] == dim for c in cols):
                     if dim in variables:
                         dim_var = variables[dim]
+                        raw_type = dim_var.get("type", "float")
                         cols.insert(1, {
                             "name": dim,
-                            "type": dim_var.get("type", "float"),
+                            "type": map_erddap_type(raw_type),
+                            "original_type": raw_type,
                             "units": dim_var.get("attributes", {}).get("units", {}).get("data", ""),
                             "long_name": dim_var.get("attributes", {}).get("long_name", {}).get("data", dim)
                         })
@@ -199,8 +307,6 @@ class ERDDAPConfigCompiler:
                 
                 seed_file = dataset_dir / "seed.jsonl"
                 
-                # RESTORED: serial_number is back in the base columns!
-                # The order here perfectly matches your telemetry_dataset.xml.j2
                 base_cols = ["make", "model", "format_version", "serial_number", "time"]
                 dyn_cols = [c["name"] for c in cols if c["name"] != "time"]
                 tail_cols = ["timestamp", "author", "command"]
@@ -212,22 +318,20 @@ class ERDDAPConfigCompiler:
                     if name in ["make", "model", "format_version", "serial_number", "author"]:
                         dummy_vals.append("seed")
                     elif name == "time":
-                        # Matching the 6-zero precision your old script used
                         dummy_vals.append("1970-01-01T00:00:00.000000Z")
                     elif name == "timestamp":
                         dummy_vals.append(0.0)
                     elif name == "command":
-                        dummy_vals.append(0) # byte
+                        dummy_vals.append(0) 
                     else:
                         c = next(c for c in cols if c["name"] == name)
-                        c_type = str(c.get("type", "float")).lower()
-                        if c_type in ["string", "char", "text", "boolean"]:
+                        if c["type"] == "String":
                             dummy_vals.append("seed")
+                        elif c["type"] in ["int", "long"]:
+                            dummy_vals.append(0)
                         else:
                             dummy_vals.append(0.0)
                             
-                # This json.dumps() perfectly replicates the [ "col1", "col2" ]
-                # format you were manually building in your old script!
                 seed_content = f"{json.dumps(col_names)}\n{json.dumps(dummy_vals)}\n"
                 seed_file.write_text(seed_content)
                 L.info(f"Dropped complete 2-line seed.jsonl into {dataset_dir}")
@@ -344,17 +448,14 @@ def unroll_multidimensional_data(base_row, shape_dims, coords_dict, var_dict):
     yield from recurse(0, [], base_row)
 
 async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5):
-    """Executes the HTTP POST request with a concurrency limit and retries for ERDDAP reloads."""
     async with http_semaphore:
         for attempt in range(retries):
             try:
-                # Use POST and pass the dictionary natively to the 'data' parameter (Form URL-Encoded)
                 resp = await http_client.post(url, data=payload)
                 resp.raise_for_status()
-                return  # Success, exit the retry loop
+                return 
                 
             except httpx.HTTPStatusError as e:
-                # If 404, ERDDAP might still be reloading datasets.xml. Wait and retry.
                 if e.response.status_code == 404 and attempt < retries - 1:
                     L.debug(f"ERDDAP 404 on insert (reloading?). Retrying in {delay}s...", extra={"url": url})
                     await asyncio.sleep(delay)
@@ -416,7 +517,7 @@ async def insert_telemetry_to_erddap(ce: dict):
             shape_groups[shape][v_name] = v_val
             
         for shape, var_dict in shape_groups.items():
-            shape_joined = "_".join(shape)
+            shape_joined = "_join" if isinstance(shape, str) else "_".join(shape)
             dataset_id = f"telemetry_{make}_{model}_{version}_{shape_joined}".replace("-", "_")
             extra_dims = [dim for dim in shape if dim != "time"]
             
@@ -426,7 +527,6 @@ async def insert_telemetry_to_erddap(ce: dict):
                 if payload_coord: coords_dict[dim] = payload_coord
                     
             for flat_row in unroll_multidimensional_data(base_params, extra_dims, coords_dict, var_dict):
-                # We no longer need the ?query_string!
                 insert_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.insert"
                 insert_tasks.append(_send_insert(insert_url, payload=flat_row))
 
@@ -441,7 +541,6 @@ async def handle_ops_registry_insert(ce: dict):
     def_key = next((k for k in data.keys() if "definition" in k), None)
     if not def_key: return
     
-    # This is the line that was accidentally deleted!
     def_block = data.get(def_key, {})
     metadata = def_block.get("metadata", {})
     
@@ -450,8 +549,6 @@ async def handle_ops_registry_insert(ce: dict):
 
     kind = def_key
     namespace = metadata.get("sampling_namespace", "unknown")
-    
-    # Grab the true unique name/ID
     name = metadata.get("name") or def_block.get(f"{kind.replace('-', '_')}_id", "unknown")
     revision = metadata.get("revision", 1)
     
@@ -477,22 +574,19 @@ async def handle_ops_registry_insert(ce: dict):
         json.dumps(data, separators=(',', ':'))
     ]
 
-    # Check for existing records and filter out duplicates
     existing_records = []
     if file_path.exists() and file_path.stat().st_size > 0:
         with open(file_path, "r") as f:
             lines = f.readlines()
-            if len(lines) >= 2: # Skip headers
+            if len(lines) >= 2: 
                 for line in lines[2:]:
                     try:
                         row = json.loads(line)
-                        # Identify duplicates by Namespace (row[2]) and Name (row[3])
                         if not (row[2] == namespace and row[3] == name):
                             existing_records.append(line)
                     except json.JSONDecodeError:
                         pass
 
-    # Rewrite the file completely
     with open(file_path, "w") as f:
         f.write('["time","kind","namespace","name","valid_config_time","revision","payload"]\n')
         f.write('["double","String","String","String","String","int","String"]\n')
@@ -570,7 +664,6 @@ async def handle_hardware_registry_insert(ce: dict):
     if not def_attrs: return
 
     kind = def_key
-    
     make = def_attrs.get("make", {}).get("data", "unknown")
     model = def_attrs.get("model", {}).get("data", "unknown")
     exact_version = str(def_block.get("version") or def_attrs.get("format_version", {}).get("data", "1.0.0")).strip()
@@ -590,22 +683,19 @@ async def handle_hardware_registry_insert(ce: dict):
         json.dumps(data, separators=(',', ':'))
     ]
 
-    # Check for existing records and filter out duplicates
     existing_records = []
     if file_path.exists() and file_path.stat().st_size > 0:
         with open(file_path, "r") as f:
             lines = f.readlines()
-            if len(lines) >= 2: # Skip headers
+            if len(lines) >= 2: 
                 for line in lines[2:]:
                     try:
                         row = json.loads(line)
-                        # Identify duplicates by Make (row[2]), Model (row[3]), and Version (row[4])
                         if not (row[2] == make and row[3] == model and row[4] == exact_version):
                             existing_records.append(line)
                     except json.JSONDecodeError:
                         pass
 
-    # Rewrite the file completely
     with open(file_path, "w") as f:
         f.write('["time","kind","make","model","version","valid_config_time","payload"]\n')
         f.write('["double","String","String","String","String","String","String"]\n')
@@ -622,7 +712,7 @@ async def handle_hardware_registry_insert(ce: dict):
 # ---------------------------------------------------------
 async def sync_definitions_loop():
     """Periodically fetches active definitions from the Datastore to ensure ERDDAP is in sync."""
-    await asyncio.sleep(10) # Give ERDDAP and Datastore time to fully boot
+    await asyncio.sleep(10) 
     
     datastore_host = f"datastore.{config.daq_id}-system.svc.cluster.local"
     datastore_url = f"http://{datastore_host}" 
@@ -636,34 +726,31 @@ async def sync_definitions_loop():
         "variablemap", "variableset"
     ]
     
-    # Initialize the memory cache
     all_resources = HARDWARE_RESOURCES + OPS_RESOURCES
     known_ids = {f"{res}-definition": set() for res in all_resources}
     
     # -----------------------------------------------------------------
-    # PRE-FLIGHT DISK DISCOVERY: Seed known_ids from what ERDDAP already has
+    # PRE-FLIGHT DISK DISCOVERY
     # -----------------------------------------------------------------
     L.info("Sync Loop starting pre-flight storage discovery...")
     base_data_path = Path(config.data_dir) / "registry"
     
-    # Scan Hardware Registry Directory
     hw_path = base_data_path / "hardware"
     if hw_path.exists():
         for jsonl_file in hw_path.glob("*/*_registry.jsonl"):
             try:
                 with open(jsonl_file, "r") as f:
                     for line in f:
-                        if line.startswith("["): # Only parse ERDDAP jsonlCSV arrays
+                        if line.startswith("["): 
                             row = json.loads(line)
-                            if len(row) > 4 and row[0] != "time": # Skip headers
-                                # Hardware ID format from row arrays: make::model::version
+                            # FIX: Skip both time and double headers
+                            if len(row) > 4 and row[0] not in ["time", "double"]: 
                                 make, model, version = row[2], row[3], row[4]
-                                endpoint_key = jsonl_file.parent.name # 'device-definition' or 'controller-definition'
+                                endpoint_key = jsonl_file.parent.name 
                                 known_ids[endpoint_key].add(f"{make}::{model}::{version}")
             except Exception as e:
                 L.error(f"Discovery failed to parse hardware file {jsonl_file.name}", extra={"reason": str(e)})
 
-    # Scan Operations/System Registry Directory
     sys_path = base_data_path / "system"
     if sys_path.exists():
         for jsonl_file in sys_path.glob("*/*_registry.jsonl"):
@@ -672,20 +759,17 @@ async def sync_definitions_loop():
                     for line in f:
                         if line.startswith("["):
                             row = json.loads(line)
-                            if len(row) > 3 and row[0] != "time": # Skip headers
-                                # System ID format from row arrays: namespace::name::valid_config_time
+                            # FIX: Skip both time and double headers
+                            if len(row) > 3 and row[0] not in ["time", "double"]: 
                                 namespace, name = row[2], row[3]
-                                endpoint_key = jsonl_file.parent.name # e.g., 'platform-definition'
+                                endpoint_key = jsonl_file.parent.name 
                                 
-                                # Variablesets and Variablemaps use compound IDs in Datastore
                                 if endpoint_key in ["variablemap-definition", "variableset-definition"]:
-                                    # For compound structures, the final array row element payload contains the true tracking ID
                                     payload = json.loads(row[6])
                                     def_id = payload.get(f"{endpoint_key.replace('-', '_')}_id")
                                     if def_id:
                                         known_ids[endpoint_key].add(def_id)
                                 else:
-                                    # Standard sampling definitions register by name string
                                     known_ids[endpoint_key].add(name)
             except Exception as e:
                 L.error(f"Discovery failed to parse system file {jsonl_file.name}", extra={"reason": str(e)})
@@ -697,7 +781,6 @@ async def sync_definitions_loop():
     # -----------------------------------------------------------------
     while True:
         try:
-            # SECTION 1: HARDWARE DEFINITIONS (Triggers ERDDAP XML Builds)
             for resource in HARDWARE_RESOURCES:
                 endpoint = f"{resource}-definition"
                 ids_url = f"{datastore_url}/{endpoint}/registry/ids/get/"
@@ -724,7 +807,6 @@ async def sync_definitions_loop():
                                     
                                 known_ids[endpoint].add(missing_id)
 
-            # SECTION 2: OPERATIONS & SAMPLING DEFINITIONS (JSONL Registries Only)
             for resource in OPS_RESOURCES:
                 endpoint = f"{resource}-definition"
                 ids_url = f"{datastore_url}/{endpoint}/registry/ids/get/"
@@ -759,7 +841,7 @@ async def sync_definitions_loop():
         except Exception as e:
             L.error("Failed to sync definitions from Datastore", extra={"reason": str(e)})
         
-        await asyncio.sleep(60) # Sync every 60 seconds
+        await asyncio.sleep(60)
 
 async def mqtt_loop():
     reconnect = 10
@@ -776,16 +858,13 @@ async def mqtt_loop():
                         ce = from_json(message.payload)
                         ce_type = ce.get("type", "")
                         
-                        # 1. STRICT MATCH for Hardware Telemetry Data (ignores variableset pollution)
                         if ce_type in ["envds.data.update", "envds.controller.data.update"]:
                             await insert_telemetry_to_erddap(ce)
                             
-                        # 2. Operational Status Tracking
                         elif "status.update" in ce_type:
                             if any(ops in ce_type for ops in ["samplingcondition", "samplingstate", "samplingmode", "systemmode"]):
                                 await handle_ops_status_insert(ce)
 
-                        # 3. Discrete Operational Logs
                         elif "operations.log" in ce_type:
                             await handle_ops_log_insert(ce)
 
@@ -910,6 +989,102 @@ async def delete_dataset(dataset_id: str):
     success = compiler.delete_dataset(dataset_id)
     return {"success": success}
 
+# ---------------------------------------------------------
+# INTERNAL EGRESS API (Returns Native NCO-JSON)
+# ---------------------------------------------------------
+@app.post("/api/data/{dataset_id}")
+async def get_ncojson_data(request: Request, dataset_id: str):
+    """Internal Datastore Egress Route. Expects a POST body containing the definition."""
+    try:
+        definition = await request.json()
+        
+        erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
+        rp_req = http_client.build_request("GET", erddap_url, params=request.query_params)
+        erddap_resp = await http_client.send(rp_req)
+        
+        if erddap_resp.status_code == 404:
+            return {"results": []}
+        elif erddap_resp.status_code != 200:
+            return Response(content=erddap_resp.content, status_code=erddap_resp.status_code)
+            
+        flat_data = erddap_resp.json()
+        nco_json_payload = unflatten_telemetry_to_ncojson(flat_data, definition)
+        
+        return {"results": nco_json_payload}
+        
+    except Exception as e:
+        L.error(f"Failed to rebuild NCO-JSON", extra={"reason": str(e)})
+        return Response(status_code=500, content=str(e))
+
+@app.get("/api/definition/{registry_type}/{kind}")
+async def get_ncojson_definition(request: Request, registry_type: str, kind: str):
+    """Retrieves original NCO-JSON definitions from the ERDDAP payload columns."""
+    dataset_id = f"envds_{registry_type}_registry"
+    erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
+    
+    params = dict(request.query_params)
+    params[f'kind="{kind}"'] = None 
+    
+    rp_req = http_client.build_request("GET", erddap_url, params=params)
+    erddap_resp = await http_client.send(rp_req)
+    
+    if erddap_resp.status_code == 404:
+        return {"results": []}
+        
+    data = erddap_resp.json()
+    cols = data.get("table", {}).get("columnNames", [])
+    rows = data.get("table", {}).get("rows", [])
+    
+    if "payload" not in cols:
+        return {"results": []}
+        
+    payload_idx = cols.index("payload")
+    nco_results = []
+    for row in rows:
+        try:
+            nco_results.append(json.loads(row[payload_idx]))
+        except json.JSONDecodeError:
+            continue
+            
+    return {"results": nco_results}
+
+@app.get("/api/status/{dataset_id}")
+async def get_ncojson_status(request: Request, dataset_id: str = "envds_ops_status"):
+    """Fetches operational status updates."""
+    erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
+    rp_req = http_client.build_request("GET", erddap_url, params=request.query_params)
+    erddap_resp = await http_client.send(rp_req)
+    
+    if erddap_resp.status_code == 404:
+        return {"results": []}
+        
+    flat_data = erddap_resp.json()
+    cols = flat_data.get("table", {}).get("columnNames", [])
+    rows = flat_data.get("table", {}).get("rows", [])
+    nco_results = [dict(zip(cols, row)) for row in rows]
+    
+    return {"results": nco_results}
+
+@app.get("/api/log/{dataset_id}")
+async def get_ncojson_log(request: Request, dataset_id: str = "envds_ops_log"):
+    """Fetches operational logs."""
+    erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
+    rp_req = http_client.build_request("GET", erddap_url, params=request.query_params)
+    erddap_resp = await http_client.send(rp_req)
+    
+    if erddap_resp.status_code == 404:
+        return {"results": []}
+        
+    flat_data = erddap_resp.json()
+    cols = flat_data.get("table", {}).get("columnNames", [])
+    rows = flat_data.get("table", {}).get("rows", [])
+    nco_results = [dict(zip(cols, row)) for row in rows]
+    
+    return {"results": nco_results}
+
+# ---------------------------------------------------------
+# STANDARD ERDDAP PROXY
+# ---------------------------------------------------------
 @app.api_route("/erddap/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_erddap(request: Request, path_name: str):
     target_path = path_name if path_name else "index.html"

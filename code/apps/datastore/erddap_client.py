@@ -53,27 +53,42 @@ class ErddapClient:
     # ---------------------------------------------------------
     # TELEMETRY QUERIES
     # ---------------------------------------------------------
-    async def device_data_get(self, request: DataRequest) -> dict:
-        """Fetches historical raw device telemetry from ERDDAP."""
-        # Note: ERDDAP creates a dataset per shape. For 1D time-series, the suffix is _time.
-        # If your frontend needs to query multidimensional data, you would dynamically build this.
+    async def device_data_get(self, request: DataRequest, definition: dict = None) -> dict:
+        """Fetches historical device telemetry from the Sidecar Egress API as NCO-JSON."""
         version_clean = request.version.replace(".", "_") if request.version else "v1"
         dataset_id = f"telemetry_{request.make}_{request.model}_{version_clean}_time".replace("-", "_")
+        
+        # Adjust URL to point to the new sidecar /api/data endpoint
+        # (Assuming self.base_url is the sidecar root: http://erddap-sidecar:8000)
+        url = f"{self.base_url.replace('/erddap', '')}/api/data/{dataset_id}"
         
         query_args = []
         if request.serial_number:
             query_args.append(f'serial_number="{request.serial_number}"')
-            
         if request.start_timestamp:
             query_args.append(f"time>={request.start_timestamp}")
         if request.end_timestamp:
             query_args.append(f"time<={request.end_timestamp}")
             
-        # Sort by time ascending
         query_args.append("orderBy(%22time%22)")
+        query_string = "&".join(query_args)
         
-        return await self._fetch_tabledap(dataset_id, query_args)
-
+        self.logger.debug(f"Sidecar NCO-JSON Query: {url}?{query_string}")
+        
+        try:
+            # POST the query with the definition in the body!
+            resp = await self.http.post(f"{url}?{query_string}", json=definition or {})
+            
+            if resp.status_code == 404:
+                return {"results": []}
+                
+            resp.raise_for_status()
+            return resp.json() # Already perfectly unflattened by the sidecar!
+            
+        except Exception as e:
+            self.logger.error("Sidecar fetch failed", extra={"url": url, "reason": str(e)})
+            return {"results": []}
+        
     async def variableset_data_get(self, request: VariableSetDataRequest) -> dict:
         """Fetches historical curated L1 telemetry from ERDDAP."""
         dataset_id = f"telemetry_variableset_{request.variableset}".replace("-", "_")
