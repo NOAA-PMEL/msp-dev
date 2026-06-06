@@ -4,7 +4,7 @@ import logging
 from fastapi import FastAPI, Request, status, Response
 from cloudevents.http import from_http
 from logfmter import Logfmter
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 from dataset_generator import DatasetGenerator
 
