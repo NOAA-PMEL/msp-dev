@@ -465,7 +465,7 @@ async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5
 
         for attempt in range(retries):
             try:
-                resp = await http_client.post(url, data=payload, headers=headers)
+                resp = await http_client.post(url, params=payload, headers=headers)
                 resp.raise_for_status()
                 return 
                 
