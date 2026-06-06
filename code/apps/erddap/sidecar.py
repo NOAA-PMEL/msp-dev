@@ -436,18 +436,39 @@ async def insert_telemetry_to_erddap(ce: dict):
         await asyncio.gather(*insert_tasks, return_exceptions=True)
 
 async def handle_ops_registry_insert(ce: dict):
-    # ... (keep the existing top part)
+    attrs = ce.get("attributes", ce) if isinstance(ce, dict) else ce.get_attributes()
+    data = ce.data if hasattr(ce, "data") else ce.get("data", {})
+    if not data: return
+
+    def_key = next((k for k in data.keys() if "definition" in k), None)
+    if not def_key: return
+    
+    # This is the line that was accidentally deleted!
+    def_block = data.get(def_key, {})
     metadata = def_block.get("metadata", {})
-    if not metadata: return
+    
+    if not metadata: 
+        return
 
     kind = def_key
     namespace = metadata.get("sampling_namespace", "unknown")
     
     # Grab the true unique name/ID
     name = metadata.get("name") or def_block.get(f"{kind.replace('-', '_')}_id", "unknown")
-    
     revision = metadata.get("revision", 1)
-    # ... (keep valid_config_time logic)
+    
+    valid_config_time = (
+        def_block.get("revision-time") or 
+        metadata.get("revision-time") or 
+        def_block.get("valid_config_time") or 
+        metadata.get("valid_config_time") or 
+        attrs.get("time", "2026-01-01T00:00:00Z")
+    )
+
+    try:
+        revision = int(revision)
+    except (ValueError, TypeError):
+        revision = 1
 
     registry_dir = Path(config.data_dir) / "registry" / "system" / kind
     registry_dir.mkdir(parents=True, exist_ok=True)
@@ -539,7 +560,29 @@ async def handle_ops_log_insert(ce: dict):
     await _send_insert(insert_url, payload=params)
     
 async def handle_hardware_registry_insert(ce: dict):
-    # ... (keep existing top part)
+    attrs = ce.get("attributes", ce) if isinstance(ce, dict) else ce.get_attributes()
+    data = ce.data if hasattr(ce, "data") else ce.get("data", {})
+    if not data: return
+
+    def_key = next((k for k in data.keys() if "definition" in k), None)
+    if not def_key: return
+    
+    def_block = data.get(def_key, {})
+    def_attrs = def_block.get("attributes", {})
+    if not def_attrs: return
+
+    kind = def_key
+    
+    make = def_attrs.get("make", {}).get("data", "unknown")
+    model = def_attrs.get("model", {}).get("data", "unknown")
+    exact_version = str(def_block.get("version") or def_attrs.get("format_version", {}).get("data", "1.0.0")).strip()
+
+    valid_config_time = (
+        def_block.get("valid_time") or 
+        def_attrs.get("valid_time", {}).get("data") or 
+        attrs.get("time", "2026-01-01T00:00:00Z")
+    )
+    
     registry_dir = Path(config.data_dir) / "registry" / "hardware" / kind
     registry_dir.mkdir(parents=True, exist_ok=True)
     file_path = registry_dir / f"{kind}_registry.jsonl"
