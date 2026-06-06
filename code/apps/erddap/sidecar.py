@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse
 from starlette.background import BackgroundTask
 import httpx
 import uvicorn
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from ulid import ULID
 from aiomqtt import Client, MqttError
@@ -40,11 +41,17 @@ class ERDDAPSidecarConfig(BaseSettings):
     daq_id: str | None = None
     data_dir: str = "/erddapData"
     insert_password: str = os.environ.get("ERDDAP_INSERT_PASSWORD", "default_secret")
-    author_name: str = "envds_sidecar"
+    author_name: str = "envds-sidecar" # no underscores
 
     class Config:
         env_prefix = "ERDDAP_SIDECAR_"
 
+    @field_validator("author_name")
+    @classmethod
+    def replace_underscores_with_hyphens(cls, v: str) -> str:
+        """Automatically converts underscores to hyphens to protect ERDDAP parsing."""
+        return v.replace("_", "-")
+    
 config = ERDDAPSidecarConfig()
 app = FastAPI()
 http_client = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=100),timeout=60.0)
