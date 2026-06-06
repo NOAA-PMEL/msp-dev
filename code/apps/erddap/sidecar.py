@@ -220,7 +220,8 @@ class ERDDAPConfigCompiler:
         L.info("Compiling master datasets.xml from active directory state...")
         self.rebuild_master_xml()
         
-        (self.flags_dir / "datasets.xml").touch()
+        # --- ERDDAP FLAG FIX: Use exact name 'datasets' for major reload ---
+        (self.flags_dir / "datasets").touch()
         L.info("ERDDAP initialization sequence complete.")
 
     def handle_definition(self, ce: dict):
@@ -339,13 +340,19 @@ class ERDDAPConfigCompiler:
                         else:
                             dummy_vals.append(0.0)
                             
-                seed_content = f"{json.dumps(col_names)}\n{json.dumps(dummy_vals)}\n"
+                # --- JSONL FIX: Eliminate spaces after commas so ERDDAP parses perfectly ---
+                seed_content = f"{json.dumps(col_names, separators=(',', ':'))}\n{json.dumps(dummy_vals, separators=(',', ':'))}\n"
                 seed_file.write_text(seed_content)
                 L.info(f"Dropped complete 2-line seed.jsonl into {dataset_dir}")
+                
+            # --- ERDDAP MINOR LOAD TRIGGER ---
+            # Force ERDDAP to load this specific new dataset immediately to prevent 404s
+            (self.flags_dir / dataset_id).touch()
 
         if needs_rebuild:
             self.rebuild_master_xml()
-            (self.flags_dir / "datasets.xml").touch()
+            # --- ERDDAP FLAG FIX: Use exact name 'datasets' for major reload ---
+            (self.flags_dir / "datasets").touch()
 
     def rebuild_master_xml(self):
         master_xml = ['<?xml version="1.0" encoding="ISO-8859-1" ?>\n<erddapDatasets>']
@@ -390,7 +397,8 @@ class ERDDAPConfigCompiler:
                     
                 xml_file.write_text(content)
                 self.rebuild_master_xml()
-                (self.flags_dir / "datasets.xml").touch()
+                # --- ERDDAP FLAG FIX: Use exact name 'datasets' for major reload ---
+                (self.flags_dir / "datasets").touch()
                 return True
         return False
 
@@ -407,7 +415,8 @@ class ERDDAPConfigCompiler:
 
                 xml_file.unlink()
                 self.rebuild_master_xml()
-                (self.flags_dir / "datasets.xml").touch()
+                # --- ERDDAP FLAG FIX: Use exact name 'datasets' for major reload ---
+                (self.flags_dir / "datasets").touch()
                 return True
         return False
 
@@ -458,7 +467,6 @@ async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5
     async with http_semaphore:
         
         # --- ERDDAP PARAMETER ORDERING FIX ---
-        # ERDDAP strictly requires authentication variables to be at the END of the URL.
         if "author" in payload:
             author_val = payload.pop("author")
             payload["author"] = author_val
@@ -612,7 +620,8 @@ async def handle_ops_registry_insert(ce: dict):
         f.write('["double","String","String","String","String","int","String"]\n')
         for rec in existing_records:
             f.write(rec)
-        f.write(json.dumps(record) + "\n")
+        # --- JSONL FIX: Eliminate spaces after commas ---
+        f.write(json.dumps(record, separators=(',', ':')) + "\n")
         
     flag_dir = Path(config.data_dir) / "hardFlag"
     flag_dir.mkdir(parents=True, exist_ok=True)
@@ -719,7 +728,8 @@ async def handle_hardware_registry_insert(ce: dict):
         f.write('["double","String","String","String","String","String","String"]\n')
         for rec in existing_records:
             f.write(rec)
-        f.write(json.dumps(record) + "\n")
+        # --- JSONL FIX: Eliminate spaces after commas ---
+        f.write(json.dumps(record, separators=(',', ':')) + "\n")
         
     flag_dir = Path(config.data_dir) / "hardFlag"
     flag_dir.mkdir(parents=True, exist_ok=True)
