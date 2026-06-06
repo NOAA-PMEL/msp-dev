@@ -13,7 +13,7 @@
     <accessibleViaFiles>true</accessibleViaFiles>
 
     <addAttributes>
-        <att name="cdm_data_type">TimeSeries</att>
+        <att name="cdm_data_type">Other</att>
         <att name="cdm_timeseries_variables">time, kind, namespace, name</att>
         <att name="Conventions">COARDS, CF-1.6, ACDD-1.3</att>
         <att name="summary">This is a summary of the dataset for ERDDAP.</att>
