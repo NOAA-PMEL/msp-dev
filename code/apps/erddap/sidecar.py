@@ -904,9 +904,11 @@ async def mqtt_loop():
                             
                         # --- BROAD STATUS UNLOCK FILTER ---
                         elif "status.update" in ce_type:
+                            L.info("mqtt_loop", extra={"status_update": ce.data})
                             await handle_ops_status_insert(ce)
 
                         elif "operations.log" in ce_type:
+                            L.info("mqtt_loop", extra={"ops_log": ce.data})
                             await handle_ops_log_insert(ce)
 
                     except Exception as e:
