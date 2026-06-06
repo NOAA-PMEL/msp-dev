@@ -213,6 +213,25 @@ class ERDDAPConfigCompiler:
                     password=escape(config.insert_password)
                 )
                 dest_path.write_text(xml_content)
+                
+                # --- FIXED: AUTOMATED SEED FILING FOR FIXED OPERATION CHANNELS ---
+                dir_match = re.search(r'<fileDir>([^<]+)</fileDir>', xml_content)
+                if dir_match:
+                    dataset_dir = Path(dir_match.group(1))
+                    dataset_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    seed_file = dataset_dir / "seed.jsonl"
+                    if "status" in template_name:
+                        col_names = ["app_group", "app_uid", "namespace", "time", "valid_config_time", "requested_state", "actual_state", "timestamp", "author", "command"]
+                        dummy_vals = ["seed", "seed", "seed", 0.0, "seed", "seed", "seed", 0.0, "seed", 0]
+                    else:
+                        col_names = ["deployment_ref", "project_ref", "time", "event_type", "subject", "description", "timestamp", "author", "command"]
+                        dummy_vals = ["seed", "seed", 0.0, "seed", "seed", "seed", 0.0, "seed", 0]
+                        
+                    seed_content = f"{json.dumps(col_names, separators=(',', ':'))}\n{json.dumps(dummy_vals, separators=(',', ':'))}\n"
+                    seed_file.write_text(seed_content)
+                    L.info(f"Dropped space-free operational seed file into {dataset_dir}")
+                
                 L.info(f"Rendered {template_name} successfully.")
             except Exception as e:
                 L.error(f"Failed to render {template_name}", extra={"error": str(e)})
@@ -220,7 +239,7 @@ class ERDDAPConfigCompiler:
         L.info("Compiling master datasets.xml from active directory state...")
         self.rebuild_master_xml()
         
-        # --- ERDDAP FLAG FIX: Use exact name 'datasets' for major reload ---
+        # --- ERDDAP FLAG FIX: Force direct global major re-indexing ---
         (self.flags_dir / "datasets").touch()
         L.info("ERDDAP initialization sequence complete.")
 
@@ -340,18 +359,16 @@ class ERDDAPConfigCompiler:
                         else:
                             dummy_vals.append(0.0)
                             
-                # --- JSONL FIX: Eliminate spaces after commas so ERDDAP parses perfectly ---
+                # --- JSONL FIX: Space-free serialization arrays ---
                 seed_content = f"{json.dumps(col_names, separators=(',', ':'))}\n{json.dumps(dummy_vals, separators=(',', ':'))}\n"
                 seed_file.write_text(seed_content)
                 L.info(f"Dropped complete 2-line seed.jsonl into {dataset_dir}")
                 
-            # --- ERDDAP MINOR LOAD TRIGGER ---
-            # Force ERDDAP to load this specific new dataset immediately to prevent 404s
+            # --- LOCAL DATASET LOAD ACCELERATOR ---
             (self.flags_dir / dataset_id).touch()
 
         if needs_rebuild:
             self.rebuild_master_xml()
-            # --- ERDDAP FLAG FIX: Use exact name 'datasets' for major reload ---
             (self.flags_dir / "datasets").touch()
 
     def rebuild_master_xml(self):
@@ -397,7 +414,6 @@ class ERDDAPConfigCompiler:
                     
                 xml_file.write_text(content)
                 self.rebuild_master_xml()
-                # --- ERDDAP FLAG FIX: Use exact name 'datasets' for major reload ---
                 (self.flags_dir / "datasets").touch()
                 return True
         return False
@@ -415,7 +431,6 @@ class ERDDAPConfigCompiler:
 
                 xml_file.unlink()
                 self.rebuild_master_xml()
-                # --- ERDDAP FLAG FIX: Use exact name 'datasets' for major reload ---
                 (self.flags_dir / "datasets").touch()
                 return True
         return False
@@ -479,7 +494,6 @@ async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5
 
         for attempt in range(retries):
             try:
-                # Use params= to force ERDDAP key parameters into the URL string
                 resp = await http_client.post(url, params=payload, headers=headers)
                 resp.raise_for_status()
                 return 
@@ -620,7 +634,7 @@ async def handle_ops_registry_insert(ce: dict):
         f.write('["double","String","String","String","String","int","String"]\n')
         for rec in existing_records:
             f.write(rec)
-        # --- JSONL FIX: Eliminate spaces after commas ---
+        # --- COMPACT JSON GENERATION FOR STABLE STORAGE ---
         f.write(json.dumps(record, separators=(',', ':')) + "\n")
         
     flag_dir = Path(config.data_dir) / "hardFlag"
@@ -728,7 +742,7 @@ async def handle_hardware_registry_insert(ce: dict):
         f.write('["double","String","String","String","String","String","String"]\n')
         for rec in existing_records:
             f.write(rec)
-        # --- JSONL FIX: Eliminate spaces after commas ---
+        # --- COMPACT JSON GENERATION FOR STABLE STORAGE ---
         f.write(json.dumps(record, separators=(',', ':')) + "\n")
         
     flag_dir = Path(config.data_dir) / "hardFlag"
@@ -887,9 +901,9 @@ async def mqtt_loop():
                         if ce_type in ["envds.data.update", "envds.controller.data.update"]:
                             await insert_telemetry_to_erddap(ce)
                             
+                        # --- BROAD STATUS UNLOCK FILTER ---
                         elif "status.update" in ce_type:
-                            if any(ops in ce_type for ops in ["samplingcondition", "samplingstate", "samplingmode", "systemmode"]):
-                                await handle_ops_status_insert(ce)
+                            await handle_ops_status_insert(ce)
 
                         elif "operations.log" in ce_type:
                             await handle_ops_log_insert(ce)
@@ -1024,7 +1038,6 @@ async def get_ncojson_data(request: Request, dataset_id: str):
     try:
         definition = await request.json()
         
-        # Pass the raw query string to preserve ERDDAP's custom syntax
         erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
         if request.url.query:
             erddap_url = f"{erddap_url}?{request.url.query}"
@@ -1050,9 +1063,8 @@ async def get_ncojson_data(request: Request, dataset_id: str):
 async def get_ncojson_definition(request: Request, registry_type: str, kind: str):
     """Retrieves original NCO-JSON definitions from the ERDDAP payload columns."""
     dataset_id = f"envds_{registry_type}_registry"
-    
-    # Manually append the constraint to the raw query string
     erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
+    
     query_parts = []
     if request.url.query:
         query_parts.append(request.url.query)
@@ -1085,10 +1097,10 @@ async def get_ncojson_definition(request: Request, registry_type: str, kind: str
 
 @app.get("/api/status/{dataset_id}")
 async def get_ncojson_status(request: Request, dataset_id: str = "envds_ops_status"):
-    """Fetches operational status updates."""
-    erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
+    """Fetches operational status updates isolating explicit payload columns."""
+    erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json?app_group,app_uid,namespace,time,valid_config_time,requested_state,actual_state"
     if request.url.query:
-        erddap_url = f"{erddap_url}?{request.url.query}"
+        erddap_url = f"{erddap_url}&{request.url.query}"
         
     rp_req = http_client.build_request("GET", erddap_url)
     erddap_resp = await http_client.send(rp_req)
@@ -1105,10 +1117,10 @@ async def get_ncojson_status(request: Request, dataset_id: str = "envds_ops_stat
 
 @app.get("/api/log/{dataset_id}")
 async def get_ncojson_log(request: Request, dataset_id: str = "envds_ops_log"):
-    """Fetches operational logs."""
-    erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
+    """Fetches operational logs isolating explicit payload columns."""
+    erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json?deployment_ref,project_ref,time,event_type,subject,description"
     if request.url.query:
-        erddap_url = f"{erddap_url}?{request.url.query}"
+        erddap_url = f"{erddap_url}&{request.url.query}"
         
     rp_req = http_client.build_request("GET", erddap_url)
     erddap_resp = await http_client.send(rp_req)
@@ -1131,7 +1143,6 @@ async def proxy_erddap(request: Request, path_name: str):
     target_path = path_name if path_name else "index.html"
     url = f"{config.erddap_internal_url}/{target_path}"
     
-    # Pass the raw query string to preserve ERDDAP's custom syntax
     if request.url.query:
         url = f"{url}?{request.url.query}"
     
