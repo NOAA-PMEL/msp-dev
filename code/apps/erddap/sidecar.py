@@ -192,34 +192,47 @@ class ERDDAPConfigCompiler:
                 needs_rebuild = True
 
             # --- AUTOMATED SEEDING LOGIC PER SHAPE ---
-            # ALWAYS ensure the directory exists and is seeded (Un-indented from the if block!)
             dir_match = re.search(r'<fileDir>([^<]+)</fileDir>', xml_content)
             if dir_match:
                 dataset_dir = Path(dir_match.group(1))
                 dataset_dir.mkdir(parents=True, exist_ok=True)
                 
-                # Safety Valve: Only drop the seed if the file does not exist yet
                 seed_file = dataset_dir / "seed.jsonl"
-                if not seed_file.exists():
-                    col_names = [c["name"] for c in cols]
-                    
-                    # ERDDAP strictly requires the second array to be Data Types
-                    col_types = []
-                    dummy_vals = []
-                    
-                    for c in cols:
+                
+                # 1. Build a LIST of column names
+                base_cols = ["make", "model", "format_version", "serial_number", "time"]
+                dyn_cols = [c["name"] for c in cols if c["name"] != "time"]
+                tail_cols = ["timestamp", "author", "command"]
+                
+                col_names = base_cols + dyn_cols + tail_cols
+                
+                # 2. Build a LIST of dummy values in the exact same order
+                dummy_vals = []
+                for name in col_names:
+                    if name in ["make", "model", "format_version", "serial_number", "author"]:
+                        dummy_vals.append("seed")
+                    elif name == "time":
+                        dummy_vals.append("1970-01-01T00:00:00Z")
+                    elif name == "timestamp":
+                        dummy_vals.append(0.0)
+                    elif name == "command":
+                        dummy_vals.append(0) # byte
+                    else:
+                        # Dynamic column typing
+                        c = next(c for c in cols if c["name"] == name)
                         c_type = str(c.get("type", "float")).lower()
                         if c_type in ["string", "char", "text", "boolean"]:
-                            col_types.append("String")
-                            dummy_vals.append("1970-01-01T00:00:00Z" if c["name"] == "time" else "seed")
+                            dummy_vals.append("seed")
                         else:
-                            col_types.append("double")
                             dummy_vals.append(0.0)
                             
-                    # Write the 3-line JSONL-CSV format ERDDAP expects
-                    seed_content = f"{json.dumps(col_names)}\n{json.dumps(col_types)}\n{json.dumps(dummy_vals)}\n"
-                    seed_file.write_text(seed_content)
-                    L.info(f"Dropped seed.jsonl into {dataset_dir}")
+                # 3. json.dumps on a list produces square brackets: ["item1", "item2"]
+                # This perfectly mimics ERDDAP's 2-line JSONL CSV format
+                seed_content = f"{json.dumps(col_names)}\n{json.dumps(dummy_vals)}\n"
+                
+                # Unconditionally overwrite the file to clear out any old {} versions
+                seed_file.write_text(seed_content)
+                L.info(f"Dropped official 2-line array seed.jsonl into {dataset_dir}")
 
         if needs_rebuild:
             self.rebuild_master_xml()
@@ -423,56 +436,49 @@ async def insert_telemetry_to_erddap(ce: dict):
         await asyncio.gather(*insert_tasks, return_exceptions=True)
 
 async def handle_ops_registry_insert(ce: dict):
-    attrs = ce.get("attributes", ce) if isinstance(ce, dict) else ce.get_attributes()
-    data = ce.data if hasattr(ce, "data") else ce.get("data", {})
-    if not data: return
-
-    def_key = next((k for k in data.keys() if "definition" in k), None)
-    if not def_key: return
-    
-    def_block = data.get(def_key, {})
+    # ... (keep the existing top part)
     metadata = def_block.get("metadata", {})
-    
-    if not metadata: 
-        return
+    if not metadata: return
 
     kind = def_key
     namespace = metadata.get("sampling_namespace", "unknown")
-    name = metadata.get("name", "unknown")
-    revision = metadata.get("revision", 1)
     
-    valid_config_time = (
-        def_block.get("revision-time") or 
-        metadata.get("revision-time") or 
-        def_block.get("valid_config_time") or 
-        metadata.get("valid_config_time") or 
-        attrs.get("time", "2026-01-01T00:00:00Z")
-    )
-
-    try:
-        revision = int(revision)
-    except (ValueError, TypeError):
-        revision = 1
+    # Grab the true unique name/ID
+    name = metadata.get("name") or def_block.get(f"{kind.replace('-', '_')}_id", "unknown")
+    
+    revision = metadata.get("revision", 1)
+    # ... (keep valid_config_time logic)
 
     registry_dir = Path(config.data_dir) / "registry" / "system" / kind
     registry_dir.mkdir(parents=True, exist_ok=True)
     file_path = registry_dir / f"{kind}_registry.jsonl"
 
     record = [
-        time.time(),
-        kind,
-        namespace,
-        name,
-        valid_config_time,
-        revision,
+        time.time(), kind, namespace, name, valid_config_time, revision,
         json.dumps(data, separators=(',', ':'))
     ]
 
-    is_new = not file_path.exists() or file_path.stat().st_size == 0
-    with open(file_path, "a") as f:
-        if is_new:
-            f.write('["time","kind","namespace","name","valid_config_time","revision","payload"]\n')
-            f.write('["double","String","String","String","String","int","String"]\n')
+    # Check for existing records and filter out duplicates
+    existing_records = []
+    if file_path.exists() and file_path.stat().st_size > 0:
+        with open(file_path, "r") as f:
+            lines = f.readlines()
+            if len(lines) >= 2: # Skip headers
+                for line in lines[2:]:
+                    try:
+                        row = json.loads(line)
+                        # Identify duplicates by Namespace (row[2]) and Name (row[3])
+                        if not (row[2] == namespace and row[3] == name):
+                            existing_records.append(line)
+                    except json.JSONDecodeError:
+                        pass
+
+    # Rewrite the file completely
+    with open(file_path, "w") as f:
+        f.write('["time","kind","namespace","name","valid_config_time","revision","payload"]\n')
+        f.write('["double","String","String","String","String","int","String"]\n')
+        for rec in existing_records:
+            f.write(rec)
         f.write(json.dumps(record) + "\n")
         
     flag_dir = Path(config.data_dir) / "hardFlag"
@@ -533,48 +539,37 @@ async def handle_ops_log_insert(ce: dict):
     await _send_insert(insert_url, payload=params)
     
 async def handle_hardware_registry_insert(ce: dict):
-    attrs = ce.get("attributes", ce) if isinstance(ce, dict) else ce.get_attributes()
-    data = ce.data if hasattr(ce, "data") else ce.get("data", {})
-    if not data: return
-
-    def_key = next((k for k in data.keys() if "definition" in k), None)
-    if not def_key: return
-    
-    def_block = data.get(def_key, {})
-    def_attrs = def_block.get("attributes", {})
-    if not def_attrs: return
-
-    kind = def_key
-    
-    make = def_attrs.get("make", {}).get("data", "unknown")
-    model = def_attrs.get("model", {}).get("data", "unknown")
-    exact_version = str(def_block.get("version") or def_attrs.get("format_version", {}).get("data", "1.0.0")).strip()
-
-    valid_config_time = (
-        def_block.get("valid_time") or 
-        def_attrs.get("valid_time", {}).get("data") or 
-        attrs.get("time", "2026-01-01T00:00:00Z")
-    )
-    
+    # ... (keep existing top part)
     registry_dir = Path(config.data_dir) / "registry" / "hardware" / kind
     registry_dir.mkdir(parents=True, exist_ok=True)
     file_path = registry_dir / f"{kind}_registry.jsonl"
 
     record = [
-        time.time(),
-        kind,
-        make,
-        model,
-        exact_version,
-        valid_config_time,
+        time.time(), kind, make, model, exact_version, valid_config_time,
         json.dumps(data, separators=(',', ':'))
     ]
 
-    is_new = not file_path.exists() or file_path.stat().st_size == 0
-    with open(file_path, "a") as f:
-        if is_new:
-            f.write('["time","kind","make","model","version","valid_config_time","payload"]\n')
-            f.write('["double","String","String","String","String","String","String"]\n')
+    # Check for existing records and filter out duplicates
+    existing_records = []
+    if file_path.exists() and file_path.stat().st_size > 0:
+        with open(file_path, "r") as f:
+            lines = f.readlines()
+            if len(lines) >= 2: # Skip headers
+                for line in lines[2:]:
+                    try:
+                        row = json.loads(line)
+                        # Identify duplicates by Make (row[2]), Model (row[3]), and Version (row[4])
+                        if not (row[2] == make and row[3] == model and row[4] == exact_version):
+                            existing_records.append(line)
+                    except json.JSONDecodeError:
+                        pass
+
+    # Rewrite the file completely
+    with open(file_path, "w") as f:
+        f.write('["time","kind","make","model","version","valid_config_time","payload"]\n')
+        f.write('["double","String","String","String","String","String","String"]\n')
+        for rec in existing_records:
+            f.write(rec)
         f.write(json.dumps(record) + "\n")
         
     flag_dir = Path(config.data_dir) / "hardFlag"
