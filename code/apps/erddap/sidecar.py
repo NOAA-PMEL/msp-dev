@@ -890,6 +890,7 @@ async def mqtt_loop():
             L.info(f"Connecting to MQTT Broker: {config.mqtt_broker}")
             async with Client(config.mqtt_broker, port=config.mqtt_port, identifier=str(ULID())) as client:
                 for topic in config.mqtt_subscriptions.split(","):
+                    L.info("mqtt_loop", extra={"sub_topic": topic})
                     if topic.strip():
                         await client.subscribe(f"$share/erddap/{topic.strip()}")
 
