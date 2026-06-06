@@ -199,26 +199,26 @@ class ERDDAPConfigCompiler:
                 
                 seed_file = dataset_dir / "seed.jsonl"
                 
-                # 1. Build a LIST of column names
+                # RESTORED: serial_number is back in the base columns!
+                # The order here perfectly matches your telemetry_dataset.xml.j2
                 base_cols = ["make", "model", "format_version", "serial_number", "time"]
                 dyn_cols = [c["name"] for c in cols if c["name"] != "time"]
                 tail_cols = ["timestamp", "author", "command"]
                 
                 col_names = base_cols + dyn_cols + tail_cols
                 
-                # 2. Build a LIST of dummy values in the exact same order
                 dummy_vals = []
                 for name in col_names:
                     if name in ["make", "model", "format_version", "serial_number", "author"]:
                         dummy_vals.append("seed")
                     elif name == "time":
-                        dummy_vals.append("1970-01-01T00:00:00Z")
+                        # Matching the 6-zero precision your old script used
+                        dummy_vals.append("1970-01-01T00:00:00.000000Z")
                     elif name == "timestamp":
                         dummy_vals.append(0.0)
                     elif name == "command":
                         dummy_vals.append(0) # byte
                     else:
-                        # Dynamic column typing
                         c = next(c for c in cols if c["name"] == name)
                         c_type = str(c.get("type", "float")).lower()
                         if c_type in ["string", "char", "text", "boolean"]:
@@ -226,13 +226,11 @@ class ERDDAPConfigCompiler:
                         else:
                             dummy_vals.append(0.0)
                             
-                # 3. json.dumps on a list produces square brackets: ["item1", "item2"]
-                # This perfectly mimics ERDDAP's 2-line JSONL CSV format
+                # This json.dumps() perfectly replicates the [ "col1", "col2" ]
+                # format you were manually building in your old script!
                 seed_content = f"{json.dumps(col_names)}\n{json.dumps(dummy_vals)}\n"
-                
-                # Unconditionally overwrite the file to clear out any old {} versions
                 seed_file.write_text(seed_content)
-                L.info(f"Dropped official 2-line array seed.jsonl into {dataset_dir}")
+                L.info(f"Dropped complete 2-line seed.jsonl into {dataset_dir}")
 
         if needs_rebuild:
             self.rebuild_master_xml()
