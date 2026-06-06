@@ -16,6 +16,7 @@ class SamplingEventType(BaseEventType):
     TYPE_SAMPLINGSTATE_DEFINITION = "samplingstate-definition"
     TYPE_SAMPLINGCONDITION_DEFINITION = "samplingcondition-definition"
     TYPE_ACTION_DEFINITION = "action-definition"
+    TYPE_DATASET_DEFINITION = "dataset-definition"
     TYPE_VARIABLESET = "variableset"
     TYPE_DATASET = "dataset"
     TYPE_PROJECT = "project"
@@ -148,3 +149,16 @@ class SamplingEventType(BaseEventType):
     def system_control_update():
         # Yields: envds.system.control.update
         return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SYSTEM), SamplingEventType.TYPE_CONTROL, BaseEventType.ACTION_UPDATE])
+    
+    @staticmethod
+    def dataset_definition_registry_request():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_DATASET_DEFINITION), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_REQUEST])
+
+    @staticmethod
+    def dataset_definition_registry_update():
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_DATASET_DEFINITION), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_UPDATE])
+
+    @staticmethod
+    def dataset_generate_request():
+        # Yields: "envds.dataset.generate.request"
+        return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_DATASET), "generate", BaseEventType.ACTION_REQUEST])
