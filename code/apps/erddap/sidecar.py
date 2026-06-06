@@ -1024,8 +1024,12 @@ async def get_ncojson_data(request: Request, dataset_id: str):
     try:
         definition = await request.json()
         
+        # Pass the raw query string to preserve ERDDAP's custom syntax
         erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
-        rp_req = http_client.build_request("GET", erddap_url, params=request.query_params)
+        if request.url.query:
+            erddap_url = f"{erddap_url}?{request.url.query}"
+            
+        rp_req = http_client.build_request("GET", erddap_url)
         erddap_resp = await http_client.send(rp_req)
         
         if erddap_resp.status_code == 404:
@@ -1046,12 +1050,17 @@ async def get_ncojson_data(request: Request, dataset_id: str):
 async def get_ncojson_definition(request: Request, registry_type: str, kind: str):
     """Retrieves original NCO-JSON definitions from the ERDDAP payload columns."""
     dataset_id = f"envds_{registry_type}_registry"
+    
+    # Manually append the constraint to the raw query string
     erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
+    query_parts = []
+    if request.url.query:
+        query_parts.append(request.url.query)
+    query_parts.append(f'kind="{kind}"')
     
-    params = dict(request.query_params)
-    params[f'kind="{kind}"'] = None 
+    erddap_url = f"{erddap_url}?{'&'.join(query_parts)}"
     
-    rp_req = http_client.build_request("GET", erddap_url, params=params)
+    rp_req = http_client.build_request("GET", erddap_url)
     erddap_resp = await http_client.send(rp_req)
     
     if erddap_resp.status_code == 404:
@@ -1078,7 +1087,10 @@ async def get_ncojson_definition(request: Request, registry_type: str, kind: str
 async def get_ncojson_status(request: Request, dataset_id: str = "envds_ops_status"):
     """Fetches operational status updates."""
     erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
-    rp_req = http_client.build_request("GET", erddap_url, params=request.query_params)
+    if request.url.query:
+        erddap_url = f"{erddap_url}?{request.url.query}"
+        
+    rp_req = http_client.build_request("GET", erddap_url)
     erddap_resp = await http_client.send(rp_req)
     
     if erddap_resp.status_code == 404:
@@ -1095,7 +1107,10 @@ async def get_ncojson_status(request: Request, dataset_id: str = "envds_ops_stat
 async def get_ncojson_log(request: Request, dataset_id: str = "envds_ops_log"):
     """Fetches operational logs."""
     erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
-    rp_req = http_client.build_request("GET", erddap_url, params=request.query_params)
+    if request.url.query:
+        erddap_url = f"{erddap_url}?{request.url.query}"
+        
+    rp_req = http_client.build_request("GET", erddap_url)
     erddap_resp = await http_client.send(rp_req)
     
     if erddap_resp.status_code == 404:
@@ -1116,6 +1131,10 @@ async def proxy_erddap(request: Request, path_name: str):
     target_path = path_name if path_name else "index.html"
     url = f"{config.erddap_internal_url}/{target_path}"
     
+    # Pass the raw query string to preserve ERDDAP's custom syntax
+    if request.url.query:
+        url = f"{url}?{request.url.query}"
+    
     req_headers = dict(request.headers)
     req_headers["host"] = request.headers.get("x-forwarded-host", request.headers.get("host"))
     req_headers["X-Forwarded-Prefix"] = "/envds/data" 
@@ -1124,8 +1143,7 @@ async def proxy_erddap(request: Request, path_name: str):
         request.method,
         url,
         headers=req_headers,
-        content=await request.body(),
-        params=request.query_params
+        content=await request.body()
     )
     
     try:
