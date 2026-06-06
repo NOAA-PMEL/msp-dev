@@ -457,6 +457,12 @@ def unroll_multidimensional_data(base_row, shape_dims, coords_dict, var_dict):
 async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5):
     async with http_semaphore:
         
+        # --- ERDDAP PARAMETER ORDERING FIX ---
+        # ERDDAP strictly requires authentication variables to be at the END of the URL.
+        if "author" in payload:
+            author_val = payload.pop("author")
+            payload["author"] = author_val
+
         # Force ERDDAP to recognize the local loopback insert as secure
         headers = {
             "X-Forwarded-Proto": "https",
@@ -465,6 +471,7 @@ async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5
 
         for attempt in range(retries):
             try:
+                # Use params= to force ERDDAP key parameters into the URL string
                 resp = await http_client.post(url, params=payload, headers=headers)
                 resp.raise_for_status()
                 return 
@@ -505,13 +512,12 @@ async def insert_telemetry_to_erddap(ce: dict):
     
     for i, current_time in enumerate(time_array):
         base_params = {
-            "author": config.author_name,
-            "password": config.insert_password,
             "make": make,
             "model": model,
             "serial_number": sn,
             "format_version": str(version_raw),
-            "time": current_time
+            "time": current_time,
+            "author": f"{config.author_name}_{config.insert_password}"
         }
         
         slice_vars = {}
@@ -627,15 +633,14 @@ async def handle_ops_status_insert(ce: dict):
             actual = str(state_vals.get("actual", "unknown"))
 
     params = {
-        "author": config.author_name,
-        "password": config.insert_password,
         "time": timestamp,
         "app_group": id_block.get("app_group", "unknown"),
         "app_uid": id_block.get("app_uid", "unknown"),
         "namespace": id_block.get("sampling_namespace", "unknown"),
         "valid_config_time": id_block.get("valid_config_time", "unknown"),
         "requested_state": requested,
-        "actual_state": actual
+        "actual_state": actual,
+        "author": f"{config.author_name}_{config.insert_password}"
     }
     
     insert_url = f"{config.erddap_internal_url}/tabledap/envds_ops_status.insert"
@@ -652,14 +657,13 @@ async def handle_ops_log_insert(ce: dict):
     timestamp = string_to_timestamp(time_str) if time_str else time.time()
 
     params = {
-        "author": config.author_name,
-        "password": config.insert_password,
         "time": timestamp,
         "deployment_ref": attrs.get("deploymentref", "unknown"),
         "project_ref": attrs.get("projectref", "unknown"),
         "event_type": data.get("event_type", "unknown"),
         "subject": attrs.get("subject", "system"),
-        "description": data.get("description", "")
+        "description": data.get("description", ""),
+        "author": f"{config.author_name}_{config.insert_password}"
     }
     
     insert_url = f"{config.erddap_internal_url}/tabledap/envds_ops_log.insert"
@@ -757,7 +761,6 @@ async def sync_definitions_loop():
                     for line in f:
                         if line.startswith("["): 
                             row = json.loads(line)
-                            # FIX: Skip both time and double headers
                             if len(row) > 4 and row[0] not in ["time", "double"]: 
                                 make, model, version = row[2], row[3], row[4]
                                 endpoint_key = jsonl_file.parent.name 
@@ -773,7 +776,6 @@ async def sync_definitions_loop():
                     for line in f:
                         if line.startswith("["):
                             row = json.loads(line)
-                            # FIX: Skip both time and double headers
                             if len(row) > 3 and row[0] not in ["time", "double"]: 
                                 namespace, name = row[2], row[3]
                                 endpoint_key = jsonl_file.parent.name 
