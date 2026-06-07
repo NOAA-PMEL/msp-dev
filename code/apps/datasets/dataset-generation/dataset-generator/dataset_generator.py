@@ -237,28 +237,28 @@ class DatasetGenerator:
                     if not vs_id or not vs_var:
                         continue
                         
-                    # --- FIX: Pass the specific variable_name so the fetcher can trace it! ---
                     records = await self.fetch_variableset_data(vs_id, vs_var, start_time, end_time)
                     if not records: 
                         continue
                     
                     times, values = [], []
-                    exact_vmap_id = None # NEW: Track the mapping ID
+                    exact_vmap_id = None
                     
                     for r in records:
                         v_dict = r.get("variables", {})
                         if "time" in v_dict and vs_var in v_dict:
                             # Time parsing
                             t_str = v_dict["time"]["data"]
-                            # times.append(np.datetime64(t_str.replace("Z", "")))
-                            # --- THE FIX: Convert and round to nearest second to eliminate fractional jitter ---
+                            
+                            # Convert and round to nearest second to eliminate fractional decimal jitter
                             rounded_dt = pd.to_datetime(t_str.replace("Z", "")).round("1s")
                             times.append(rounded_dt.to_datetime64())
+                            
                             # Extract Value
                             target_var = v_dict[vs_var]
                             values.append(target_var["data"])
                             
-                            # NEW: Harvest Exact Mapping ID if present
+                            # Harvest Exact Mapping ID if present
                             if not exact_vmap_id and "variablemap_id" in r:
                                 exact_vmap_id = r.get("variablemap_id")
 
@@ -268,7 +268,6 @@ class DatasetGenerator:
                                 unique_sources.add(hw_source)
                                 
                     if times:
-                        # NEW: Include exact_vmap_id in the dictionary
                         input_arrays[param_name] = {
                             "values": values, 
                             "times": times, 
@@ -330,10 +329,6 @@ class DatasetGenerator:
                     name=out_name
                 )
                 
-                # --- THE FIX: Group by time and collapse any duplicate rounded seconds ---
-                if "time" in da.dims:
-                    da = da.groupby("time").mean(dim="time")
-                    
                 # Rebin: Check Dataset Definition for a custom grid
                 if "coordinates" in var:
                     for custom_dim, custom_grid in var["coordinates"].items():
@@ -391,12 +386,16 @@ class DatasetGenerator:
                 
             # --- STEP 5: Merge, Time-Align, and Resample ---
             ds = xr.merge(data_arrays, join='outer')
-            # aligned_ds = ds.resample(time=f"{freq_sec}s").mean() # Lowercase 's' applied here
+            
+            # --- THE CRITICAL FIX: Collapse overlapping cross-variable outer-join indices ---
+            # This compresses the dataset back into a clean, unique, 1D line before resampling
+            if "time" in ds.dims:
+                ds = ds.groupby("time").mean(dim="time")
             
             # Calculate half the timebase dynamically for the loffset shift
             half_base = freq_sec / 2.0
             
-            # Bin data from T - tb/2 to T + tb/2 and center the label at T
+            # Bin data precisely from T - tb/2 to T + tb/2 and label the integer timestamp at T
             aligned_ds = ds.resample(
                 time=f"{freq_sec}s",
                 closed="left",
@@ -408,13 +407,13 @@ class DatasetGenerator:
             data_vars = list(aligned_ds.data_vars.keys())
             
             for var_name in data_vars:
-                # EXACT MATCH to your JSON definition, plus time!
+                # Skip spatial/temporal grid coordinates and existing QC fields
                 if var_name in ["time", "latitude", "longitude", "altitude"] or var_name.startswith("qc_"):
                     continue
                 
                 qc_name = f"qc_{var_name}"
                 
-                # Create an integer array filled with 0 ("Good Data")
+                # Pre-allocate integer array initialized with 0 ("Good Data" / "Not Tested")
                 qc_da = xr.DataArray(
                     data=np.zeros(aligned_ds.sizes["time"], dtype=np.int32),
                     coords={"time": aligned_ds.time},
@@ -422,19 +421,17 @@ class DatasetGenerator:
                     name=qc_name
                 )
                 
-                # Apply standard CF/DOE ARM Quality Control Attributes
+                # Set CF and DOE ARM Standard attributes
                 target_var_long_name = aligned_ds[var_name].attrs.get("long_name", var_name)
                 qc_da.attrs["long_name"] = f"Quality check results on field: {target_var_long_name}"
                 qc_da.attrs["units"] = "1"
                 qc_da.attrs["standard_name"] = "quality_flag"
-                
-                # Optional: Define your bitmask meanings so ERDDAP understands them automatically
                 qc_da.attrs["flag_masks"] = [1, 2, 4, 8]
                 qc_da.attrs["flag_meanings"] = "value_less_than_valid_min value_greater_than_valid_max sensor_offline flatline_detected"
                 
                 aligned_ds[qc_name] = qc_da
 
-            # Apply Static Variables across the new time axis
+            # Apply Static Variables across the final time axis
             for var in config.get("variables", []):
                 if "static_value" in var:
                     out_name = var["name"]
@@ -473,7 +470,7 @@ class DatasetGenerator:
                         resp.raise_for_status()
                 L.info(f"Successfully pushed {filename} to central dataset-storage.")
                 
-                # Clean up local ephemeral file since it's safe in the vault now
+                # Clean up local ephemeral file since it's safe in the storage vault
                 os.remove(filepath)
             except Exception as e:
                 L.error(f"Failed to push {filename} to storage. Kept locally.", extra={"reason": str(e)})

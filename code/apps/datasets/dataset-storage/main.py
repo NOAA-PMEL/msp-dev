@@ -4,7 +4,7 @@ import logging
 import httpx
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
-from cloudevents.http import CloudEvent, to_http
+from cloudevents.http import CloudEvent, to_structured
 from pydantic_settings import BaseSettings
 from logfmter import Logfmter
 
@@ -46,7 +46,7 @@ async def fire_stored_event(filename: str, dataset_id: str):
         "download_url": f"http://dataset-storage.envds.svc.cluster.local/download/{filename}"
     }
     event = CloudEvent(attributes, data)
-    headers, body = to_http(event)
+    headers, body = to_structured(event)
 
     try:
         async with httpx.AsyncClient() as client:
