@@ -1,6 +1,7 @@
 # datasets/dataset-generation/dataset-generator/main.py
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Request, status, Response
 from cloudevents.http import from_http
@@ -43,6 +44,23 @@ async def start_system():
     generator = DatasetGenerator(daq_id=config.daq_id)
     L.info("Dataset Generator initialized and starting up.")
 
+    # --- FIX 1: Pre-populate registry from the mounted GitOps folder on boot ---
+    definitions_dir = "/app/config/definitions"
+    if os.path.exists(definitions_dir):
+        for fname in os.listdir(definitions_dir):
+            if fname.endswith(".json"):
+                path = os.path.join(definitions_dir, fname)
+                try:
+                    with open(path, "r") as f:
+                        def_data = json.load(f)
+                        d_id = def_data.get("id")
+                        if d_id:
+                            dataset_definitions[d_id] = def_data
+                            L.info("Pre-loaded DatasetDefinition from disk", extra={"dataset_id": d_id})
+                except Exception as os_e:
+                    L.error(f"Failed to pre-load definition file {fname}", extra={"reason": str(os_e)})
+    L.debug("Startup Registry State", extra={"configs_loaded": list(dataset_definitions.keys())})
+
 @app.on_event("shutdown")
 async def shutdown_system():
     global generator
@@ -84,6 +102,17 @@ async def dataset_generate_request(request: Request):
         end_str = data.get("end_time")
         time_window = data.get("time_window")
         
+        # --- FIX 2: If missing from memory cache, check the disk as a fallback ---
+        if dataset_id not in dataset_definitions:
+            config_path = f"/app/config/definitions/{dataset_id}.json"
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, "r") as f:
+                        dataset_definitions[dataset_id] = json.load(f)
+                    L.info("Loaded missing dataset definition via disk fallback", extra={"dataset_id": dataset_id})
+                except Exception as read_e:
+                    L.error("Failed to read definition file via disk fallback", extra={"dataset_id": dataset_id, "reason": str(read_e)})
+                    
         if dataset_id not in dataset_definitions:
             L.error("Cannot generate: Unknown dataset definition", extra={"dataset_id": dataset_id})
             return Response(status_code=status.HTTP_204_NO_CONTENT)
