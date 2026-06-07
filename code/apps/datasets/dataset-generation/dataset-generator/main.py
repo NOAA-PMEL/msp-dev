@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = False
+    daq_id: str = "default"
     log_level: str = "INFO"
 
     class Config:
@@ -38,7 +39,7 @@ generator = None
 @app.on_event("startup")
 async def start_system():
     global generator
-    generator = DatasetGenerator()
+    generator = DatasetGenerator(daq_id=config.daq_id)
     L.info("Dataset Generator initialized and starting up.")
 
 @app.on_event("shutdown")
