@@ -690,6 +690,91 @@ class SamplingModesManager:
     #             if 'targets' in locals():
     #                 self.actions_target_buffer.task_done()
 
+    # async def action_target_monitor(self):
+    #     """Consumes evaluated action targets and broadcasts them as setting updates."""
+    #     while True:
+    #         try:
+    #             targets = await self.actions_target_buffer.get()
+                
+    #             for trg_name, trg_data in targets.items():
+    #                 val = trg_data["data"]
+    #                 meta = trg_data["metadata"]
+                    
+    #                 v_name = meta.get("variable", trg_name)
+    #                 v_map_name = meta.get("variablemap_name")
+                    
+    #                 t_type = meta.get("target_type")
+    #                 t_id = meta.get("target_id")
+                    
+    #                 # Track the actual sensor variable name (defaults to v_name)
+    #                 sensor_var_name = v_name
+                    
+    #                 # --- DYNAMIC TARGET RESOLUTION ---
+    #                 if not t_id or not t_type:
+    #                     if v_map_name:
+    #                         # Fetch the VariableMap from the local Datastore
+    #                         resp = await self.submit_request(
+    #                             path="variablemap-definition/registry/get", 
+    #                             query={"name": v_map_name}
+    #                         )
+    #                         if resp and "results" in resp and resp["results"]:
+    #                             vmap_def = resp["results"][0]
+    #                             var_def = vmap_def.get("data", {}).get("variables", {}).get(v_name, {})
+                                
+    #                             # Extract source hardware mapping
+    #                             if var_def.get("map_type") == "direct":
+    #                                 direct_var = var_def.get("direct_value", {}).get("source_variable", v_name)
+    #                                 source_info = var_def.get("source", {}).get(direct_var, {})
+                                    
+    #                                 # Use the hardware ID mapped in the VariableMap
+    #                                 t_id = t_id or source_info.get("source_id")
+    #                                 t_type = t_type or source_info.get("source_type")
+                                    
+    #                                 # Capture the exact variable name the sensor expects
+    #                                 sensor_var_name = source_info.get("source_variable", v_name)
+                        
+    #                     # Ultimate fallbacks if resolution fails
+    #                     t_id = t_id or v_map_name or "unknown"
+    #                     t_type = t_type or "controller"
+    #                 # ---------------------------------
+                    
+    #                 t_type = t_type.lower()
+    #                 source_id = f"envds.{self.config.daq_id}.sampling-modes"
+                    
+    #                 # --- HANDLE CONTROLLER VS DEVICE ROUTING ---
+    #                 if t_type == "controller":
+    #                     topic = "envds/controller/settings/request"
+    #                     ce_type = "envds.controller.settings.request"
+    #                     extra_header = {"controllerid": t_id}
+    #                 else:
+    #                     topic = f"envds/{self.config.daq_id}/{t_type}/{t_id}/settings/request"
+    #                     ce_type = f"envds.{t_type}.settings.request"
+    #                     extra_header = {"deviceid": t_id}
+    #                 # -------------------------------------------
+                    
+    #                 # Use standard envds factory
+    #                 event = SamplingEvent.create(
+    #                     type=ce_type, 
+    #                     source=source_id,
+    #                     data={
+    #                         "settings": sensor_var_name,
+    #                         "requested": val
+    #                     },
+    #                     extra_header=extra_header
+    #                 )
+    #                 event["destpath"] = topic
+                    
+    #                 self.logger.info(f"Broadcasting Action Command -> [{t_type.upper()}] {t_id}: {sensor_var_name} = {val}")
+                    
+    #                 # Route to Mosquitto (Hardware) instead of Knative (Datastore)
+    #                 await self.send_to_mqtt(topic, event) 
+
+    #         except Exception as e:
+    #             self.logger.error("action_target_monitor", extra={"reason": str(e)})
+    #         finally:
+    #             if 'targets' in locals():
+    #                 self.actions_target_buffer.task_done()
+
     async def action_target_monitor(self):
         """Consumes evaluated action targets and broadcasts them as setting updates."""
         while True:
@@ -741,24 +826,31 @@ class SamplingModesManager:
                     t_type = t_type.lower()
                     source_id = f"envds.{self.config.daq_id}.sampling-modes"
                     
-                    # --- HANDLE CONTROLLER VS DEVICE ROUTING ---
+                    # --- FIX 1: ALIGN CONTROLLER VS SENSOR GLOBAL MQTT TOPICS & ATTRIBUTES ---
                     if t_type == "controller":
                         topic = "envds/controller/settings/request"
                         ce_type = "envds.controller.settings.request"
-                        extra_header = {"controllerid": t_id}
+                        extra_header = {"controllerid": t_id} # Strictly uses controllerid attribute
                     else:
-                        topic = f"envds/{self.config.daq_id}/{t_type}/{t_id}/settings/request"
-                        ce_type = f"envds.{t_type}.settings.request"
-                        extra_header = {"deviceid": t_id}
-                    # -------------------------------------------
+                        # FIXED: Changed from custom edge path to the global shared topic path 
+                        # so that sensor.py and operational.py background routes capture the message.
+                        topic = "envds/sensor/settings/request"
+                        ce_type = "envds.sensor.settings.request"
+                        extra_header = {"deviceid": t_id} # Strictly uses deviceid attribute
+                    # -------------------------------------------------------------------------
                     
-                    # Use standard envds factory
+                    # --- FIX 2: EMIT NESTED PAYLOAD SCHEMAS TO MATCH THE DASHBOARD CONTRACT ---
+                    # Replaced the flat {"settings": X, "requested": Y} configuration block
+                    # with the nested object structure to achieve unified cross-system synergy.
                     event = SamplingEvent.create(
                         type=ce_type, 
                         source=source_id,
                         data={
-                            "settings": sensor_var_name,
-                            "requested": val
+                            "settings": {
+                                sensor_var_name: {
+                                    "requested": val
+                                }
+                            }
                         },
                         extra_header=extra_header
                     )
@@ -766,11 +858,11 @@ class SamplingModesManager:
                     
                     self.logger.info(f"Broadcasting Action Command -> [{t_type.upper()}] {t_id}: {sensor_var_name} = {val}")
                     
-                    # Route to Mosquitto (Hardware) instead of Knative (Datastore)
+                    # Route to Mosquitto (Hardware queue)
                     await self.send_to_mqtt(topic, event) 
 
             except Exception as e:
-                self.logger.error("action_target_monitor", extra={"reason": str(e)})
+                self.logger.error("action_target_monitor error", extra={"reason": str(e)})
             finally:
                 if 'targets' in locals():
                     self.actions_target_buffer.task_done()
