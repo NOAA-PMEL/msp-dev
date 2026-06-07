@@ -52,8 +52,9 @@ async def fire_stored_event(filename: str, dataset_id: str):
 
     try:
         async with httpx.AsyncClient() as client:
-            await client.post(config.knative_broker, headers=headers, data=body)
-            L.info("Event fired successfully", extra={"event_type": attributes["type"], "filename": filename})
+            await client.post(config.broker_url, headers=headers, data=body)
+            # CHANGE 'filename' to 'saved_file'
+            L.info("Event fired successfully", extra={"event_type": attributes["type"], "saved_file": filename})
     except Exception as e:
         L.error("Failed to fire CloudEvent", extra={"reason": str(e)})
 
@@ -68,7 +69,9 @@ async def upload_dataset(background_tasks: BackgroundTasks, dataset_id: str, fil
     try:
         with open(file_path, "wb") as f:
             f.write(await file.read())
-        L.info("File successfully saved to PVC", extra={"filename": file.filename, "size_bytes": os.path.getsize(file_path)})
+            
+        # CHANGE 'filename' to 'saved_file'
+        L.info("File successfully saved to PVC", extra={"saved_file": file.filename, "size_bytes": os.path.getsize(file_path)})
         
         # Fire the event in the background so the uploader gets a fast HTTP 200 response
         background_tasks.add_task(fire_stored_event, file.filename, dataset_id)
