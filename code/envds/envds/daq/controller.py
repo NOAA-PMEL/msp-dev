@@ -332,7 +332,7 @@ class Controller(envdsBase):
                     await self.send_message(message)
                 except Exception as e:
                     self.logger.error("register_controller_definition", extra={"reason": e})
-                    print(traceback.format_exc())
+                    # print(traceback.format_exc())
             await asyncio.sleep(self.controller_definition_send_time)
 
     async def register_controller_instance(self):
