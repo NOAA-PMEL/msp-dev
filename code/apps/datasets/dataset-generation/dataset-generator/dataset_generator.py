@@ -249,7 +249,7 @@ class DatasetGenerator:
                         if "time" in v_dict and vs_var in v_dict:
                             # Time parsing
                             t_str = v_dict["time"]["data"]
-                            times.append(datetime.fromisoformat(t_str.replace("Z", "+00:00")))
+                            times.append(np.datetime64(t_str.replace("Z", "")))
                             
                             # Extract Value
                             target_var = v_dict[vs_var]
