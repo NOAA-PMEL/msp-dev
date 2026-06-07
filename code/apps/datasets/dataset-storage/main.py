@@ -52,7 +52,7 @@ async def fire_stored_event(filename: str, dataset_id: str):
 
     try:
         async with httpx.AsyncClient() as client:
-            await client.post(config.broker_url, headers=headers, data=body)
+            await client.post(config.knative_broker, headers=headers, data=body)
             # CHANGE 'filename' to 'saved_file'
             L.info("Event fired successfully", extra={"event_type": attributes["type"], "saved_file": filename})
     except Exception as e:
