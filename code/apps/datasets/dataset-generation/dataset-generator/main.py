@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import json
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Request, status, Response
 from cloudevents.http import from_http
@@ -112,7 +113,7 @@ async def dataset_generate_request(request: Request):
                     L.info("Loaded missing dataset definition via disk fallback", extra={"dataset_id": dataset_id})
                 except Exception as read_e:
                     L.error("Failed to read definition file via disk fallback", extra={"dataset_id": dataset_id, "reason": str(read_e)})
-                    
+
         if dataset_id not in dataset_definitions:
             L.error("Cannot generate: Unknown dataset definition", extra={"dataset_id": dataset_id})
             return Response(status_code=status.HTTP_204_NO_CONTENT)
