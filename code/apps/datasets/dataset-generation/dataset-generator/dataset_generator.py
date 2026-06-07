@@ -10,7 +10,7 @@ import numpy as np
 L = logging.getLogger("dataset-service")
 
 class DatasetGenerator:
-    def __init__(self, , daq_id: str):
+    def __init__(self, daq_id: str):
         self.daq_id = daq_id
         self.datastore_url = f"http://datastore.{self.daq_id}-system.svc.cluster.local:80"
         self.client = httpx.AsyncClient(base_url=self.datastore_url, timeout=30.0)
