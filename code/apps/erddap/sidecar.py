@@ -478,7 +478,7 @@ def unroll_multidimensional_data(base_row, shape_dims, coords_dict, var_dict):
             
     yield from recurse(0, [], base_row)
 
-async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5):
+async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5):
     async with http_semaphore:
         
         # --- ERDDAP PARAMETER ORDERING FIX ---
@@ -501,7 +501,8 @@ async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 404 and attempt < retries - 1:
                     L.debug(f"ERDDAP 404 on insert (reloading?). Retrying in {delay}s...", extra={"url": url})
-                    await asyncio.sleep(delay)
+                    if retries > 1:
+                        await asyncio.sleep(delay)
                     continue
                 
                 L.error("ERDDAP Insert Failed", extra={"url": url, "reason": str(e)})
