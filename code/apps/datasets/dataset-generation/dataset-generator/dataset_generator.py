@@ -507,6 +507,9 @@ class DatasetGenerator:
             # --- STEP 8: Push to Dataset Storage ---
             storage_url = f"http://dataset-storage.{self.daq_id}-system.svc.cluster.local:80/upload/"
             try:
+                # ---> THE CRITICAL DEBUG STATEMENT <---
+                L.info(f"Attempting to connect to storage vault at: {storage_url}")
+                
                 async with httpx.AsyncClient() as client:
                     with open(filepath, "rb") as f:
                         files = {"file": (filename, f, "application/x-netcdf")}
@@ -515,10 +518,14 @@ class DatasetGenerator:
                         resp.raise_for_status()
                 L.info(f"Successfully pushed {filename} to central dataset-storage.")
                 
-                # Clean up local ephemeral file since it's safe in the storage vault
                 os.remove(filepath)
             except Exception as e:
-                L.error(f"Failed to push {filename} to storage. Kept locally.", extra={"reason": str(e)})
+                # ---> ADD URL TO THE ERROR CONTEXT <---
+                L.error("Failed to push to storage.", extra={
+                    "filename": filename, 
+                    "attempted_url": storage_url, 
+                    "reason": str(e)
+                })
 
             return filepath
             
