@@ -400,9 +400,12 @@ class DatasetGenerator:
                 time=f"{freq_sec}s",
                 closed="left",
                 label="right",
-                loffset=f"-{half_base}s"
+                offset=f"{half_base}s"
             ).mean(dim="time")
 
+            if len(aligned_ds.time) > 0:
+                aligned_ds.coords["time"] = aligned_ds.time - pd.Timedelta(seconds=half_base)
+                
             # --- STEP 5.5: Automatically Pre-Allocate CF-Compliant QC Variables ---
             data_vars = list(aligned_ds.data_vars.keys())
             
