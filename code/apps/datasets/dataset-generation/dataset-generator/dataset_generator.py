@@ -216,7 +216,6 @@ class DatasetGenerator:
                 out_name = var["name"]
                 
                 # --- Handle purely static variables ---
-                # These are applied later after the time axis is finalized
                 if "static_value" in var:
                     continue 
                 
@@ -304,7 +303,6 @@ class DatasetGenerator:
 
                 # --- STEP 3: Build, Inherit, and Rebin ---
                 
-                # Fetch native dataset definition (Temporally Aware)
                 native_vmap_id = primary_input.get("exact_vmap_id")
                 vs_def = await self.fetch_variableset_def(
                     native_vs_id, 
@@ -313,7 +311,6 @@ class DatasetGenerator:
                 )
                 native_vars = vs_def.get("variables", {})
                 
-                # Determine Dimensions and Coordinates
                 dims = native_vars.get(native_vs_var, {}).get("shape", ["time"])
                 coords = {"time": final_times}
                 for dim in dims:
@@ -321,7 +318,6 @@ class DatasetGenerator:
                     if dim in native_vars:
                         coords[dim] = native_vars[dim].get("data", [])
                 
-                # Build initial Xarray DataArray
                 da = xr.DataArray(
                     data=final_values, 
                     coords=coords, 
@@ -329,7 +325,6 @@ class DatasetGenerator:
                     name=out_name
                 )
                 
-                # Rebin: Check Dataset Definition for a custom grid
                 if "coordinates" in var:
                     for custom_dim, custom_grid in var["coordinates"].items():
                         if custom_dim in da.dims:
@@ -342,7 +337,6 @@ class DatasetGenerator:
 
                 # --- STEP 4: Apply Attributes & Unit Conversion ---
                 
-                # 1. Inherit native attributes
                 native_attrs = native_vars.get(native_vs_var, {}).get("attributes", {})
                 for attr_key, attr_val in native_attrs.items():
                     da.attrs[attr_key] = attr_val
@@ -350,13 +344,11 @@ class DatasetGenerator:
                 native_units = da.attrs.get("units")
                 target_units = None
 
-                # 2. Extract explicit attributes from Dataset Definition JSON
                 for attr_key, attr_val in var.get("attributes", {}).items():
                     if attr_key == "units":
                         target_units = attr_val
                     da.attrs[attr_key] = attr_val
                     
-                # 3. Pint Unit Conversion
                 if native_units and target_units and (native_units != target_units):
                     L.info(f"Unit mismatch for {out_name}: Attempting conversion from '{native_units}' to '{target_units}'")
                     try:
@@ -374,21 +366,20 @@ class DatasetGenerator:
                     except Exception as e:
                         L.error(f"Unexpected error converting units for {out_name}: {e}")
 
-                # 4. Attach Hardware Provenance
                 if unique_sources:
                     da.attrs["sources"] = ", ".join(sorted(list(unique_sources)))
                 
                 data_arrays.append(da)
 
+            # We don't abort anymore if data_arrays is empty, because we still need to generate the empty schema.
             if not data_arrays:
-                L.warning("No data retrieved for any variables. Aborting dataset generation.")
-                return None
+                L.warning("No data retrieved for any variables. Generating completely empty schema.", extra={"dataset_id": dataset_id})
+                ds = xr.Dataset()
+            else:
+                # --- STEP 5: Merge, Time-Align, and Centered Resample ---
+                ds = xr.merge(data_arrays, join='outer')
                 
-            # --- STEP 5: Merge, Time-Align, and Resample ---
-            ds = xr.merge(data_arrays, join='outer')
-            
-            # --- THE CRITICAL FIX: Collapse overlapping cross-variable outer-join indices ---
-            # This compresses the dataset back into a clean, unique, 1D line before resampling
+            # Flatten any cross-variable outer-join coordinate stretching into a clean 1D line
             if "time" in ds.dims:
                 ds = ds.groupby("time").mean(dim="time")
             
@@ -396,16 +387,67 @@ class DatasetGenerator:
             half_base = freq_sec / 2.0
             
             # Bin data precisely from T - tb/2 to T + tb/2 and label the integer timestamp at T
-            aligned_ds = ds.resample(
-                time=f"{freq_sec}s",
-                closed="left",
-                label="right",
-                offset=f"{half_base}s"
-            ).mean(dim="time")
-
-            if len(aligned_ds.time) > 0:
-                aligned_ds.coords["time"] = aligned_ds.time - pd.Timedelta(seconds=half_base)
+            if "time" in ds.dims and len(ds.time) > 0:
+                aligned_ds = ds.resample(
+                    time=f"{freq_sec}s",
+                    closed="left",
+                    label="right",
+                    offset=f"{half_base}s"
+                ).mean(dim="time")
                 
+                if len(aligned_ds.time) > 0:
+                    aligned_ds.coords["time"] = aligned_ds.time - pd.Timedelta(seconds=half_base)
+            else:
+                aligned_ds = ds
+
+            # --- NEW: FORCE STRICT CONTINUOUS TIME GRID ---
+            # Xarray resample only bounds to the available data. 
+            # We force it to map to the exact mathematical grid of the requested hour.
+            master_time = pd.date_range(
+                start=start_time.replace("Z", ""), 
+                end=end_time.replace("Z", ""), 
+                freq=f"{freq_sec}s", 
+                inclusive="left"
+            )
+            aligned_ds = aligned_ds.reindex(time=master_time)
+
+            # --- NEW: INJECT TOTALLY MISSING VARIABLES ---
+            # If a sensor was completely offline, it was skipped entirely.
+            # We must create it filled with NaNs so the NetCDF schema remains stable.
+            for var in config.get("variables", []):
+                if "static_value" in var:
+                    continue
+                
+                out_name = var["name"]
+                if out_name not in aligned_ds.data_vars:
+                    L.warning(f"Variable '{out_name}' had zero data. Injecting empty array to maintain schema.", extra={"dataset_id": dataset_id})
+                    
+                    # Assume 1D time array by default
+                    dims = ["time"]
+                    coords = {"time": aligned_ds.time}
+                    shape = [aligned_ds.sizes["time"]]
+                    
+                    # If it's a 2D array (like particle sizes), apply the custom grid defined in the JSON
+                    if "coordinates" in var:
+                        for custom_dim, custom_grid in var["coordinates"].items():
+                            dims.append(custom_dim)
+                            coords[custom_dim] = custom_grid
+                            shape.append(len(custom_grid))
+                            
+                    # Build the empty array
+                    empty_da = xr.DataArray(
+                        data=np.full(shape, np.nan, dtype=np.float32),
+                        coords=coords,
+                        dims=dims,
+                        name=out_name
+                    )
+                    
+                    # Apply explicit attributes from the JSON definition
+                    for attr_key, attr_val in var.get("attributes", {}).items():
+                        empty_da.attrs[attr_key] = attr_val
+                        
+                    aligned_ds[out_name] = empty_da
+
             # --- STEP 5.5: Automatically Pre-Allocate CF-Compliant QC Variables ---
             data_vars = list(aligned_ds.data_vars.keys())
             
@@ -463,13 +505,13 @@ class DatasetGenerator:
             L.info(f"Successfully generated NetCDF: {filepath}")
 
             # --- STEP 8: Push to Dataset Storage ---
-            storage_url = "http://dataset-storage.pmel-dev-system.svc.cluster.local/upload/"
+            storage_url = f"http://dataset-storage.{self.daq_id}-system.svc.cluster.local:80/upload/"
             try:
                 async with httpx.AsyncClient() as client:
                     with open(filepath, "rb") as f:
                         files = {"file": (filename, f, "application/x-netcdf")}
-                        data = {"dataset_id": dataset_id}
-                        resp = await client.post(storage_url, files=files, data=data, timeout=30.0)
+                        params = {"dataset_id": dataset_id}
+                        resp = await client.post(storage_url, files=files, params=params, timeout=30.0)
                         resp.raise_for_status()
                 L.info(f"Successfully pushed {filename} to central dataset-storage.")
                 

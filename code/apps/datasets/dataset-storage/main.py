@@ -13,11 +13,13 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     log_level: str = "INFO"
+    daq_id: str = "default"
     storage_dir: str = "/app/data/storage"
-    broker_url: str = "http://default-broker.envds.svc.cluster.local"
+    knative_broker: str = "http://default-broker.envds.svc.cluster.local"
 
     class Config:
         env_prefix = "DATASET_STORAGE_"
+        case_sensitive = False
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -43,14 +45,14 @@ async def fire_stored_event(filename: str, dataset_id: str):
     data = {
         "filename": filename,
         "dataset_id": dataset_id,
-        "download_url": f"http://dataset-storage.envds.svc.cluster.local/download/{filename}"
+        "download_url": f"http://dataset-storage.{config.daq_id}-system.svc.cluster.local/download/{filename}"
     }
     event = CloudEvent(attributes, data)
     headers, body = to_structured(event)
 
     try:
         async with httpx.AsyncClient() as client:
-            await client.post(config.broker_url, headers=headers, data=body)
+            await client.post(config.knative_broker, headers=headers, data=body)
             L.info("Event fired successfully", extra={"event_type": attributes["type"], "filename": filename})
     except Exception as e:
         L.error("Failed to fire CloudEvent", extra={"reason": str(e)})
