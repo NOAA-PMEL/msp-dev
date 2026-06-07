@@ -520,9 +520,9 @@ class DatasetGenerator:
                 
                 os.remove(filepath)
             except Exception as e:
-                # ---> ADD URL TO THE ERROR CONTEXT <---
+                # Changed 'filename' to 'out_file' to avoid LogRecord collision
                 L.error("Failed to push to storage.", extra={
-                    "filename": filename, 
+                    "out_file": filename, 
                     "attempted_url": storage_url, 
                     "reason": str(e)
                 })
