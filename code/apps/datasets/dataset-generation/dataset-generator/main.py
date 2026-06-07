@@ -1,6 +1,7 @@
 # datasets/dataset-generation/dataset-generator/main.py
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Request, status, Response
 from cloudevents.http import from_http
 from logfmter import Logfmter
@@ -79,23 +80,53 @@ async def dataset_generate_request(request: Request):
         data = ce.data
         
         dataset_id = data.get("dataset_id")
-        start_time = data.get("start_time")
-        end_time = data.get("end_time")
+        start_str = data.get("start_time")
+        end_str = data.get("end_time")
+        time_window = data.get("time_window")
         
+        if dataset_id not in dataset_definitions:
+            L.error("Cannot generate: Unknown dataset definition", extra={"dataset_id": dataset_id})
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+        dataset_config = dataset_definitions[dataset_id]
+        
+        # PATH A: Explicit Backfill (User provided exact ISO timestamps)
+        if start_str and end_str:
+            start_time = start_str
+            end_time = end_str
+
+        # PATH B: Automated Cron (Trigger sends "auto")
+        elif time_window == "auto":
+            freq = dataset_config.get("timebase", {}).get("file_frequency", "hourly")
+            now = datetime.now(timezone.utc)
+            
+            if freq == "hourly":
+                end_dt = now.replace(minute=0, second=0, microsecond=0)
+                start_dt = end_dt - timedelta(hours=1)
+            elif freq == "daily":
+                end_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                start_dt = end_dt - timedelta(days=1)
+            else:
+                L.error(f"Unknown file_frequency '{freq}' in {dataset_id}")
+                return Response(status_code=status.HTTP_204_NO_CONTENT)
+                
+            start_time = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            end_time = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+        else:
+            L.error("Invalid request: Must provide start_time/end_time or time_window='auto'")
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+
         L.info("Dataset Generation Triggered", extra={
             "dataset_id": dataset_id, 
             "start": start_time, 
             "end": end_time
         })
         
-        if dataset_id not in dataset_definitions:
-            L.error("Cannot generate: Unknown dataset definition", extra={"dataset_id": dataset_id})
-        else:
-            L.debug("Config found. Proceeding to pipeline...", extra={"dataset_id": dataset_id})
-            dataset_config = dataset_definitions[dataset_id]
-            
-            # Fire and forget the pipeline task so we don't block the Knative Eventing Broker
-            asyncio.create_task(generator.generate_dataset(dataset_config, start_time, end_time))
+        L.debug("Config found. Proceeding to pipeline...", extra={"dataset_id": dataset_id})
+        
+        # Fire and forget the pipeline task so we don't block the Knative Eventing Broker
+        asyncio.create_task(generator.generate_dataset(dataset_config, start_time, end_time))
             
         return Response(status_code=status.HTTP_204_NO_CONTENT)
         
