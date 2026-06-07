@@ -467,25 +467,55 @@ class Device(envdsBase):
             # )
 
     # async def handle_settings(self, message: Message):
+    # async def handle_settings(self, message: CloudEvent):
+    #     # if message.data["type"] == det.sensor_settings_request():
+    #     if message["type"] == det.sensor_settings_request():
+    #         try:
+    #             # src = message.data["source"]
+    #             # setting = message.data.data.get("settings", None)
+    #             # requested = message.data.data.get("requested", None)
+    #             src = message["source"]
+    #             setting = message.data.get("settings", None)
+    #             requested = message.data.get("requested", None)
+    #             self.logger.debug(
+    #                 "handle_settings", extra={"source": src, "setting": setting}
+    #             )
+    #             if setting and requested:
+    #                 # name = setting["settings"]
+    #                 current = self.settings.get_setting(setting)
+    #                 self.settings.set_setting(
+    #                     name=setting, requested=requested, actual=current["actual"]
+    #                 )
+
+    #         except (KeyError, Exception) as e:
+    #             self.logger.error("databuffer save error", extra={"error": e})
+
     async def handle_settings(self, message: CloudEvent):
-        # if message.data["type"] == det.sensor_settings_request():
         if message["type"] == det.sensor_settings_request():
             try:
-                # src = message.data["source"]
-                # setting = message.data.data.get("settings", None)
-                # requested = message.data.data.get("requested", None)
                 src = message["source"]
-                setting = message.data.get("settings", None)
-                requested = message.data.get("requested", None)
-                self.logger.debug(
-                    "handle_settings", extra={"source": src, "setting": setting}
-                )
-                if setting and requested:
-                    # name = setting["settings"]
-                    current = self.settings.get_setting(setting)
-                    self.settings.set_setting(
-                        name=setting, requested=requested, actual=current["actual"]
-                    )
+                settings_payload = message.data.get("settings", None)
+                
+                # 1. Handle nested dashboard format: {"settings": {"param_name": {"requested": X}}}
+                if isinstance(settings_payload, dict):
+                    for setting_name, setting_data in settings_payload.items():
+                        if isinstance(setting_data, dict) and "requested" in setting_data:
+                            requested_val = setting_data["requested"]
+                            current = self.settings.get_setting(setting_name)
+                            actual_val = current["actual"] if current else None
+                            self.settings.set_setting(
+                                name=setting_name, requested=requested_val, actual=actual_val
+                            )
+                
+                # 2. Fallback layout for flat formats: {"settings": "param_name", "requested": X}
+                elif isinstance(settings_payload, str):
+                    requested_val = message.data.get("requested", None)
+                    if requested_val is not None:
+                        current = self.settings.get_setting(settings_payload)
+                        actual_val = current["actual"] if current else None
+                        self.settings.set_setting(
+                            name=settings_payload, requested=requested_val, actual=actual_val
+                        )
 
             except (KeyError, Exception) as e:
                 self.logger.error("databuffer save error", extra={"error": e})
