@@ -386,6 +386,36 @@ class DatasetGenerator:
             ds = xr.merge(data_arrays, join='outer')
             aligned_ds = ds.resample(time=f"{freq_sec}s").mean() # Lowercase 's' applied here
             
+            # --- STEP 5.5: Automatically Pre-Allocate CF-Compliant QC Variables ---
+            data_vars = list(aligned_ds.data_vars.keys())
+            
+            for var_name in data_vars:
+                # EXACT MATCH to your JSON definition, plus time!
+                if var_name in ["time", "latitude", "longitude", "altitude"] or var_name.startswith("qc_"):
+                    continue
+                
+                qc_name = f"qc_{var_name}"
+                
+                # Create an integer array filled with 0 ("Good Data")
+                qc_da = xr.DataArray(
+                    data=np.zeros(aligned_ds.sizes["time"], dtype=np.int32),
+                    coords={"time": aligned_ds.time},
+                    dims=["time"],
+                    name=qc_name
+                )
+                
+                # Apply standard CF/DOE ARM Quality Control Attributes
+                target_var_long_name = aligned_ds[var_name].attrs.get("long_name", var_name)
+                qc_da.attrs["long_name"] = f"Quality check results on field: {target_var_long_name}"
+                qc_da.attrs["units"] = "1"
+                qc_da.attrs["standard_name"] = "quality_flag"
+                
+                # Optional: Define your bitmask meanings so ERDDAP understands them automatically
+                qc_da.attrs["flag_masks"] = [1, 2, 4, 8]
+                qc_da.attrs["flag_meanings"] = "value_less_than_valid_min value_greater_than_valid_max sensor_offline flatline_detected"
+                
+                aligned_ds[qc_name] = qc_da
+
             # Apply Static Variables across the new time axis
             for var in config.get("variables", []):
                 if "static_value" in var:
