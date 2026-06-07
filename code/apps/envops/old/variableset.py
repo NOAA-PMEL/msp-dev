@@ -157,11 +157,7 @@ def layout(deployment_id=None, variableset_id=None):
         except Exception as e:
             L.error(f"Failed to fetch Variableset definition: {e}")
     
-    layout_options = {
-        "layout-settings": {"time": {"row-data-skeletons": []}},
-        "layout-1d": {"time": {"variable-list": []}}, 
-        "layout-2d": {}
-    }
+    layout_options = {"layout-1d": {"time": {"variable-list": []}}, "layout-2d": {}}
     table_columns = [{"field": "time", "headerName": "Time"}]
 
     if varset_def:
@@ -173,20 +169,6 @@ def layout(deployment_id=None, variableset_id=None):
             long_name = var.get("attributes", {}).get("long_name", {}).get("data", name)
             unit_val = var.get("attributes", {}).get("units", {}).get("data")
             if unit_val: long_name = f"{long_name} ({unit_val})"
-
-            # --- SEPARATION LAYER: Detect if the parameter is a hardware setting ---
-            var_type = var.get("variable_type") or var.get("attributes", {}).get("variable_type", {}).get("data", "main")
-            
-            if var_type == "setting":
-                # Isolate and build an editable control row model
-                layout_options["layout-settings"]["time"]["row-data-skeletons"].append({
-                    "parameter": name,
-                    "description": var.get("attributes", {}).get("description", {}).get("data", long_name),
-                    "actual_value": "--",
-                    "requested_value": ""
-                })
-                continue # Skip time-series plotting and scrolling data tables
-            # -----------------------------------------------------------------------
 
             table_columns.append({"field": name, "headerName": long_name, "cellDataType": "number"})
 
@@ -213,31 +195,6 @@ def layout(deployment_id=None, variableset_id=None):
                 color="secondary", outline=True, className="float-end fw-bold shadow-sm"
             ))
         ], className="mb-4 mt-3"),
-
-        # --- CONFIGURATION & CONTROLS ---
-        dbc.Row([
-            dbc.Col(
-                dbc.Card([
-                    dbc.CardHeader(html.H5("Variableset Configuration & Controls", className="mb-0")),
-                    dbc.CardBody([
-                        dag.AgGrid(
-                            id="vs-settings-table",
-                            rowData=layout_options["layout-settings"]["time"]["row-data-skeletons"],
-                            columnDefs=[
-                                {"field": "parameter", "headerName": "Control Parameter", "editable": False, "width": 200, "pinned": "left"},
-                                {"field": "description", "headerName": "Description", "editable": False, "flex": 1},
-                                {"field": "actual_value", "headerName": "Current State", "editable": False, "width": 150},
-                                {"field": "requested_value", "headerName": "New Target Value", "editable": True, "width": 180}
-                            ],
-                            columnSizeOptions="autoSize",
-                            dashGridOptions={"domLayout": "autoHeight", "singleClickEdit": True, "rowSelection": "single"},
-                            className="ag-theme-alpine"
-                        ),
-                        dbc.Button("Apply Selected Parameter", id="vs-submit-setting-btn", color="primary", className="mt-3 fw-bold shadow-sm")
-                    ])
-                ], className="shadow-sm border-dark mb-4"), width=12
-            )
-        ]),
 
         # --- DYNAMIC PLOTS CARD ---
         dbc.Row([
@@ -489,50 +446,3 @@ def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, 
 
     if all(h == dash.no_update for h in heatmaps): raise PreventUpdate
     return heatmaps
-
-@callback(
-    Output("ws-vs-instance", "send"),
-    Input("vs-submit-setting-btn", "n_clicks"),
-    State("vs-settings-table", "selectedRows"),
-    State("vs-def-store", "data"),
-    prevent_initial_call=True
-)
-def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
-    if not n_clicks or not selected_rows: raise PreventUpdate
-    
-    selected_row = selected_rows[0]
-    param_name = selected_row["parameter"]
-    raw_val = selected_row.get("requested_value")
-    
-    if raw_val is None or raw_val == "": raise PreventUpdate
-    
-    # Resolve target details directly from the variableset definition data
-    var_definition = varset_def.get("variables", {}).get(param_name, {})
-    
-    # Trace the physical layout architecture via its mapped direct source definitions
-    t_id, t_type, topic = "unknown", "sensor", "envds/sensor/settings/request"
-    if var_definition.get("map_type") == "direct":
-        direct_var = var_definition.get("direct_value", {}).get("source_variable", param_name)
-        source_info = var_definition.get("source", {}).get(direct_var, {})
-        t_id = source_info.get("source_id", "unknown")
-        t_type = source_info.get("source_type", "sensor").lower()
-
-    # Build the symmetrical, nested command block
-    event_type = "envds.controller.settings.request" if t_type == "controller" else "envds.sensor.settings.request"
-    dest_topic = "envds/controller/settings/request" if t_type == "controller" else "envds/sensor/settings/request"
-    id_key = "controllerid" if t_type == "controller" else "deviceid"
-    
-    event = {
-        "source": f"envds.{config.daq_id}.dashboard",
-        "type": event_type,
-        "destpath": dest_topic,
-        id_key: t_id,
-        "data": {
-            "settings": {
-                param_name: {
-                    "requested": raw_val
-                }
-            }
-        }
-    }
-    return json.dumps(event)
