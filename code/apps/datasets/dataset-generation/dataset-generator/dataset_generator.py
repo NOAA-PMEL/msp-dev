@@ -384,8 +384,19 @@ class DatasetGenerator:
                 
             # --- STEP 5: Merge, Time-Align, and Resample ---
             ds = xr.merge(data_arrays, join='outer')
-            aligned_ds = ds.resample(time=f"{freq_sec}s").mean() # Lowercase 's' applied here
+            # aligned_ds = ds.resample(time=f"{freq_sec}s").mean() # Lowercase 's' applied here
             
+            # Calculate half the timebase dynamically for the loffset shift
+            half_base = freq_sec / 2.0
+            
+            # Bin data from T - tb/2 to T + tb/2 and center the label at T
+            aligned_ds = ds.resample(
+                time=f"{freq_sec}s",
+                closed="left",
+                label="right",
+                loffset=f"-{half_base}s"
+            ).mean(dim="time")
+
             # --- STEP 5.5: Automatically Pre-Allocate CF-Compliant QC Variables ---
             data_vars = list(aligned_ds.data_vars.keys())
             
