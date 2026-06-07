@@ -8,6 +8,7 @@ from cloudevents.http import CloudEvent, to_http
 from pydantic_settings import BaseSettings
 from logfmter import Logfmter
 
+
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000

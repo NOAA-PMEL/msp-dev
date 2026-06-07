@@ -3,6 +3,7 @@ import logging
 import httpx
 import importlib
 import numpy as np
+import pandas as pd
 import xarray as xr
 from datetime import datetime
 
@@ -249,8 +250,10 @@ class DatasetGenerator:
                         if "time" in v_dict and vs_var in v_dict:
                             # Time parsing
                             t_str = v_dict["time"]["data"]
-                            times.append(np.datetime64(t_str.replace("Z", "")))
-                            
+                            # times.append(np.datetime64(t_str.replace("Z", "")))
+                            # --- THE FIX: Convert and round to nearest second to eliminate fractional jitter ---
+                            rounded_dt = pd.to_datetime(t_str.replace("Z", "")).round("1s")
+                            times.append(rounded_dt.to_datetime64())
                             # Extract Value
                             target_var = v_dict[vs_var]
                             values.append(target_var["data"])
@@ -327,6 +330,10 @@ class DatasetGenerator:
                     name=out_name
                 )
                 
+                # --- THE FIX: Group by time and collapse any duplicate rounded seconds ---
+                if "time" in da.dims:
+                    da = da.groupby("time").mean(dim="time")
+                    
                 # Rebin: Check Dataset Definition for a custom grid
                 if "coordinates" in var:
                     for custom_dim, custom_grid in var["coordinates"].items():
