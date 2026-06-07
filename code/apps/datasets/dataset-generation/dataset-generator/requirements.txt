@@ -9,3 +9,4 @@ xarray
 pandas
 numpy
 netCDF4
+pint

@@ -6,6 +6,11 @@ import numpy as np
 import xarray as xr
 from datetime import datetime
 
+import pint
+ureg = pint.UnitRegistry()
+# Optional but recommended: Tell pint to fall back to standard naming if there are slight variations
+ureg.default_format = "~"
+
 L = logging.getLogger(__name__)
 
 class DatasetGenerator:
@@ -59,11 +64,11 @@ class DatasetGenerator:
             return None
 
     async def generate_dataset(self, config: dict, start_time: str, end_time: str):
-        """Main pipeline to extract, compile, align, and export NetCDF datasets."""
+        """Main pipeline to extract, compile, align, convert units, and export NetCDF datasets."""
         dataset_id = config.get("id", "unknown_dataset")
         freq_sec = config.get("timebase", {}).get("record_frequency_sec", 60)
         
-        L.info("Starting generation pipeline", extra={"dataset_id": dataset_id})
+        L.info("Starting generation pipeline", extra={"dataset_id": dataset_id, "start": start_time, "end": end_time})
         
         try:
             data_arrays = []
@@ -72,6 +77,7 @@ class DatasetGenerator:
                 out_name = var["name"]
                 
                 # --- Handle purely static variables ---
+                # These are applied later after the time axis is finalized
                 if "static_value" in var:
                     continue 
                 
@@ -100,15 +106,15 @@ class DatasetGenerator:
                     for r in records:
                         v_dict = r.get("variables", {})
                         if "time" in v_dict and vs_var in v_dict:
-                            # 1. Time parsing
+                            # Time parsing
                             t_str = v_dict["time"]["data"]
                             times.append(datetime.fromisoformat(t_str.replace("Z", "+00:00")))
                             
-                            # 2. Extract Value
+                            # Extract Value
                             target_var = v_dict[vs_var]
                             values.append(target_var["data"])
                             
-                            # 3. Harvest Source ID (handles mid-hour sensor swaps)
+                            # Harvest Hardware Source ID
                             hw_source = target_var.get("attributes", {}).get("source_id", {}).get("data")
                             if hw_source:
                                 unique_sources.add(hw_source)
@@ -124,7 +130,6 @@ class DatasetGenerator:
                     action_module = source_def["calculate_method"]["action_module"]
                     action_def = source_def["calculate_method"]["action_def"]
                     
-                    # Prepare params dictionary of raw values to pass to numpy math
                     math_params = {k: v["values"] for k, v in input_arrays.items()}
                     calc_result = await self.execute_calculation(action_module, action_def, math_params)
                     
@@ -132,7 +137,6 @@ class DatasetGenerator:
                         continue
                         
                     final_values = calc_result.get(out_name)
-                    # Grab time axis from the first valid input
                     primary_input = list(input_arrays.values())[0]
                     final_times = primary_input["times"]
                     native_vs_id = primary_input["vs_id"]
@@ -146,21 +150,19 @@ class DatasetGenerator:
 
                 # --- STEP 3: Build, Inherit, and Rebin ---
                 
-                # Fetch the source variableset definition to get native coordinates
+                # Fetch native dataset definition
                 vs_def = await self.fetch_variableset_def(native_vs_id)
                 native_vars = vs_def.get("variables", {})
                 
-                # Determine Dimensions (Defaults to 1D ["time"])
+                # Determine Dimensions and Coordinates
                 dims = native_vars.get(native_vs_var, {}).get("shape", ["time"])
-                
-                # Build Native Coordinates (Inheriting arrays like 60-bin diameter)
                 coords = {"time": final_times}
                 for dim in dims:
                     if dim == "time": continue
                     if dim in native_vars:
                         coords[dim] = native_vars[dim].get("data", [])
                 
-                # Build Native DataArray
+                # Build initial Xarray DataArray
                 da = xr.DataArray(
                     data=final_values, 
                     coords=coords, 
@@ -168,41 +170,66 @@ class DatasetGenerator:
                     name=out_name
                 )
                 
-                # OVERRIDE & REBIN: Check Dataset Definition for a custom grid
+                # Rebin: Check Dataset Definition for a custom grid
                 if "coordinates" in var:
                     for custom_dim, custom_grid in var["coordinates"].items():
                         if custom_dim in da.dims:
-                            L.info(f"Rebinning {out_name} along {custom_dim} to new custom grid.")
-                            
-                            # TODO: Replace linear interpolation with a conservative 
-                            # rebinning algorithm (area-under-curve) for dN/dlogDp parameters.
+                            L.info(f"Rebinning {out_name} along {custom_dim}")
                             da = da.interp(
                                 {custom_dim: custom_grid}, 
                                 method="linear", 
                                 kwargs={"fill_value": np.nan}
                             )
 
-                # --- STEP 4: Apply Attributes & Hardware Provenance ---
+                # --- STEP 4: Apply Attributes & Unit Conversion ---
+                
+                # 1. Inherit native attributes
+                native_attrs = native_vars.get(native_vs_var, {}).get("attributes", {})
+                for attr_key, attr_val in native_attrs.items():
+                    da.attrs[attr_key] = attr_val
+                
+                native_units = da.attrs.get("units")
+                target_units = None
+
+                # 2. Extract explicit attributes from Dataset Definition JSON
                 for attr_key, attr_val in var.get("attributes", {}).items():
+                    if attr_key == "units":
+                        target_units = attr_val
                     da.attrs[attr_key] = attr_val
                     
+                # 3. Pint Unit Conversion
+                if native_units and target_units and (native_units != target_units):
+                    L.info(f"Unit mismatch for {out_name}: Attempting conversion from '{native_units}' to '{target_units}'")
+                    try:
+                        data_quantity = ureg.Quantity(da.values, native_units)
+                        converted_quantity = data_quantity.to(target_units)
+                        da.values = converted_quantity.magnitude
+                        da.attrs["units"] = target_units
+                        L.debug(f"Successfully converted {out_name} to {target_units}")
+                    except pint.errors.DimensionalityError as e:
+                        L.error(f"Dimensionality mismatch for {out_name}. Cannot convert '{native_units}' to '{target_units}'. Error: {e}")
+                        da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
+                    except pint.errors.UndefinedUnitError as e:
+                        L.error(f"Undefined unit found for {out_name}. Error: {e}")
+                        da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
+                    except Exception as e:
+                        L.error(f"Unexpected error converting units for {out_name}: {e}")
+
+                # 4. Attach Hardware Provenance
                 if unique_sources:
                     da.attrs["sources"] = ", ".join(sorted(list(unique_sources)))
                 
                 data_arrays.append(da)
 
             if not data_arrays:
-                L.warning("No data retrieved. Aborting dataset generation.")
+                L.warning("No data retrieved for any variables. Aborting dataset generation.")
                 return None
                 
             # --- STEP 5: Merge, Time-Align, and Resample ---
             ds = xr.merge(data_arrays)
-            
-            # Resample exactly to the requested frequency. This handles mid-file NaNs
-            # and naturally averages 2D matrices across the time axis.
             aligned_ds = ds.resample(time=f"{freq_sec}S").mean()
             
-            # Apply Static Variables (e.g., nominal sensor heights, site locations)
+            # Apply Static Variables across the new time axis
             for var in config.get("variables", []):
                 if "static_value" in var:
                     out_name = var["name"]
