@@ -142,6 +142,7 @@ async def device_data_get(
     end_time: str | None = None,
     last_n_seconds: int | None = None,
     variable: List[str] | None = None,
+    force_archive: bool = False
 ):
     L.debug("main:device_data_get", extra={"device_id": device_id})
     query = DataRequest(
@@ -155,6 +156,7 @@ async def device_data_get(
         end_time=end_time,
         last_n_seconds=last_n_seconds,
         variable=variable,
+        force_archive=force_archive
     )
     L.debug("main:device_data_get", extra={"query": query})
     return await datastore.device_data_get(query)
