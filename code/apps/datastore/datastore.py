@@ -74,7 +74,6 @@ class DatastoreConfig(BaseSettings):
     debug: bool = True
     log_level: str = "INFO"
 
-    # TODO fix ns prefix
     daq_id: str | None = None
 
     db_client_type: str | None = None
@@ -93,11 +92,9 @@ class DatastoreConfig(BaseSettings):
 
     db_reg_variablemap_definition_ttl: int = 3600  # permanent
     db_reg_variableset_definition_ttl: int = 3600  # permanent
-    db_reg_variableset_definition_ttl: int = 3600  # permanent
     db_reg_variableset_instance_ttl: int = 600  # Added: 10 minute active timeout
     db_reg_platform_definition_ttl: int = 0  # permanent
 
-    # FIX: Add the missing config for dynamic sampling definitions (platforms, projects, etc)
     db_reg_sampling_definition_ttl: int = 3600
 
     erddap_enable: bool = False
@@ -106,7 +103,7 @@ class DatastoreConfig(BaseSettings):
 
     mqtt_broker: str = 'mosquitto.default'
     mqtt_port: int = 1883
-    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#' 
+    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#,envds/+/+/+/registry/#,envds/+/+/+/status/#' 
     mqtt_client_id: str = Field(str(ULID()))
 
     knative_broker: str | None = None
@@ -116,8 +113,6 @@ class DatastoreConfig(BaseSettings):
 
 
 class Datastore:
-    """docstring for TestClass."""
-
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.debug("TestClass instantiated")
@@ -127,22 +122,16 @@ class Datastore:
         self.logger.setLevel(level_str)
 
         self.http_client = None
-
         self._background_tasks = set()
-
         self.configure()
 
     async def setup(self):
         self.logger.info("Running Datastore async setup...")
-        
-        # Start background tasks safely inside the event loop
         self.mqtt_buffer = asyncio.Queue(maxsize=2000)
-        
         task1 = asyncio.create_task(self.get_from_mqtt_loop())
         task2 = asyncio.create_task(self.handle_mqtt_buffer())
         self._background_tasks.update({task1, task2})
 
-        # Build Redis indexes if the client supports it
         if hasattr(self.db_client, "build_indexes"):
             await self.db_client.build_indexes()
             self.logger.info("Redis indexes built successfully.")
@@ -166,8 +155,6 @@ class Datastore:
             },
         )
         self.logger.debug("configure", extra={"db_client_config": db_client_config})
-        
-        # The Composite DB Client now handles EVERYTHING
         self.db_client = DBClientManager.create(db_client_config)
         self.erddap_client = None 
 
@@ -183,15 +170,12 @@ class Datastore:
     async def send_event(self, ce):
         try:
             self.logger.debug(ce)
-
-            # Lazy initialization mirroring registrar.py
             if not self.http_client:
                 self.open_http_client()
             try:
                 timeout = httpx.Timeout(5.0, read=0.1)
                 headers, body = to_structured(ce)
                 self.logger.debug("send_event", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
-                # send to knative broker
                 r = await self.http_client.post(
                     self.config.knative_broker,
                     headers=headers,
@@ -223,34 +207,20 @@ class Datastore:
                     for topic in self.config.mqtt_topic_subscriptions.split(","):
                         if topic.strip():
                             self.logger.debug("subscribe", extra={"topic": topic.strip()})
-                            await self.client.subscribe(
-                                f"$share/datastore/{topic.strip()}"
-                            )
+                            await self.client.subscribe(f"$share/datastore/{topic.strip()}")
 
                     async for message in self.client.messages: 
                         try:
                             ce = from_json(message.payload)
                             topic = message.topic.value
                             ce["sourcepath"] = topic
-                            
                             await self.mqtt_buffer.put(ce)
-                            
-                            self.logger.debug(
-                                "get_from_mqtt_loop",
-                                extra={"cetype": ce["type"], "topic": topic},
-                            )
+                            self.logger.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
                         except Exception as e:
                             self.logger.error("get_from_mqtt_loop inner", extra={"reason": e})
                             
             except MqttError as error:
-                self.logger.error(
-                    f"{error}. Trying again in {reconnect} seconds",
-                    extra={
-                        k: v
-                        for k, v in self.config.dict().items()
-                        if k.lower().startswith("mqtt_")
-                    },
-                )
+                self.logger.error(f"{error}. Trying again in {reconnect} seconds", extra={k: v for k, v in self.config.dict().items() if k.lower().startswith("mqtt_")})
                 await asyncio.sleep(reconnect)
             finally:
                 await asyncio.sleep(0.0001)
@@ -259,7 +229,6 @@ class Datastore:
         while True:
             try:
                 ce = await self.mqtt_buffer.get()
-                
                 if "variable" in ce["type"]:
                     self.logger.debug("handle_mqtt_buffer", extra={"ce-type": ce["type"]})
                 
@@ -274,7 +243,6 @@ class Datastore:
                     self.logger.debug("handle_mqtt_buffer: operations.log", extra={"source": ce.get("source")})
                     await self.operations_log_update(ce)
 
-                # Crucial queue management matching sampling_system
                 self.mqtt_buffer.task_done()
 
             except Exception as e:
@@ -285,32 +253,18 @@ class Datastore:
             database = "data"
             collection = "operations-log"
             data = ce.data
-            
             timestamp = string_to_timestamp(ce.get("time"))
             
             if self.db_client:
                 document = data.copy()
                 document["timestamp"] = timestamp
                 document["source"] = ce.get("source")
-                
                 key = f"{database}:{collection}:{ce.get('id')}"
-                
-                # Directly write it to Redis
                 await self.db_client.client.json().set(key, "$", {"record": document})
-                
                 self.logger.debug("operations_log_update stored successfully", extra={"id": ce.get("id")})
                 
         except Exception as e:
             self.logger.error("operations_log_update", extra={"reason": str(e)})
-
-    def find_one(self):  
-        return None
-
-    def insert_one(self): 
-        return None
-
-    def update_one(self):
-        return None
 
     # -------------------------------------------------------------------------------------
     # DEVICES
@@ -454,13 +408,11 @@ class Datastore:
         if self.db_client:
             self.logger.debug("device_definition_registry_get_ids")
             return await self.db_client.device_definition_registry_get_ids()
-        
         return {"results": []}
 
     async def device_definition_registry_get(self, query: DeviceDefinitionRequest) -> dict:
         if self.db_client:
             return await self.db_client.device_definition_registry_get(query)
-        
         return {"results": []}
 
     async def device_instance_registry_update(self, ce: CloudEvent):
@@ -473,7 +425,6 @@ class Datastore:
                     make = instance_reg["make"]
                     model = instance_reg["model"]
                     serial_number = instance_reg["serial_number"]
-                    
                     version = str(instance_reg.get("format_version", "1.0.0"))
 
                     if make is None or model is None or serial_number is None:
@@ -525,7 +476,6 @@ class Datastore:
     async def device_instance_registry_get(self, query: DeviceInstanceRequest) -> dict:
         if self.db_client:
             return await self.db_client.device_instance_registry_get(query)
-        
         return {"results": []}
 
     # -------------------------------------------------------------------------------------
@@ -666,13 +616,11 @@ class Datastore:
         if self.db_client:
             self.logger.debug("controller_definition_registry_get_ids")
             return await self.db_client.controller_definition_registry_get_ids()
-        
         return {"results": []}
 
     async def controller_definition_registry_get(self, query: ControllerDefinitionRequest) -> dict:
         if self.db_client:
             return await self.db_client.controller_definition_registry_get(query)
-        
         return {"results": []}
 
     async def controller_instance_registry_update(self, ce: CloudEvent):
@@ -685,7 +633,6 @@ class Datastore:
                     make = instance_reg["make"]
                     model = instance_reg["model"]
                     serial_number = instance_reg["serial_number"]
-                    
                     version = str(instance_reg.get("format_version", "1.0.0"))
 
                     if make is None or model is None or serial_number is None:
@@ -731,7 +678,6 @@ class Datastore:
     async def controller_instance_registry_get(self, query: ControllerInstanceRequest) -> dict:
         if self.db_client:
             return await self.db_client.controller_instance_registry_get(query)
-        
         return {"results": []}
 
     # -------------------------------------------------------------------------------------
@@ -743,12 +689,9 @@ class Datastore:
         return {"results": []}
 
     def _extract_val(self, obj: dict, key: str, default: any):
-        """Safely extracts a value whether it is a flat string or a nested {"data": ...} dict."""
-        if not isinstance(obj, dict):
-            return default
+        if not isinstance(obj, dict): return default
         val = obj.get(key)
-        if val is None:
-            return default
+        if val is None: return default
         if isinstance(val, dict) and "data" in val:
             return val.get("data", default)
         return val
@@ -768,7 +711,6 @@ class Datastore:
                     attributes = data.get("attributes", {})
                     
                     variablemap_type = self._extract_val(attributes, "variablemap_type", "Platform")
-
                     variablemap_definition_id = "::".join([variablemap_type_id, variablemap, valid_config_time])
                     
                     request = VariableMapDefinitionUpdate(
@@ -796,7 +738,6 @@ class Datastore:
     async def variablemap_definition_registry_get(self, query: VariableMapDefinitionRequest) -> dict:
         if self.db_client:
             return await self.db_client.variablemap_definition_registry_get(query)
-        
         return {"results": []}
 
     async def variableset_definition_registry_get_ids(self) -> dict:
@@ -851,7 +792,6 @@ class Datastore:
     async def variableset_definition_registry_get(self, query: VariableSetDefinitionRequest) -> dict:
         if self.db_client:
             return await self.db_client.variableset_definition_registry_get(query)
-        
         return {"results": []}
 
     # -------------------------------------------------------------------------------------
@@ -907,7 +847,6 @@ class Datastore:
     async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
         if self.db_client:
             return await self.db_client.sampling_definition_registry_get(resource, query)
-        
         return {"results": []}
 
     # -------------------------------------------------------------------------------------
@@ -1030,7 +969,6 @@ async def main(config):
     print("starting shutdown...")
     await shutdown()
     print("done.")
-
 
 if __name__ == "__main__":
     config = DatastoreConfig()

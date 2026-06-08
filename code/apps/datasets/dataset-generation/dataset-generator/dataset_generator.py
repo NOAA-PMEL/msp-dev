@@ -179,7 +179,12 @@ class DatasetGenerator:
             bulk_telemetry_cache = {}
             for s_id, source_meta in telemetry_sources_to_fetch.items():
                 endpoint = f"/{source_meta['source_type']}/data/get/"
-                params = {f"{source_meta['source_type']}_id": s_id, "start_time": start_time, "end_time": end_time}
+                params = {
+                    f"{source_meta['source_type']}_id": s_id, 
+                    "start_time": start_time, 
+                    "end_time": end_time,
+                    "force_archive": True 
+                }
                 
                 L.info(f"Bulk-retrieving historical telemetry stream from: {s_id}", extra={"endpoint": endpoint})
                 resp = await self.client.get(endpoint, params=params)

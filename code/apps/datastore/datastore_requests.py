@@ -1,6 +1,3 @@
-# from typing import List, Any, Dict
-# from pydantic import BaseModel
-
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 
@@ -43,6 +40,7 @@ class DataRequest(BaseModel):
     end_timestamp: float | None = None
     last_n_seconds: int | None
     variable: List[str] | None = None
+    force_archive: bool = False
 
 
 class DeviceDefinitionUpdate(BaseModel):
@@ -84,6 +82,7 @@ class DeviceInstanceRequest(BaseModel):
     version: str | None = None
     device_type: str | None = None
 
+
 class ControllerDataUpdate(BaseModel):
     controller_id: str | None = None
     make: str | None = None
@@ -102,13 +101,13 @@ class ControllerDataRequest(BaseModel):
     model: str | None = None
     serial_number: str | None = None
     version: str | None = None
-    # device_type: str | None = None
     start_time: str | None = None
     end_time: str | None = None
     start_timestamp: float | None = None
     end_timestamp: float | None = None
     last_n_seconds: int | None
     variable: List[str] | None = None
+    force_archive: bool = False
 
 
 class ControllerDefinitionUpdate(BaseModel):
@@ -116,7 +115,6 @@ class ControllerDefinitionUpdate(BaseModel):
     make: str | None = None
     model: str | None = None
     version: str
-    # device_type: str
     valid_time: str
     attributes: dict
     dimensions: dict
@@ -128,7 +126,6 @@ class ControllerDefinitionRequest(BaseModel):
     make: str | None = None
     model: str | None = None
     version: str | None = None
-    # device_type: str | None = None
     valid_time: str | None = None
 
 
@@ -138,7 +135,6 @@ class ControllerInstanceUpdate(BaseModel):
     model: str | None = None
     serial_number: str | None = None
     version: str
-    # device_type: str
     attributes: dict
 
 
@@ -148,7 +144,6 @@ class ControllerInstanceRequest(BaseModel):
     model: str | None = None
     serial_number: str | None = None
     version: str | None = None
-    # device_type: str | None = None
 
 
 class DatastoreRequest(BaseModel):
@@ -162,6 +157,7 @@ class DatastoreRequest(BaseModel):
         | DeviceInstanceUpdate
         | DeviceInstanceRequest
     )
+
 
 class VariableSetDataUpdate(BaseModel):
     variableset_id: str | None = None
@@ -185,6 +181,8 @@ class VariableSetDataRequest(BaseModel):
     end_timestamp: float | None = None
     last_n_seconds: int | None
     variable: List[str] | None = None
+    force_archive: bool = False
+
 
 class VariableSetDefinitionUpdate(BaseModel):
     variableset_definition_id: str | None = None
@@ -196,12 +194,14 @@ class VariableSetDefinitionUpdate(BaseModel):
     dimensions: dict
     variables: dict
 
+
 class VariableSetDefinitionRequest(BaseModel):
     variableset_definition_id: str | None = None
     variablemap_definition_id: str | None = None
     variableset: str | None = None
     index_type: str | None = None
     index_value: Any | None = None
+
 
 class VariableMapDefinitionUpdate(BaseModel):
     variablemap_definition_id: str | None = None
@@ -235,18 +235,19 @@ class DefinitionMetadata(BaseModel):
 
 # ---------------------------------------------------------
 # 1. Action Definition
-# Defines a specific executable action (e.g., triggering a relay)
 # ---------------------------------------------------------
 class ActionParameter(BaseModel):
     required: bool = False
     allowed_values: Optional[List[Any]] = Field(default_factory=list, alias="allowed-values")
     type: Optional[str] = "string"
 
+
 class ActionTarget(BaseModel):
     apiVersion: Optional[str] = None
     kind: str  # e.g., "Service", "Topic", "Webhook"
     name: str
     uri: Optional[str] = None
+
 
 class ActionDefinition(BaseModel):
     kind: str = "envAction"
@@ -260,36 +261,40 @@ class ActionDefinition(BaseModel):
 
 # ---------------------------------------------------------
 # 2. Sampling Condition Definition
-# Evaluates sources (variables) against criteria to trigger actions
 # ---------------------------------------------------------
 class ConditionSource(BaseModel):
     platform: Optional[str] = None
     variablemap: Optional[str] = None
     variable: str
 
+
 class ActionTrigger(BaseModel):
     name: str
     data: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
 
 class ConditionLimits(BaseModel):
     min_val: Optional[float] = Field(None, alias="min-val")
     max_val: Optional[float] = Field(None, alias="max-val")
     equals: Optional[Any] = None
 
+
 class ConditionCriterion(BaseModel):
     source: str
     limits: Optional[ConditionLimits] = None
-    actions: Dict[str, ActionTrigger]  # e.g., {"true": ActionTrigger(), "false": ActionTrigger()}
+    actions: Dict[str, ActionTrigger]
+
 
 class ConditionCriteria(BaseModel):
     any: Optional[List[ConditionCriterion]] = Field(default_factory=list)
     all: Optional[List[ConditionCriterion]] = Field(default_factory=list)
 
+
 class SamplingConditionDefinition(BaseModel):
     kind: str = "envCondition"
     metadata: DefinitionMetadata
     sources: Dict[str, ConditionSource]
-    condition_type: str = Field(..., alias="condition-type")  # e.g., "MinMax", "Boolean"
+    condition_type: str = Field(..., alias="condition-type")
     condition_criteria: ConditionCriteria = Field(..., alias="condition-criteria")
 
     class Config:
@@ -298,15 +303,13 @@ class SamplingConditionDefinition(BaseModel):
 
 # ---------------------------------------------------------
 # 3. Sampling State Definition
-# Represents a specific state (e.g., "Purging", "Sampling") 
-# and the conditions/actions tied to entering, holding, or exiting it.
 # ---------------------------------------------------------
 class SamplingStateDefinition(BaseModel):
     kind: str = "envState"
     metadata: DefinitionMetadata
     entry_actions: Optional[List[ActionTrigger]] = Field(default_factory=list, alias="entry-actions")
     exit_actions: Optional[List[ActionTrigger]] = Field(default_factory=list, alias="exit-actions")
-    active_conditions: Optional[List[str]] = Field(default_factory=list, alias="active-conditions") # Condition names to monitor
+    active_conditions: Optional[List[str]] = Field(default_factory=list, alias="active-conditions")
 
     class Config:
         allow_population_by_field_name = True
@@ -314,15 +317,13 @@ class SamplingStateDefinition(BaseModel):
 
 # ---------------------------------------------------------
 # 4. Sampling Mode Definition
-# Orchestrates states and dictates how the system transitions between them.
-# (e.g., "Vertical Profiling Mode" vs "Underway Transit Mode")
 # ---------------------------------------------------------
 class SamplingModeDefinition(BaseModel):
     kind: str = "envSamplingMode"
     metadata: DefinitionMetadata
-    states: List[str]  # Allowed state names
+    states: List[str]
     default_state: str = Field(..., alias="default-state")
-    transitions: Optional[Dict[str, str]] = Field(default_factory=dict) # e.g., {"condition_cn_limit_true": "PurgingState"}
+    transitions: Optional[Dict[str, str]] = Field(default_factory=dict)
 
     class Config:
         allow_population_by_field_name = True
@@ -330,8 +331,6 @@ class SamplingModeDefinition(BaseModel):
 
 # ---------------------------------------------------------
 # 5. System Mode Definition
-# The top-level operational mode for the overarching system/payload.
-# (e.g., "Startup", "Active", "SafeMode")
 # ---------------------------------------------------------
 class SystemModeDefinition(BaseModel):
     kind: str = "envSystemMode"
@@ -343,11 +342,13 @@ class SystemModeDefinition(BaseModel):
     class Config:
         allow_population_by_field_name = True
 
+
 class VariableSetInstanceUpdate(BaseModel):
     variableset_id: str | None = None
     variablemap_id: str | None = None
     variableset: str | None = None
     attributes: dict
+
 
 class VariableSetInstanceRequest(BaseModel):
     variableset_id: str | None = None

@@ -51,7 +51,10 @@ class DBClientConfig(BaseModel):
         "username": "",
         "password": "",
         "clear_db": False,
-        "db_data_ttl": 600, # Added to support the routing window
+        "db_data_ttl": 600,
+        "erddap_enable": False,
+        "erddap_http_connection": None,
+        "erddap_author": None,
         "log_level": "INFO"
     }
 
@@ -129,14 +132,11 @@ class CompositeDBClient(DBClient):
     def __init__(self, config: DBClientConfig):
         super().__init__(config)
         
-        # Load the individual clients
         import redis_client
         self.redis = redis_client.RedisClient(config)
         
-        # Get the TTL window for live data (defaults to 600s / 10 mins)
         self.live_window_seconds = self.config.get("db_data_ttl", 600)
 
-        # Conditionally load ERDDAP based on the passed config
         if self.config.get("erddap_enable"):
             import erddap_client
             self.erddap = erddap_client.ErddapClient(config)
@@ -154,16 +154,11 @@ class CompositeDBClient(DBClient):
     # TELEMETRY ROUTING (Federated)
     # ---------------------------------------------------------
     def _is_live_query(self, start_timestamp: float = None, end_timestamp: float = None) -> bool:
-        """Determines if a query falls safely within the live Redis memory window."""
         now = time.time()
         
-        # If no explicit start/end time, it's asking for the latest data (live)
         if not start_timestamp and not end_timestamp:
             return True
             
-        # Add a 60-second safety buffer to the TTL. 
-        # If the requested start_time is older than this safe window, 
-        # route the ENTIRE query to ERDDAP. No stitching.
         safe_redis_window = self.live_window_seconds - 60
         
         if start_timestamp and (now - start_timestamp) <= safe_redis_window:
@@ -172,6 +167,10 @@ class CompositeDBClient(DBClient):
         return False
 
     async def device_data_get(self, request: DataRequest) -> dict:
+        if getattr(request, "force_archive", False) and self.erddap:
+            self.logger.debug("Routing device_data_get to ERDDAP (Forced Archive Mode)")
+            return await self.erddap.device_data_get(request)
+
         if not self.erddap or self._is_live_query(request.start_timestamp, request.end_timestamp):
             self.logger.debug("Routing device_data_get to REDIS (Live Window or Edge-Only Mode)")
             return await self.redis.device_data_get(request)
@@ -180,6 +179,10 @@ class CompositeDBClient(DBClient):
             return await self.erddap.device_data_get(request)
 
     async def controller_data_get(self, request: ControllerDataRequest) -> dict:
+        if getattr(request, "force_archive", False) and self.erddap and hasattr(self.erddap, "controller_data_get"):
+            self.logger.debug("Routing controller_data_get to ERDDAP (Forced Archive Mode)")
+            return await self.erddap.controller_data_get(request)
+
         if not self.erddap or self._is_live_query(request.start_timestamp, request.end_timestamp):
             self.logger.debug("Routing controller_data_get to REDIS")
             return await self.redis.controller_data_get(request)
@@ -190,6 +193,10 @@ class CompositeDBClient(DBClient):
             return {"results": []}
 
     async def variableset_data_get(self, request: VariableSetDataRequest) -> dict:
+        if getattr(request, "force_archive", False) and self.erddap:
+            self.logger.debug("Routing variableset_data_get to ERDDAP (Forced Archive Mode)")
+            return await self.erddap.variableset_data_get(request)
+
         if not self.erddap or self._is_live_query(request.start_timestamp, request.end_timestamp):
             self.logger.debug("Routing variableset_data_get to REDIS")
             return await self.redis.variableset_data_get(request)
@@ -218,8 +225,7 @@ class CompositeDBClient(DBClient):
         return result
 
     # ---------------------------------------------------------
-    # WRITE PASS-THROUGHS (Writes only go to Redis from Datastore)
-    # ERDDAP gets writes directly via its own MQTT subscription.
+    # WRITE PASS-THROUGHS 
     # ---------------------------------------------------------
     async def device_data_update(self, database: str, collection: str, request: DataUpdate, ttl: int = 300):
         return await self.redis.device_data_update(database, collection, request, ttl)
@@ -236,7 +242,6 @@ class CompositeDBClient(DBClient):
     # ---------------------------------------------------------
     # FEDERATED DEFINITION PASS-THROUGHS TO REDIS
     # ---------------------------------------------------------
-    # Devices
     async def device_definition_registry_update(self, database: str, collection: str, request: DeviceDefinitionUpdate, ttl: int = 0) -> bool:
         return await self.redis.device_definition_registry_update(database, collection, request, ttl)
         
@@ -267,7 +272,6 @@ class CompositeDBClient(DBClient):
     async def device_instance_registry_get(self, request: DeviceInstanceRequest) -> dict:
         return await self.redis.device_instance_registry_get(request)
 
-    # Controllers
     async def controller_definition_registry_update(self, database: str, collection: str, request: ControllerDefinitionUpdate, ttl: int = 0) -> bool:
         return await self.redis.controller_definition_registry_update(database, collection, request, ttl)
         
@@ -298,7 +302,6 @@ class CompositeDBClient(DBClient):
     async def controller_instance_registry_get(self, request: ControllerInstanceRequest) -> dict:
         return await self.redis.controller_instance_registry_get(request)
 
-    # Variables
     async def variablemap_definition_registry_update(self, database: str, collection: str, request: VariableMapDefinitionUpdate, ttl: int = 0) -> bool:
         return await self.redis.variablemap_definition_registry_update(database, collection, request, ttl)
         
@@ -350,14 +353,12 @@ class CompositeDBClient(DBClient):
     async def variableset_instance_registry_get(self, request: VariableSetInstanceRequest) -> dict:
         return await self.redis.variableset_instance_registry_get(request)
 
-    # Misc
     async def sampling_definition_registry_get_ids(self, resource: str) -> dict:
         return await self.redis.sampling_definition_registry_get_ids(resource)
     async def project_definition_registry_get_ids(self) -> dict:
         return await self.redis.project_definition_registry_get_ids()
     async def platform_definition_registry_get_ids(self) -> dict:
         return await self.redis.platform_definition_registry_get_ids()
-
 
 class DBClientManager:
     """Factory class to create Database Clients"""
