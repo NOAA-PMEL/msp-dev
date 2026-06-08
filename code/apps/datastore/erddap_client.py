@@ -1,11 +1,15 @@
 import httpx
 import logging
+import json
 from typing import List, Dict, Any
-import time
 
 from datastore_requests import (
     DataRequest,
-    VariableSetDataRequest
+    VariableSetDataRequest,
+    DeviceDefinitionRequest,
+    ControllerDefinitionRequest,
+    VariableMapDefinitionRequest,
+    VariableSetDefinitionRequest
 )
 from db_client import DBClientConfig
 
@@ -23,7 +27,6 @@ class ErddapClient:
         Executes a query against ERDDAP's tabledap endpoint and converts the 
         columnar JSON response back into a standard list of dicts.
         """
-        # Join query arguments with '&'
         query_string = "&".join(query_args)
         url = f"{self.base_url}/tabledap/{dataset_id}.json?{query_string}"
         
@@ -59,7 +62,6 @@ class ErddapClient:
         dataset_id = f"telemetry_{request.make}_{request.model}_{version_clean}_time".replace("-", "_")
         
         # Adjust URL to point to the new sidecar /api/data endpoint
-        # (Assuming self.base_url is the sidecar root: http://erddap-sidecar:8000)
         url = f"{self.base_url.replace('/erddap', '')}/api/data/{dataset_id}"
         
         query_args = []
@@ -76,14 +78,13 @@ class ErddapClient:
         self.logger.debug(f"Sidecar NCO-JSON Query: {url}?{query_string}")
         
         try:
-            # POST the query with the definition in the body!
             resp = await self.http.post(f"{url}?{query_string}", json=definition or {})
             
             if resp.status_code == 404:
                 return {"results": []}
                 
             resp.raise_for_status()
-            return resp.json() # Already perfectly unflattened by the sidecar!
+            return resp.json() 
             
         except Exception as e:
             self.logger.error("Sidecar fetch failed", extra={"url": url, "reason": str(e)})
@@ -105,15 +106,78 @@ class ErddapClient:
         query_args.append("orderBy(%22time%22)")
         return await self._fetch_tabledap(dataset_id, query_args)
 
+
+    # ---------------------------------------------------------
+    # HARDWARE & SYSTEM REGISTRY (Read-Through Cache)
+    # ---------------------------------------------------------
+    async def _fetch_hardware_registry(self, kind: str, query_id: str) -> dict:
+        """Fetches device/controller hardware schemas using specific make/model columns."""
+        dataset_id = "envds_hardware_registry" 
+        query_args = [f'kind="{kind}"']
+        
+        if query_id:
+            # Splitting 'make::model::version' to match the ERDDAP columns
+            parts = query_id.split("::")
+            if len(parts) >= 3:
+                query_args.append(f'make="{parts[0]}"')
+                query_args.append(f'model="{parts[1]}"')
+                query_args.append(f'version="{parts[2]}"')
+            
+        query_args.append("orderByLimitMax(%22-time%22)")
+        result = await self._fetch_tabledap(dataset_id, query_args)
+        
+        parsed_results = []
+        for row in result.get("results", []):
+            try:
+                payload = json.loads(row.get("payload", "{}"))
+                parsed_results.append(payload)
+            except Exception:
+                continue
+                
+        return {"results": parsed_results}
+
+    async def _fetch_system_registry(self, kind: str, query_id: str) -> dict:
+        """Fetches variablemaps/variablesets using the generic 'name' column."""
+        dataset_id = "envds_system_registry" 
+        query_args = [f'kind="{kind}"']
+        
+        if query_id:
+            # In sidecar.py, system IDs map directly to the 'name' column
+            query_args.append(f'name="{query_id}"')
+            
+        query_args.append("orderByLimitMax(%22-time%22)")
+        result = await self._fetch_tabledap(dataset_id, query_args)
+        
+        parsed_results = []
+        for row in result.get("results", []):
+            try:
+                payload = json.loads(row.get("payload", "{}"))
+                parsed_results.append(payload)
+            except Exception:
+                continue
+                
+        return {"results": parsed_results}
+
+    async def device_definition_registry_get(self, request: DeviceDefinitionRequest) -> dict:
+        return await self._fetch_hardware_registry("device-definition", request.device_definition_id)
+
+    async def controller_definition_registry_get(self, request: ControllerDefinitionRequest) -> dict:
+        return await self._fetch_hardware_registry("controller-definition", request.controller_definition_id)
+
+    async def variablemap_definition_registry_get(self, request: VariableMapDefinitionRequest) -> dict:
+        return await self._fetch_system_registry("variablemap-definition", request.variablemap_definition_id)
+
+    async def variableset_definition_registry_get(self, request: VariableSetDefinitionRequest) -> dict:
+        return await self._fetch_system_registry("variableset-definition", request.variableset_definition_id)
+
+
     # ---------------------------------------------------------
     # OPERATIONS REGISTRY (Read-Through Cache)
     # ---------------------------------------------------------
     async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
         """Fetches historical operational definitions (conditions, modes) from ERDDAP."""
-        # Using the ops_registry_dataset we built in the sidecar
         dataset_id = "envds_ops_registry"
         
-        # In ERDDAP, we map the resource (e.g. 'samplingcondition') to the 'kind' column
         kind_map = {
             "samplingcondition": "SamplingCondition",
             "samplingmode": "SamplingMode",
@@ -125,18 +189,13 @@ class ErddapClient:
         query_args = [f'kind="{kind}"']
         
         if "name" in query and query["name"]:
-            # If the query name includes the time ID (e.g., cn_limit::2026-05-25T00:00:00Z)
             name_part = query["name"].split("::")[0]
             query_args.append(f'name="{name_part}"')
             
-        # Get the latest revision first
         query_args.append("orderByLimitMax(%22-time%22)")
-        
         result = await self._fetch_tabledap(dataset_id, query_args)
         
-        # Unpack the stringified JSON payload back into dicts for the Datastore
         parsed_results = []
-        import json
         for row in result.get("results", []):
             try:
                 payload = json.loads(row.get("payload", "{}"))
