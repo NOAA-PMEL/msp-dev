@@ -17,25 +17,19 @@ from db_client import DBClientConfig
 class ErddapClient:
     def __init__(self, config: DBClientConfig):
         self.config = config.config
-        # We assume the ERDDAP sidecar is reachable via this config or a known internal DNS
         self.base_url = self.config.get("erddap_http_connection", "http://erddap-sidecar:8000/erddap")
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(self.config.get("log_level", "INFO").upper())
         self.http = httpx.AsyncClient(timeout=30.0)
 
     async def _fetch_tabledap(self, dataset_id: str, query_args: List[str]) -> Dict[str, Any]:
-        """
-        Executes a query against ERDDAP's tabledap endpoint and converts the 
-        columnar JSON response back into a standard list of dicts.
-        """
+        """Executes a query against ERDDAP's tabledap endpoint."""
         query_string = "&".join(query_args)
         url = f"{self.base_url}/tabledap/{dataset_id}.json?{query_string}"
         
         self.logger.debug(f"ERDDAP Query: {url}")
         try:
             resp = await self.http.get(url)
-            
-            # ERDDAP returns 404 if the dataset exists but no rows match the query
             if resp.status_code == 404:
                 return {"results": []}
                 
@@ -46,21 +40,48 @@ class ErddapClient:
             cols = table.get("columnNames", [])
             rows = table.get("rows", [])
             
-            # Zip columns and rows into a list of dictionaries
-            results = [dict(zip(cols, row)) for row in rows]
-            return {"results": results}
+            return {"results": [dict(zip(cols, row)) for row in rows]}
             
         except Exception as e:
             self.logger.error("ERDDAP fetch failed", extra={"url": url, "reason": str(e)})
             return {"results": []}
 
+    async def _discover_and_fetch_all_versions(self, make: str, model: str, query_args: List[str]) -> List[dict]:
+        """Dynamically discovers all versioned datasets for a device and fetches them concurrently."""
+        search_url = f"{self.base_url}/tabledap/allDatasets.json?datasetID&datasetID=~%22telemetry_{make}_{model}_v.*_time%22"
+        dataset_ids = []
+        
+        try:
+            # 1. Ask ERDDAP which versions exist (v1, v2, v3, etc.)
+            resp = await self.http.get(search_url)
+            if resp.status_code == 200:
+                rows = resp.json().get("table", {}).get("rows", [])
+                dataset_ids = [row[0] for row in rows]
+        except Exception as e:
+            self.logger.warning(f"Dataset discovery failed for {make} {model}, falling back to hardcoded versions. Reason: {e}")
+            
+        # Fallback just in case the allDatasets query fails
+        if not dataset_ids:
+            dataset_ids = [f"telemetry_{make}_{model}_v1_time", f"telemetry_{make}_{model}_v2_time"]
+
+        # 2. Fetch all discovered versions concurrently to prevent pipeline slowdowns
+        tasks = [self._fetch_tabledap(ds_id, query_args) for ds_id in dataset_ids]
+        results = await asyncio.gather(*tasks)
+        
+        # 3. Combine the flat data from all versions
+        combined_flat_data = []
+        for res in results:
+            combined_flat_data.extend(res.get("results", []))
+            
+        # 4. Sort strictly by time to perfectly stitch the v1->v2 transitions together
+        combined_flat_data.sort(key=lambda x: x.get("time", ""))
+        return combined_flat_data
+
     # ---------------------------------------------------------
     # TELEMETRY QUERIES
     # ---------------------------------------------------------
     async def device_data_get(self, request: DataRequest, definition: dict = None) -> dict:
-        """Fetches historical device telemetry from the Sidecar Egress API as NCO-JSON."""
-        
-        # Safely unpack Make, Model, and Serial from the device_id
+        """Fetches historical device telemetry natively from ERDDAP and repacks it."""
         make = request.make
         model = request.model
         sn = request.serial_number
@@ -71,11 +92,6 @@ class ErddapClient:
             if not model and len(parts) > 1: model = parts[1]
             if not sn and len(parts) > 2: sn = parts[2]
 
-        version_clean = request.version.replace(".", "_") if request.version else "v1"
-        dataset_id = f"telemetry_{make}_{model}_{version_clean}_time".replace("-", "_")
-        
-        url = f"{self.base_url.replace('/erddap', '')}/api/data/{dataset_id}"
-        
         query_args = []
         if sn:
             query_args.append(f'serial_number="{sn}"')
@@ -85,27 +101,22 @@ class ErddapClient:
             query_args.append(f"time<={request.end_timestamp}")
             
         query_args.append("orderBy(%22time%22)")
-        query_string = "&".join(query_args)
-        
-        self.logger.debug(f"Sidecar NCO-JSON Query: {url}?{query_string}")
-        
-        try:
-            resp = await self.http.post(f"{url}?{query_string}", json=definition or {})
+
+        # Fetch and stitch all timeline versions automatically
+        combined_flat_data = await self._discover_and_fetch_all_versions(make, model, query_args)
+
+        # Repackage ERDDAP's flat data into the nested Datastore JSON format
+        formatted_results = []
+        for row in combined_flat_data:
+            formatted_record = {"variables": {}}
+            for key, val in row.items():
+                formatted_record["variables"][key] = {"data": val}
+            formatted_results.append(formatted_record)
             
-            if resp.status_code == 404:
-                return {"results": []}
-                
-            resp.raise_for_status()
-            return resp.json() 
-            
-        except Exception as e:
-            self.logger.error("Sidecar fetch failed", extra={"url": url, "reason": str(e)})
-            return {"results": []}
+        return {"results": formatted_results}
 
     async def controller_data_get(self, request: ControllerDataRequest, definition: dict = None) -> dict:
-        """Fetches historical controller telemetry from the Sidecar Egress API as NCO-JSON."""
-        
-        # Safely unpack Make, Model, and Serial from the controller_id
+        """Fetches historical controller telemetry natively from ERDDAP and repacks it."""
         make = request.make
         model = request.model
         sn = request.serial_number
@@ -116,11 +127,6 @@ class ErddapClient:
             if not model and len(parts) > 1: model = parts[1]
             if not sn and len(parts) > 2: sn = parts[2]
 
-        version_clean = request.version.replace(".", "_") if request.version else "v1"
-        dataset_id = f"telemetry_{make}_{model}_{version_clean}_time".replace("-", "_")
-        
-        url = f"{self.base_url.replace('/erddap', '')}/api/data/{dataset_id}"
-        
         query_args = []
         if sn:
             query_args.append(f'serial_number="{sn}"')
@@ -130,22 +136,19 @@ class ErddapClient:
             query_args.append(f"time<={request.end_timestamp}")
             
         query_args.append("orderBy(%22time%22)")
-        query_string = "&".join(query_args)
-        
-        self.logger.debug(f"Sidecar NCO-JSON Query (Controller): {url}?{query_string}")
-        
-        try:
-            resp = await self.http.post(f"{url}?{query_string}", json=definition or {})
+
+        # Fetch and stitch all timeline versions automatically
+        combined_flat_data = await self._discover_and_fetch_all_versions(make, model, query_args)
+
+        # Repackage ERDDAP's flat data into the nested Datastore JSON format
+        formatted_results = []
+        for row in combined_flat_data:
+            formatted_record = {"variables": {}}
+            for key, val in row.items():
+                formatted_record["variables"][key] = {"data": val}
+            formatted_results.append(formatted_record)
             
-            if resp.status_code == 404:
-                return {"results": []}
-                
-            resp.raise_for_status()
-            return resp.json() 
-            
-        except Exception as e:
-            self.logger.error("Sidecar fetch failed for controller", extra={"url": url, "reason": str(e)})
-            return {"results": []}
+        return {"results": formatted_results}
         
     async def variableset_data_get(self, request: VariableSetDataRequest) -> dict:
         """Fetches historical curated L1 telemetry from ERDDAP."""
