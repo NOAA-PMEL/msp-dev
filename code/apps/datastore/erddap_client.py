@@ -94,20 +94,18 @@ class ErddapClient:
             if not sn and len(parts) > 2: sn = parts[2]
 
         self.logger.warning(f"BUILDING DATASET ID: make={make}, model={model}, sn={sn}, raw_device_id={request.device_id}")
-        
+
         query_args = []
         if sn:
             # Removed quotes in case ERDDAP typed this column as numeric
             query_args.append(f'serial_number=%22{sn}%22')
             
-        if request.start_timestamp:
-            # Strictly encode the timestamp and the > sign (%3E)
-            safe_start = urllib.parse.quote(request.start_timestamp)
+        if request.start_time:  # <--- Was start_timestamp
+            safe_start = urllib.parse.quote(request.start_time)
             query_args.append(f"time%3E={safe_start}")
             
-        if request.end_timestamp:
-            # Strictly encode the timestamp and the < sign (%3C)
-            safe_end = urllib.parse.quote(request.end_timestamp)
+        if request.end_time:    # <--- Was end_timestamp
+            safe_end = urllib.parse.quote(request.end_time)
             query_args.append(f"time%3C={safe_end}")
             
         query_args.append("orderBy(%22time%22)")
@@ -142,14 +140,12 @@ class ErddapClient:
             # Removed quotes in case ERDDAP typed this column as numeric
             query_args.append(f'serial_number=%22{sn}%22')
             
-        if request.start_timestamp:
-            # Strictly encode the timestamp and the > sign (%3E)
-            safe_start = urllib.parse.quote(request.start_timestamp)
+        if request.start_time:  # <--- Was start_timestamp
+            safe_start = urllib.parse.quote(request.start_time)
             query_args.append(f"time%3E={safe_start}")
             
-        if request.end_timestamp:
-            # Strictly encode the timestamp and the < sign (%3C)
-            safe_end = urllib.parse.quote(request.end_timestamp)
+        if request.end_time:    # <--- Was end_timestamp
+            safe_end = urllib.parse.quote(request.end_time)
             query_args.append(f"time%3C={safe_end}")
             
         query_args.append("orderBy(%22time%22)")
