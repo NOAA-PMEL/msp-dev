@@ -121,9 +121,7 @@ class Datastore:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.debug("TestClass instantiated")
-        # self.logger.setLevel(logging.DEBUG)
         self.db_client = None
-        self.erddap_client = None
         self.config = DatastoreConfig()
         level_str = self.config.log_level.upper()
         self.logger.setLevel(level_str)
@@ -138,10 +136,8 @@ class Datastore:
         self.logger.info("Running Datastore async setup...")
         
         # Start background tasks safely inside the event loop
-        # FIX: Add maxsize to prevent infinite memory growth (backpressure)
         self.mqtt_buffer = asyncio.Queue(maxsize=2000)
         
-        # FIX: Store tasks in the set
         task1 = asyncio.create_task(self.get_from_mqtt_loop())
         task2 = asyncio.create_task(self.handle_mqtt_buffer())
         self._background_tasks.update({task1, task2})
@@ -162,30 +158,18 @@ class Datastore:
                 "port": self.config.db_client_port,
                 "username": self.config.db_client_username,
                 "password": self.config.db_client_password,
-                "clear_db": self.config.db_clear_db
+                "clear_db": self.config.db_clear_db,
+                "db_data_ttl": self.config.db_data_ttl,
+                "erddap_enable": self.config.erddap_enable,
+                "erddap_http_connection": self.config.erddap_http_connection,
+                "erddap_author": self.config.erddap_author
             },
         )
         self.logger.debug("configure", extra={"db_client_config": db_client_config})
+        
+        # The Composite DB Client now handles EVERYTHING
         self.db_client = DBClientManager.create(db_client_config)
-
-        # 2. Setup ERDDAP (Deep Archive) - Dynamically Instantiated
-        if self.config.erddap_enable:
-            from erddap_client import ErddapClient
-            
-            # Pass ERDDAP specific configs using the same config wrapper ErddapClient expects
-            erddap_config = DBClientConfig(
-                type="erddap",
-                config={
-                    "log_level": self.config.log_level,
-                    "erddap_http_connection": self.config.erddap_http_connection,
-                    "erddap_author": self.config.erddap_author
-                }
-            )
-            self.erddap_client = ErddapClient(erddap_config)
-            self.logger.info("ERDDAP Client dynamically instantiated.")
-        else:
-            self.erddap_client = None
-            self.logger.info("ERDDAP disabled. Operating in Edge/Cache-only mode.")
+        self.erddap_client = None 
 
     def open_http_client(self):
         self.logger.debug("open_http_client")
@@ -224,47 +208,6 @@ class Datastore:
         except Exception as e:
             print("error", e)
         await asyncio.sleep(0.01)
-
-    # async def get_from_mqtt_loop(self):
-    #     reconnect = 10
-    #     while True:
-    #         try:
-    #             L.debug("listen", extra={"config": self.config})
-    #             client_id=str(ULID())
-    #             async with Client(self.config.mqtt_broker, port=self.config.mqtt_port,identifier=client_id) as self.client:
-    #                 for topic in self.config.mqtt_topic_subscriptions.split(","):
-    #                     if topic.strip():
-    #                         L.debug("subscribe", extra={"topic": topic.strip()})
-    #                         await self.client.subscribe(f"$share/datastore/{topic.strip()}")
-
-    #                 # async for message in self.client.messages: 
-    #                 # FIX 1: aiomqtt 2.0+ context manager syntax prevents the silent crash
-    #                 async with self.client.messages() as messages:
-    #                     async for message in messages:
-    #                         try:
-    #                             ce = from_json(message.payload)
-    #                             topic = message.topic.value
-    #                             ce["sourcepath"] = topic
-
-    #                             # FIX: Use wait_for to drop messages if the buffer is full, 
-    #                             # preventing the async for loop (and ping responses) from blocking indefinitely.
-    #                             try:
-    #                                 await asyncio.wait_for(self.mqtt_buffer.put(ce), timeout=1.0)
-    #                                 L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
-    #                             except asyncio.TimeoutError:
-    #                                 L.warning("MQTT buffer full! Dropping message to prevent backpressure.", extra={"topic": topic})
-
-    #                             L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
-    #                         except Exception as e:
-    #                             L.error("get_from_mqtt_loop", extra={"reason": e})
-    #         except MqttError as error:
-    #             L.error(
-    #                 f'{error}. Trying again in {reconnect} seconds',
-    #                 extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
-    #             )
-    #             await asyncio.sleep(reconnect)
-    #         finally:
-    #             await asyncio.sleep(0.0001)
 
     async def get_from_mqtt_loop(self):
         reconnect = 10
@@ -312,24 +255,6 @@ class Datastore:
             finally:
                 await asyncio.sleep(0.0001)
 
-    # async def handle_mqtt_buffer(self):
-    #     while True:
-    #         try:
-    #             ce = await self.mqtt_buffer.get()
-                
-    #             if "variable" in ce["type"]:
-    #                 self.logger.debug("handle_mqtt_buffer", extra={"ce-type": ce["type"]})
-    #             if ce["type"] == "envds.data.update":
-    #                 await self.device_data_update(ce) 
-    #             elif ce["type"] == "envds.controller.data.update":
-    #                 await self.controller_data_update(ce)
-    #             elif ce["type"] == sampet.variableset_data_update():
-    #                 self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
-    #                 await self.variableset_data_update(ce)           
-
-    #         except Exception as e:
-    #             L.error("handle_mqtt_buffer", extra={"reason": e})
-    
     async def handle_mqtt_buffer(self):
         while True:
             try:
@@ -345,11 +270,9 @@ class Datastore:
                 elif ce["type"] == sampet.variableset_data_update():
                     self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
                     await self.variableset_data_update(ce)        
-                # --- ADD THIS BLOCK ---
                 elif ce["type"] == "envds.operations.log":
                     self.logger.debug("handle_mqtt_buffer: operations.log", extra={"source": ce.get("source")})
                     await self.operations_log_update(ce)
-                # ----------------------   
 
                 # Crucial queue management matching sampling_system
                 self.mqtt_buffer.task_done()
@@ -363,11 +286,8 @@ class Datastore:
             collection = "operations-log"
             data = ce.data
             
-            # Use the time from the CloudEvent envelope as the source of truth
             timestamp = string_to_timestamp(ce.get("time"))
             
-            # We can use the generic DB Client insert for logs 
-            # (assuming redis_client.py implements a basic set command for this)
             if self.db_client:
                 document = data.copy()
                 document["timestamp"] = timestamp
@@ -395,138 +315,6 @@ class Datastore:
     # -------------------------------------------------------------------------------------
     # DEVICES
     # -------------------------------------------------------------------------------------
-    # async def device_data_update(self, ce: CloudEvent):
-    #     try:
-    #         database = "data"
-    #         collection = "device"
-    #         attributes = ce.data["attributes"]
-    #         dimensions = ce.data["dimensions"]
-    #         variables = ce.data["variables"]
-
-    #         make = attributes["make"]["data"]
-    #         model = attributes["model"]["data"]
-    #         serial_number = attributes["serial_number"]["data"]
-
-    #         format_version = attributes["format_version"]["data"]
-    #         parts = format_version.split(".")
-    #         self.logger.debug(f"parts: {parts}, {format_version}")
-    #         erddap_version = f"v{parts[0]}"
-    #         device_id = "::".join([make, model, serial_number])
-    #         self.logger.debug("device_data_update", extra={"device_id": device_id})
-
-    #         # timestamp = string_to_timestamp(ce.data["timestamp"]) 
-    #         record_time_str = variables.get("time", {}).get("data")
-    #         if not record_time_str:
-    #             record_time_str = ce.data.get("timestamp")
-                
-    #         timestamp = string_to_timestamp(record_time_str)
-    #         self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
-
-    #         request = DataUpdate(
-    #             make=make,
-    #             model=model,
-    #             serial_number=serial_number,
-    #             version=erddap_version,
-    #             timestamp=timestamp,
-    #             attributes=attributes,
-    #             dimensions=dimensions,
-    #             variables=variables,
-    #         )
-
-    #         self.logger.debug("device_data_update", extra={"request": request})
-    #         await self.db_client.device_data_update(
-    #             database=database,
-    #             collection=collection,
-    #             request=request,
-    #             ttl=self.config.db_data_ttl,
-    #         )
-
-    #         # If the device is sending data, it is currently active.
-    #         device_type = attributes.get("device_type", {}).get("data", "sensor")
-    #         instance_request = DeviceInstanceUpdate(
-    #             device_id=device_id,
-    #             make=make,
-    #             model=model,
-    #             serial_number=serial_number,
-    #             version=erddap_version,
-    #             device_type=device_type,
-    #             attributes=attributes,
-    #         )
-            
-    #         await self.db_client.device_instance_registry_update(
-    #             database="registry",
-    #             collection="device-instance",
-    #             request=instance_request,
-    #             ttl=self.config.db_reg_device_instance_ttl,
-    #         )
-
-    #     except Exception as e:
-    #         L.error("device_data_update", extra={"reason": e})
-    #     pass
-
-    # async def device_data_update(self, ce: CloudEvent):
-    #     try:
-    #         database = "data"
-    #         collection = "device"
-    #         data = ce.data
-            
-    #         attributes = data.get("attributes", {})
-    #         variables = data.get("variables", {})
-    #         dimensions = data.get("dimensions", {}) 
-
-    #         ts_str = data.get("timestamp")
-    #         timestamp = string_to_timestamp(ts_str)
-
-    #         make = attributes.get("make", {}).get("data", "unknown")
-    #         model = attributes.get("model", {}).get("data", "unknown")
-    #         sn = attributes.get("serial_number", {}).get("data", "unknown")
-            
-    #         format_ver = attributes.get("format_version", {}).get("data", "1.0.0")
-    #         version = f"v{str(format_ver).split('.')[0]}"
-
-    #         device_id = attributes.get("device_id", {}).get("data")
-    #         if not device_id:
-    #             device_id = f"{make}::{model}::{sn}"
-
-    #         request = DataUpdate(
-    #             device_id=device_id,
-    #             make=make,
-    #             model=model,
-    #             serial_number=sn,
-    #             version=version,     
-    #             timestamp=timestamp, 
-    #             attributes=attributes,
-    #             dimensions=dimensions, 
-    #             variables=variables,
-    #         )
-
-    #         if self.db_client:
-    #             # 1. Save the historical data
-    #             await self.db_client.device_data_update(
-    #                 database=database, collection=collection, request=request, ttl=self.config.db_data_ttl
-    #             )
-                
-    #             # 2. RESTORED: Register the active instance so definitions can be found!
-    #             device_type = attributes.get("device_type", {}).get("data", "sensor")
-    #             instance_request = DeviceInstanceUpdate(
-    #                 device_id=device_id,
-    #                 make=make,
-    #                 model=model,
-    #                 serial_number=sn,
-    #                 version=version,
-    #                 device_type=device_type,
-    #                 attributes=attributes,
-    #             )
-    #             await self.db_client.device_instance_registry_update(
-    #                 database="registry",
-    #                 collection="device-instance",
-    #                 request=instance_request,
-    #                 ttl=self.config.db_reg_device_instance_ttl,
-    #             )
-
-    #     except Exception as e:
-    #         L.error("device_data_update error", extra={"reason": str(e)})
-
     async def device_data_update(self, ce: CloudEvent):
         try:
             database = "data"
@@ -544,7 +332,6 @@ class Datastore:
             model = attributes.get("model", {}).get("data", "unknown")
             sn = attributes.get("serial_number", {}).get("data", "unknown")
             
-            # FIX: Use exact semantic version string
             format_ver = attributes.get("format_version", {}).get("data", "1.0.0")
             version = str(format_ver)
 
@@ -592,172 +379,18 @@ class Datastore:
     async def device_data_get(self, query: DataRequest):
         self.logger.debug("device_data_get:3", extra={"query": query})
         
-        # 1. Parse incoming time constraints
         if query.start_time:
             query.start_timestamp = string_to_timestamp(query.start_time)
-
         if query.end_time:
             query.end_timestamp = string_to_timestamp(query.end_time)
-
         if query.last_n_seconds:
             start_dt = get_datetime_with_delta(-(query.last_n_seconds))
             query.start_timestamp = start_dt.timestamp()
             query.end_timestamp = None
 
-        self.logger.debug("device_data_get:4", extra={"query": query})
-
-        results = []
-
-        # 2. Always check the Hot Cache (Redis) first
         if self.db_client:
-            redis_response = await self.db_client.device_data_get(query)
-            results.extend(redis_response.get("results", []))
-
-        # 3. Check Deep Archive (ERDDAP) if enabled
-        if self.erddap_client:
-            current_time = time.time()
-            cache_limit = current_time - self.config.db_data_ttl
-            
-            # If the user wants data older than what Redis holds (or all historical data)
-            if not query.start_timestamp or query.start_timestamp < cache_limit:
-                
-                # Copy the Pydantic model so we don't mutate the original query
-                archive_query = query.copy()
-                
-                # Cap the ERDDAP request's end time at the cache limit. 
-                # ERDDAP only fetches what Redis dropped, preventing overlapping data.
-                archive_query.end_timestamp = min(query.end_timestamp or current_time, cache_limit)
-                
-                try:
-                    erddap_response = await self.erddap_client.device_data_get(archive_query)
-                    
-                    # Prepend the historical ERDDAP data to the recent Redis data
-                    results = erddap_response.get("results", []) + results
-                except Exception as e:
-                    self.logger.error("device_data_get ERDDAP fallback failed", extra={"reason": str(e)})
-
-        return {"results": results}
-
-    # async def device_definition_registry_update(self, ce: CloudEvent):
-    #     try:
-    #         for definition_type, device_def in ce.data.items():
-    #             if definition_type not in ["device-definition", "device-definition-update"]:
-    #                 continue
-
-    #             # FIX: If this is a flattened sync payload from another registrar, 
-    #             # map it directly to the Pydantic model and bypass extraction!
-    #             if "device_definition_id" in device_def:
-    #                 request = DeviceDefinitionUpdate(**device_def)
-    #             else:
-    #                 # ROBUST EXTRACTION: Works for both flat sync payloads AND nested sensor payloads
-    #                 make = device_def.get("make") or device_def.get("attributes", {}).get("make", {}).get("data", "unknown")
-    #                 model = device_def.get("model") or device_def.get("attributes", {}).get("model", {}).get("data", "unknown")
-                    
-    #                 # # Handle version extraction cleanly
-    #                 # version = device_def.get("version")
-    #                 # if not version:
-    #                 #     format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-    #                 #     version = f"v{format_version.split('.')[0]}"
-
-    #                 # --- CODE UPDATE: Always extract version from attributes to prevent stale v1 caching ---
-    #                 format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-    #                 version = f"v{format_version.split('.')[0]}"
-
-    #                 valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
-    #                 # device_definition_id = device_def.get("device_definition_id", f"{make}::{model}::{version}")
-    #                 # --- CODE UPDATE: Always recalculate the ID to prevent overwriting the v1 record ---
-    #                 device_definition_id = f"{make}::{model}::{version}"
-
-    #                 # Ensure these top-level keys exist so RediSearch can index them
-    #                 device_def["device_definition_id"] = device_definition_id
-    #                 device_def["make"] = make
-    #                 device_def["model"] = model
-    #                 device_def["version"] = version
-
-    #                 # Build a simple Pydantic model ONLY for structured insertion, passing the whole dict as **kwargs
-    #                 request = DeviceDefinitionUpdate(
-    #                     device_definition_id=device_definition_id,
-    #                     make=make,
-    #                     model=model,
-    #                     version=version,
-    #                     device_type=device_def.get("device_type") or device_def.get("attributes", {}).get("device_type", {}).get("data", "sensor"),
-    #                     valid_time=valid_time,
-    #                     attributes=device_def.get("attributes", {}),
-    #                     dimensions=device_def.get("dimensions", {}),
-    #                     variables=device_def.get("variables", {})
-    #                 )
-
-    #             self.logger.debug("device_definition_registry_update", extra={"request": request.device_definition_id})
-    #             if self.db_client:
-    #                 await self.db_client.device_definition_registry_update(
-    #                     database="registry",
-    #                     collection="device-definition",
-    #                     request=request,
-    #                     ttl=self.config.db_reg_device_definition_ttl,
-    #                 )
-    #     except Exception as e:
-    #         self.logger.error("device_definition_registry_update", extra={"reason": str(e)})
-
-    # async def device_definition_registry_update(self, ce: CloudEvent):
-    #     try:
-    #         for definition_type, device_def in ce.data.items():
-    #             if definition_type not in ["device-definition", "device-definition-update"]:
-    #                 continue
-
-    #             # 1. Safely extract core identity (handles both flat syncs and nested local payloads)
-    #             make = device_def.get("make") or device_def.get("attributes", {}).get("make", {}).get("data", "unknown")
-    #             model = device_def.get("model") or device_def.get("attributes", {}).get("model", {}).get("data", "unknown")
-                
-    #             # 2. Extract version, explicitly keeping the old truncated syntax (e.g., 'v2')
-    #             if "version" in device_def:
-    #                 version = device_def["version"]
-    #             else:
-    #                 format_version = device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-    #                 version = f"v{format_version.split('.')[0]}"
-                
-    #             # 3. Reconstruct ID using the old syntax
-    #             device_definition_id = device_def.get("device_definition_id")
-    #             if not device_definition_id:
-    #                 device_definition_id = f"{make}::{model}::{version}"
-                    
-    #             # 4. Safely extract remaining Pydantic requirements (Providing strict defaults to prevent validation crashes)
-    #             device_type = device_def.get("device_type") or device_def.get("attributes", {}).get("device_type", {}).get("data", "sensor")
-    #             valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
-    #             attributes = device_def.get("attributes", {})
-    #             dimensions = device_def.get("dimensions", {})
-    #             variables = device_def.get("variables", {})
-
-    #             # Ensure top-level keys exist for indexing
-    #             device_def["device_definition_id"] = device_definition_id
-    #             device_def["make"] = make
-    #             device_def["model"] = model
-    #             device_def["version"] = version
-    #             device_def["device_type"] = device_type
-    #             device_def["valid_time"] = valid_time
-
-    #             # 5. Build Pydantic model explicitly
-    #             request = DeviceDefinitionUpdate(
-    #                 device_definition_id=device_definition_id,
-    #                 make=make,
-    #                 model=model,
-    #                 version=version,
-    #                 device_type=device_type,
-    #                 valid_time=valid_time,
-    #                 attributes=attributes,
-    #                 dimensions=dimensions,
-    #                 variables=variables
-    #             )
-
-    #             self.logger.debug("device_definition_registry_update", extra={"request": request.device_definition_id})
-    #             if self.db_client:
-    #                 await self.db_client.device_definition_registry_update(
-    #                     database="registry",
-    #                     collection="device-definition",
-    #                     request=request,
-    #                     ttl=self.config.db_reg_device_definition_ttl,
-    #                 )
-    #     except Exception as e:
-    #         self.logger.error("device_definition_registry_update", extra={"reason": str(e)})
+            return await self.db_client.device_data_get(query)
+        return {"results": []}
 
     async def device_definition_registry_update(self, ce: CloudEvent):
         try:
@@ -768,7 +401,6 @@ class Datastore:
                 make = device_def.get("make") or device_def.get("attributes", {}).get("make", {}).get("data", "unknown")
                 model = device_def.get("model") or device_def.get("attributes", {}).get("model", {}).get("data", "unknown")
                 
-                # FIX: Use exact semantic version string
                 if "version" in device_def:
                     version = str(device_def["version"]).strip()
                 else:
@@ -779,7 +411,6 @@ class Datastore:
                     device_definition_id = f"{make}::{model}::{version}"
                     
                 device_type = device_def.get("device_type") or device_def.get("attributes", {}).get("device_type", {}).get("data", "sensor")
-                # valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
                 valid_time = (
                     device_def.get("valid_time") or 
                     device_def.get("attributes", {}).get("valid_time", {}).get("data") or 
@@ -832,63 +463,6 @@ class Datastore:
         
         return {"results": []}
 
-    # async def device_instance_registry_update(self, ce: CloudEvent):
-    #     try:
-    #         self.logger.debug("device_instance_registry_update", extra={"ce": ce})
-    #         for instance_type, instance_reg in ce.data.items():
-    #             request = None
-    #             self.logger.debug("device_instance_registry_update", extra={"instance_type": instance_type, "instance_reg": instance_reg})
-    #             try:
-    #                 make = instance_reg["make"]
-    #                 model = instance_reg["model"]
-    #                 serial_number = instance_reg["serial_number"]
-    #                 format_version = instance_reg["format_version"]
-    #                 parts = format_version.split(".")
-    #                 version = f"v{parts[0]}"
-
-    #                 if make is None or model is None or serial_number is None:
-    #                     self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
-    #                     return
-                    
-    #                 device_id = "::".join([make, model, serial_number])
-
-    #                 if instance_type == "device-instance":
-    #                     database = "registry"
-    #                     collection = "device-instance"
-    #                     attributes = instance_reg["attributes"]
-
-    #                     if "device_type" in instance_reg["attributes"]:
-    #                         device_type = instance_reg["attributes"]["device_type"]["data"]
-    #                     else:
-    #                         device_type = "sensor"
-
-    #                     request = DeviceInstanceUpdate(
-    #                         device_id=device_id,
-    #                         make=make,
-    #                         model=model,
-    #                         serial_number=serial_number,
-    #                         version=format_version,
-    #                         device_type=device_type,
-    #                         attributes=attributes,
-    #                     )
-
-    #             except (KeyError, IndexError) as e:
-    #                     self.logger.error("datastore:device_instance_registry_update", extra={"reason": e})
-    #                     continue
-
-    #             self.logger.debug("datastore:device_instance_registry_update", extra={"request": request, "db_client": self.db_client})
-    #             if self.db_client and request:
-    #                 await self.db_client.device_instance_registry_update(
-    #                     database=database,
-    #                     collection=collection,
-    #                     request=request,
-    #                     ttl=self.config.db_reg_device_instance_ttl,
-    #                 )
-
-    #     except Exception as e:
-    #         L.error("device_instance_registry_update", extra={"reason": e})
-    #     pass
-
     async def device_instance_registry_update(self, ce: CloudEvent):
         try:
             self.logger.debug("device_instance_registry_update", extra={"ce": ce})
@@ -900,7 +474,6 @@ class Datastore:
                     model = instance_reg["model"]
                     serial_number = instance_reg["serial_number"]
                     
-                    # FIX: Use exact semantic version string
                     version = str(instance_reg.get("format_version", "1.0.0"))
 
                     if make is None or model is None or serial_number is None:
@@ -958,136 +531,6 @@ class Datastore:
     # -------------------------------------------------------------------------------------
     # CONTROLLERS
     # -------------------------------------------------------------------------------------
-    # async def controller_data_update(self, ce: CloudEvent):
-    #     try:
-    #         database = "data"
-    #         collection = "controller"
-    #         attributes = ce.data["attributes"]
-    #         dimensions = ce.data["dimensions"]
-    #         variables = ce.data["variables"]
-
-    #         make = attributes["make"]["data"]
-    #         model = attributes["model"]["data"]
-    #         serial_number = attributes["serial_number"]["data"]
-
-    #         format_version = attributes["format_version"]["data"]
-    #         parts = format_version.split(".")
-    #         self.logger.debug(f"parts: {parts}, {format_version}")
-    #         erddap_version = f"v{parts[0]}"
-    #         controller_id = "::".join([make, model, serial_number])
-    #         self.logger.debug("controller_data_update", extra={"device_id": controller_id})
-
-    #         # timestamp = string_to_timestamp(ce.data["timestamp"])
-
-    #         record_time_str = variables.get("time", {}).get("data")
-    #         if not record_time_str:
-    #             record_time_str = ce.data.get("timestamp")
-                
-    #         timestamp = string_to_timestamp(record_time_str)
-
-    #         self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
-
-    #         request = ControllerDataUpdate(
-    #             make=make,
-    #             model=model,
-    #             serial_number=serial_number,
-    #             version=erddap_version,
-    #             timestamp=timestamp,
-    #             attributes=attributes,
-    #             dimensions=dimensions,
-    #             variables=variables,
-    #         )
-
-    #         self.logger.debug("controller_data_update", extra={"request": request})
-    #         await self.db_client.controller_data_update(
-    #             database=database,
-    #             collection=collection,
-    #             request=request,
-    #             ttl=self.config.db_data_ttl,
-    #         )
-
-    #         # If the controller is sending data, it is currently active.
-    #         instance_request = ControllerInstanceUpdate(
-    #             controller_id=controller_id,
-    #             make=make,
-    #             model=model,
-    #             serial_number=serial_number,
-    #             version=erddap_version,
-    #             attributes=attributes,
-    #         )
-            
-    #         await self.db_client.controller_instance_registry_update(
-    #             database="registry",
-    #             collection="controller-instance",
-    #             request=instance_request,
-    #             ttl=self.config.db_reg_controller_instance_ttl,
-    #         )
-
-    #     except Exception as e:
-    #         L.error("device_data_update", extra={"reason": e})
-    #     pass
-
-    # async def controller_data_update(self, ce: CloudEvent):
-    #     try:
-    #         database = "data"
-    #         collection = "controller"
-    #         data = ce.data
-            
-    #         attributes = data.get("attributes", {})
-    #         variables = data.get("variables", {})
-    #         dimensions = data.get("dimensions", {})
-
-    #         ts_str = data.get("timestamp")
-    #         timestamp = string_to_timestamp(ts_str)
-
-    #         make = attributes.get("make", {}).get("data", "unknown")
-    #         model = attributes.get("model", {}).get("data", "unknown")
-    #         sn = attributes.get("serial_number", {}).get("data", "unknown")
-            
-    #         format_ver = attributes.get("format_version", {}).get("data", "1.0.0")
-    #         version = f"v{str(format_ver).split('.')[0]}"
-
-    #         controller_id = attributes.get("controller_id", {}).get("data")
-    #         if not controller_id:
-    #             controller_id = f"{make}::{model}::{sn}"
-
-    #         request = ControllerDataUpdate(
-    #             controller_id=controller_id,
-    #             make=make,
-    #             model=model,
-    #             serial_number=sn,
-    #             version=version,
-    #             timestamp=timestamp,
-    #             attributes=attributes,
-    #             dimensions=dimensions,
-    #             variables=variables,
-    #         )
-
-    #         if self.db_client:
-    #             # 1. Save the historical data
-    #             await self.db_client.controller_data_update(
-    #                 database=database, collection=collection, request=request, ttl=self.config.db_data_ttl
-    #             )
-                
-    #             # 2. RESTORED: Register the active instance!
-    #             instance_request = ControllerInstanceUpdate(
-    #                 controller_id=controller_id,
-    #                 make=make,
-    #                 model=model,
-    #                 serial_number=sn,
-    #                 version=version,
-    #                 attributes=attributes,
-    #             )
-    #             await self.db_client.controller_instance_registry_update(
-    #                 database="registry",
-    #                 collection="controller-instance",
-    #                 request=instance_request,
-    #                 ttl=self.config.db_reg_controller_instance_ttl,
-    #             )
-
-    #     except Exception as e:
-    #         L.error("controller_data_update error", extra={"reason": str(e)})
-
     async def controller_data_update(self, ce: CloudEvent):
         try:
             database = "data"
@@ -1105,7 +548,6 @@ class Datastore:
             model = attributes.get("model", {}).get("data", "unknown")
             sn = attributes.get("serial_number", {}).get("data", "unknown")
             
-            # FIX: Use exact semantic version string
             format_ver = attributes.get("format_version", {}).get("data", "1.0.0")
             version = str(format_ver)
 
@@ -1151,163 +593,18 @@ class Datastore:
     async def controller_data_get(self, query: DataRequest):
         self.logger.debug("controller_data_get:3", extra={"query": query})
         
-        # 1. Parse incoming time constraints
         if query.start_time:
             query.start_timestamp = string_to_timestamp(query.start_time)
-
         if query.end_time:
             query.end_timestamp = string_to_timestamp(query.end_time)
-
         if query.last_n_seconds:
             start_dt = get_datetime_with_delta(-(query.last_n_seconds))
             query.start_timestamp = start_dt.timestamp()
             query.end_timestamp = None
 
-        self.logger.debug("controller_data_get:4", extra={"query": query})
-
-        results = []
-
-        # 2. Always check the Hot Cache (Redis) first
         if self.db_client:
-            redis_response = await self.db_client.controller_data_get(query)
-            results.extend(redis_response.get("results", []))
-
-        # 3. Check Deep Archive (ERDDAP) if enabled
-        if self.erddap_client:
-            current_time = time.time()
-            cache_limit = current_time - self.config.db_data_ttl
-            
-            # If the user wants data older than what Redis holds (or all historical data)
-            if not query.start_timestamp or query.start_timestamp < cache_limit:
-                
-                # Copy the Pydantic model so we don't mutate the original query
-                archive_query = query.copy()
-                
-                # Cap the ERDDAP request's end time at the cache limit
-                archive_query.end_timestamp = min(query.end_timestamp or current_time, cache_limit)
-                
-                try:
-                    erddap_response = await self.erddap_client.controller_data_get(archive_query)
-                    
-                    # Prepend the historical ERDDAP data to the recent Redis data
-                    results = erddap_response.get("results", []) + results
-                except Exception as e:
-                    self.logger.error("controller_data_get ERDDAP fallback failed", extra={"reason": str(e)})
-
-        return {"results": results}
-    
-    # async def controller_definition_registry_update(self, ce: CloudEvent):
-    #     try:
-    #         for definition_type, controller_def in ce.data.items():
-    #             if definition_type not in ["controller-definition", "controller-definition-update"]:
-    #                 continue
-
-    #             # FIX: Direct mapping for sync payloads
-    #             if "controller_definition_id" in controller_def:
-    #                 request = ControllerDefinitionUpdate(**controller_def)
-    #             else:
-    #                 # ROBUST EXTRACTION: Works for both flat sync payloads AND nested local payloads
-    #                 make = controller_def.get("make") or controller_def.get("attributes", {}).get("make", {}).get("data", "unknown")
-    #                 model = controller_def.get("model") or controller_def.get("attributes", {}).get("model", {}).get("data", "unknown")
-                    
-    #                 # # Handle version extraction cleanly
-    #                 # version = controller_def.get("version")
-    #                 # if not version:
-    #                 #     format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-    #                 #     version = f"v{format_version.split('.')[0]}"
-
-    #                 # --- FIX: ALWAYS extract from attributes first to prevent stale 'v1' caching ---
-    #                 format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-    #                 version = f"v{format_version.split('.')[0]}"
-
-    #                 valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
-    #                 # controller_definition_id = controller_def.get("controller_definition_id", f"{make}::{model}::{version}")
-    #                 # --- FIX: ALWAYS rebuild the ID from the fresh version string ---
-    #                 controller_definition_id = f"{make}::{model}::{version}"
-
-    #                 # Ensure these top-level keys exist so RediSearch can index them
-    #                 controller_def["controller_definition_id"] = controller_definition_id
-    #                 controller_def["make"] = make
-    #                 controller_def["model"] = model
-    #                 controller_def["version"] = version
-    #                 controller_def["valid_time"] = valid_time
-
-    #                 # Build a simple Pydantic model ONLY for structured insertion
-    #                 request = ControllerDefinitionUpdate(
-    #                     controller_definition_id=controller_definition_id,
-    #                     make=make,
-    #                     model=model,
-    #                     version=version,
-    #                     valid_time=valid_time,
-    #                     attributes=controller_def.get("attributes", {}),
-    #                     dimensions=controller_def.get("dimensions", {}),
-    #                     variables=controller_def.get("variables", {})
-    #                 )
-
-    #             self.logger.debug("controller_definition_registry_update", extra={"request": request.controller_definition_id})
-                
-    #             if self.db_client:
-    #                 await self.db_client.controller_definition_registry_update(
-    #                     database="registry",
-    #                     collection="controller-definition",
-    #                     request=request,
-    #                     ttl=self.config.db_reg_controller_definition_ttl,
-    #                 )
-    #     except Exception as e:
-    #         self.logger.error("controller_definition_registry_update", extra={"reason": str(e)})
-
-    # async def controller_definition_registry_update(self, ce: CloudEvent):
-    #     try:
-    #         for definition_type, controller_def in ce.data.items():
-    #             if definition_type not in ["controller-definition", "controller-definition-update"]:
-    #                 continue
-
-    #             make = controller_def.get("make") or controller_def.get("attributes", {}).get("make", {}).get("data", "unknown")
-    #             model = controller_def.get("model") or controller_def.get("attributes", {}).get("model", {}).get("data", "unknown")
-                
-    #             if "version" in controller_def:
-    #                 version = controller_def["version"]
-    #             else:
-    #                 format_version = controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")
-    #                 version = f"v{format_version.split('.')[0]}"
-                
-    #             controller_definition_id = controller_def.get("controller_definition_id")
-    #             if not controller_definition_id:
-    #                 controller_definition_id = f"{make}::{model}::{version}"
-
-    #             valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
-    #             attributes = controller_def.get("attributes", {})
-    #             dimensions = controller_def.get("dimensions", {})
-    #             variables = controller_def.get("variables", {})
-
-    #             controller_def["controller_definition_id"] = controller_definition_id
-    #             controller_def["make"] = make
-    #             controller_def["model"] = model
-    #             controller_def["version"] = version
-    #             controller_def["valid_time"] = valid_time
-
-    #             request = ControllerDefinitionUpdate(
-    #                 controller_definition_id=controller_definition_id,
-    #                 make=make,
-    #                 model=model,
-    #                 version=version,
-    #                 valid_time=valid_time,
-    #                 attributes=attributes,
-    #                 dimensions=dimensions,
-    #                 variables=variables
-    #             )
-
-    #             self.logger.debug("controller_definition_registry_update", extra={"request": request.controller_definition_id})
-                
-    #             if self.db_client:
-    #                 await self.db_client.controller_definition_registry_update(
-    #                     database="registry",
-    #                     collection="controller-definition",
-    #                     request=request,
-    #                     ttl=self.config.db_reg_controller_definition_ttl,
-    #                 )
-    #     except Exception as e:
-    #         self.logger.error("controller_definition_registry_update", extra={"reason": str(e)})
+            return await self.db_client.controller_data_get(query)
+        return {"results": []}
 
     async def controller_definition_registry_update(self, ce: CloudEvent):
         try:
@@ -1318,7 +615,6 @@ class Datastore:
                 make = controller_def.get("make") or controller_def.get("attributes", {}).get("make", {}).get("data", "unknown")
                 model = controller_def.get("model") or controller_def.get("attributes", {}).get("model", {}).get("data", "unknown")
                 
-                # FIX: Use exact semantic version string
                 if "version" in controller_def:
                     version = str(controller_def["version"]).strip()
                 else:
@@ -1328,7 +624,6 @@ class Datastore:
                 if not controller_definition_id:
                     controller_definition_id = f"{make}::{model}::{version}"
 
-                # valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
                 valid_time = (
                     controller_def.get("valid_time") or 
                     controller_def.get("attributes", {}).get("valid_time", {}).get("data") or 
@@ -1380,57 +675,6 @@ class Datastore:
         
         return {"results": []}
 
-    # async def controller_instance_registry_update(self, ce: CloudEvent):
-    #     try:
-    #         self.logger.debug("controller_instance_registry_update", extra={"ce": ce})
-    #         for instance_type, instance_reg in ce.data.items():
-    #             request = None
-    #             self.logger.debug("controller_instance_registry_update", extra={"instance_type": instance_type, "instance_reg": instance_reg})
-    #             try:
-    #                 make = instance_reg["make"]
-    #                 model = instance_reg["model"]
-    #                 serial_number = instance_reg["serial_number"]
-    #                 format_version = instance_reg["format_version"]
-    #                 parts = format_version.split(".")
-    #                 version = f"v{parts[0]}"
-
-    #                 if make is None or model is None or serial_number is None:
-    #                     self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
-    #                     return
-                    
-    #                 controller_id = "::".join([make, model, serial_number])
-
-    #                 if instance_type == "controller-instance":
-    #                     database = "registry"
-    #                     collection = "controller-instance"
-    #                     attributes = instance_reg["attributes"]
-
-    #                     request = ControllerInstanceUpdate(
-    #                         controller_id=controller_id,
-    #                         make=make,
-    #                         model=model,
-    #                         serial_number=serial_number,
-    #                         version=format_version,
-    #                         attributes=attributes,
-    #                     )
-
-    #             except (KeyError, IndexError) as e:
-    #                     self.logger.error("datastore:controller_instance_registry_update", extra={"reason": e})
-    #                     continue
-
-    #             self.logger.debug("datastore:controller_instance_registry_update", extra={"request": request, "db_client": self.db_client})
-    #             if self.db_client and request:
-    #                 await self.db_client.controller_instance_registry_update(
-    #                     database=database,
-    #                     collection=collection,
-    #                     request=request,
-    #                     ttl=self.config.db_reg_controller_instance_ttl,
-    #                 )
-
-    #     except Exception as e:
-    #         L.error("controller_instance_registry_update", extra={"reason": e})
-    #     pass
-
     async def controller_instance_registry_update(self, ce: CloudEvent):
         try:
             self.logger.debug("controller_instance_registry_update", extra={"ce": ce})
@@ -1442,7 +686,6 @@ class Datastore:
                     model = instance_reg["model"]
                     serial_number = instance_reg["serial_number"]
                     
-                    # FIX: Use exact semantic version string
                     version = str(instance_reg.get("format_version", "1.0.0"))
 
                     if make is None or model is None or serial_number is None:
@@ -1499,9 +742,6 @@ class Datastore:
             return await self.db_client.variablemap_definition_registry_get_ids()
         return {"results": []}
 
-    # -------------------------------------------------------------------------------------
-    # UTILITY HELPER (Add this above your update methods)
-    # -------------------------------------------------------------------------------------
     def _extract_val(self, obj: dict, key: str, default: any):
         """Safely extracts a value whether it is a flat string or a nested {"data": ...} dict."""
         if not isinstance(obj, dict):
@@ -1519,7 +759,6 @@ class Datastore:
                 if "variablemap_definition_id" in vm_def:
                     request = VariableMapDefinitionUpdate(**vm_def)
                 else:
-                    # FIX: Read primary IDs from the 'metadata' block as defined in sampling_system.py
                     metadata = vm_def.get("metadata", {})
                     variablemap = metadata.get("name", "unknown")
                     variablemap_type_id = metadata.get("platform", "unknown")
@@ -1528,7 +767,6 @@ class Datastore:
                     data = vm_def.get("data", {})
                     attributes = data.get("attributes", {})
                     
-                    # Safely extract flat or nested attributes
                     variablemap_type = self._extract_val(attributes, "variablemap_type", "Platform")
 
                     variablemap_definition_id = "::".join([variablemap_type_id, variablemap, valid_config_time])
@@ -1555,7 +793,6 @@ class Datastore:
         except Exception as e:
             self.logger.error("variablemap_definition_registry_update", extra={"reason": repr(e)})
 
-
     async def variablemap_definition_registry_get(self, query: VariableMapDefinitionRequest) -> dict:
         if self.db_client:
             return await self.db_client.variablemap_definition_registry_get(query)
@@ -1576,17 +813,14 @@ class Datastore:
                 if "variableset_definition_id" in vs_payload:
                     request = VariableSetDefinitionUpdate(**vs_payload)
                 else:
-                    # Look exactly where publish_local_definitions() puts the data
                     vs_name = vs_payload.get("metadata", {}).get("name", "unknown")
                     data = vs_payload.get("data", {})
                     attributes = data.get("attributes", {})
                     
-                    # Safely extract flat or nested attributes
                     variablemap_name = self._extract_val(attributes, "variablemap_id", "unknown")
                     platform = self._extract_val(attributes, "platform", "unknown")
                     valid_config_time = self._extract_val(attributes, "valid_config_time", "2020-01-01T00:00:00Z")
                     
-                    # Safely extract index info (sampling_system puts this in 'data', not 'attributes')
                     index_type = self._extract_val(data, "index_type", self._extract_val(attributes, "index_type", "unknown"))
                     index_value = self._extract_val(data, "index_value", self._extract_val(attributes, "index_value", 0))
 
@@ -1630,28 +864,19 @@ class Datastore:
                 if definition_type not in [f"{resource}", f"{resource}-definition", f"{resource}-definition-update"]:
                     continue
                 
-                # Setup safe references to all possible data locations
                 metadata = resource_def.get("metadata", {})
                 data_block = resource_def.get("data", {})
                 attributes = data_block.get("attributes", {})
 
-                # Ensure a metadata block exists in the object we save to Redis
                 if "metadata" not in resource_def:
                     resource_def["metadata"] = {}
 
-                # FIX: Safely extract 'name' using the helper, cascading through all possible locations
                 name = (
                     self._extract_val(resource_def, "name", None) or 
                     self._extract_val(metadata, "name", None) or 
                     self._extract_val(attributes, "name", "unknown")
                 )
 
-                # FIX: Safely extract 'valid_config_time' using the helper, cascading through all possible locations
-                # valid_time = (
-                #     self._extract_val(resource_def, "valid_config_time", None) or 
-                #     self._extract_val(metadata, "valid_config_time", None) or 
-                #     self._extract_val(attributes, "valid_config_time", "2020-01-01T00:00:00Z")
-                # )
                 valid_time = (
                     self._extract_val(resource_def, "revision-time", None) or
                     self._extract_val(metadata, "revision-time", None) or
@@ -1660,8 +885,6 @@ class Datastore:
                     self._extract_val(attributes, "valid_config_time", "2020-01-01T00:00:00Z")
                 )
 
-                # Re-inject the perfectly extracted flat strings back into the metadata block
-                # so redis_client.py can reliably build the ID: f"{name}::{valid_time}"
                 resource_def["metadata"]["name"] = name
                 resource_def["metadata"]["valid_config_time"] = valid_time
 
@@ -1671,8 +894,6 @@ class Datastore:
                         database="registry",
                         collection=f"{resource}-definition",
                         request=resource_def,
-                        # ttl=0
-                        # FIX: Use the configured TTL instead of hardcoded 0
                         ttl=self.config.db_reg_sampling_definition_ttl
                     )
         except Exception as e:
@@ -1692,78 +913,6 @@ class Datastore:
     # -------------------------------------------------------------------------------------
     # VARIABLE SET TELEMETRY DATA
     # -------------------------------------------------------------------------------------
-    # async def variableset_data_update(self, ce: CloudEvent):
-    #     try:
-    #         database = "data"
-    #         collection = "variableset"
-            
-    #         self.logger.debug("variableset_data_update")
-    #         data = ce.data
-    #         attributes = data.get("attributes", {})
-    #         dimensions = data.get("dimensions", {})
-    #         variables = data.get("variables", {})
-            
-    #         platform = attributes.get("platform", {}).get("data", "unknown")
-    #         vmap_name = attributes.get("variablemap", {}).get("data", "unknown")
-    #         vmap_time = attributes.get("valid_config_time", {}).get("data", "2020-01-01T00:00:00Z")
-
-    #         variablemap_id = f"{platform}::{vmap_name}::{vmap_time}"
-            
-    #         # --- STRICT SOURCE OF TRUTH TIME EXTRACTION ---
-    #         time_data = variables.get("time", {}).get("data")
-            
-    #         # If the variable set is chunked (array of times), use the latest time for the index
-    #         if isinstance(time_data, list) and len(time_data) > 0:
-    #             ts_str = time_data[-1] 
-    #         else:
-    #             ts_str = time_data
-
-    #         # FAIL FAST: Do not fall back. Reject if invalid.
-    #         if not ts_str:
-    #             raise ValueError("Missing or empty variables.time.data. Cannot index VariableSet without a valid measurement time.")
-                
-    #         timestamp = string_to_timestamp(str(ts_str))
-    #         # ----------------------------------------------
-
-    #         source_parts = ce.get("source", "").split(".")
-    #         variableset_id = source_parts[-1] if len(source_parts) > 0 else "unknown"
-            
-    #         request = VariableSetDataUpdate(
-    #             variableset_id=variableset_id,
-    #             variablemap_id=variablemap_id,
-    #             variableset=variableset_id.split("::")[-1] if "::" in variableset_id else "unknown",
-    #             timestamp=timestamp, 
-    #             attributes=attributes,
-    #             dimensions=dimensions,
-    #             variables=variables,
-    #         )
-            
-    #         self.logger.debug("variableset_data_update", extra={"req": request})
-    #         if self.db_client:
-    #             await self.db_client.variableset_data_update(
-    #                 database=database,
-    #                 collection=collection,
-    #                 request=request,
-    #                 ttl=self.config.db_data_ttl,
-    #             )
-            
-    #             instance_request = VariableSetInstanceUpdate(
-    #                 variableset_id=request.variableset_id,
-    #                 variablemap_id=request.variablemap_id,
-    #                 variableset=request.variableset,
-    #                 attributes=attributes,
-    #             )
-                
-    #             await self.db_client.variableset_instance_registry_update(
-    #                 database="registry",
-    #                 collection="variableset-instance",
-    #                 request=instance_request,
-    #                 ttl=self.config.db_reg_variableset_instance_ttl,
-    #             )
-                
-    #     except Exception as e:
-    #         self.logger.error("variableset_data_update", extra={"reason": str(e)})
-
     async def variableset_data_update(self, ce: CloudEvent):
         try:
             database = "data"
@@ -1775,41 +924,35 @@ class Datastore:
             dimensions = data.get("dimensions", {})
             variables = data.get("variables", {})
             
-            # --- MAP ID RECONSTRUCTION ---
             platform = attributes.get("platform", {}).get("data", "unknown")
             vmap_name = attributes.get("variablemap_id", {}).get("data") or attributes.get("variablemap", {}).get("data", "unknown")
             vmap_time = attributes.get("valid_config_time", {}).get("data", "2020-01-01T00:00:00Z")
 
             variablemap_id = f"{platform}::{vmap_name}::{vmap_time}"
             
-            # --- STRICT SOURCE OF TRUTH TIME EXTRACTION ---
             time_data = variables.get("time", {}).get("data")
             
-            # If the variable set is chunked (array of times), use the latest time for the index
             if isinstance(time_data, list) and len(time_data) > 0:
                 ts_str = time_data[-1] 
             else:
                 ts_str = time_data
 
-            # FAIL FAST: Do not fall back. Reject if invalid.
             if not ts_str:
                 raise ValueError("Missing or empty variables.time.data. Cannot index VariableSet without a valid measurement time.")
                 
             timestamp = string_to_timestamp(str(ts_str))
             
-            # --- DECOUPLED VARIABLESET ID RECONSTRUCTION ---
             vs_name = attributes.get("variableset_id", {}).get("data") or attributes.get("variableset", {}).get("data")
             if not vs_name:
                 source_parts = ce.get("source", "").split(".")
                 raw_source = source_parts[-1] if len(source_parts) > 0 else "unknown"
                 vs_name = raw_source.split("::")[-1] if "::" in raw_source else raw_source
 
-            # Build the decoupled variableset ID
             variableset_id = f"{vmap_name}::{vs_name}"
 
             request = VariableSetDataUpdate(
                 variableset_id=variableset_id,
-                variablemap_id=variablemap_id, # Retain full definition ID for the registry link
+                variablemap_id=variablemap_id,
                 variableset=vs_name,
                 timestamp=timestamp, 
                 attributes=attributes,
@@ -1819,7 +962,6 @@ class Datastore:
             
             self.logger.debug("variableset_data_update", extra={"req": request})
             if self.db_client:
-                # 1. Save historical data
                 await self.db_client.variableset_data_update(
                     database=database,
                     collection=collection,
@@ -1827,7 +969,6 @@ class Datastore:
                     ttl=self.config.db_data_ttl,
                 )
             
-                # 2. Update active instance registry
                 instance_request = VariableSetInstanceUpdate(
                     variableset_id=request.variableset_id,
                     variablemap_id=request.variablemap_id,
@@ -1848,50 +989,18 @@ class Datastore:
     async def variableset_data_get(self, query: VariableSetDataRequest):
         self.logger.debug("variableset_data_get:3", extra={"query": query})
         
-        # 1. Parse incoming time constraints
         if query.start_time:
             query.start_timestamp = string_to_timestamp(query.start_time)
-            
         if query.end_time:
             query.end_timestamp = string_to_timestamp(query.end_time)
-            
         if query.last_n_seconds:
             start_dt = get_datetime_with_delta(-(query.last_n_seconds))
             query.start_timestamp = start_dt.timestamp()
             query.end_timestamp = None
 
-        self.logger.debug("variableset_data_get:4", extra={"query": query})
-
-        results = []
-
-        # 2. Always check the Hot Cache (Redis) first
         if self.db_client:
-            redis_response = await self.db_client.variableset_data_get(query)
-            results.extend(redis_response.get("results", []))
-
-        # 3. Check Deep Archive (ERDDAP) if enabled
-        if self.erddap_client:
-            current_time = time.time()
-            cache_limit = current_time - self.config.db_data_ttl
-            
-            # If the user wants data older than what Redis holds (or all historical data)
-            if not query.start_timestamp or query.start_timestamp < cache_limit:
-                
-                # Copy the Pydantic model so we don't mutate the original query
-                archive_query = query.copy()
-                
-                # Cap the ERDDAP request's end time at the cache limit
-                archive_query.end_timestamp = min(query.end_timestamp or current_time, cache_limit)
-                
-                try:
-                    erddap_response = await self.erddap_client.variableset_data_get(archive_query)
-                    
-                    # Prepend the historical ERDDAP data to the recent Redis data
-                    results = erddap_response.get("results", []) + results
-                except Exception as e:
-                    self.logger.error("variableset_data_get ERDDAP fallback failed", extra={"reason": str(e)})
-
-        return {"results": results}
+            return await self.db_client.variableset_data_get(query)
+        return {"results": []}
     
     async def variableset_instance_registry_get_ids(self) -> dict:
         if self.db_client:

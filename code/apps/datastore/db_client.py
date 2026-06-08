@@ -133,11 +133,17 @@ class CompositeDBClient(DBClient):
         import redis_client
         self.redis = redis_client.RedisClient(config)
         
-        import erddap_client
-        self.erddap = erddap_client.ErddapClient(config)
-        
         # Get the TTL window for live data (defaults to 600s / 10 mins)
         self.live_window_seconds = self.config.get("db_data_ttl", 600)
+
+        # Conditionally load ERDDAP based on the passed config
+        if self.config.get("erddap_enable"):
+            import erddap_client
+            self.erddap = erddap_client.ErddapClient(config)
+            self.logger.info("Composite Router: ERDDAP historical backend enabled.")
+        else:
+            self.erddap = None
+            self.logger.info("Composite Router: ERDDAP disabled. Operating in Edge/Cache-only mode.")
 
     async def build_indexes(self):
         """Pass through index building to Redis."""
@@ -148,37 +154,43 @@ class CompositeDBClient(DBClient):
     # TELEMETRY ROUTING (Federated)
     # ---------------------------------------------------------
     def _is_live_query(self, start_timestamp: float = None, end_timestamp: float = None) -> bool:
-        """Determines if a query falls within the live Redis memory window."""
+        """Determines if a query falls safely within the live Redis memory window."""
         now = time.time()
+        
         # If no explicit start/end time, it's asking for the latest data (live)
         if not start_timestamp and not end_timestamp:
             return True
-        # If the requested start time is entirely within our Redis TTL window (live)
-        if start_timestamp and (now - start_timestamp) <= self.live_window_seconds:
+            
+        # Add a 60-second safety buffer to the TTL. 
+        # If the requested start_time is older than this safe window, 
+        # route the ENTIRE query to ERDDAP. No stitching.
+        safe_redis_window = self.live_window_seconds - 60
+        
+        if start_timestamp and (now - start_timestamp) <= safe_redis_window:
             return True
+            
         return False
 
     async def device_data_get(self, request: DataRequest) -> dict:
-        if self._is_live_query(request.start_timestamp, request.end_timestamp):
-            self.logger.debug("Routing device_data_get to REDIS (Live Window)")
+        if not self.erddap or self._is_live_query(request.start_timestamp, request.end_timestamp):
+            self.logger.debug("Routing device_data_get to REDIS (Live Window or Edge-Only Mode)")
             return await self.redis.device_data_get(request)
         else:
             self.logger.debug("Routing device_data_get to ERDDAP (Historical Window)")
             return await self.erddap.device_data_get(request)
 
     async def controller_data_get(self, request: ControllerDataRequest) -> dict:
-        if self._is_live_query(request.start_timestamp, request.end_timestamp):
+        if not self.erddap or self._is_live_query(request.start_timestamp, request.end_timestamp):
             self.logger.debug("Routing controller_data_get to REDIS")
             return await self.redis.controller_data_get(request)
         else:
             self.logger.debug("Routing controller_data_get to ERDDAP")
-            # Fallback assuming ERDDAP client has this implemented, or handles generic fetching
             if hasattr(self.erddap, "controller_data_get"):
                 return await self.erddap.controller_data_get(request)
             return {"results": []}
 
     async def variableset_data_get(self, request: VariableSetDataRequest) -> dict:
-        if self._is_live_query(request.start_timestamp, request.end_timestamp):
+        if not self.erddap or self._is_live_query(request.start_timestamp, request.end_timestamp):
             self.logger.debug("Routing variableset_data_get to REDIS")
             return await self.redis.variableset_data_get(request)
         else:
@@ -194,19 +206,20 @@ class CompositeDBClient(DBClient):
         
         # 2. Cache Miss? Query ERDDAP
         if not result.get("results"):
-            self.logger.info(f"Cache miss for {resource} '{query.get('name')}'. Fetching from ERDDAP...")
-            result = await self.erddap.sampling_definition_registry_get(resource, query)
-            
-            # 3. If found in ERDDAP, cache it back into Redis for next time
-            if result.get("results"):
-                for definition in result["results"]:
-                    await self.redis.sampling_definition_registry_update(
-                        resource=resource,
-                        database="registry",
-                        collection=f"{resource}-definition",
-                        request=definition,
-                        ttl=3600 # Cache for an hour
-                    )
+            if self.erddap:
+                self.logger.info(f"Cache miss for {resource} '{query.get('name')}'. Fetching from ERDDAP...")
+                result = await self.erddap.sampling_definition_registry_get(resource, query)
+                
+                # 3. If found in ERDDAP, cache it back into Redis for next time
+                if result.get("results"):
+                    for definition in result["results"]:
+                        await self.redis.sampling_definition_registry_update(
+                            resource=resource,
+                            database="registry",
+                            collection=f"{resource}-definition",
+                            request=definition,
+                            ttl=3600 # Cache for an hour
+                        )
                     
         return result
 
@@ -295,7 +308,6 @@ class DBClientManager:
             config = DBClientConfig()
 
         if config.type == "redis":
-            # We now return the Composite client to handle the federated architecture
             client = CompositeDBClient(config)
             print(f"client: {client}, {config}")
             return client
