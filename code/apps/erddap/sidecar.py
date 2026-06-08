@@ -91,13 +91,20 @@ def unflatten_telemetry_to_ncojson(flat_data: dict, definition: dict) -> list:
     if not cols or not rows:
         return []
         
-    # Identify the Shape Dimensions (Coordinates)
-    def_dims = list(definition.get("dimensions", {}).keys())
-    shape_dims = [dim for dim in def_dims if dim in cols]
-    shape_dims = sorted(shape_dims, key=lambda d: def_dims.index(d))
-    
     sys_cols = {"timestamp", "author", "command"}
-    var_cols = [c for c in cols if c not in shape_dims and c not in sys_cols]
+    var_cols = [c for c in cols if c not in sys_cols]
+    
+    # Context-aware Shape Identification Fix
+    target_var = next((v for v in var_cols if v in definition.get("variables", {})), None)
+
+    if target_var and "shape" in definition["variables"][target_var]:
+        shape_dims = [dim for dim in definition["variables"][target_var]["shape"] if dim in cols]
+    else:
+        def_dims = list(definition.get("dimensions", {}).keys())
+        shape_dims = [dim for dim in def_dims if dim in cols]
+        shape_dims = sorted(shape_dims, key=lambda d: def_dims.index(d))
+    
+    var_cols = [c for c in var_cols if c not in shape_dims]
     
     # Build the N-Dimensional Grouping Tree
     grouped = {}
@@ -163,7 +170,7 @@ def unflatten_telemetry_to_ncojson(flat_data: dict, definition: dict) -> list:
                 record["dimensions"][c_name] = {"data": c_data}
                 
         for var_name in var_cols:
-            if var_name == "serial_number": continue
+            if var_name == "serial_number" or var_name.endswith("_dim"): continue
             if len(shape_dims) == 1:
                 record["variables"][var_name] = {"data": _cast(leaf.get(var_name), definition["variables"].get(var_name, {}).get("type", "float"))}
             else:
@@ -214,7 +221,6 @@ class ERDDAPConfigCompiler:
                 )
                 dest_path.write_text(xml_content)
                 
-                # --- FIXED: AUTOMATED SEED FILING FOR FIXED OPERATION CHANNELS ---
                 dir_match = re.search(r'<fileDir>([^<]+)</fileDir>', xml_content)
                 if dir_match:
                     dataset_dir = Path(dir_match.group(1))
@@ -239,7 +245,6 @@ class ERDDAPConfigCompiler:
         L.info("Compiling master datasets.xml from active directory state...")
         self.rebuild_master_xml()
         
-        # --- ERDDAP FLAG FIX: Force direct global major re-indexing ---
         (self.flags_dir / "datasets").touch()
         L.info("ERDDAP initialization sequence complete.")
 
@@ -294,18 +299,32 @@ class ERDDAPConfigCompiler:
             shape_joined = "_".join(shape)
             dataset_id = f"telemetry_{make}_{model}_{version}_{shape_joined}".replace("-", "_")
             
+            coord_idx = 0
             for dim in shape:
                 if dim != "time" and not any(c["name"] == dim for c in cols):
                     if dim in variables:
                         dim_var = variables[dim]
                         raw_type = dim_var.get("type", "float")
-                        cols.insert(1, {
+                        
+                        cols.insert(coord_idx, {
                             "name": dim,
                             "type": map_erddap_type(raw_type),
                             "original_type": raw_type,
                             "units": dim_var.get("attributes", {}).get("units", {}).get("data", ""),
                             "long_name": dim_var.get("attributes", {}).get("long_name", {}).get("data", dim)
                         })
+                        coord_idx += 1
+                        
+                        dim_len_name = f"{dim}_dim"
+                        if not any(c["name"] == dim_len_name for c in cols):
+                            cols.insert(coord_idx, {
+                                "name": dim_len_name,
+                                "type": "int",
+                                "original_type": "int",
+                                "units": "count",
+                                "long_name": f"{dim} Dimension Length"
+                            })
+                            coord_idx += 1
 
             xml_content = self.telemetry_template.render(
                 dataset_id=dataset_id,
@@ -326,7 +345,6 @@ class ERDDAPConfigCompiler:
                 L.info(f"Generated new ERDDAP dataset: {dataset_id}")
                 needs_rebuild = True
 
-            # --- AUTOMATED SEEDING LOGIC PER SHAPE ---
             dir_match = re.search(r'<fileDir>([^<]+)</fileDir>', xml_content)
             if dir_match:
                 dataset_dir = Path(dir_match.group(1))
@@ -351,20 +369,18 @@ class ERDDAPConfigCompiler:
                     elif name == "command":
                         dummy_vals.append(0) 
                     else:
-                        c = next(c for c in cols if c["name"] == name)
-                        if c["type"] == "String":
+                        c = next((c for c in cols if c["name"] == name), None)
+                        if c and c["type"] == "String":
                             dummy_vals.append("seed")
-                        elif c["type"] in ["int", "long"]:
+                        elif c and c["type"] in ["int", "long"]:
                             dummy_vals.append(0)
                         else:
                             dummy_vals.append(0.0)
                             
-                # --- JSONL FIX: Space-free serialization arrays ---
                 seed_content = f"{json.dumps(col_names, separators=(',', ':'))}\n{json.dumps(dummy_vals, separators=(',', ':'))}\n"
                 seed_file.write_text(seed_content)
                 L.info(f"Dropped complete 2-line seed.jsonl into {dataset_dir}")
                 
-            # --- LOCAL DATASET LOAD ACCELERATOR ---
             (self.flags_dir / dataset_id).touch()
 
         if needs_rebuild:
@@ -447,33 +463,74 @@ def _extract_val(obj, key, default=None):
         return val.get("data", default)
     return val
 
+def format_erddap_array(data_list):
+    """Helper to format Python lists into ERDDAP's expected bracketed string array."""
+    if not isinstance(data_list, list):
+        return data_list
+    return f"[{','.join(str(x) for x in data_list)}]"
+
 def unroll_multidimensional_data(base_row, shape_dims, coords_dict, var_dict):
+    """
+    Unrolls multi-dimensional arrays up to the second-to-last dimension. 
+    Leaves the final dimension intact as an ERDDAP string array for native ingestion, 
+    and explicitly calculates/stores the dimension length.
+    """
+    # CASE 1: 1D Data (Only Time)
     if not shape_dims:
         row = base_row.copy()
         row.update(var_dict)
         yield row
         return
         
+    # CASE 2: 2D Data (Time + 1 Dim, e.g., Diameter)
+    if len(shape_dims) == 1:
+        dim_name = shape_dims[0]
+        row = base_row.copy()
+        
+        dim_data = coords_dict.get(dim_name, [])
+        row[dim_name] = format_erddap_array(dim_data)
+        
+        # Save the explicit length of the dimension array
+        row[f"{dim_name}_dim"] = len(dim_data) if isinstance(dim_data, list) else 1
+        
+        for v_name, v_data in var_dict.items():
+            row[v_name] = format_erddap_array(v_data)
+            
+        yield row
+        return
+        
+    # CASE 3: 3D+ Data (Time + >=2 Dims)
+    last_dim = shape_dims[-1]
+    unroll_dims = shape_dims[:-1]
+    
     def recurse(dim_index, current_indices, current_row):
-        if dim_index == len(shape_dims):
+        if dim_index == len(unroll_dims):
             row = current_row.copy()
+            
+            dim_data = coords_dict.get(last_dim, [])
+            row[last_dim] = format_erddap_array(dim_data)
+            
+            # Save the explicit length of the dimension array
+            row[f"{last_dim}_dim"] = len(dim_data) if isinstance(dim_data, list) else 1
+            
             for v_name, v_data in var_dict.items():
                 val = v_data
                 try:
                     for idx in current_indices:
                         val = val[idx]
-                    row[v_name] = val
+                    row[v_name] = format_erddap_array(val)
                 except (IndexError, TypeError):
                     row[v_name] = None
+                    
             yield row
             return
             
-        dim_name = shape_dims[dim_index]
+        dim_name = unroll_dims[dim_index]
         dim_coords = coords_dict.get(dim_name, [])
         
         for i, coord_val in enumerate(dim_coords):
             next_row = current_row.copy()
-            next_row[dim_name] = coord_val
+            next_row[dim_name] = coord_val 
             yield from recurse(dim_index + 1, current_indices + [i], next_row)
             
     yield from recurse(0, [], base_row)
@@ -481,12 +538,26 @@ def unroll_multidimensional_data(base_row, shape_dims, coords_dict, var_dict):
 async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5):
     async with http_semaphore:
         
-        # --- ERDDAP PARAMETER ORDERING FIX ---
-        if "author" in payload:
-            author_val = payload.pop("author")
-            payload["author"] = author_val
+        # Enforce exact ERDDAP parameter alignment based on the XML schema order
+        ordered_payload = {}
+        
+        # 1. Base metadata fields (Matches the top of telemetry_dataset.xml.j2)
+        base_keys = ["make", "model", "format_version", "serial_number", "time"]
+        for k in base_keys:
+            if k in payload:
+                ordered_payload[k] = payload[k]
+                
+        # 2. Dynamic data columns (Coordinates, lengths, and variables)
+        tail_keys = ["timestamp", "author", "command"]
+        for k in payload.keys():
+            if k not in base_keys and k not in tail_keys:
+                ordered_payload[k] = payload[k]
+                
+        # 3. Trailing system fields (Matches the bottom of telemetry_dataset.xml.j2)
+        for k in tail_keys:
+            if k in payload:
+                ordered_payload[k] = payload[k]
 
-        # Force ERDDAP to recognize the local loopback insert as secure
         headers = {
             "X-Forwarded-Proto": "https",
             "X-Forwarded-For": "127.0.0.1"
@@ -494,7 +565,8 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
 
         for attempt in range(retries):
             try:
-                resp = await http_client.post(url, params=payload, headers=headers)
+                # Dispatch using the strictly ordered payload
+                resp = await http_client.post(url, params=ordered_payload, headers=headers)
                 resp.raise_for_status()
                 return 
                 
@@ -537,8 +609,8 @@ async def insert_telemetry_to_erddap(ce: dict):
         base_params = {
             "make": make,
             "model": model,
-            "serial_number": sn,
             "format_version": str(version_raw),
+            "serial_number": sn,
             "time": current_time,
             "author": f"{config.author_name}_{config.insert_password}"
         }
@@ -635,7 +707,6 @@ async def handle_ops_registry_insert(ce: dict):
         f.write('["double","String","String","String","String","int","String"]\n')
         for rec in existing_records:
             f.write(rec)
-        # --- COMPACT JSON GENERATION FOR STABLE STORAGE ---
         f.write(json.dumps(record, separators=(',', ':')) + "\n")
         
     flag_dir = Path(config.data_dir) / "hardFlag"
@@ -676,7 +747,6 @@ async def handle_ops_log_insert(ce: dict):
     
     attrs = ce.get_attributes() if hasattr(ce, "get_attributes") else ce
 
-    # --- FIXED: Retain the raw ISO string instead of forcing an epoch float conversion ---
     time_str = attrs.get("time") 
     if not time_str:
         from datetime import datetime, timezone
@@ -745,7 +815,6 @@ async def handle_hardware_registry_insert(ce: dict):
         f.write('["double","String","String","String","String","String","String"]\n')
         for rec in existing_records:
             f.write(rec)
-        # --- COMPACT JSON GENERATION FOR STABLE STORAGE ---
         f.write(json.dumps(record, separators=(',', ':')) + "\n")
         
     flag_dir = Path(config.data_dir) / "hardFlag"
@@ -774,9 +843,6 @@ async def sync_definitions_loop():
     all_resources = HARDWARE_RESOURCES + OPS_RESOURCES
     known_ids = {f"{res}-definition": set() for res in all_resources}
     
-    # -----------------------------------------------------------------
-    # PRE-FLIGHT DISK DISCOVERY
-    # -----------------------------------------------------------------
     L.info("Sync Loop starting pre-flight storage discovery...")
     base_data_path = Path(config.data_dir) / "registry"
     
@@ -819,9 +885,6 @@ async def sync_definitions_loop():
 
     L.info("Pre-flight discovery complete.", extra={k: len(v) for k, v in known_ids.items()})
 
-    # -----------------------------------------------------------------
-    # THE ACTIVE SYNC POLLING LOOP
-    # -----------------------------------------------------------------
     while True:
         try:
             for resource in HARDWARE_RESOURCES:
@@ -905,7 +968,6 @@ async def mqtt_loop():
                         if ce_type in ["envds.data.update", "envds.controller.data.update"]:
                             await insert_telemetry_to_erddap(ce)
                             
-                        # --- BROAD STATUS UNLOCK FILTER ---
                         elif "status.update" in ce_type:
                             L.info("mqtt_loop", extra={"status_update": ce.data})
                             await handle_ops_status_insert(ce)
