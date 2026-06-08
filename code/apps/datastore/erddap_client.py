@@ -1,6 +1,7 @@
 import httpx
 import logging
 import json
+import urllib.parse
 from typing import List, Dict, Any
 
 from datastore_requests import (
@@ -94,11 +95,18 @@ class ErddapClient:
 
         query_args = []
         if sn:
-            query_args.append(f'serial_number="{sn}"')
+            # Removed quotes in case ERDDAP typed this column as numeric
+            query_args.append(f'serial_number={sn}')
+            
         if request.start_timestamp:
-            query_args.append(f"time>={request.start_timestamp}")
+            # Strictly encode the timestamp and the > sign (%3E)
+            safe_start = urllib.parse.quote(request.start_timestamp)
+            query_args.append(f"time%3E={safe_start}")
+            
         if request.end_timestamp:
-            query_args.append(f"time<={request.end_timestamp}")
+            # Strictly encode the timestamp and the < sign (%3C)
+            safe_end = urllib.parse.quote(request.end_timestamp)
+            query_args.append(f"time%3C={safe_end}")
             
         query_args.append("orderBy(%22time%22)")
 
@@ -129,11 +137,18 @@ class ErddapClient:
 
         query_args = []
         if sn:
-            query_args.append(f'serial_number="{sn}"')
+            # Removed quotes in case ERDDAP typed this column as numeric
+            query_args.append(f'serial_number={sn}')
+            
         if request.start_timestamp:
-            query_args.append(f"time>={request.start_timestamp}")
+            # Strictly encode the timestamp and the > sign (%3E)
+            safe_start = urllib.parse.quote(request.start_timestamp)
+            query_args.append(f"time%3E={safe_start}")
+            
         if request.end_timestamp:
-            query_args.append(f"time<={request.end_timestamp}")
+            # Strictly encode the timestamp and the < sign (%3C)
+            safe_end = urllib.parse.quote(request.end_timestamp)
+            query_args.append(f"time%3C={safe_end}")
             
         query_args.append("orderBy(%22time%22)")
 
