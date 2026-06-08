@@ -136,29 +136,21 @@ async def device_data_get(
     make: str | None = None,
     model: str | None = None,
     serial_number: str | None = None,
-    version: str | None = None,
-    device_type: str | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
     last_n_seconds: int | None = None,
-    variable: List[str] | None = None,
-    force_archive: bool = False
+    force_archive: bool = False  # <--- ADDED
 ):
-    L.debug("main:device_data_get", extra={"device_id": device_id})
     query = DataRequest(
         device_id=device_id,
         make=make,
         model=model,
         serial_number=serial_number,
-        version=version,
-        device_type=device_type,
         start_time=start_time,
         end_time=end_time,
         last_n_seconds=last_n_seconds,
-        variable=variable,
-        force_archive=force_archive
+        force_archive=force_archive  # <--- ADDED
     )
-    L.debug("main:device_data_get", extra={"query": query})
     return await datastore.device_data_get(query)
 
 @app.post("/device/registry/update/")
@@ -267,27 +259,22 @@ async def controller_data_get(
     make: str | None = None,
     model: str | None = None,
     serial_number: str | None = None,
-    version: str | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
     last_n_seconds: int | None = None,
-    variable: List[str] | None = None,
+    force_archive: bool = False  # <--- ADDED
 ):
-    L.debug("main:controller_data_get", extra={"controller_id": controller_id})
     query = ControllerDataRequest(
         controller_id=controller_id,
         make=make,
         model=model,
         serial_number=serial_number,
-        version=version,
         start_time=start_time,
         end_time=end_time,
         last_n_seconds=last_n_seconds,
-        variable=variable,
+        force_archive=force_archive  # <--- ADDED
     )
-    L.debug("main:controller_data_get", extra={"query": query})
     return await datastore.controller_data_get(query)
-
 
 @app.post("/controller/registry/update/")
 @app.post("/controller-instance/registry/update/")
@@ -394,28 +381,22 @@ async def variableset_data_update(request: Request):
 @app.get("/variableset/data/get/")
 async def variableset_data_get(
     variableset_id: str | None = None,
-    variablemap_definition_id: str | None = None,
+    variablemap_id: str | None = None,
     variableset: str | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
-    start_timestamp: float | None = None,
-    end_timestamp: float | None = None,
     last_n_seconds: int | None = None,
-    variable: List[str] | None = None
+    force_archive: bool = False  # <--- ADDED
 ):
-    L.debug("main:variableset_data_get", extra={"device_id": variableset_id})
     query = VariableSetDataRequest(
         variableset_id=variableset_id,
-        variablemap_definition_id=variablemap_definition_id,
+        variablemap_id=variablemap_id,
         variableset=variableset,
         start_time=start_time,
         end_time=end_time,
-        start_timestamp=start_timestamp,
-        end_timestamp=end_timestamp,
         last_n_seconds=last_n_seconds,
-        variable=variable,
+        force_archive=force_archive  # <--- ADDED
     )
-    L.debug("main:variableset_data_get", extra={"query": query})
     return await datastore.variableset_data_get(query)
 
 

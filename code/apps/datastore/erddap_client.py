@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 
 from datastore_requests import (
     DataRequest,
+    ControllerDataRequest,
     VariableSetDataRequest,
     DeviceDefinitionRequest,
     ControllerDefinitionRequest,
@@ -58,15 +59,26 @@ class ErddapClient:
     # ---------------------------------------------------------
     async def device_data_get(self, request: DataRequest, definition: dict = None) -> dict:
         """Fetches historical device telemetry from the Sidecar Egress API as NCO-JSON."""
-        version_clean = request.version.replace(".", "_") if request.version else "v1"
-        dataset_id = f"telemetry_{request.make}_{request.model}_{version_clean}_time".replace("-", "_")
         
-        # Adjust URL to point to the new sidecar /api/data endpoint
+        # Safely unpack Make, Model, and Serial from the device_id
+        make = request.make
+        model = request.model
+        sn = request.serial_number
+        
+        if request.device_id and "::" in request.device_id:
+            parts = request.device_id.split("::")
+            if not make and len(parts) > 0: make = parts[0]
+            if not model and len(parts) > 1: model = parts[1]
+            if not sn and len(parts) > 2: sn = parts[2]
+
+        version_clean = request.version.replace(".", "_") if request.version else "v1"
+        dataset_id = f"telemetry_{make}_{model}_{version_clean}_time".replace("-", "_")
+        
         url = f"{self.base_url.replace('/erddap', '')}/api/data/{dataset_id}"
         
         query_args = []
-        if request.serial_number:
-            query_args.append(f'serial_number="{request.serial_number}"')
+        if sn:
+            query_args.append(f'serial_number="{sn}"')
         if request.start_timestamp:
             query_args.append(f"time>={request.start_timestamp}")
         if request.end_timestamp:
@@ -88,6 +100,51 @@ class ErddapClient:
             
         except Exception as e:
             self.logger.error("Sidecar fetch failed", extra={"url": url, "reason": str(e)})
+            return {"results": []}
+
+    async def controller_data_get(self, request: ControllerDataRequest, definition: dict = None) -> dict:
+        """Fetches historical controller telemetry from the Sidecar Egress API as NCO-JSON."""
+        
+        # Safely unpack Make, Model, and Serial from the controller_id
+        make = request.make
+        model = request.model
+        sn = request.serial_number
+        
+        if request.controller_id and "::" in request.controller_id:
+            parts = request.controller_id.split("::")
+            if not make and len(parts) > 0: make = parts[0]
+            if not model and len(parts) > 1: model = parts[1]
+            if not sn and len(parts) > 2: sn = parts[2]
+
+        version_clean = request.version.replace(".", "_") if request.version else "v1"
+        dataset_id = f"telemetry_{make}_{model}_{version_clean}_time".replace("-", "_")
+        
+        url = f"{self.base_url.replace('/erddap', '')}/api/data/{dataset_id}"
+        
+        query_args = []
+        if sn:
+            query_args.append(f'serial_number="{sn}"')
+        if request.start_timestamp:
+            query_args.append(f"time>={request.start_timestamp}")
+        if request.end_timestamp:
+            query_args.append(f"time<={request.end_timestamp}")
+            
+        query_args.append("orderBy(%22time%22)")
+        query_string = "&".join(query_args)
+        
+        self.logger.debug(f"Sidecar NCO-JSON Query (Controller): {url}?{query_string}")
+        
+        try:
+            resp = await self.http.post(f"{url}?{query_string}", json=definition or {})
+            
+            if resp.status_code == 404:
+                return {"results": []}
+                
+            resp.raise_for_status()
+            return resp.json() 
+            
+        except Exception as e:
+            self.logger.error("Sidecar fetch failed for controller", extra={"url": url, "reason": str(e)})
             return {"results": []}
         
     async def variableset_data_get(self, request: VariableSetDataRequest) -> dict:
@@ -142,7 +199,6 @@ class ErddapClient:
         query_args = [f'kind="{kind}"']
         
         if query_id:
-            # In sidecar.py, system IDs map directly to the 'name' column
             query_args.append(f'name="{query_id}"')
             
         query_args.append("orderByLimitMax(%22-time%22)")
