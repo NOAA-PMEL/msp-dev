@@ -137,9 +137,12 @@ async def dataset_generate_request(request: Request):
                 end_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
                 start_dt = end_dt - timedelta(days=1)
             elif freq == "5min":
-                # Round current execution time down to the nearest 5-minute mark
+                # 1. Round down to nearest 5-minute boundary
                 minute_rounded = now.minute - (now.minute % 5)
-                end_dt = now.replace(minute=minute_rounded, second=0, microsecond=0)
+                base_dt = now.replace(minute=minute_rounded, second=0, microsecond=0)
+                
+                # 2. APPLY THE 5 MINUTE DELAY
+                end_dt = base_dt - timedelta(minutes=5)
                 start_dt = end_dt - timedelta(minutes=5)
             else:
                 L.error(f"Unknown file_frequency '{freq}' in {dataset_id}")

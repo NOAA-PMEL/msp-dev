@@ -11,7 +11,7 @@ import pint
 ureg = pint.UnitRegistry()
 ureg.default_format = "~"
 
-L = logging.getLogger(__name__)
+L = logging.getLogger("dataset-generator")
 
 class DatasetGenerator:
     def __init__(self, daq_id: str):
