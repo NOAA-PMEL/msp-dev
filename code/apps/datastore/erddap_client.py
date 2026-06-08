@@ -26,7 +26,7 @@ class ErddapClient:
     async def _fetch_tabledap(self, dataset_id: str, query_args: List[str]) -> Dict[str, Any]:
         """Executes a query against ERDDAP's tabledap endpoint."""
         query_string = "&".join(query_args)
-        url = f"{self.base_url}/tabledap/{dataset_id}.json?{query_string}"
+        url = f"{self.base_url}/tabledap/{dataset_id}.json?&{query_string}"
         
         self.logger.debug(f"ERDDAP Query: {url}")
         try:
@@ -93,10 +93,12 @@ class ErddapClient:
             if not model and len(parts) > 1: model = parts[1]
             if not sn and len(parts) > 2: sn = parts[2]
 
+        self.logger.warning(f"BUILDING DATASET ID: make={make}, model={model}, sn={sn}, raw_device_id={request.device_id}")
+        
         query_args = []
         if sn:
             # Removed quotes in case ERDDAP typed this column as numeric
-            query_args.append(f'serial_number={sn}')
+            query_args.append(f'serial_number=%22{sn}%22')
             
         if request.start_timestamp:
             # Strictly encode the timestamp and the > sign (%3E)
@@ -138,7 +140,7 @@ class ErddapClient:
         query_args = []
         if sn:
             # Removed quotes in case ERDDAP typed this column as numeric
-            query_args.append(f'serial_number={sn}')
+            query_args.append(f'serial_number=%22{sn}%22')
             
         if request.start_timestamp:
             # Strictly encode the timestamp and the > sign (%3E)
