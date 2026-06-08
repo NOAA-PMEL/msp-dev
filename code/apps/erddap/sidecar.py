@@ -280,6 +280,11 @@ class ERDDAPConfigCompiler:
         
         shape_groups = {}
         for var_name, var_data in variables.items():
+            
+            # Do not create standalone tables for static coordinate arrays
+            if var_data.get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+                continue
+            
             shape_tuple = tuple(var_data.get("shape", ["time"]))
             if shape_tuple not in shape_groups:
                 shape_groups[shape_tuple] = []
