@@ -102,6 +102,18 @@ class DatasetGenerator:
             data_resp.raise_for_status()
             raw_records = data_resp.json().get("results", [])
 
+            # ---> CRITICAL DEBUG: Check what ERDDAP/Datastore actually returned <---
+            sample_keys = []
+            if raw_records and "variables" in raw_records[0]:
+                sample_keys = list(raw_records[0]["variables"].keys())
+                
+            L.debug("Raw datastore response query diagnostic", extra={
+                "endpoint": endpoint,
+                "requested_raw_variable": raw_variable,
+                "total_records_returned": len(raw_records),
+                "actual_hardware_keys_found": sample_keys
+            })
+
             # 5. Repackage the raw data so it "looks" like Variableset data 
             repackaged_records = []
             for record in raw_records:
@@ -118,6 +130,12 @@ class DatasetGenerator:
                         }
                     })
                 
+            # ---> CRITICAL DEBUG: See if any records survived filtering <---
+            L.debug("Repackaging filter results", extra={
+                "variablemap_id": variableset_id,
+                "survived_count": len(repackaged_records)
+            })
+            
             return repackaged_records
 
         except Exception as e:

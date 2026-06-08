@@ -136,6 +136,11 @@ async def dataset_generate_request(request: Request):
             elif freq == "daily":
                 end_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
                 start_dt = end_dt - timedelta(days=1)
+            elif freq == "5min":
+                # Round current execution time down to the nearest 5-minute mark
+                minute_rounded = now.minute - (now.minute % 5)
+                end_dt = now.replace(minute=minute_rounded, second=0, microsecond=0)
+                start_dt = end_dt - timedelta(minutes=5)
             else:
                 L.error(f"Unknown file_frequency '{freq}' in {dataset_id}")
                 return Response(status_code=status.HTTP_204_NO_CONTENT)
