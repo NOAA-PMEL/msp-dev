@@ -9,7 +9,6 @@ from datetime import datetime
 
 import pint
 ureg = pint.UnitRegistry()
-# Optional but recommended: Tell pint to fall back to standard naming if there are slight variations
 ureg.default_format = "~"
 
 L = logging.getLogger(__name__)
@@ -17,137 +16,16 @@ L = logging.getLogger(__name__)
 class DatasetGenerator:
     def __init__(self, daq_id: str):
         self.daq_id = daq_id
-        # Dynamic internal URL matching sampling-system
         self.datastore_url = f"http://datastore.{self.daq_id}-system.svc.cluster.local:80"
         self.client = httpx.AsyncClient(base_url=self.datastore_url, timeout=30.0)
-        
-        # Ensure our output directory exists
         self.output_dir = "/app/data/output"
         os.makedirs(self.output_dir, exist_ok=True)
 
-    async def fetch_variableset_data(self, variableset_id: str, variable_name: str, start_time: str, end_time: str):
-        """
-        Reconstructs VariableSet data historically by looking up the mapping 
-        and fetching the raw telemetry from ERDDAP-backed device records.
-        """
-        try:
-            # 1. Parse the requested ID (e.g., 'payload_03::main')
-            parts = variableset_id.split("::")
-            if len(parts) >= 2:
-                vmap_name = parts[0]
-                vs_name = parts[1]
-            else:
-                vmap_name = variableset_id
-                vs_name = "unknown"
-
-            # 2. Fetch the VariableMap Definition valid at start_time
-            vmap_resp = await self.client.get(
-                "/variablemap-definition/registry/get/", 
-                params={"variablemap": vmap_name}
-            )
-            vmap_resp.raise_for_status()
-            vmaps = vmap_resp.json().get("results", [])
-            
-            # Find the active vmap for our start_time
-            query_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-            active_vmap = None
-            
-            # Sort maps by config time descending, pick the first one older than our data
-            for vmap in sorted(vmaps, key=lambda x: x.get("valid_config_time", "2020-01-01T00:00:00Z"), reverse=True):
-                cfg_time_str = vmap.get("valid_config_time", "2020-01-01T00:00:00Z")
-                cfg_time = datetime.fromisoformat(cfg_time_str.replace("Z", "+00:00"))
-                if cfg_time <= query_time:
-                    active_vmap = vmap
-                    break
-            
-            if not active_vmap:
-                L.error(f"No valid VariableMap found for {vmap_name} at {start_time}")
-                return []
-
-            # 3. Trace the Variable back to the Raw Hardware
-            # Look inside the raw variablemap definition to find the data source
-            variables_def = active_vmap.get("variables", {})
-            target_var_def = variables_def.get(variable_name, {})
-            
-            if not target_var_def:
-                L.error(f"Variable '{variable_name}' not found in map {variableset_id}")
-                return []
-                
-            map_type = target_var_def.get("map_type", "")
-            if map_type != "direct":
-                L.warning(f"Cannot historically fetch non-direct variable: {variable_name}")
-                return []
-
-            # Traverse the nested source dict matching the sampling_system architecture
-            direct_var = target_var_def.get("direct_value", {}).get("source_variable", variable_name)
-            src_info = target_var_def.get("source", {}).get(direct_var, {})
-            
-            raw_source_type = src_info.get("source_type", "device") # device or controller
-            raw_device_id = src_info.get("source_id")
-            raw_variable = src_info.get("source_variable")
-
-            if not raw_device_id or not raw_variable:
-                L.error(f"Mapping for '{variable_name}' is missing source_id or source_variable")
-                return []
-
-            # 4. Fetch the Raw Data (This routes to ERDDAP!)
-            endpoint = f"/{raw_source_type}/data/get/"
-            params = {
-                f"{raw_source_type}_id": raw_device_id, 
-                "start_time": start_time, 
-                "end_time": end_time
-            }
-            
-            data_resp = await self.client.get(endpoint, params=params)
-            data_resp.raise_for_status()
-            raw_records = data_resp.json().get("results", [])
-
-            # ---> CRITICAL DEBUG: Check what ERDDAP/Datastore actually returned <---
-            sample_keys = []
-            if raw_records and "variables" in raw_records[0]:
-                sample_keys = list(raw_records[0]["variables"].keys())
-                
-            L.debug("Raw datastore response query diagnostic", extra={
-                "endpoint": endpoint,
-                "requested_raw_variable": raw_variable,
-                "total_records_returned": len(raw_records),
-                "actual_hardware_keys_found": sample_keys
-            })
-
-            # 5. Repackage the raw data so it "looks" like Variableset data 
-            repackaged_records = []
-            for record in raw_records:
-                record_vars = record.get("variables", {})
-                
-                # Check if the requested variable actually exists in this raw record
-                if "time" in record_vars and raw_variable in record_vars:
-                    repackaged_records.append({
-                        "timestamp": record.get("timestamp"),
-                        "variablemap_id": active_vmap.get("variablemap_definition_id"), # Apply the exact mapping stamp
-                        "variables": {
-                            "time": record_vars["time"],
-                            variable_name: record_vars[raw_variable] # Rename it back to the mapped name
-                        }
-                    })
-                
-            # ---> CRITICAL DEBUG: See if any records survived filtering <---
-            L.debug("Repackaging filter results", extra={
-                "variablemap_id": variableset_id,
-                "survived_count": len(repackaged_records)
-            })
-            
-            return repackaged_records
-
-        except Exception as e:
-            L.error(f"Failed to reconstruct variableset data for {variableset_id}", extra={"error": str(e)}, exc_info=True)
-            return []
-        
     async def fetch_variableset_def(self, variableset_id: str, data_time: datetime = None, exact_vmap_id: str = None):
-        """Fetch the VariableSet definition using exact mapping or time-based fallback."""
+        """Fetch the VariableSet definition from the datastore registry."""
         try:
             vs_name = variableset_id.split("::")[-1]
 
-            # --- PATH A: THE FAST PATH (Exact match from the data record) ---
             if exact_vmap_id:
                 resp = await self.client.get(
                     "/variableset-definition/registry/get/", 
@@ -158,7 +36,6 @@ class DatasetGenerator:
                 if defs:
                     return defs[0]
 
-            # --- PATH B: TIME COMPARISON FALLBACK ---
             resp = await self.client.get(
                 "/variableset-definition/registry/get/", 
                 params={"variableset": vs_name}
@@ -171,12 +48,9 @@ class DatasetGenerator:
 
             for d in defs:
                 vmap_id = d.get("variablemap_definition_id", "")
-                
-                # Make sure it matches our expected platform/payload (e.g., 'payload_03')
                 if vmap_prefix and vmap_prefix not in vmap_id:
                     continue
                 
-                # Extract the valid_config_time
                 vmap_parts = vmap_id.split("::")
                 if len(vmap_parts) >= 3:
                     config_time_str = vmap_parts[-1]
@@ -185,164 +59,247 @@ class DatasetGenerator:
                 
                 try:
                     config_time = datetime.fromisoformat(config_time_str.replace("Z", "+00:00"))
-                    # The definition must be active AT or BEFORE the data was collected
                     if data_time and config_time <= data_time:
                         valid_defs.append((config_time, d))
                 except ValueError:
                     continue
             
             if valid_defs:
-                # Sort descending to get the most recent valid configuration
                 valid_defs.sort(key=lambda x: x[0], reverse=True)
                 return valid_defs[0][1]
             
-            L.warning(f"No valid definition found for {variableset_id} at {data_time}")
             return {}
-            
-        except httpx.HTTPError as e:
-            L.error(f"Datastore fetch failed for definition {variableset_id}", extra={"error": str(e)})
+        except Exception as e:
+            L.error(f"Failed to fetch variableset definition for {variableset_id}: {e}")
             return {}
 
     async def execute_calculation(self, action_module: str, action_def: str, params: dict):
-        """
-        Dynamically load the GitOps math script and run it on our arrays.
-        Example: action_module='calculations.default', action_def='calculate_true_wind_speed'
-        """
+        """Dynamically load calculation scripts."""
         try:
-            # Import the module mounted from our GitOps ConfigMap
             module = importlib.import_module(action_module)
             calc_func = getattr(module, action_def)
-            
-            # Unpack the DataArrays into the function and pass 'self' for logging
-            result = await calc_func(self, **params)
-            return result
+            return await calc_func(self, **params)
         except Exception as e:
-            L.error(f"Failed to execute {action_def} from {action_module}", extra={"error": str(e)})
+            L.error(f"Failed to execute {action_def}: {e}")
             return None
 
     async def generate_dataset(self, config: dict, start_time: str, end_time: str):
-        """Main pipeline to extract, compile, align, convert units, and export NetCDF datasets."""
+        """
+        Highly optimized pipeline that resolves mappings, fetches telemetry, 
+        and extracts schemas exactly once per unique resource.
+        """
         dataset_id = config.get("id", "unknown_dataset")
         freq_sec = config.get("timebase", {}).get("record_frequency_sec", 60)
         
-        L.info("Starting generation pipeline", extra={"dataset_id": dataset_id, "start": start_time, "end": end_time})
+        L.info("Starting batch-optimized pipeline", extra={"dataset_id": dataset_id, "start": start_time, "end": end_time})
         
         try:
+            # -----------------------------------------------------------------
+            # PASS 1: Identify Unique VariableSets & Resolve Mappings ONCE
+            # -----------------------------------------------------------------
+            unique_vs_ids = set()
+            for var in config.get("variables", []):
+                if "static_value" in var: continue
+                source_def = var.get("source", {})
+                fetch_list = source_def.get("inputs", {}) if "calculate_method" in source_def else {"primary": source_def}
+                for input_source in fetch_list.values():
+                    vs_id = input_source.get("variableset_id")
+                    if vs_id: unique_vs_ids.add(vs_id)
+
+            L.info("Deduplicated VariableSets discovered", extra={"unique_variablesets": list(unique_vs_ids)})
+
+            # Query the mapping definition registry exactly ONCE per unique variableset_id
+            vs_to_hardware_map = {} # Maps: vs_id -> active mapping details dictionary
+            for vs_id in unique_vs_ids:
+                vmap_name = vs_id.split("::")[0]
+                L.debug(f"Fetching variablemap mapping definition for: {vmap_name}")
+                vmap_resp = await self.client.get("/variablemap-definition/registry/get/", params={"variablemap": vmap_name})
+                vmap_resp.raise_for_status()
+                vmaps = vmap_resp.json().get("results", [])
+                
+                # Locate active variablemap valid for this specific time window
+                query_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                active_vmap = None
+                for vmap in sorted(vmaps, key=lambda x: x.get("valid_config_time", "2020-01-01T00:00:00Z"), reverse=True):
+                    cfg_time = datetime.fromisoformat(vmap.get("valid_config_time", "2020-01-01T00:00:00Z").replace("Z", "+00:00"))
+                    if cfg_time <= query_time:
+                        active_vmap = vmap
+                        break
+                
+                if active_vmap:
+                    vs_to_hardware_map[vs_id] = active_vmap
+                    L.debug(f"Successfully cached mapping schema for {vs_id}", extra={
+                        "vmap_def_id": active_vmap.get("variablemap_definition_id")
+                    })
+                else:
+                    L.error(f"No active variablemap mapping found in registry for {vs_id}")
+
+            # -----------------------------------------------------------------
+            # PASS 2: Deduplicate and Bulk Fetch Raw Telemetry Sources ONCE
+            # -----------------------------------------------------------------
+            # Trace target variables to extract their exact hardware source configurations
+            variable_tracing_registry = {} # Maps: (vs_id, vs_var) -> tracking dict
+            telemetry_sources_to_fetch = {} # Maps: source_id -> {source_type, variables_set}
+
+            for var in config.get("variables", []):
+                if "static_value" in var: continue
+                source_def = var.get("source", {})
+                fetch_list = source_def.get("inputs", {}) if "calculate_method" in source_def else {"primary": source_def}
+                
+                for input_source in fetch_list.values():
+                    vs_id = input_source.get("variableset_id")
+                    vs_var = input_source.get("variable_name")
+                    if not vs_id or not vs_var: continue
+                    
+                    active_vmap = vs_to_hardware_map.get(vs_id)
+                    if active_vmap and vs_var in active_vmap.get("variables", {}):
+                        target_var_def = active_vmap["variables"][vs_var]
+                        direct_var = target_var_def.get("direct_value", {}).get("source_variable", vs_var)
+                        src_info = target_var_def.get("source", {}).get(direct_var, {})
+                        
+                        s_id = src_info.get("source_id")
+                        s_type = src_info.get("source_type", "device")
+                        raw_var_name = src_info.get("source_variable", vs_var)
+                        
+                        if s_id:
+                            # Cache tracing paths for easy Pass 4 lookups
+                            variable_tracing_registry[(vs_id, vs_var)] = {
+                                "source_id": s_id,
+                                "raw_variable_name": raw_var_name,
+                                "vmap_def_id": active_vmap.get("variablemap_definition_id")
+                            }
+                            # Group required fields under single physical stream queries
+                            if s_id not in telemetry_sources_to_fetch:
+                                telemetry_sources_to_fetch[s_id] = {"source_type": s_type, "fields": set()}
+                            telemetry_sources_to_fetch[s_id]["fields"].add(raw_var_name)
+
+            L.info("Deduplicated Telemetry Sources discovered", extra={"unique_sources": list(telemetry_sources_to_fetch.keys())})
+
+            # Execute exactly ONE bulk HTTP download request per unique telemetry source stream
+            bulk_telemetry_cache = {}
+            for s_id, source_meta in telemetry_sources_to_fetch.items():
+                endpoint = f"/{source_meta['source_type']}/data/get/"
+                params = {f"{source_meta['source_type']}_id": s_id, "start_time": start_time, "end_time": end_time}
+                
+                L.info(f"Bulk-retrieving historical telemetry stream from: {s_id}", extra={"endpoint": endpoint})
+                resp = await self.client.get(endpoint, params=params)
+                resp.raise_for_status()
+                records = resp.json().get("results", [])
+                bulk_telemetry_cache[s_id] = records
+                
+                # --- DEEP DIAGNOSTIC DEBUG LOG ---
+                # Exposes exactly what dictionary keys ERDDAP/Datastore returned vs what fields we need
+                sample_hardware_keys = list(records[0].get("variables", {}).keys()) if records else []
+                L.debug("Datastore telemetry payload structural check", extra={
+                    "source_id": s_id,
+                    "records_downloaded": len(records),
+                    "expected_fields_for_nc": list(source_meta["fields"]),
+                    "actual_keys_in_payload": sample_hardware_keys
+                })
+
+            # -----------------------------------------------------------------
+            # PASS 3: Fetch and Cache VariableSet Schema Definitions ONCE
+            # -----------------------------------------------------------------
+            vs_defs_cache = {}
+            for (vs_id, vs_var), trace in variable_tracing_registry.items():
+                if vs_id not in vs_defs_cache:
+                    records = bulk_telemetry_cache.get(trace["source_id"], [])
+                    sample_time = None
+                    if records and "variables" in records[0] and "time" in records[0]["variables"]:
+                        try:
+                            sample_time = pd.to_datetime(records[0]["variables"]["time"]["data"].replace("Z", "")).to_pydatetime()
+                        except Exception:
+                            pass
+                    
+                    L.info(f"Caching definition schema file for variableset: {vs_id}")
+                    vs_defs_cache[vs_id] = await self.fetch_variableset_def(
+                        vs_id, data_time=sample_time, exact_vmap_id=trace["vmap_def_id"]
+                    )
+
+            # -----------------------------------------------------------------
+            # PASS 4: Compile Xarray & Output NetCDF entirely from In-Memory Cache
+            # -----------------------------------------------------------------
             data_arrays = []
-            
+
             for var in config.get("variables", []):
                 out_name = var["name"]
-                
-                # --- Handle purely static variables ---
-                if "static_value" in var:
-                    continue 
+                if "static_value" in var: continue
                 
                 source_def = var.get("source", {})
                 is_calculated = "calculate_method" in source_def
-                
-                # If calculated, fetch multiple inputs. Otherwise, fetch just the primary source.
                 fetch_list = source_def.get("inputs", {}) if is_calculated else {"primary": source_def}
                 
                 input_arrays = {}
                 unique_sources = set()
+                primary_vs_id = None
+                primary_vs_var = None
                 
-                # --- STEP 1: Fetch Data & Track ALL Sources ---
                 for param_name, input_source in fetch_list.items():
                     vs_id = input_source.get("variableset_id")
                     vs_var = input_source.get("variable_name")
                     
-                    if not vs_id or not vs_var:
-                        continue
-                        
-                    records = await self.fetch_variableset_data(vs_id, vs_var, start_time, end_time)
-                    if not records: 
-                        continue
+                    trace_key = (vs_id, vs_var)
+                    if trace_key not in variable_tracing_registry: continue
+                    trace = variable_tracing_registry[trace_key]
                     
+                    if not primary_vs_id:
+                        primary_vs_id = vs_id
+                        primary_vs_var = vs_var
+                    
+                    records = bulk_telemetry_cache.get(trace["source_id"], [])
                     times, values = [], []
-                    exact_vmap_id = None
+                    raw_key = trace["raw_variable_name"]
                     
+                    # Unpack timelines entirely out of local RAM cache
                     for r in records:
-                        v_dict = r.get("variables", {})
-                        if "time" in v_dict and vs_var in v_dict:
-                            # Time parsing
-                            t_str = v_dict["time"]["data"]
-                            
-                            # Convert and round to nearest second to eliminate fractional decimal jitter
-                            rounded_dt = pd.to_datetime(t_str.replace("Z", "")).round("1s")
+                        r_vars = r.get("variables", {})
+                        if "time" in r_vars and raw_key in r_vars:
+                            rounded_dt = pd.to_datetime(r_vars["time"]["data"].replace("Z", "")).round("1s")
                             times.append(rounded_dt.to_datetime64())
+                            values.append(r_vars[raw_key]["data"])
                             
-                            # Extract Value
-                            target_var = v_dict[vs_var]
-                            values.append(target_var["data"])
-                            
-                            # Harvest Exact Mapping ID if present
-                            if not exact_vmap_id and "variablemap_id" in r:
-                                exact_vmap_id = r.get("variablemap_id")
-
-                            # Harvest Hardware Source ID
-                            hw_source = target_var.get("attributes", {}).get("source_id", {}).get("data")
-                            if hw_source:
-                                unique_sources.add(hw_source)
-                                
+                            hw_source = r_vars[raw_key].get("attributes", {}).get("source_id", {}).get("data")
+                            if hw_source: unique_sources.add(hw_source)
+                    
+                    # --- DEEP DIAGNOSTIC DEBUG LOG ---
+                    L.debug("Variable extraction timeline metrics", extra={
+                        "target_nc_field": out_name,
+                        "extracted_from_key": raw_key,
+                        "data_points_parsed": len(times),
+                        "first_sample_values": values[:3] if values else []
+                    })
+                    
                     if times:
-                        input_arrays[param_name] = {
-                            "values": values, 
-                            "times": times, 
-                            "vs_id": vs_id, 
-                            "vs_var": vs_var,
-                            "exact_vmap_id": exact_vmap_id 
-                        }
-                
-                if not input_arrays:
-                    continue
+                        input_arrays[param_name] = {"values": values, "times": times}
 
-                # --- STEP 2: Execute Vectorized Math (If Applicable) ---
+                if not input_arrays: continue
+
+                # Vector math transformations
                 if is_calculated:
                     action_module = source_def["calculate_method"]["action_module"]
                     action_def = source_def["calculate_method"]["action_def"]
-                    
                     math_params = {k: v["values"] for k, v in input_arrays.items()}
                     calc_result = await self.execute_calculation(action_module, action_def, math_params)
-                    
-                    if not calc_result:
-                        continue
-                        
+                    if not calc_result: continue
                     final_values = calc_result.get(out_name)
-                    primary_input = list(input_arrays.values())[0]
-                    final_times = primary_input["times"]
-                    native_vs_id = primary_input["vs_id"]
-                    native_vs_var = primary_input["vs_var"]
+                    final_times = list(input_arrays.values())[0]["times"]
                 else:
-                    primary_input = input_arrays["primary"]
-                    final_values = primary_input["values"]
-                    final_times = primary_input["times"]
-                    native_vs_id = primary_input["vs_id"]
-                    native_vs_var = primary_input["vs_var"]
+                    final_values = input_arrays["primary"]["values"]
+                    final_times = input_arrays["primary"]["times"]
 
-                # --- STEP 3: Build, Inherit, and Rebin ---
-                
-                native_vmap_id = primary_input.get("exact_vmap_id")
-                vs_def = await self.fetch_variableset_def(
-                    native_vs_id, 
-                    data_time=final_times[0] if final_times else None,
-                    exact_vmap_id=native_vmap_id
-                )
+                # Extract cached grid configurations
+                vs_def = vs_defs_cache.get(primary_vs_id, {})
                 native_vars = vs_def.get("variables", {})
                 
-                dims = native_vars.get(native_vs_var, {}).get("shape", ["time"])
+                dims = native_vars.get(primary_vs_var, {}).get("shape", ["time"])
                 coords = {"time": final_times}
                 for dim in dims:
-                    if dim == "time": continue
-                    if dim in native_vars:
+                    if dim != "time" and dim in native_vars:
                         coords[dim] = native_vars[dim].get("data", [])
                 
-                da = xr.DataArray(
-                    data=final_values, 
-                    coords=coords, 
-                    dims=dims, 
-                    name=out_name
-                )
+                da = xr.DataArray(data=final_values, coords=coords, dims=dims, name=out_name)
                 
+                # --- RE-ADDED 2D INTERPOLATION BLOCK ---
                 if "coordinates" in var:
                     for custom_dim, custom_grid in var["coordinates"].items():
                         if custom_dim in da.dims:
@@ -352,201 +309,119 @@ class DatasetGenerator:
                                 method="linear", 
                                 kwargs={"fill_value": np.nan}
                             )
+                # ---------------------------------------
 
-                # --- STEP 4: Apply Attributes & Unit Conversion ---
-                
-                native_attrs = native_vars.get(native_vs_var, {}).get("attributes", {})
-                for attr_key, attr_val in native_attrs.items():
-                    da.attrs[attr_key] = attr_val
+                # Global mappings, attributes and pint conversions
+                native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
+                for attr_key, attr_val in native_attrs.items(): da.attrs[attr_key] = attr_val
                 
                 native_units = da.attrs.get("units")
                 target_units = None
-
                 for attr_key, attr_val in var.get("attributes", {}).items():
-                    if attr_key == "units":
-                        target_units = attr_val
+                    if attr_key == "units": target_units = attr_val
                     da.attrs[attr_key] = attr_val
                     
                 if native_units and target_units and (native_units != target_units):
-                    L.info(f"Unit mismatch for {out_name}: Attempting conversion from '{native_units}' to '{target_units}'")
                     try:
                         data_quantity = ureg.Quantity(da.values, native_units)
-                        converted_quantity = data_quantity.to(target_units)
-                        da.values = converted_quantity.magnitude
+                        da.values = data_quantity.to(target_units).magnitude
                         da.attrs["units"] = target_units
-                        L.debug(f"Successfully converted {out_name} to {target_units}")
-                    except pint.errors.DimensionalityError as e:
-                        L.error(f"Dimensionality mismatch for {out_name}. Cannot convert '{native_units}' to '{target_units}'. Error: {e}")
-                        da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
-                    except pint.errors.UndefinedUnitError as e:
-                        L.error(f"Undefined unit found for {out_name}. Error: {e}")
-                        da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
                     except Exception as e:
-                        L.error(f"Unexpected error converting units for {out_name}: {e}")
+                        L.error(f"Unit conversion failed for {out_name}: {e}")
+                        da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
 
-                if unique_sources:
-                    da.attrs["sources"] = ", ".join(sorted(list(unique_sources)))
-                
+                if unique_sources: da.attrs["sources"] = ", ".join(sorted(list(unique_sources)))
                 data_arrays.append(da)
 
-            # We don't abort anymore if data_arrays is empty, because we still need to generate the empty schema.
+            # Assemble merged structure
             if not data_arrays:
-                L.warning("No data retrieved for any variables. Generating completely empty schema.", extra={"dataset_id": dataset_id})
+                L.warning("No data extracted for any target variables. Building blank schema.", extra={"dataset_id": dataset_id})
                 ds = xr.Dataset()
             else:
-                # --- STEP 5: Merge, Time-Align, and Centered Resample ---
                 ds = xr.merge(data_arrays, join='outer')
                 
-            # Flatten any cross-variable outer-join coordinate stretching into a clean 1D line
             if "time" in ds.dims:
                 ds = ds.groupby("time").mean(dim="time")
             
-            # Calculate half the timebase dynamically for the loffset shift
+            # Rebin time centered averages
             half_base = freq_sec / 2.0
-            
-            # Bin data precisely from T - tb/2 to T + tb/2 and label the integer timestamp at T
             if "time" in ds.dims and len(ds.time) > 0:
-                aligned_ds = ds.resample(
-                    time=f"{freq_sec}s",
-                    closed="left",
-                    label="right",
-                    offset=f"{half_base}s"
-                ).mean(dim="time")
-                
+                aligned_ds = ds.resample(time=f"{freq_sec}s", closed="left", label="right", offset=f"{half_base}s").mean(dim="time")
                 if len(aligned_ds.time) > 0:
                     aligned_ds.coords["time"] = aligned_ds.time - pd.Timedelta(seconds=half_base)
             else:
                 aligned_ds = ds
 
-            # --- NEW: FORCE STRICT CONTINUOUS TIME GRID ---
-            # Xarray resample only bounds to the available data. 
-            # We force it to map to the exact mathematical grid of the requested hour.
-            master_time = pd.date_range(
-                start=start_time.replace("Z", ""), 
-                end=end_time.replace("Z", ""), 
-                freq=f"{freq_sec}s", 
-                inclusive="left"
-            )
+            # Force complete continuous bounds template
+            master_time = pd.date_range(start=start_time.replace("Z", ""), end=end_time.replace("Z", ""), freq=f"{freq_sec}s", inclusive="left")
             aligned_ds = aligned_ds.reindex(time=master_time)
 
-            # --- NEW: INJECT TOTALLY MISSING VARIABLES ---
-            # If a sensor was completely offline, it was skipped entirely.
-            # We must create it filled with NaNs so the NetCDF schema remains stable.
+            # Allocate stable NaN matrices for missing streams
             for var in config.get("variables", []):
-                if "static_value" in var:
-                    continue
-                
+                if "static_value" in var: continue
                 out_name = var["name"]
                 if out_name not in aligned_ds.data_vars:
-                    L.warning(f"Variable '{out_name}' had zero data. Injecting empty array to maintain schema.", extra={"dataset_id": dataset_id})
-                    
-                    # Assume 1D time array by default
+                    L.warning(f"Variable '{out_name}' missing from telemetry. Injecting NaN placeholder array.", extra={"dataset_id": dataset_id})
                     dims = ["time"]
                     coords = {"time": aligned_ds.time}
                     shape = [aligned_ds.sizes["time"]]
                     
-                    # If it's a 2D array (like particle sizes), apply the custom grid defined in the JSON
                     if "coordinates" in var:
                         for custom_dim, custom_grid in var["coordinates"].items():
                             dims.append(custom_dim)
                             coords[custom_dim] = custom_grid
                             shape.append(len(custom_grid))
                             
-                    # Build the empty array
-                    empty_da = xr.DataArray(
-                        data=np.full(shape, np.nan, dtype=np.float32),
-                        coords=coords,
-                        dims=dims,
-                        name=out_name
-                    )
-                    
-                    # Apply explicit attributes from the JSON definition
-                    for attr_key, attr_val in var.get("attributes", {}).items():
-                        empty_da.attrs[attr_key] = attr_val
-                        
+                    empty_da = xr.DataArray(data=np.full(shape, np.nan, dtype=np.float32), coords=coords, dims=dims, name=out_name)
+                    for attr_key, attr_val in var.get("attributes", {}).items(): empty_da.attrs[attr_key] = attr_val
                     aligned_ds[out_name] = empty_da
 
-            # --- STEP 5.5: Automatically Pre-Allocate CF-Compliant QC Variables ---
-            data_vars = list(aligned_ds.data_vars.keys())
-            
-            for var_name in data_vars:
-                # Skip spatial/temporal grid coordinates and existing QC fields
-                if var_name in ["time", "latitude", "longitude", "altitude"] or var_name.startswith("qc_"):
-                    continue
+            # Pre-allocate clean quality control byte masks
+            for var_name in list(aligned_ds.data_vars.keys()):
+                if var_name in ["time", "latitude", "longitude", "altitude"] or var_name.startswith("qc_"): continue
                 
-                qc_name = f"qc_{var_name}"
-                
-                # Pre-allocate integer array initialized with 0 ("Good Data" / "Not Tested")
-                qc_da = xr.DataArray(
-                    data=np.zeros(aligned_ds.sizes["time"], dtype=np.int32),
-                    coords={"time": aligned_ds.time},
-                    dims=["time"],
-                    name=qc_name
-                )
-                
-                # Set CF and DOE ARM Standard attributes
-                target_var_long_name = aligned_ds[var_name].attrs.get("long_name", var_name)
-                qc_da.attrs["long_name"] = f"Quality check results on field: {target_var_long_name}"
+                qc_da = xr.DataArray(data=np.zeros(aligned_ds.sizes["time"], dtype=np.int32), coords={"time": aligned_ds.time}, dims=["time"], name=f"qc_{var_name}")
+                qc_da.attrs["long_name"] = f"Quality check results on field: {aligned_ds[var_name].attrs.get('long_name', var_name)}"
                 qc_da.attrs["units"] = "1"
                 qc_da.attrs["standard_name"] = "quality_flag"
                 qc_da.attrs["flag_masks"] = [1, 2, 4, 8]
                 qc_da.attrs["flag_meanings"] = "value_less_than_valid_min value_greater_than_valid_max sensor_offline flatline_detected"
-                
-                aligned_ds[qc_name] = qc_da
+                aligned_ds[f"qc_{var_name}"] = qc_da
 
-            # Apply Static Variables across the final time axis
+            # Append static metrics
             for var in config.get("variables", []):
                 if "static_value" in var:
                     out_name = var["name"]
-                    da = xr.DataArray(
-                        data=np.full(aligned_ds.sizes["time"], var["static_value"]),
-                        coords={"time": aligned_ds.time},
-                        dims=["time"]
-                    )
-                    for attr_key, attr_val in var.get("attributes", {}).items():
-                        da.attrs[attr_key] = attr_val
+                    da = xr.DataArray(data=np.full(aligned_ds.sizes["time"], var["static_value"]), coords={"time": aligned_ds.time}, dims=["time"])
+                    for attr_key, attr_val in var.get("attributes", {}).items(): da.attrs[attr_key] = attr_val
                     aligned_ds[out_name] = da
 
-            # --- STEP 6: Global File Metadata ---
+            # Write out to NetCDF disk
             aligned_ds.attrs["title"] = f"Dataset: {dataset_id}"
             aligned_ds.attrs["history"] = f"Generated {datetime.utcnow().isoformat()}Z"
             if "conventions" in config:
                 aligned_ds.attrs["Conventions"] = config["conventions"].get("name", "CF-1.8")
                 aligned_ds.attrs["featureType"] = config["conventions"].get("featureType", "timeSeries")
 
-            # --- STEP 7: Export to NetCDF ---
             safe_start = start_time.replace(":", "").replace("-", "")
             filename = f"{dataset_id}.{safe_start}.nc"
             filepath = os.path.join(self.output_dir, filename)
-            
             aligned_ds.to_netcdf(filepath, engine="netcdf4", format="NETCDF4")
-            L.info(f"Successfully generated NetCDF: {filepath}")
 
-            # --- STEP 8: Push to Dataset Storage ---
+            # Push to storage vault
             storage_url = f"http://dataset-storage.{self.daq_id}-system.svc.cluster.local:80/upload/"
             try:
-                # ---> THE CRITICAL DEBUG STATEMENT <---
-                L.info(f"Attempting to connect to storage vault at: {storage_url}")
-                
                 async with httpx.AsyncClient() as client:
                     with open(filepath, "rb") as f:
                         files = {"file": (filename, f, "application/x-netcdf")}
-                        params = {"dataset_id": dataset_id}
-                        resp = await client.post(storage_url, files=files, params=params, timeout=30.0)
+                        resp = await client.post(storage_url, files=files, params={"dataset_id": dataset_id}, timeout=30.0)
                         resp.raise_for_status()
                 L.info(f"Successfully pushed {filename} to central dataset-storage.")
-                
                 os.remove(filepath)
             except Exception as e:
-                # Changed 'filename' to 'out_file' to avoid LogRecord collision
-                L.error("Failed to push to storage.", extra={
-                    "out_file": filename, 
-                    "attempted_url": storage_url, 
-                    "reason": str(e)
-                })
+                L.error("Failed to push to storage.", extra={"out_file": filename, "attempted_url": storage_url, "reason": str(e)})
 
             return filepath
-            
         except Exception as e:
             L.error("Pipeline failure", extra={"reason": str(e)}, exc_info=True)
             raise e
