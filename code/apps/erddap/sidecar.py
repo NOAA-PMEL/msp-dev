@@ -281,7 +281,7 @@ class ERDDAPConfigCompiler:
         shape_groups = {}
         for var_name, var_data in variables.items():
             
-            # Do not create standalone tables for static coordinate arrays
+            # Do not create standalone datasets for static coordinate arrays
             if var_data.get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                 continue
             
@@ -303,6 +303,16 @@ class ERDDAPConfigCompiler:
         for shape, cols in shape_groups.items():
             shape_joined = "_".join(shape)
             dataset_id = f"telemetry_{make}_{model}_{version}_{shape_joined}".replace("-", "_")
+            
+            # -------------------------------------------------------------
+            # FIX: Dynamically build the ERDDAP Primary Key (Required Vars)
+            # -------------------------------------------------------------
+            req_vars_list = ["make", "model", "format_version", "serial_number", "time"]
+            for dim in shape:
+                if dim != "time":
+                    req_vars_list.append(dim)
+            req_vars_str = ",".join(req_vars_list)
+            # -------------------------------------------------------------
             
             coord_idx = 0
             for dim in shape:
@@ -331,6 +341,7 @@ class ERDDAPConfigCompiler:
                             })
                             coord_idx += 1
 
+            # Pass req_vars into the Jinja template rendering context
             xml_content = self.telemetry_template.render(
                 dataset_id=dataset_id,
                 make=escape(make),
@@ -341,7 +352,8 @@ class ERDDAPConfigCompiler:
                 shape_joined=shape_joined,
                 columns=cols,
                 author=escape(config.author_name),        
-                password=escape(config.insert_password)
+                password=escape(config.insert_password),
+                req_vars=req_vars_str
             )
             
             snippet_path = self.datasets_d / f"{dataset_id}.xml"
