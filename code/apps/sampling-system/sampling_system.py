@@ -3176,10 +3176,12 @@ class SamplingSystem:
             
             var_record = variableset_record["variables"][variable_name]
             v_type = var_record.get("type", "float")
+            var_class = var_record.get("variable_type", "sensor") # 'setting', 'sensor', etc.
             shape = var_record.get("shape", ["time"])
             
-            # Get index_method from raw definition
+            # Get raw definition to extract index_method and fill_strategy
             raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
+            
             idx_meth_raw = raw_var_def.get("index_method", "average")
             if isinstance(idx_meth_raw, list) and len(idx_meth_raw) > 0:
                 index_method = idx_meth_raw[-1].lower()
@@ -3188,14 +3190,43 @@ class SamplingSystem:
             else:
                 index_method = "average"
 
+            # --- PARSE IMPUTATION STRATEGY ---
+            fill_strat = raw_var_def.get("fill_strategy", {})
+            # Default to ZOH/forward_fill for settings, explicit None for telemetry
+            fill_method = fill_strat.get("method", "forward_fill" if var_class == "setting" else "none")
+            max_age_seconds = fill_strat.get("max_age_seconds", 10)
+
+            # Create a globally unique cache key for this variable
+            varmap_name = variablemap.get("variablemap", {}).get("metadata", {}).get("name", "unknown")
+            cache_key = f"{varmap_name}::{variableset_name}::{variable_name}"
+
             val = None
             
-            # --- CLEAN, RAW EVALUATION LOGIC (NO ZOH) ---
+            # --- EVALUATION LOGIC ---
             if len(indexed_data) == 0:
-                if v_type in ["string", "str", "char"]:
-                    val = ""
+                # No new data arrived in this tick. Handle imputation.
+                if fill_method == "forward_fill" and cache_key in self.forward_fill_cache:
+                    cached_record = self.forward_fill_cache[cache_key]
+                    cached_time_str = cached_record["timestamp"]
+                    
+                    try:
+                        # Check TTL / Staleness Threshold
+                        target_dt = string_to_datetime(target_time)
+                        cached_dt = string_to_datetime(cached_time_str)
+                        age = (target_dt - cached_dt).total_seconds()
+                        
+                        if age <= max_age_seconds:
+                            val = cached_record["val"]
+                        else:
+                            # Cache is stale, default to empty/null
+                            val = "" if v_type in ["string", "str", "char"] else None
+                            
+                    except Exception as e:
+                        self.logger.error("Error calculating cache age", extra={"reason": str(e)})
+                        val = "" if v_type in ["string", "str", "char"] else None
                 else:
-                    val = None
+                    # Explicit Nulls (No Fill)
+                    val = "" if v_type in ["string", "str", "char"] else None
             
             elif len(indexed_data) == 1:
                 val = indexed_data[0]
@@ -3221,6 +3252,14 @@ class SamplingSystem:
                                 val = indexed_data[-1]
                         else:
                             val = round(sum(indexed_data) / len(indexed_data), 3)
+
+            # --- UPDATE CACHE ---
+            # If valid new data arrived, save it to the forward-fill cache
+            if len(indexed_data) > 0:
+                self.forward_fill_cache[cache_key] = {
+                    "val": val,
+                    "timestamp": target_time
+                }
 
             variableset_record["variables"][variable_name]["data"] = val
 
