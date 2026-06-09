@@ -508,29 +508,29 @@ def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, 
     Input("vs-submit-setting-btn", "n_clicks"),
     State("vs-settings-table", "selectedRows"),
     State("vs-def-store", "data"),
+    State("vs-data-buffer", "data"), # <-- THE FIX: Pull routing from the live stream
     prevent_initial_call=True
 )
-def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
+def handle_vs_setting_submission(n_clicks, selected_rows, varset_def, live_data):
     print(f"\n--- VARIABLESET APPLY BUTTON CLICKED ---")
-    print(f"Clicks: {n_clicks}")
-    print(f"Selected Rows: {selected_rows}")
-    
     if not n_clicks or not selected_rows: 
-        print("Aborting: No clicks or no row selected.")
         raise PreventUpdate
     
     selected_row = selected_rows[0]
     param_name = selected_row["parameter"]
     raw_val = selected_row.get("requested_value")
     
-    print(f"Targeting: {param_name} | Raw Requested Value: '{raw_val}'")
-    
     if raw_val is None or raw_val == "": 
         print("Aborting: requested_value is empty.")
         raise PreventUpdate
     
-    var_definition = varset_def.get("variables", {}).get(param_name, {})
-    attrs = var_definition.get("attributes", {})
+    # --- THE FIX: Extract routing directly from the live data stream ---
+    if not live_data:
+        print("Aborting: No live data stream received yet to extract routing.")
+        raise PreventUpdate
+        
+    live_var = live_data.get("variables", {}).get(param_name, {})
+    attrs = live_var.get("attributes", {})
     
     t_id = attrs.get("source_id", {}).get("data", "unknown")
     t_type = attrs.get("source_type", {}).get("data", "sensor").lower()
@@ -538,17 +538,21 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
 
     print(f"Routing -> Type: {t_type}, ID: {t_id}, Native Var: {src_var}")
 
+    if t_id == "unknown":
+        print("CRITICAL: Routing failed. Hardware ID is unknown.")
+        raise PreventUpdate
+
     event_type = "envds.controller.settings.request" if t_type == "controller" else "envds.sensor.settings.request"
     dest_topic = "envds/controller/settings/request" if t_type == "controller" else "envds/sensor/settings/request"
     id_key = "controllerid" if t_type == "controller" else "deviceid"
     
     if str(raw_val).lower() in ["true", "on", "1"]:
-        requested_val = 1 if var_definition.get("type") == "int" else True
+        requested_val = 1 if selected_row.get("type") == "int" else True
     elif str(raw_val).lower() in ["false", "off", "0"]:
-        requested_val = 0 if var_definition.get("type") == "int" else False
+        requested_val = 0 if selected_row.get("type") == "int" else False
     else:
-        try: requested_val = int(raw_val) if var_definition.get("type") == "int" else float(raw_val)
-        except ValueError: requested_val = raw_val
+        try: requested_val = int(raw_val) if selected_row.get("type") == "int" else float(raw_val)
+        except (ValueError, TypeError): requested_val = raw_val
 
     event = {
         "specversion": "1.0",
@@ -557,15 +561,16 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
         "type": event_type,
         "datacontenttype": "application/json",
         "destpath": dest_topic,
-        id_key: t_id,
+        id_key: t_id, 
         "data": {
             "settings": {
-                src_var: {
+                src_var: { 
                     "requested": requested_val
                 }
             }
         }
     }
+    
     print(f"SUCCESS! Transmitting: {json.dumps(event)}")
     return json.dumps(event)
 
