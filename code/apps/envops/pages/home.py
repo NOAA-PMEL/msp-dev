@@ -51,6 +51,7 @@ def fetch_registry_data(resource_type: str):
     return docs
 
 # --- LAYOUT ---
+# --- LAYOUT ---
 def layout():
     base_fig = go.Figure()
     # Trace 0: Planned Locations (Index 0 in Patch)
@@ -92,7 +93,8 @@ def layout():
         dbc.Row([
             dbc.Col(
                 dbc.Card([
-                    dbc.CardBody(dcc.Loading(dcc.Graph(id="fleet-map", figure=base_fig, style={"height": "450px"})), className="p-1")
+                    # THE FIX: Removed dcc.Loading wrapper around the dcc.Graph
+                    dbc.CardBody(dcc.Graph(id="fleet-map", figure=base_fig, style={"height": "450px"}), className="p-1")
                 ], className="shadow-sm border-0 mb-4"),
                 width=12
             )
@@ -100,7 +102,9 @@ def layout():
         
         # --- PROJECT GRID (Horizontal Tiling) ---
         html.H5([html.I(className="bi bi-diagram-3 me-2 text-primary"), "Active Projects & Deployments"], className="fw-bold text-dark mb-3"),
-        dcc.Loading(html.Div(id="projects-grid-container"))
+        
+        # THE FIX: Removed dcc.Loading wrapper around the html.Div container
+        html.Div(id="projects-grid-container")
     ])
 
 # --- CALLBACKS ---

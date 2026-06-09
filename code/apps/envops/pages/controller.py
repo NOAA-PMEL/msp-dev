@@ -971,7 +971,13 @@ def update_graph_3d_plots(controller_data, z_axis_list, controller_definition, l
     prevent_initial_call=True
 )
 def submit_setting_change(n_clicks_list, selected_rows_list, controller_meta):
-    if not any(n for n in n_clicks_list if n): raise PreventUpdate
+    print(f"\n--- CONTROLLER APPLY BUTTON CLICKED ---")
+    print(f"Clicks List: {n_clicks_list}")
+    print(f"Selected Rows List: {selected_rows_list}")
+    
+    if not any(n for n in n_clicks_list if n): 
+        print("Aborting: No valid clicks.")
+        raise PreventUpdate
 
     selected_row = None
     for rows in selected_rows_list:
@@ -979,12 +985,18 @@ def submit_setting_change(n_clicks_list, selected_rows_list, controller_meta):
             selected_row = rows[0]
             break
             
-    if not selected_row: raise PreventUpdate
+    if not selected_row: 
+        print("Aborting: No row selected across any table.")
+        raise PreventUpdate
         
     col_id = selected_row["parameter"]
     raw_val = selected_row.get("requested_value")
     
-    if raw_val is None or raw_val == "": raise PreventUpdate
+    print(f"Targeting: {col_id} | Raw Requested Value: '{raw_val}'")
+    
+    if raw_val is None or raw_val == "": 
+        print("Aborting: requested_value is empty.")
+        raise PreventUpdate
         
     if str(raw_val).lower() in ["true", "on", "1"]:
         requested_val = 1 if selected_row.get("type") == "int" else True
@@ -1004,6 +1016,7 @@ def submit_setting_change(n_clicks_list, selected_rows_list, controller_meta):
         "destpath": "envds/controller/settings/request",
         "controllerid": controller_meta["device_id"] 
     }
+    print(f"SUCCESS! Transmitting: {json.dumps(event)}")
     return json.dumps(event)
 
 @callback(

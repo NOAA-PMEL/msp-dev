@@ -511,13 +511,23 @@ def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, 
     prevent_initial_call=True
 )
 def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
-    if not n_clicks or not selected_rows: raise PreventUpdate
+    print(f"\n--- VARIABLESET APPLY BUTTON CLICKED ---")
+    print(f"Clicks: {n_clicks}")
+    print(f"Selected Rows: {selected_rows}")
+    
+    if not n_clicks or not selected_rows: 
+        print("Aborting: No clicks or no row selected.")
+        raise PreventUpdate
     
     selected_row = selected_rows[0]
     param_name = selected_row["parameter"]
     raw_val = selected_row.get("requested_value")
     
-    if raw_val is None or raw_val == "": raise PreventUpdate
+    print(f"Targeting: {param_name} | Raw Requested Value: '{raw_val}'")
+    
+    if raw_val is None or raw_val == "": 
+        print("Aborting: requested_value is empty.")
+        raise PreventUpdate
     
     var_definition = varset_def.get("variables", {}).get(param_name, {})
     attrs = var_definition.get("attributes", {})
@@ -525,6 +535,8 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
     t_id = attrs.get("source_id", {}).get("data", "unknown")
     t_type = attrs.get("source_type", {}).get("data", "sensor").lower()
     src_var = attrs.get("source_variable", {}).get("data", param_name)
+
+    print(f"Routing -> Type: {t_type}, ID: {t_id}, Native Var: {src_var}")
 
     event_type = "envds.controller.settings.request" if t_type == "controller" else "envds.sensor.settings.request"
     dest_topic = "envds/controller/settings/request" if t_type == "controller" else "envds/sensor/settings/request"
@@ -554,7 +566,7 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
             }
         }
     }
-    
+    print(f"SUCCESS! Transmitting: {json.dumps(event)}")
     return json.dumps(event)
 
 @callback(
