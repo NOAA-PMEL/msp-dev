@@ -274,10 +274,13 @@ def get_controller_definition_by_device_id(controller_id: str):
     controller = get_controller_instance(controller_id=controller_id)
     if controller:
         try:
+            # --- THE FIX: Safely extract either 'version' or 'format_version' ---
+            version_str = controller.get("version", controller.get("format_version", "1.0.0"))
+
             controller_definition_id = "::".join([
                 controller["make"],
                 controller["model"],
-                controller["version"]
+                version_str
             ])
             return get_controller_definition(controller_definition_id=controller_definition_id)
         except Exception as e:
