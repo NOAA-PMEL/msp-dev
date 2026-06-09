@@ -52,27 +52,29 @@ def fetch_registry_data(resource_type: str):
 
 # --- LAYOUT ---
 def layout():
-    # --- PRE-BUILD THE MAP TRACES ---
     base_fig = go.Figure()
     # Trace 0: Planned Locations (Index 0 in Patch)
-    base_fig.add_trace(go.Scattermapbox(lat=[], lon=[], text=[], mode='markers', marker=dict(size=12, color='gray', opacity=0.6), name="Planned Locations")) 
+    base_fig.add_trace(go.Scattermapbox(lat=[], lon=[], text=[], mode='markers', marker=dict(size=10, color='gray', opacity=0.5), name="Planned Locations")) 
     # Trace 1: Live Locations (Index 1 in Patch)
-    base_fig.add_trace(go.Scattermapbox(lat=[], lon=[], text=[], mode='markers', marker=dict(size=14, color='red'), name="Live Locations")) 
+    base_fig.add_trace(go.Scattermapbox(lat=[], lon=[], text=[], mode='markers', marker=dict(size=14, color='#0d6efd'), name="Live Locations")) 
     
     base_fig.update_layout(
-        mapbox_style="carto-positron", margin={"r":0,"t":0,"l":0,"b":0},
-        mapbox=dict(center=dict(lat=39.8, lon=-98.5), zoom=3),
-        uirevision="constant-fleet-map" # <--- MAGIC: Prevents zoom/pan resets!
+        mapbox_style="carto-positron", 
+        margin={"r":0,"t":0,"l":0,"b":0},
+        mapbox=dict(center=dict(lat=20, lon=0), zoom=1.5), # Zoomed out for global view
+        uirevision="constant-fleet-map",
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255,255,255,0.8)")
     )
 
     return html.Div([
+        # --- HEADER ---
         dbc.Row([
-            dbc.Col(html.H2("Fleet Operations", className="text-primary"), width=8),
+            dbc.Col(html.H2([html.I(className="bi bi-globe-americas me-3 text-primary"), "Global Fleet Overview"], className="fw-bold mb-0 text-dark"), width=8, align="center"),
             dbc.Col(
-                dbc.Button("Refresh Fleet Data", id="home-refresh-btn", color="secondary", className="float-end fw-bold shadow-sm"),
-                width=4
+                dbc.Button([html.I(className="bi bi-arrow-clockwise me-2"), "Refresh Registry"], id="home-refresh-btn", color="secondary", outline=True, className="float-end fw-bold shadow-sm"),
+                width=4, align="center"
             )
-        ], className="mb-4 mt-3"),
+        ], className="mb-4 mt-3 border-bottom pb-3"),
 
         # Caching Stores
         dcc.Store(id="store-projects", data=[]),
@@ -86,26 +88,19 @@ def layout():
         WebSocket(id="ws-fleet-status", url=f"{ws_url_base}/envds/envops/ws/fleet/status"),
         WebSocket(id="ws-fleet-telemetry", url=f"{ws_url_base}/envds/envops/ws/fleet/telemetry"),
 
+        # --- HERO MAP (Full Width) ---
         dbc.Row([
             dbc.Col(
                 dbc.Card([
-                    dbc.CardHeader(html.H5("Active Fleet Map", className="mb-0")),
-                    # Inject the pre-built figure here so Patch() can find it
-                    dbc.CardBody(dcc.Loading(dcc.Graph(id="fleet-map", figure=base_fig, style={"height": "600px"})))
-                ], className="shadow-sm border-dark"),
-                width=7
-            ),
-            
-            dbc.Col(
-                dbc.Card([
-                    dbc.CardHeader(html.H5("Active Projects", className="mb-0")),
-                    dbc.CardBody(
-                        dcc.Loading(html.Div(id="projects-accordion-container", style={"maxHeight": "600px", "overflowY": "auto"}))
-                    )
-                ], className="shadow-sm border-dark"),
-                width=5
+                    dbc.CardBody(dcc.Loading(dcc.Graph(id="fleet-map", figure=base_fig, style={"height": "450px"})), className="p-1")
+                ], className="shadow-sm border-0 mb-4"),
+                width=12
             )
-        ])
+        ]),
+        
+        # --- PROJECT GRID (Horizontal Tiling) ---
+        html.H5([html.I(className="bi bi-diagram-3 me-2 text-primary"), "Active Projects & Deployments"], className="fw-bold text-dark mb-3"),
+        dcc.Loading(html.Div(id="projects-grid-container"))
     ])
 
 # --- CALLBACKS ---
@@ -155,7 +150,6 @@ def update_live_health(message, current_health):
             current_health = current_health or {}
             existing = current_health.get(app_uid, {})
             
-            # FAST-FAIL: Only update Dash if the status ACTUALLY changed!
             if existing.get("health") != health or existing.get("text") != status_text:
                 new_health = current_health.copy()
                 new_health[app_uid] = {"health": health, "text": status_text}
@@ -167,17 +161,17 @@ def update_live_health(message, current_health):
     return dash.no_update
 
 
-# --- 1. ACCORDION CALLBACK (Isolated from GPS spam) ---
+# --- 1. ACCORDION CALLBACK -> REBUILT AS GRID ---
 @callback(
-    Output("projects-accordion-container", "children"),
+    Output("projects-grid-container", "children"),
     Input("store-projects", "data"),
     Input("store-deployments", "data"),
     Input("live-health-store", "data"), 
     prevent_initial_call=True
 )
-def render_fleet_accordion(projects, deployments, health_store):
+def render_fleet_grid(projects, deployments, health_store):
     if health_store is None: health_store = {}
-    if not projects and not deployments: return html.P("No active projects found.", className="text-muted")
+    if not projects and not deployments: return html.P("No active projects found.", className="text-muted fst-italic px-2")
 
     platform_to_dep = {d.get("data", {}).get("platform_ref"): d for d in deployments if d.get("data", {}).get("platform_ref")}
     host_deployments = [d for d in deployments if not d.get("data", {}).get("host_platform_ref") or d.get("data", {}).get("host_platform_ref") not in platform_to_dep]
@@ -198,30 +192,27 @@ def render_fleet_accordion(projects, deployments, health_store):
             if parent_name and proj_ref in hosts_by_project and parent_name in hosts_by_project[proj_ref]:
                 hosts_by_project[proj_ref][parent_name]["subs"].append(dep)
 
-    accordion_items = []
+    project_blocks = []
     
-    def get_health_badge(uid, display_name):
+    def get_health_indicator(uid, is_host=False):
         h_data = health_store.get(uid, {"health": "secondary", "text": "UNKNOWN"})
         color = "success" if h_data["health"] == "ok" else h_data["health"]
-        return html.Div([
-            html.Span(f"{display_name}:", className="small fw-bold text-muted me-1"),
-            dbc.Badge(h_data['text'], color=color, className="me-3 shadow-sm")
-        ], className="d-inline-flex align-items-center mb-1")
+        icon = "bi-hdd-network" if is_host else "bi-hdd"
+        # Style as a clean pill badge
+        return dbc.Badge([html.I(className=f"bi {icon} me-1"), uid], color=color, className="me-2 mb-2 p-2 shadow-sm rounded-pill font-monospace", style={"fontSize": "0.75rem"})
 
     for proj in projects:
         proj_name = proj.get("metadata", {}).get("name", "Unknown")
         proj_display = proj.get("data", {}).get("display_name", proj_name)
         proj_hosts = hosts_by_project.get(proj_name, {})
-        dep_list = []
+        
+        host_cols = []
         proj_health_status = "ok"
 
         for host_name, group in proj_hosts.items():
             host_data = group["host"]
             subs = group["subs"]
             h_display = host_data.get("data", {}).get("display_name", host_name)
-            
-            host_health_badge = get_health_badge(host_name, "HOST")
-            sub_badges = html.Div([get_health_badge(s.get("metadata", {}).get("name"), s.get("data", {}).get("display_name", "Sub")) for s in subs], className="d-flex flex-wrap")
             
             host_state = health_store.get(host_name, {}).get("health", "ok")
             if host_state == "danger": proj_health_status = "danger"
@@ -232,26 +223,41 @@ def render_fleet_accordion(projects, deployments, health_store):
                 if s_state == "danger": proj_health_status = "danger"
                 elif s_state == "warning" and proj_health_status != "danger": proj_health_status = "warning"
 
-            btn = dbc.Button("Command & Control \u2192", href=dash.get_relative_path(f"/deployment/{host_name}"), color="primary", size="sm", className="mt-3 w-100 fw-bold shadow-sm")
+            host_badge = get_health_indicator(host_name, is_host=True)
+            sub_badges = [get_health_indicator(s.get("metadata", {}).get("name"), is_host=False) for s in subs]
+
+            btn = dbc.Button("Access Flight Deck \u2192", href=dash.get_relative_path(f"/deployment/{host_name}"), color="primary", size="sm", className="mt-auto w-100 fw-bold shadow-sm")
             
-            dep_card = dbc.Card([
+            host_card = dbc.Card([
                 dbc.CardHeader([
-                    html.H6(h_display, className="mb-0 fw-bold text-dark"),
-                    html.Span(f"{host_data.get('data', {}).get('platform_ref', 'N/A')}", className="font-monospace small text-muted")
-                ], className="d-flex justify-content-between align-items-center bg-light p-2 border-bottom"),
-                dbc.CardBody([dbc.Row([dbc.Col(host_health_badge, width=12, className="mb-2 border-bottom pb-2")]), dbc.Row([dbc.Col(sub_badges, width=12)]), btn], className="p-3")
-            ], className="mb-3 border-0 shadow-sm")
-            dep_list.append(dep_card)
+                    html.H6(h_display, className="mb-0 fw-bold text-dark text-truncate"),
+                    html.Span(f"{host_data.get('data', {}).get('platform_ref', 'N/A')}", className="font-monospace small text-muted text-truncate d-block")
+                ], className="bg-light p-2 border-bottom"),
+                dbc.CardBody([
+                    html.Div([host_badge] + sub_badges, className="d-flex flex-wrap mb-3"), 
+                    btn
+                ], className="p-3 d-flex flex-column h-100")
+            ], className="border-0 shadow-sm h-100")
+            
+            host_cols.append(dbc.Col(host_card, lg=4, md=6, sm=12, className="mb-3"))
 
-        if not dep_list: dep_list = [html.P("No active deployments in this project.", className="text-muted small px-2")]
+        if not host_cols: 
+            host_cols = [dbc.Col(html.P("No active deployments mapped to this project.", className="text-muted small fst-italic"))]
 
-        title_color = "text-success" if proj_health_status == "ok" else f"text-{proj_health_status}"
-        title_icon = "●" if proj_health_status == "ok" else ("▲" if proj_health_status == "warning" else "■")
-        accordion_items.append(dbc.AccordionItem(dep_list, title=html.Span([f"🗂 {proj_display} ", html.Span(title_icon, className=title_color)])))
+        # Use title text color to reflect overall project health
+        title_color = "text-dark"
+        if proj_health_status == "danger": title_color = "text-danger"
+        elif proj_health_status == "warning": title_color = "text-warning"
+        
+        project_block = html.Div([
+            html.H5([html.I(className="bi bi-folder2-open me-2"), proj_display], className=f"fw-bold mb-3 border-bottom pb-2 {title_color}"),
+            dbc.Row(host_cols, className="mb-4")
+        ])
+        project_blocks.append(project_block)
 
-    return dbc.Accordion(accordion_items, start_collapsed=False, flush=True)
+    return html.Div(project_blocks)
 
-# --- 2. MAP CALLBACK (Isolated from Health spam, uses Patch) ---
+# --- 2. MAP CALLBACK ---
 @callback(
     Output("fleet-map", "figure"),
     Input("live-fleet-locations", "data"),
@@ -312,16 +318,11 @@ def patch_fleet_map(live_locations, deployments):
                     planned_lons.append(lon_min)
                     planned_text.append(f"{h_display}<br><i>(Estimated)</i>")
 
-    # --- THE MAGIC PATCH ---
-    # Instead of building a massive go.Figure JSON, we just send these arrays over the wire.
     map_patch = Patch()
-    
-    # Target Trace 0 (Planned Locations)
     map_patch["data"][0]["lat"] = planned_lats
     map_patch["data"][0]["lon"] = planned_lons
     map_patch["data"][0]["text"] = planned_text
     
-    # Target Trace 1 (Live Locations)
     map_patch["data"][1]["lat"] = live_lats
     map_patch["data"][1]["lon"] = live_lons
     map_patch["data"][1]["text"] = live_text
@@ -342,7 +343,6 @@ def update_live_locations(message, current_locations):
         payload = json.loads(message["data"])
         target_id = payload.get("target_id") 
         data = payload.get("data", {})
-        
         variables = data.get("variables", {})
         
         lat = variables.get("latitude", {}).get("data") or variables.get("lat", {}).get("data")
@@ -358,7 +358,6 @@ def update_live_locations(message, current_locations):
             curr_lon = current_locations.get(target_id, {}).get("lon")
                 
             if curr_lat != lat_val or curr_lon != lon_val:
-                # FIX: Must copy the dict so Dash knows state changed!
                 new_locations = current_locations.copy() if current_locations else {}
                 new_locations[target_id] = {"lat": lat_val, "lon": lon_val}
                 return new_locations

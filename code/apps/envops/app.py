@@ -55,7 +55,12 @@ app = Dash(
 
 # --- SIDEBAR COMPONENT ---
 sidebar_header = dbc.Row([
-    dbc.Col(html.H4("EnvOps", className="display-6 fw-bold text-primary mb-0")),
+    dbc.Col([
+        html.H4([
+            html.I(className="bi bi-radar me-2 text-primary"), 
+            "EnvOps"
+        ], className="fw-bold text-dark mb-0", style={"fontSize": "1.4rem", "letterSpacing": "0.5px"})
+    ]),
     dbc.Col(
         html.Button(
             html.Span(className="navbar-toggler-icon"),
@@ -66,50 +71,52 @@ sidebar_header = dbc.Row([
         width="auto",
         align="center",
     ),
-], className="mb-4 align-items-center")
+], className="mb-4 align-items-center border-bottom pb-3")
 
 sidebar = html.Div(
     [
         sidebar_header,
         
         # 1. Global Navigation
-        html.H6("Global Views", className="text-muted small text-uppercase fw-bold px-2 mb-2"),
+        html.Div("Global Views", className="text-muted fw-bold text-uppercase mb-2 px-2", style={"fontSize": "0.65rem", "letterSpacing": "0.5px"}),
         dbc.Nav(
             [
-                dbc.NavLink("⎈ Fleet Overview", href=dash.get_relative_path("/"), active="exact", className="fw-bold mb-1 rounded"),
-                dbc.NavLink("🗄 Asset Registry", href=dash.get_relative_path("/assets"), active="exact", className="fw-bold mb-3 rounded"),
+                dbc.NavLink([html.I(className="bi bi-globe-americas me-2"), "Fleet Overview"], href=dash.get_relative_path("/"), active="exact", className="fw-bold mb-1 rounded text-dark"),
+                dbc.NavLink([html.I(className="bi bi-server me-2"), "Asset Registry"], href=dash.get_relative_path("/assets"), active="exact", className="fw-bold mb-3 rounded text-dark"),
             ],
             vertical=True,
             pills=True,
         ),
         
-        html.Hr(className="text-secondary"),
+        html.Hr(className="text-secondary opacity-25 my-3"),
         
         # 2. Dynamic Mission Hierarchy
-        html.H6("Active Missions", className="text-muted small text-uppercase fw-bold px-2 mb-2"),
+        html.Div("Active Missions", className="text-muted fw-bold text-uppercase mb-2 px-2", style={"fontSize": "0.65rem", "letterSpacing": "0.5px"}),
         dcc.Loading(
-            html.Div(id="sidebar-dynamic-missions", style={"maxHeight": "50vh", "overflowY": "auto"}),
+            html.Div(id="sidebar-dynamic-missions", style={"maxHeight": "50vh", "overflowY": "auto"}, className="pe-1"),
             type="dot"
         ),
         
-        html.Hr(className="text-secondary"),
+        html.Hr(className="text-secondary opacity-25 my-3"),
         
         # 3. Ops Tools
         html.Div([
-            html.H6("Ops Tools", className="small text-uppercase text-muted fw-bold mb-2"),
+            html.Div("Ops Tools", className="text-muted fw-bold text-uppercase mb-2", style={"fontSize": "0.65rem", "letterSpacing": "0.5px"}),
             dbc.Button(
-                "System Logbook",
+                [html.I(className="bi bi-journal-text me-2"), "System Logbook"],
                 id="global-open-notes",
-                color="warning",
-                className="w-100 shadow-sm fw-bold text-dark",
-                style={"borderRadius": "8px"}
+                color="dark",
+                outline=True,
+                className="w-100 shadow-sm fw-bold text-start px-3",
+                style={"borderRadius": "6px"}
             ),
-        ]),
+        ], className="px-2"),
         
         # Refreshes the dynamic sidebar every 60 seconds
         dcc.Interval(id="sidebar-interval", interval=60000, n_intervals=0) 
     ],
-    id="sidebar"
+    id="sidebar",
+    className="bg-light shadow-sm border-end"
 )
 
 # --- GLOBAL OFFCANVAS (LOGBOOK) ---
@@ -132,10 +139,12 @@ def load_shared_notes():
     return pd.DataFrame(columns=["Timestamp", "Operator", "Note"])
 
 offcanvas_logbook = dbc.Offcanvas([
-    html.H5("Operations Logbook", className="fw-bold text-primary"),
-    html.P("Record global system notes.", className="text-muted small"),
+    html.Div([
+        html.H5([html.I(className="bi bi-journal-bookmark-fill me-2 text-primary"), "Operations Logbook"], className="fw-bold mb-0"),
+        html.P("Record and review global system events.", className="text-muted small mt-1 border-bottom pb-3"),
+    ]),
     
-    dbc.Label("Operator Name:", className="fw-bold small"),
+    dbc.Label("Operator Name", className="fw-bold text-muted text-uppercase mt-2", style={"fontSize": "0.65rem", "letterSpacing": "0.5px"}),
     dcc.Dropdown(
         id="global-operator-input",
         options=[
@@ -145,23 +154,26 @@ offcanvas_logbook = dbc.Offcanvas([
             {'label': 'Guest', 'value': 'Guest'}
         ],
         placeholder="Select Operator...",
-        className="mb-3"
+        className="mb-3 shadow-sm"
     ),
     
-    dbc.Label("Note:", className="fw-bold small"),
-    dbc.Textarea(id="global-note-input", placeholder="Enter details here...", style={'height': '150px'}),
-    dbc.Button("Post Note", id="global-save-note-btn", color="primary", className="w-100 mt-3 mb-4 fw-bold shadow-sm"),
+    dbc.Label("Log Entry", className="fw-bold text-muted text-uppercase", style={"fontSize": "0.65rem", "letterSpacing": "0.5px"}),
+    dbc.Textarea(id="global-note-input", placeholder="Enter operational details, hardware changes, or mission events...", style={'height': '120px'}, className="shadow-sm"),
     
-    html.H6("Recent History:", className="fw-bold border-bottom pb-2"),
+    dbc.Button([html.I(className="bi bi-send me-2"), "Post to Logbook"], id="global-save-note-btn", color="primary", className="w-100 mt-3 mb-4 fw-bold shadow-sm"),
+    
+    html.Div("Recent History", className="fw-bold text-muted text-uppercase border-bottom pb-2 mb-3", style={"fontSize": "0.65rem", "letterSpacing": "0.5px"}),
+    
     dash_table.DataTable(
         id="global-notes-table",
         columns=[{"name": i, "id": i} for i in ["Timestamp", "Operator", "Note"]],
-        style_cell={'textAlign': 'left', 'fontSize': '12px', 'whiteSpace': 'normal', 'height': 'auto'},
-        style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold'},
-        style_data_conditional=[{'if': {'column_id': 'Operator'}, 'fontWeight': 'bold', 'color': '#007bff'}],
+        style_cell={'textAlign': 'left', 'fontSize': '12px', 'whiteSpace': 'normal', 'height': 'auto', 'fontFamily': 'sans-serif'},
+        style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold', 'textTransform': 'uppercase', 'fontSize': '10px'},
+        style_data_conditional=[{'if': {'column_id': 'Operator'}, 'fontWeight': 'bold', 'color': '#0d6efd'}],
         page_size=15,
+        style_table={'overflowX': 'auto'}
     )
-], id="global-offcanvas", title="Shared System Notes", is_open=False, style={"width": "600px"})
+], id="global-offcanvas", title="", is_open=False, style={"width": "600px"}, className="border-start shadow")
 
 # --- APP LAYOUT ---
 app.layout = html.Div([
@@ -214,15 +226,15 @@ def update_sidebar_missions(n):
             host_display = host.get("data", {}).get("display_name", host_id)
             
             host_links.append(html.Div([
-                html.Span(host_display, className="d-block fw-bold small text-dark mb-1 mt-2 px-2"),
-                dbc.NavLink("🎛 Command & Control", href=dash.get_relative_path(f"/deployment/{host_id}"), active="exact", className="small py-1 rounded text-muted"),
-                dbc.NavLink("📈 Telemetry Plots", href=dash.get_relative_path(f"/variablesets/{host_id}"), active="exact", className="small py-1 rounded text-muted border-bottom pb-2")
+                html.Span([html.I(className="bi bi-hdd-network me-2 text-primary"), host_display], className="d-block fw-bold small text-dark mb-1 mt-3 px-2 text-uppercase", style={"letterSpacing": "0.5px"}),
+                dbc.NavLink([html.I(className="bi bi-sliders me-2"), "Command & Control"], href=dash.get_relative_path(f"/deployment/{host_id}"), active="exact", className="small py-1 rounded text-muted fw-bold"),
+                dbc.NavLink([html.I(className="bi bi-graph-up me-2"), "Telemetry Plots"], href=dash.get_relative_path(f"/variablesets/{host_id}"), active="exact", className="small py-1 rounded text-muted fw-bold border-bottom pb-2")
             ]))
             
         accordion_items.append(
             dbc.AccordionItem(
                 dbc.Nav(host_links, vertical=True, pills=True), 
-                title=f"🗂 {proj_name}", 
+                title=html.Div([html.I(className="bi bi-folder2-open me-2"), proj_name], className="fw-bold"), 
                 class_name="bg-transparent border-0 px-0"
             )
         )
@@ -231,8 +243,11 @@ def update_sidebar_missions(n):
 
 @app.callback(Output("sidebar", "className"), Input("toggle", "n_clicks"), State("sidebar", "className"))
 def toggle_classname(n, classname):
-    if n and classname == "": return "collapsed"
-    return ""
+    # Base classes are preserved while toggling the collapsed state
+    base_classes = "bg-light shadow-sm border-end"
+    if n and "collapsed" not in classname: 
+        return f"{base_classes} collapsed"
+    return base_classes
 
 @app.callback(Output("collapse", "is_open"), Input("toggle", "n_clicks"), State("collapse", "is_open"))
 def toggle_collapse(n, is_open):
