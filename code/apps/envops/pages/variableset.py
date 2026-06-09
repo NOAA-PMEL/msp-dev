@@ -508,16 +508,12 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
     if raw_val is None or raw_val == "": raise PreventUpdate
     
     var_definition = varset_def.get("variables", {}).get(param_name, {})
+    attrs = var_definition.get("attributes", {})
     
-    t_id, t_type = "unknown", "sensor"
-    src_var = param_name 
-    
-    if var_definition.get("map_type") == "direct":
-        direct_var = var_definition.get("direct_value", {}).get("source_variable", param_name)
-        source_info = var_definition.get("source", {}).get(direct_var, {})
-        t_id = source_info.get("source_id", "unknown")
-        t_type = source_info.get("source_type", "sensor").lower()
-        src_var = source_info.get("source_variable", param_name)
+    # --- THE FIX: Extract routing metadata directly from the attributes block ---
+    t_id = attrs.get("source_id", {}).get("data", "unknown")
+    t_type = attrs.get("source_type", {}).get("data", "sensor").lower()
+    src_var = attrs.get("source_variable", {}).get("data", param_name)
 
     event_type = "envds.controller.settings.request" if t_type == "controller" else "envds.sensor.settings.request"
     dest_topic = "envds/controller/settings/request" if t_type == "controller" else "envds/sensor/settings/request"
@@ -531,7 +527,6 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
         try: requested_val = int(raw_val) if var_definition.get("type") == "int" else float(raw_val)
         except ValueError: requested_val = raw_val
 
-    # --- THE FIX: Produce a valid, self-contained CloudEvent ---
     event = {
         "specversion": "1.0",
         "id": str(ULID()),
@@ -539,10 +534,10 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
         "type": event_type,
         "datacontenttype": "application/json",
         "destpath": dest_topic,
-        id_key: t_id, # Safely passes the extracted source_id!
+        id_key: t_id, # Safely passes 'Synaccess::NP05B::synaccess25'
         "data": {
             "settings": {
-                src_var: {
+                src_var: { # Safely passes 'outlet_1_power'
                     "requested": requested_val
                 }
             }
