@@ -225,13 +225,16 @@ def layout(deployment_id=None, variableset_id=None):
                             id="vs-settings-table",
                             rowData=layout_options["layout-settings"]["time"]["row-data-skeletons"],
                             columnDefs=[
-                                {"field": "parameter", "headerName": "Control Parameter", "editable": False, "width": 200, "pinned": "left"},
+                                # Added checkboxSelection so it is visually obvious which row is selected!
+                                {"field": "parameter", "headerName": "Control Parameter", "editable": False, "width": 250, "pinned": "left", "checkboxSelection": True},
                                 {"field": "description", "headerName": "Description", "editable": False, "flex": 1},
                                 {"field": "actual_value", "headerName": "Current State", "editable": False, "width": 150},
                                 {"field": "requested_value", "headerName": "New Target Value", "editable": True, "width": 180}
                             ],
-                            columnSizeOptions="autoSize",
-                            dashGridOptions={"domLayout": "autoHeight", "singleClickEdit": True, "rowSelection": "single"},
+                            # Fixed 'columnSizeOptions' warning
+                            columnSize="autoSize",
+                            # Fixed deprecated 'rowSelection: "single"' warning
+                            dashGridOptions={"domLayout": "autoHeight", "singleClickEdit": True, "rowSelection": {"mode": "singleRow"}},
                             className="ag-theme-alpine"
                         ),
                         dbc.Button("Apply Selected Parameter", id="vs-submit-setting-btn", color="primary", className="mt-3 fw-bold shadow-sm")

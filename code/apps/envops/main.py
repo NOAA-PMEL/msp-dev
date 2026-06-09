@@ -121,12 +121,13 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket, client_type: str, client_id: str):
         await websocket.accept()
         
-        # Create a STRICTLY BOUNDED queue for this specific browser tab
         ws_queue = asyncio.Queue(maxsize=50) 
-        
-        # Spawn a dedicated background worker to drain this queue over the network
         worker_task = asyncio.create_task(self._ws_sender_worker(websocket, ws_queue, client_type, client_id))
         
+        # --- THE FIX: Safely initialize missing client_types on the fly ---
+        if client_type not in self.active_connections:
+            self.active_connections[client_type] = {}
+            
         if client_id not in self.active_connections[client_type]:
             self.active_connections[client_type][client_id] = {}
             
@@ -144,16 +145,17 @@ class ConnectionManager:
             pass # Socket closures are handled cleanly by the disconnect method
 
     def disconnect(self, websocket: WebSocket, client_type: str, client_id: str):
-        if client_id in self.active_connections[client_type]:
+        # --- THE FIX: Safely check for existence before deleting ---
+        if client_type in self.active_connections and client_id in self.active_connections[client_type]:
             if websocket in self.active_connections[client_type][client_id]:
                 queue, worker_task = self.active_connections[client_type][client_id][websocket]
-                worker_task.cancel() # Kill the background worker to free memory
+                worker_task.cancel() 
                 del self.active_connections[client_type][client_id][websocket]
                 
             if not self.active_connections[client_type][client_id]:
                 del self.active_connections[client_type][client_id]
             L.debug(f"WS Disconnected: {client_type}/{client_id}")
-
+            
     async def broadcast(self, message: str, client_type: str, client_id: str):
         """Instantly drops messages into the connection queues. Uses a Ring Buffer."""
         if client_id in self.active_connections.get(client_type, {}):
