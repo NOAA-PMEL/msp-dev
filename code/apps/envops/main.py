@@ -244,13 +244,16 @@ async def mqtt_listen_task():
                                 except Exception as e:
                                     L.error(f"Error parsing nav source for map: {e}")
 
-                        # 3. Route Raw Sensor Telemetry
-                        # elif "sensor" in ce_type and "data.update" in ce_type:
-                        elif ce_type in ["envds.data.update"]:
+                        # 3. Route Raw Sensor & Controller Telemetry
+                        elif ce_type in ["envds.data.update", "envds.controller.data.update"]:
                             L.debug("mqtt_listen_task", extra={"payload_str": payload_str})
-                            # Depending on exact source string format (e.g., 'envds.default.sensor.make::model::sn')
-                            sensor_id = source.split(".")[-1]
-                            await manager.broadcast(payload_str, "sensor", sensor_id)
+                            device_id = source.split(".")[-1]
+                            
+                            # Route to the correct WebSocket channel
+                            if "controller" in ce_type:
+                                await manager.broadcast(payload_str, "controller", device_id)
+                            else:
+                                await manager.broadcast(payload_str, "sensor", device_id)
 
                         # 1. Route Sensor Settings
                         elif ce_type == "envds.sensor.settings.update":
@@ -334,7 +337,16 @@ async def ws_variableset(websocket: WebSocket, variableset_id: str):
     await manager.connect(websocket, "variableset", variableset_id)
     try:
         while True:
-            await websocket.receive_text() # Mostly listening, but keep socket alive
+            data = await websocket.receive_text()
+            try:
+                payload = json.loads(data)
+                destpath = payload.get("destpath")
+                if destpath:
+                    # Forward the structured CloudEvent payload onto the central publish queue
+                    await mqtt_publish_queue.put((destpath, data))
+                    L.debug(f"Bridged VariableSet Command to MQTT: {destpath}")
+            except Exception as e:
+                L.error(f"VariableSet Command Bridge Error: {e}")
     except WebSocketDisconnect:
         manager.disconnect(websocket, "variableset", variableset_id)
 
@@ -385,11 +397,12 @@ async def ws_controller(websocket: WebSocket, controller_id: str):
                         "source": payload.get("source", f"envds.{config.daq_id}.dashboard"),
                         "type": "envds.controller.settings.request",
                         "datacontenttype": "application/json",
-                        "controllerid": payload.get("controllerid", ""), # Required by controller.py
+                        "controllerid": payload.get("controllerid", ""), 
                         "destpath": "envds/controller/settings/request",
                         "data": payload.get("data", {})
                     }
                     
+                    # --- FIXED TYPO: Symmetric with sensor, now using config.mqtt_port ---
                     async with Client(config.mqtt_broker, port=config.mqtt_port) as client:
                         await client.publish(destpath, payload=json.dumps(ce_payload))
                         L.debug(f"Bridged Controller Settings to MQTT: {destpath}")

@@ -511,17 +511,32 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
     
     # Trace the physical layout architecture via its mapped direct source definitions
     t_id, t_type, topic = "unknown", "sensor", "envds/sensor/settings/request"
+    src_var = param_name # Fallback to virtual parameter name
+    
     if var_definition.get("map_type") == "direct":
         direct_var = var_definition.get("direct_value", {}).get("source_variable", param_name)
         source_info = var_definition.get("source", {}).get(direct_var, {})
         t_id = source_info.get("source_id", "unknown")
         t_type = source_info.get("source_type", "sensor").lower()
+        # --- THE FIX: Extract the native variable name (e.g., 'outlet_1_power') ---
+        src_var = source_info.get("source_variable", param_name)
 
     # Build the symmetrical, nested command block
     event_type = "envds.controller.settings.request" if t_type == "controller" else "envds.sensor.settings.request"
     dest_topic = "envds/controller/settings/request" if t_type == "controller" else "envds/sensor/settings/request"
     id_key = "controllerid" if t_type == "controller" else "deviceid"
     
+    # Cast boolean strings safely if editing switches
+    if str(raw_val).lower() in ["true", "on", "1"]:
+        requested_val = 1 if var_definition.get("type") == "int" else True
+    elif str(raw_val).lower() in ["false", "off", "0"]:
+        requested_val = 0 if var_definition.get("type") == "int" else False
+    else:
+        try:
+            requested_val = int(raw_val) if var_definition.get("type") == "int" else float(raw_val)
+        except ValueError:
+            requested_val = raw_val
+
     event = {
         "source": f"envds.{config.daq_id}.dashboard",
         "type": event_type,
@@ -529,8 +544,8 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
         id_key: t_id,
         "data": {
             "settings": {
-                param_name: {
-                    "requested": raw_val
+                src_var: { # Using the physical driver variable string!
+                    "requested": requested_val
                 }
             }
         }

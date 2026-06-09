@@ -953,14 +953,26 @@ def submit_setting_change(n_clicks_list, selected_rows_list, sensor_meta):
         
     col_id = selected_row["parameter"]
     raw_val = selected_row.get("requested_value")
+    row_type = selected_row.get("type", "unknown") # Extract explicit definition type
     
     if raw_val is None or raw_val == "": raise PreventUpdate
         
     try:
-        if selected_row["type"] == "int": requested_val = int(raw_val)
-        elif selected_row["type"] == "float": requested_val = float(raw_val)
-        elif raw_val in ["True", "False"]: requested_val = raw_val == "True"
-        else: requested_val = str(raw_val)
+        # --- SAFE TYPE RESOLUTION ---
+        # If the parameter is explicitly defined as text/string, treat it as text immediately!
+        if row_type in ["string", "str", "char", "text"]:
+            requested_val = str(raw_val)
+        elif row_type == "int": 
+            requested_val = int(raw_val)
+        elif row_type == "float": 
+            requested_val = float(raw_val)
+        elif row_type == "bool":
+            if str(raw_val).lower() in ["true", "on", "1"]: requested_val = True
+            else: requested_val = False
+        else:
+            # Fallback type-inference for legacy/undocumented types
+            if raw_val in ["True", "False"]: requested_val = raw_val == "True"
+            else: requested_val = str(raw_val)
     except (ValueError, TypeError):
         requested_val = raw_val
 

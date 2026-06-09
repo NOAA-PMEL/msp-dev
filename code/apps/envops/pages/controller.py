@@ -978,13 +978,18 @@ def submit_setting_change(n_clicks_list, selected_rows_list, controller_meta):
     
     if raw_val is None or raw_val == "": raise PreventUpdate
         
-    try:
-        if selected_row["type"] == "int": requested_val = int(raw_val)
-        elif selected_row["type"] == "float": requested_val = float(raw_val)
-        elif raw_val in ["True", "False"]: requested_val = raw_val == "True"
-        else: requested_val = str(raw_val)
-    except (ValueError, TypeError):
-        requested_val = raw_val
+    # --- UPGRADED: Symmetrical, robust casting for hardware settings ---
+    if str(raw_val).lower() in ["true", "on", "1"]:
+        requested_val = 1 if selected_row.get("type") == "int" else True
+    elif str(raw_val).lower() in ["false", "off", "0"]:
+        requested_val = 0 if selected_row.get("type") == "int" else False
+    else:
+        try:
+            if selected_row["type"] == "int": requested_val = int(raw_val)
+            elif selected_row["type"] == "float": requested_val = float(raw_val)
+            else: requested_val = str(raw_val)
+        except (ValueError, TypeError):
+            requested_val = raw_val
 
     event = {
         "source": f"envds.{config.daq_id}.dashboard",
@@ -993,7 +998,6 @@ def submit_setting_change(n_clicks_list, selected_rows_list, controller_meta):
         "controllerid": controller_meta["device_id"]
     }
     return json.dumps(event)
-
 
 @callback(
     Output({"type": "controller-settings-table", "index": ALL}, "rowData"), 
