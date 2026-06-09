@@ -14,6 +14,10 @@ import os
 
 import httpx
 from logfmter import Logfmter
+import pint
+
+ureg = pint.UnitRegistry()
+ureg.default_format = "~"
 
 # from registry import registry
 # from flask import Flask, request
@@ -1717,6 +1721,82 @@ class SamplingSystem:
                                                     if vs_name in vm_obj["variablesets"] and v_name in vm_obj["variablesets"][vs_name]["variables"]:
                                                         vm_obj["variablesets"][vs_name]["variables"][v_name]["attributes"] = attrs.copy()
                                         except Exception as e:
+                                            self.logger.warning(f"Hydration failed for {v_name} (will retry later)", extra={"reason": str(e)})async def hydrate_local_variablemaps(self):
+        """
+        Asynchronously hydrates locally owned variable maps with physical 
+        limits and native units from the Datastore. Uses eventual consistency.
+        """
+        for platform_name, vm_dict in self.variablemaps.get("platform", {}).items():
+            for vm_name, time_dict in vm_dict.items():
+                for valid_time, vm_obj in time_dict.items():
+                    vm_data = vm_obj["variablemap"].get("data", {})
+                    
+                    for vs_name, vs_def in vm_data.get("variablesets", {}).items():
+                        for v_name, v_def in vm_data.get("variables", {}).items():
+                            if v_def.get("variableset") != vs_name: 
+                                continue
+                            
+                            v_type = v_def.get("variable_type", "sensor")
+                            m_type = v_def.get("map_type", "")
+                            
+                            # Hydrate ALL direct mappings (sensors and settings)
+                            if m_type == "direct":
+                                attrs = v_def.get("attributes", {})
+                                
+                                # Idempotency check
+                                if "hydrated" not in attrs:
+                                    direct_var = v_def.get("direct_value", {}).get("source_variable", v_name)
+                                    src_info = v_def.get("source", {}).get(direct_var, {})
+                                    
+                                    src_type = src_info.get("source_type", "device") # 'device' or 'controller'
+                                    src_id = src_info.get("source_id", "")
+                                    src_var = src_info.get("source_variable", "")
+                                    
+                                    if not src_id: 
+                                        continue
+                                    
+                                    parts = src_id.split("::")
+                                    if len(parts) >= 2:
+                                        make, model = parts[0], parts[1]
+                                        
+                                        # Query the Datastore
+                                        datastore_url = f"http://datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+                                        path = f"{src_type}-definition/registry/get"
+                                        query = {"make": make, "model": model}
+                                        
+                                        try:
+                                            async with httpx.AsyncClient() as client:
+                                                resp = await client.get(f"{datastore_url}/{path}/", params=query, timeout=5.0)
+                                                
+                                            if resp.status_code == 200 and resp.json().get("results"):
+                                                hw_def = resp.json()["results"][0]
+                                                hw_vars = hw_def.get("variables", {})
+                                                
+                                                if src_var in hw_vars:
+                                                    hw_attrs = hw_vars[src_var].get("attributes", {})
+                                                    
+                                                    # Specific hydration for settings (limits)
+                                                    if v_type == "setting":
+                                                        for attr_key in ["valid_min", "valid_max", "step_increment"]:
+                                                            if attr_key in hw_attrs and attr_key not in attrs:
+                                                                attrs[attr_key] = hw_attrs[attr_key].copy()
+                                                                self.logger.info(f"Hydrated limit {v_name} with {attr_key}: {hw_attrs[attr_key]['data']}")
+
+                                                    # Capture native units for live conversion logic
+                                                    if "units" in hw_attrs:
+                                                        attrs["native_units"] = hw_attrs["units"].copy()
+                                                        # If platform varmap didn't override it, default to the native unit
+                                                        if "units" not in attrs:
+                                                            attrs["units"] = hw_attrs["units"].copy()
+                                                        else:
+                                                            self.logger.info(f"Mapped {v_name} native_units: {hw_attrs['units']['data']} -> target: {attrs['units']['data']}")
+
+                                                    attrs["hydrated"] = {"type": "bool", "data": True}
+
+                                                    # Ensure the active variableset cache used for telemetry routing is also updated
+                                                    if vs_name in vm_obj["variablesets"] and v_name in vm_obj["variablesets"][vs_name]["variables"]:
+                                                        vm_obj["variablesets"][vs_name]["variables"][v_name]["attributes"] = attrs.copy()
+                                        except Exception as e:
                                             self.logger.warning(f"Hydration failed for {v_name} (will retry later)", extra={"reason": str(e)})
 
     async def publish_local_definitions(self):
@@ -3190,13 +3270,10 @@ class SamplingSystem:
             else:
                 index_method = "average"
 
-            # --- PARSE IMPUTATION STRATEGY ---
             fill_strat = raw_var_def.get("fill_strategy", {})
-            # Default to ZOH/forward_fill for settings, explicit None for telemetry
             fill_method = fill_strat.get("method", "forward_fill" if var_class == "setting" else "none")
             max_age_seconds = fill_strat.get("max_age_seconds", 10)
 
-            # Create a globally unique cache key for this variable
             varmap_name = variablemap.get("variablemap", {}).get("metadata", {}).get("name", "unknown")
             cache_key = f"{varmap_name}::{variableset_name}::{variable_name}"
 
@@ -3204,58 +3281,72 @@ class SamplingSystem:
             
             # --- EVALUATION LOGIC ---
             if len(indexed_data) == 0:
-                # No new data arrived in this tick. Handle imputation.
                 if fill_method == "forward_fill" and cache_key in self.forward_fill_cache:
                     cached_record = self.forward_fill_cache[cache_key]
                     cached_time_str = cached_record["timestamp"]
                     
                     try:
-                        # Check TTL / Staleness Threshold
                         target_dt = string_to_datetime(target_time)
                         cached_dt = string_to_datetime(cached_time_str)
                         age = (target_dt - cached_dt).total_seconds()
                         
                         if age <= max_age_seconds:
-                            val = cached_record["val"]
+                            val = cached_record["val"] # Note: This was already converted when it entered the cache!
                         else:
-                            # Cache is stale, default to empty/null
                             val = "" if v_type in ["string", "str", "char"] else None
-                            
                     except Exception as e:
                         self.logger.error("Error calculating cache age", extra={"reason": str(e)})
                         val = "" if v_type in ["string", "str", "char"] else None
                 else:
-                    # Explicit Nulls (No Fill)
                     val = "" if v_type in ["string", "str", "char"] else None
             
-            elif len(indexed_data) == 1:
-                val = indexed_data[0]
-                
             else:
-                if v_type in ["string", "str", "char"]:
-                    val = indexed_data[-1] 
+                # WE HAVE NEW DATA TO EVALUATE
+                if len(indexed_data) == 1:
+                    val = indexed_data[0]
                 else:
-                    if index_method == "last":
-                        val = indexed_data[-1]
-                    elif index_method == "first":
-                        val = indexed_data[0]
-                    elif index_method == "max":
-                        val = max(indexed_data)
-                    elif index_method == "min":
-                        val = min(indexed_data)
-                    else: 
-                        if len(shape) > 1:
-                            try:
-                                val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
-                            except Exception as e:
-                                self.logger.error("2D averaging error", extra={"reason": str(e)})
-                                val = indexed_data[-1]
-                        else:
-                            val = round(sum(indexed_data) / len(indexed_data), 3)
+                    if v_type in ["string", "str", "char"]:
+                        val = indexed_data[-1] 
+                    else:
+                        if index_method == "last":
+                            val = indexed_data[-1]
+                        elif index_method == "first":
+                            val = indexed_data[0]
+                        elif index_method == "max":
+                            val = max(indexed_data)
+                        elif index_method == "min":
+                            val = min(indexed_data)
+                        else: 
+                            if len(shape) > 1:
+                                try:
+                                    val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
+                                except Exception as e:
+                                    self.logger.error("2D averaging error", extra={"reason": str(e)})
+                                    val = indexed_data[-1]
+                            else:
+                                val = round(sum(indexed_data) / len(indexed_data), 3)
 
-            # --- UPDATE CACHE ---
-            # If valid new data arrived, save it to the forward-fill cache
-            if len(indexed_data) > 0:
+                # --- UNIT CONVERSION LOGIC ---
+                if val is not None and isinstance(val, (int, float, list)):
+                    target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+                    native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                    
+                    if target_unit and native_unit and target_unit != native_unit:
+                        try:
+                            data_quantity = ureg.Quantity(val, native_unit)
+                            converted = data_quantity.to(target_unit).magnitude
+                            
+                            if isinstance(val, list):
+                                if hasattr(converted, "tolist"):
+                                    val = [round(float(v), 3) for v in converted.tolist()]
+                                else:
+                                    val = [round(float(v), 3) for v in converted]
+                            else:
+                                val = round(float(converted), 3)
+                        except Exception as e:
+                            self.logger.error("Unit conversion failed", extra={"variable": variable_name, "native": native_unit, "target": target_unit, "reason": str(e)})
+
+                # --- UPDATE CACHE ---
                 self.forward_fill_cache[cache_key] = {
                     "val": val,
                     "timestamp": target_time
