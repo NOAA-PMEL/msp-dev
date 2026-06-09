@@ -692,6 +692,22 @@ def select_graph_3d(z_axis, controller_meta, graph_axes, controller_definition, 
     return [scatter, heatmap]
 
 
+# --- HELPER: Flattens nested dicts into scalars for graphing ---
+def sanitize_payload(payload):
+    if "variables" in payload:
+        for k, v in payload["variables"].items():
+            if "data" in v:
+                val = v["data"]
+                if isinstance(val, dict):
+                    # Extract the actual or requested value
+                    v["data"] = val.get("actual", val.get("requested", val))
+                elif isinstance(val, list):
+                    v["data"] = [
+                        item.get("actual", item.get("requested", item)) if isinstance(item, dict) else item 
+                        for item in val
+                    ]
+    return payload
+
 @callback(
     Output("controller-data-buffer", "data"),
     Output("controller-settings-buffer", "data"),
@@ -700,11 +716,17 @@ def select_graph_3d(z_axis, controller_meta, graph_axes, controller_definition, 
 def update_controller_buffers(event):
     if event is not None and "data" in event:
         try:
-            event_data = json.loads(event["data"])
-            if "variables" in event_data: return [event_data, dash.no_update]
-            elif "settings" in event_data: return [dash.no_update, event_data]
+            # Parse the payload sent by main.py (which is already ce.data)
+            payload = json.loads(event["data"])
+            
+            if "variables" in payload: 
+                return [sanitize_payload(payload), dash.no_update]
+            elif "settings" in payload: 
+                return [dash.no_update, payload]
+                
         except Exception as e:
             L.error(f"Controller buffer parse error: {e}")
+            
     return [dash.no_update, dash.no_update]
 
 

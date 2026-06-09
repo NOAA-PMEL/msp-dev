@@ -536,3 +536,38 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
         }
     }
     return json.dumps(event)
+
+@callback(
+    Output("vs-settings-table", "rowData"),
+    Input("vs-data-buffer", "data"),
+    State("vs-settings-table", "rowData"),
+    prevent_initial_call=True
+)
+def update_vs_settings_table(buffer_data, row_data):
+    if not buffer_data or not row_data: raise PreventUpdate
+    
+    updated = False
+    variables = buffer_data.get("variables", {})
+    
+    for row in row_data:
+        param = row["parameter"]
+        if param in variables:
+            var_data = variables[param].get("data")
+            
+            actual_val = ""
+            if isinstance(var_data, dict):
+                # Handle the nested dictionary emitted by controllers
+                if "data" in var_data and isinstance(var_data["data"], dict):
+                    actual_val = var_data["data"].get("actual", "")
+                else:
+                    actual_val = var_data.get("actual", "")
+            else:
+                actual_val = var_data
+            
+            if str(row.get("actual_value")) != str(actual_val):
+                row["actual_value"] = actual_val
+                updated = True
+                
+    if not updated:
+        raise PreventUpdate
+    return row_data
