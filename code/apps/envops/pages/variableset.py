@@ -31,7 +31,6 @@ config = Settings()
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 
-# --- RESTORED: Precise ID Mapping via Architecture Traversal ---
 def fetch_registry_data(resource_type: str):
     url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
     docs = []
@@ -100,12 +99,12 @@ def get_variableset_data(short_id: str):
 def build_graph_1d(dropdown_list, xaxis="time"):
     return dbc.Card([
         dbc.CardHeader([
-            html.Span("Select Y-Axis Variable:", className="small fw-bold text-muted me-2"),
+            html.Span([html.I(className="bi bi-funnel me-2"), "Y-Axis Variable:"], className="small fw-bold text-muted me-2 text-uppercase"),
             dcc.Dropdown(
                 id={"type": "vs-graph-1d-dropdown", "index": xaxis},
-                options=dropdown_list, value="", className="mt-1"
+                options=dropdown_list, value="", className="mt-1 shadow-sm"
             )
-        ], className="bg-light"),
+        ], className="bg-light border-bottom"),
         dbc.CardBody([
             dcc.Graph(
                 id={"type": "vs-graph-1d", "index": xaxis},
@@ -118,9 +117,9 @@ def build_graph_1d(dropdown_list, xaxis="time"):
 def build_graph_2d(dropdown_list, dim_key):
     return dbc.Card([
         dbc.CardHeader([
-            html.Span("Select Z-Axis Variable:", className="small fw-bold text-muted me-2"),
-            dcc.Dropdown(id={"type": "vs-graph-2d-dropdown", "index": dim_key}, options=dropdown_list, value="", className="mt-1")
-        ], className="bg-light"),
+            html.Span([html.I(className="bi bi-funnel me-2"), "Z-Axis Variable:"], className="small fw-bold text-muted me-2 text-uppercase"),
+            dcc.Dropdown(id={"type": "vs-graph-2d-dropdown", "index": dim_key}, options=dropdown_list, value="", className="mt-1 shadow-sm")
+        ], className="bg-light border-bottom"),
         dbc.CardBody([
             dcc.Graph(id={"type": "vs-graph-2d-heatmap", "index": dim_key}, style={"height": 450})
         ], className="p-0")
@@ -130,11 +129,11 @@ def build_graphs(layout_options):
     graph_list = []
     if "layout-1d" in layout_options and "time" in layout_options["layout-1d"]:
         opts = layout_options["layout-1d"]["time"]
-        graph_list.append(dbc.AccordionItem([build_graph_1d(opts["variable-list"])], title="1-Dimensional Telemetry"))
+        graph_list.append(dbc.AccordionItem([build_graph_1d(opts["variable-list"])], title="1-Dimensional Time Series"))
 
     if "layout-2d" in layout_options:
         for dim_key, opts in layout_options["layout-2d"].items():
-            graph_list.append(dbc.AccordionItem([build_graph_2d(opts["variable-list"], dim_key)], title=f"2-Dimensional Telemetry (time vs {dim_key})"))
+            graph_list.append(dbc.AccordionItem([build_graph_2d(opts["variable-list"], dim_key)], title=f"2-Dimensional Heatmap (time vs {dim_key})"))
             
     return graph_list
 
@@ -143,7 +142,6 @@ def layout(deployment_id=None, variableset_id=None):
     if not deployment_id or not variableset_id: 
         return html.Div("Invalid Routing.", className="p-4 text-danger")
 
-    # RESTORED: Look up full definition ID by explicitly mapping Deployment -> Platform -> Short_ID
     active_varsets = get_bundle_varsets(deployment_id)
     full_id = active_varsets.get(variableset_id)
 
@@ -175,19 +173,16 @@ def layout(deployment_id=None, variableset_id=None):
             unit_val = var.get("attributes", {}).get("units", {}).get("data")
             if unit_val: long_name = f"{long_name} ({unit_val})"
 
-            # --- SEPARATION LAYER: Detect if the parameter is a hardware setting ---
             var_type = var.get("variable_type") or var.get("attributes", {}).get("variable_type", {}).get("data", "main")
             
             if var_type == "setting":
-                # Isolate and build an editable control row model
                 layout_options["layout-settings"]["time"]["row-data-skeletons"].append({
                     "parameter": name,
                     "description": var.get("attributes", {}).get("description", {}).get("data", long_name),
                     "actual_value": "--",
                     "requested_value": ""
                 })
-                continue # Skip time-series plotting and scrolling data tables
-            # -----------------------------------------------------------------------
+                continue
 
             table_columns.append({"field": name, "headerName": long_name, "cellDataType": "number"})
 
@@ -203,43 +198,57 @@ def layout(deployment_id=None, variableset_id=None):
                 layout_options["layout-2d"][dim_2d]["variable-list"].append({"label": long_name, "value": name})
 
     return html.Div([
-        # --- HEADER ---
+        # --- HEADER STRIP ---
         dbc.Row([
             dbc.Col([
-                html.H2(f"{variableset_id}", className="text-primary mb-0"),
-                html.P(f"Deployment: {deployment_id}", className="text-muted small fw-bold text-uppercase")
-            ]),
-            dbc.Col(dbc.Button(
-                "⭠ Back to List", href=dash.get_relative_path(f"/variablesets/{deployment_id}"), 
-                color="secondary", outline=True, className="float-end fw-bold shadow-sm"
-            ))
-        ], className="mb-4 mt-3"),
+                html.H2([html.I(className="bi bi-broadcast me-3 text-primary"), f"{variableset_id}"], className="text-dark fw-bold mb-0"),
+                html.P(f"Host Deployment ID: {deployment_id}", className="text-muted small font-monospace mt-1 mb-0")
+            ], width=8),
+            dbc.Col(
+                dbc.Button(
+                    [html.I(className="bi bi-arrow-left me-2"), "Back to Streams"], 
+                    href=dash.get_relative_path(f"/variablesets/{deployment_id}"), 
+                    color="secondary", outline=True, className="float-end fw-bold shadow-sm"
+                ), 
+                width=4, className="text-end align-self-center"
+            )
+        ], className="mb-4 mt-3 border-bottom pb-3"),
 
         # --- CONFIGURATION & CONTROLS ---
         dbc.Row([
             dbc.Col(
                 dbc.Card([
-                    dbc.CardHeader(html.H5("Variableset Configuration & Controls", className="mb-0")),
+                    dbc.CardHeader(html.H6([html.I(className="bi bi-sliders me-2"), "Hardware Configuration & Controls"], className="mb-0 text-primary fw-bold"), className="p-2 bg-white border-bottom-0"),
                     dbc.CardBody([
                         dag.AgGrid(
                             id="vs-settings-table",
                             rowData=layout_options["layout-settings"]["time"]["row-data-skeletons"],
                             columnDefs=[
-                                # Added checkboxSelection so it is visually obvious which row is selected!
                                 {"field": "parameter", "headerName": "Control Parameter", "editable": False, "width": 250, "pinned": "left", "checkboxSelection": True},
                                 {"field": "description", "headerName": "Description", "editable": False, "flex": 1},
                                 {"field": "actual_value", "headerName": "Current State", "editable": False, "width": 150},
-                                {"field": "requested_value", "headerName": "New Target Value", "editable": True, "width": 180}
+                                {
+                                    "field": "requested_value", 
+                                    "headerName": "Target Value (Click to Edit)", 
+                                    "editable": True, 
+                                    "width": 220,
+                                    # Visually indicates this is an input field
+                                    "cellStyle": {"backgroundColor": "#f8f9fa", "border": "1px dashed #0d6efd", "cursor": "text"}
+                                }
                             ],
-                            # Fixed 'columnSizeOptions' warning
                             columnSize="autoSize",
-                            # Fixed deprecated 'rowSelection: "single"' warning
-                            dashGridOptions={"domLayout": "autoHeight", "singleClickEdit": True, "rowSelection": {"mode": "singleRow"}},
-                            className="ag-theme-alpine"
+                            dashGridOptions={
+                                "domLayout": "autoHeight", 
+                                "singleClickEdit": True, 
+                                "rowSelection": {"mode": "singleRow"},
+                                "suppressRowClickSelection": False, # Automatically selects row when you click to edit!
+                                "stopEditingWhenCellsLoseFocus": True # Ensures the typed value is saved when "Apply" is clicked without hitting Enter
+                            },
+                            className="ag-theme-alpine mb-3 shadow-sm border"
                         ),
-                        dbc.Button("Apply Selected Parameter", id="vs-submit-setting-btn", color="primary", className="mt-3 fw-bold shadow-sm")
-                    ])
-                ], className="shadow-sm border-dark mb-4"), width=12
+                        dbc.Button([html.I(className="bi bi-send-check me-2"), "Transmit Selected Command"], id="vs-submit-setting-btn", color="primary", className="fw-bold shadow-sm")
+                    ], className="bg-light p-3")
+                ], className="shadow-sm border-0 mb-4"), width=12
             )
         ]),
 
@@ -247,9 +256,9 @@ def layout(deployment_id=None, variableset_id=None):
         dbc.Row([
             dbc.Col(
                 dbc.Card([
-                    dbc.CardHeader(html.H5("Live Telemetry Plots", className="mb-0")),
-                    dbc.CardBody(dbc.Accordion(build_graphs(layout_options), always_open=True, flush=True))
-                ], className="shadow-sm border-dark mb-4"), width=12
+                    dbc.CardHeader(html.H6([html.I(className="bi bi-graph-up me-2"), "Live Telemetry Plots"], className="mb-0 text-primary fw-bold"), className="p-2 bg-white border-bottom-0"),
+                    dbc.CardBody(dbc.Accordion(build_graphs(layout_options), always_open=True, flush=True, className="border-top"), className="p-0")
+                ], className="shadow-sm border-0 mb-4"), width=12
             )
         ]),
 
@@ -257,17 +266,17 @@ def layout(deployment_id=None, variableset_id=None):
         dbc.Row([
             dbc.Col(
                 dbc.Card([
-                    dbc.CardHeader(html.H5("Live Data Stream", className="mb-0")),
+                    dbc.CardHeader(html.H6([html.I(className="bi bi-table me-2"), "Live Data Stream"], className="mb-0 text-primary fw-bold"), className="p-2 bg-white border-bottom-0"),
                     dbc.CardBody(
                         dag.AgGrid(
                             id="vs-data-table", 
-                            rowData=[], columnDefs=table_columns, columnSizeOptions="autoSize",
+                            rowData=[], columnDefs=table_columns, columnSize="autoSize",
                             dashGridOptions={"domLayout": "autoHeight"},
                             style={"height": None, "maxHeight": "400px", "overflow": "auto"},
-                            className="ag-theme-alpine"
-                        )
+                            className="ag-theme-alpine shadow-sm border"
+                        ), className="bg-light p-3"
                     )
-                ], className="shadow-sm border-dark mb-4"), width=12
+                ], className="shadow-sm border-0 mb-4"), width=12
             )
         ]),
 
@@ -513,7 +522,6 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
     var_definition = varset_def.get("variables", {}).get(param_name, {})
     attrs = var_definition.get("attributes", {})
     
-    # --- THE FIX: Extract routing metadata directly from the attributes block ---
     t_id = attrs.get("source_id", {}).get("data", "unknown")
     t_type = attrs.get("source_type", {}).get("data", "sensor").lower()
     src_var = attrs.get("source_variable", {}).get("data", param_name)
@@ -537,15 +545,16 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def):
         "type": event_type,
         "datacontenttype": "application/json",
         "destpath": dest_topic,
-        id_key: t_id, # Safely passes 'Synaccess::NP05B::synaccess25'
+        id_key: t_id,
         "data": {
             "settings": {
-                src_var: { # Safely passes 'outlet_1_power'
+                src_var: {
                     "requested": requested_val
                 }
             }
         }
     }
+    
     return json.dumps(event)
 
 @callback(
@@ -559,15 +568,18 @@ def update_vs_settings_table(buffer_data, row_data):
     
     updated = False
     variables = buffer_data.get("variables", {})
+    new_rows = []
     
     for row in row_data:
-        param = row["parameter"]
+        # THE FIX: Create a fresh copy to force React DOM update
+        new_row = row.copy()
+        param = new_row["parameter"]
+        
         if param in variables:
             var_data = variables[param].get("data")
             
             actual_val = ""
             if isinstance(var_data, dict):
-                # Handle the nested dictionary emitted by controllers
                 if "data" in var_data and isinstance(var_data["data"], dict):
                     actual_val = var_data["data"].get("actual", "")
                 else:
@@ -575,10 +587,12 @@ def update_vs_settings_table(buffer_data, row_data):
             else:
                 actual_val = var_data
             
-            if str(row.get("actual_value")) != str(actual_val):
-                row["actual_value"] = actual_val
+            if str(new_row.get("actual_value")) != str(actual_val):
+                new_row["actual_value"] = actual_val
                 updated = True
+                
+        new_rows.append(new_row)
                 
     if not updated:
         raise PreventUpdate
-    return row_data
+    return new_rows

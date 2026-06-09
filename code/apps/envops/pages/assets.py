@@ -29,28 +29,30 @@ datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 def layout():
     return html.Div([
-        # --- HEADER ---
+        # --- HEADER STRIP ---
         dbc.Row([
             dbc.Col([
-                html.H2("Asset Registry", className="text-primary mb-0"),
-                html.P("Fleet hardware, controllers, and platform inventory", className="text-muted small")
-            ], width=8),
+                html.H2([html.I(className="bi bi-server me-3 text-primary"), "Asset Registry"], className="fw-bold mb-0 text-dark"),
+                html.P("Fleet hardware, controllers, and platform inventory", className="text-muted small font-monospace mt-1 mb-0")
+            ], width=8, align="center"),
             dbc.Col(
                 dbc.Button(
-                    "↻ Refresh Registry", 
+                    [html.I(className="bi bi-arrow-clockwise me-2"), "Refresh Registry"], 
                     id="asset-refresh-btn", 
-                    color="primary", 
-                    className="float-end fw-bold shadow-sm mt-2"
+                    color="secondary", 
+                    outline=True,
+                    className="float-end fw-bold shadow-sm"
                 ), 
-                width=4
+                width=4, align="center"
             )
-        ], className="mb-4 mt-3"),
+        ], className="mb-4 mt-3 border-bottom pb-3"),
 
         # --- TABS ---
         dbc.Tabs([
             # --- TAB 1: HARDWARE (Sensors, Operational, Controllers) ---
             dbc.Tab(
                 dbc.Card([
+                    dbc.CardHeader(html.H6([html.I(className="bi bi-cpu me-2"), "Hardware & Controllers"], className="mb-0 text-primary fw-bold"), className="p-2 bg-white border-bottom-0"),
                     dbc.CardBody([
                         dag.AgGrid(
                             id="hardware-registry-grid",
@@ -69,10 +71,10 @@ def layout():
                                 {"field": "action", "headerName": "Action", "cellRenderer": "markdown", "width": 200}
                             ],
                             dashGridOptions={"pagination": True, "paginationPageSize": 50},
-                            style={"height": "calc(100vh - 250px)", "width": "100%"},
-                            className="ag-theme-alpine"
+                            style={"height": "calc(100vh - 280px)", "width": "100%"},
+                            className="ag-theme-alpine shadow-sm border"
                         )
-                    ], className="p-0")
+                    ], className="p-3 bg-light")
                 ], className="shadow-sm border-0 mt-3"),
                 label="Hardware & Controllers",
                 tab_id="tab-hardware",
@@ -82,6 +84,7 @@ def layout():
             # --- TAB 2: PLATFORMS ---
             dbc.Tab(
                 dbc.Card([
+                    dbc.CardHeader(html.H6([html.I(className="bi bi-hdd-network me-2"), "Registered Platforms"], className="mb-0 text-primary fw-bold"), className="p-2 bg-white border-bottom-0"),
                     dbc.CardBody([
                         dag.AgGrid(
                             id="platform-registry-grid",
@@ -98,10 +101,10 @@ def layout():
                                 {"field": "description", "headerName": "Description", "flex": 2}
                             ],
                             dashGridOptions={"pagination": True, "paginationPageSize": 50},
-                            style={"height": "calc(100vh - 250px)", "width": "100%"},
-                            className="ag-theme-alpine"
+                            style={"height": "calc(100vh - 280px)", "width": "100%"},
+                            className="ag-theme-alpine shadow-sm border"
                         )
-                    ], className="p-0")
+                    ], className="p-3 bg-light")
                 ], className="shadow-sm border-0 mt-3"),
                 label="Platforms",
                 tab_id="tab-platforms",
@@ -147,7 +150,7 @@ def fetch_all_registries(n_clicks):
                         "model": model,
                         "serial_number": sn,
                         "description": description,
-                        "action": f"[Telemetry & Settings]({dash.get_relative_path(f'/sensor/{device_id}')})" 
+                        "action": f"**[↗ Open Telemetry]({dash.get_relative_path(f'/sensor/{device_id}')})**" 
                     })
         except Exception as e:
             L.error(f"Asset fetch failed for {dev_type}: {e}")
@@ -175,7 +178,7 @@ def fetch_all_registries(n_clicks):
                     "model": model,
                     "serial_number": sn,
                     "description": description,
-                    "action": f"[Telemetry & Controls]({dash.get_relative_path(f'/controller/{device_id}')})" 
+                    "action": f"**[↗ Open Controls]({dash.get_relative_path(f'/controller/{device_id}')})**" 
                 })
     except Exception as e:
         L.error(f"Controller fetch failed: {e}")

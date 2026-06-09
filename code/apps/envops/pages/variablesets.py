@@ -82,7 +82,6 @@ def layout(deployment_id=None):
     
     cards = []
     for short_id, full_id in active_varsets.items():
-        # Fetch the definition to show the user what's inside
         var_names = []
         try:
             def_url = f"http://{datastore_url}/variableset-definition/registry/get/"
@@ -94,37 +93,50 @@ def layout(deployment_id=None):
         except Exception:
             pass
 
-        badges = [dbc.Badge(v, color="info", className="me-1 mb-1") for v in var_names] if var_names else [html.Span("No variables found", className="text-muted small")]
+        # Updated to rounded-pill, light background badges for a clean instrument look
+        badges = [dbc.Badge(v, color="light", text_color="dark", className="me-1 mb-1 rounded-pill border shadow-sm", style={"fontSize": "0.7rem"}) for v in var_names] if var_names else [html.Span("No variables found", className="text-muted small fst-italic")]
+        
+        # Extract the platform prefix safely to use as a subtitle
+        platform_prefix = full_id.split("::")[0] if "::" in full_id else "Unknown Platform"
 
         cards.append(
             dbc.Col(
                 dbc.Card([
-                    dbc.CardHeader(html.H5(short_id, className="mb-0 fw-bold text-dark")),
+                    dbc.CardHeader([
+                        html.H5([html.I(className="bi bi-activity me-2 text-primary"), short_id], className="mb-0 fw-bold text-dark text-truncate"),
+                        html.Span(platform_prefix, className="font-monospace small text-muted text-truncate d-block mt-1")
+                    ], className="bg-light p-2 border-bottom"),
                     dbc.CardBody([
-                        html.P("Contains:", className="small text-muted mb-2 fw-bold text-uppercase"),
-                        html.Div(badges, className="mb-4"),
+                        html.Div([html.I(className="bi bi-tags me-1 opacity-75"), "Tracked Variables"], className="text-muted fw-bold text-uppercase mb-2 text-nowrap", style={"fontSize": "0.65rem", "letterSpacing": "0.5px"}),
+                        html.Div(badges, className="mb-4 d-flex flex-wrap"),
                         dbc.Button(
-                            "Open Telemetry View ↗", 
+                            [html.I(className="bi bi-display me-2"), "Open Telemetry View"], 
                             href=dash.get_relative_path(f"/variableset/{deployment_id}/{short_id}"),
-                            color="primary", className="w-100 fw-bold shadow-sm"
+                            color="primary", className="w-100 fw-bold shadow-sm mt-auto"
                         )
-                    ])
+                    ], className="p-3 d-flex flex-column h-100")
                 ], className="shadow-sm border-0 h-100"),
                 width=12, md=6, lg=4, className="mb-4"
             )
         )
 
     return html.Div([
+        # --- HEADER STRIP ---
         dbc.Row([
             dbc.Col([
-                html.H2(f"Variablesets: {deployment_id}", className="text-primary mb-0"),
-                html.P("Select a variableset to monitor its live telemetry.", className="text-muted small")
-            ]),
+                html.H2([html.I(className="bi bi-collection-play me-2 text-primary"), "Telemetry Streams"], className="text-dark fw-bold mb-0"),
+                html.P(f"Host Deployment ID: {deployment_id}", className="text-muted small font-monospace mt-1 mb-0")
+            ], width=8),
             dbc.Col(
-                dbc.Button("⭠ Back to C2", href=dash.get_relative_path(f"/deployment/{deployment_id}"), color="secondary", outline=True, className="float-end fw-bold shadow-sm"), 
-                width="auto"
+                dbc.Button(
+                    [html.I(className="bi bi-arrow-left me-2"), "Back to Flight Deck"], 
+                    href=dash.get_relative_path(f"/deployment/{deployment_id}"), 
+                    color="secondary", outline=True, className="float-end fw-bold shadow-sm"
+                ), 
+                width=4, className="text-end align-self-center"
             )
-        ], className="mb-4 mt-3"),
+        ], className="mb-4 mt-3 border-bottom pb-3"),
         
-        dbc.Row(cards if cards else dbc.Col(html.P("No active variablesets found.", className="text-muted fst-italic")))
+        # --- CARD GRID ---
+        dbc.Row(cards if cards else dbc.Col(html.P("No active telemetry streams found for this deployment.", className="text-muted fst-italic px-2")))
     ])

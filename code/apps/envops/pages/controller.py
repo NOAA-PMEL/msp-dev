@@ -82,18 +82,18 @@ def build_tables(layout_options):
             title = "Data"
 
             if ltype == "layout-settings":
-                title = f"Controller Settings & Controls"
+                title = f"Hardware Controls & Configuration"
                 
                 column_defs = [
-                    {"field": "parameter", "headerName": "Control Parameter", "editable": False, "pinned": "left", "width": 200},
+                    {"field": "parameter", "headerName": "Control Parameter", "editable": False, "pinned": "left", "width": 250, "checkboxSelection": True},
                     {"field": "description", "headerName": "Description", "editable": False, "flex": 1},
-                    {"field": "actual_value", "headerName": "Actual Value", "editable": False, "width": 150},
+                    {"field": "actual_value", "headerName": "Current State", "editable": False, "width": 150},
                     {
                         "field": "requested_value", 
-                        "headerName": "Requested Value", 
+                        "headerName": "Target Value (Click to Edit)", 
                         "editable": True,
-                        "width": 180,
-                        "cellEditorSelector": {"function": "determineSettingEditor(params)"}
+                        "width": 220,
+                        "cellStyle": {"backgroundColor": "#f8f9fa", "border": "1px dashed #0d6efd", "cursor": "text"}
                     }
                 ]
                 
@@ -104,19 +104,25 @@ def build_tables(layout_options):
                                 id={"type": "controller-settings-table", "index": dim},
                                 rowData=options.get("row-data-skeletons", []),
                                 columnDefs=column_defs,
-                                columnSizeOptions="autoSize",
-                                dashGridOptions={"domLayout": "autoHeight", "singleClickEdit": True, "rowSelection": "single"},
+                                columnSize="autoSize",
+                                dashGridOptions={
+                                    "domLayout": "autoHeight", 
+                                    "singleClickEdit": True, 
+                                    "rowSelection": {"mode": "singleRow"},
+                                    "suppressRowClickSelection": False,
+                                    "stopEditingWhenCellsLoseFocus": True
+                                },
                                 style={"height": None, "maxHeight": "400px", "overflow": "auto"},
-                                className="ag-theme-alpine"
+                                className="ag-theme-alpine mb-3 shadow-sm border"
                             ),
-                            dbc.Button("Submit Selected Control", id={"type": "controller-submit-setting-btn", "index": dim}, color="primary", className="mt-3 fw-bold shadow-sm")
+                            dbc.Button([html.I(className="bi bi-send-check me-2"), "Transmit Selected Control"], id={"type": "controller-submit-setting-btn", "index": dim}, color="primary", className="fw-bold shadow-sm")
                         ],
                         title=title,
                     )
                 )
 
             elif ltype == "layout-1d":
-                title = f"Data 1-D ({dim})"
+                title = f"1-Dimensional Data Stream ({dim})"
                 table_list.append(
                     dbc.AccordionItem(
                         [
@@ -124,10 +130,10 @@ def build_tables(layout_options):
                                 id={"type": "controller-data-table-1d", "index": dim},
                                 rowData=[],
                                 columnDefs=options["table-column-defs"],
-                                columnSizeOptions="autoSize",
+                                columnSize="autoSize",
                                 dashGridOptions={"domLayout": "autoHeight"},
                                 style={"height": None, "maxHeight": "400px", "overflow": "auto"},
-                                className="ag-theme-alpine"
+                                className="ag-theme-alpine shadow-sm border"
                             )
                         ],
                         title=title,
@@ -135,7 +141,7 @@ def build_tables(layout_options):
                 )
 
             elif ltype == "layout-2d":
-                title = f"Data 2-D (time, {dim})"
+                title = f"2-Dimensional Data Stream (time, {dim})"
                 table_list.append(
                     dbc.AccordionItem(
                         [
@@ -143,10 +149,10 @@ def build_tables(layout_options):
                                 id={"type": "controller-data-table-2d", "index": f"time::{dim}"},
                                 rowData=[],
                                 columnDefs=options["table-column-defs"],
-                                columnSizeOptions="autoSize",
+                                columnSize="autoSize",
                                 dashGridOptions={"domLayout": "autoHeight"},
                                 style={"height": None, "maxHeight": "400px", "overflow": "auto"},
-                                className="ag-theme-alpine"
+                                className="ag-theme-alpine shadow-sm border"
                             )
                         ],
                         title=title,
@@ -157,12 +163,12 @@ def build_tables(layout_options):
 def build_graph_1d(dropdown_list, xaxis="time"):
     return dbc.Card([
         dbc.CardHeader([
-            html.Span("Select Y-Axis Variable:", className="small fw-bold text-muted me-2"),
+            html.Span([html.I(className="bi bi-funnel me-2"), "Y-Axis Variable:"], className="small fw-bold text-muted me-2 text-uppercase"),
             dcc.Dropdown(
                 id={"type": "controller-graph-1d-dropdown", "index": xaxis},
-                options=dropdown_list, value="", className="mt-1"
+                options=dropdown_list, value="", className="mt-1 shadow-sm"
             )
-        ], className="bg-light"),
+        ], className="bg-light border-bottom"),
         dbc.CardBody([
             dcc.Graph(
                 id={"type": "controller-graph-1d", "index": xaxis},
@@ -187,9 +193,9 @@ def build_graph_2d(dropdown_list, xaxis="time", yaxis=""):
 
     return dbc.Card([
         dbc.CardHeader([
-            html.Span("Select Z-Axis Variable:", className="small fw-bold text-muted me-2"),
-            dcc.Dropdown(id={"type": "controller-graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", className="mt-1")
-        ], className="bg-light"),
+            html.Span([html.I(className="bi bi-funnel me-2"), "Z-Axis Variable:"], className="small fw-bold text-muted me-2 text-uppercase"),
+            dcc.Dropdown(id={"type": "controller-graph-2d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", className="mt-1 shadow-sm")
+        ], className="bg-light border-bottom"),
         dbc.CardBody([
             axes_settings,
             dbc.Row([
@@ -212,9 +218,9 @@ def build_graph_3d(dropdown_list, xaxis="", yaxis="", zaxis=""):
 
     return dbc.Card([
         dbc.CardHeader([
-            html.Span("Select Z-Axis Variable:", className="small fw-bold text-muted me-2"),
-            dcc.Dropdown(id={"type": "controller-graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", className="mt-1")
-        ], className="bg-light"),
+            html.Span([html.I(className="bi bi-funnel me-2"), "Z-Axis Variable:"], className="small fw-bold text-muted me-2 text-uppercase"),
+            dcc.Dropdown(id={"type": "controller-graph-3d-dropdown", "index": f"{xaxis}::{yaxis}"}, options=dropdown_list, value="", className="mt-1 shadow-sm")
+        ], className="bg-light border-bottom"),
         dbc.CardBody([
             axes_settings,
             dbc.Row([
@@ -229,21 +235,20 @@ def build_graphs(layout_options):
     for ltype, dims in layout_options.items():
         for dim, options in dims.items():
             if ltype == "layout-1d":
-                title = f"Plots 1-D ({dim})"
+                title = f"1-Dimensional Plots ({dim})"
                 graph_list.append(dbc.AccordionItem([build_graph_1d(options["variable-list"], xaxis=dim)], title=title))
             elif ltype == "layout-2d":
-                title = f"Plots 2-D (time, {dim})"
+                title = f"2-Dimensional Plots (time, {dim})"
                 graph_list.append(dbc.AccordionItem([build_graph_2d(options["variable-list"], xaxis="time", yaxis=dim)], title=title))
             elif ltype == "layout-3d":
                 axes = dim.split("::")
-                title = f"Plots 3-D ({axes[0]}, {axes[1]})"
+                title = f"3-Dimensional Plots ({axes[0]}, {axes[1]})"
                 graph_list.append(dbc.AccordionItem([build_graph_3d(options["variable-list"], xaxis=axes[0], yaxis=axes[1])], title=title))
     return graph_list
 
 # --- DATA FETCHERS ---
 
 def get_controller_data(controller_id: str):
-    # FIX: Backend expects "controller_id"
     query = {"controller_id": controller_id}
     url = f"http://{datastore_url}/controller/data/get/"
     try:
@@ -257,7 +262,6 @@ def get_controller_data(controller_id: str):
     return []
 
 def get_controller_instance(controller_id: str):
-    # FIX: Backend expects "controller_id"
     query = {"controller_id": controller_id}
     url = f"http://{datastore_url}/controller-instance/registry/get/"
     try:
@@ -274,7 +278,6 @@ def get_controller_definition_by_device_id(controller_id: str):
     controller = get_controller_instance(controller_id=controller_id)
     if controller:
         try:
-            # --- THE FIX: Safely extract either 'version' or 'format_version' ---
             version_str = controller.get("version", controller.get("format_version", "1.0.0"))
 
             controller_definition_id = "::".join([
@@ -347,7 +350,7 @@ def layout(controller_id=None):
                     control_metadata = {
                         "parameter": name,
                         "description": long_name,
-                        "actual_value": "",
+                        "actual_value": "--",
                         "requested_value": "",
                         "type": dtype,
                         "allowed_values": [x.strip() for x in allowed_vals.split(",")] if allowed_vals else None,
@@ -415,52 +418,54 @@ def layout(controller_id=None):
     display_name = f"{controller_meta.get('make', '')} {controller_meta.get('model', controller_id.split('::')[-1] if controller_id else '')}"
 
     return html.Div([
-        # --- HEADER ---
+        # --- HEADER STRIP ---
         dbc.Row([
             dbc.Col([
-                html.H2(f"Controller: {display_name}", className="text-primary mb-0"),
-                html.P("Live telemetry, settings, and hardware controls", className="text-muted small")
-            ]),
+                html.H2([html.I(className="bi bi-cpu me-3 text-primary"), f"{display_name}"], className="text-dark fw-bold mb-0"),
+                html.P(f"Controller ID: {controller_id}", className="text-muted small font-monospace mt-1 mb-0")
+            ], width=8),
             dbc.Col(
                 dbc.Button(
-                    "⭠ Back to Registry", 
+                    [html.I(className="bi bi-arrow-left me-2"), "Back to Registry"], 
                     href=dash.get_relative_path("/assets"), 
                     color="secondary", outline=True, className="float-end fw-bold shadow-sm"
-                ), width="auto"
+                ), width=4, className="text-end align-self-center"
             )
-        ], className="mb-4 mt-3"),
-
-        # --- PLOTS ---
-        dbc.Row([
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader(html.H5("Live Plots", className="mb-0")),
-                    dbc.CardBody([
-                        dbc.Accordion(
-                            build_graphs(layout_options),
-                            id="controller-plot-accordion",
-                            always_open=True,
-                            flush=True
-                        )
-                    ])
-                ], className="shadow-sm border-dark mb-4")
-            ], width=12)
-        ]),
+        ], className="mb-4 mt-3 border-bottom pb-3"),
 
         # --- TABLES & CONTROLS ---
         dbc.Row([
             dbc.Col([
                 dbc.Card([
-                    dbc.CardHeader(html.H5("Data & Controls Tables", className="mb-0")),
+                    dbc.CardHeader(html.H6([html.I(className="bi bi-sliders me-2"), "Hardware Controls & Data Streams"], className="mb-0 text-primary fw-bold"), className="p-2 bg-white border-bottom-0"),
                     dbc.CardBody([
                         dbc.Accordion(
                             build_tables(layout_options),
                             id="controller-data-accordion",
                             always_open=True,
-                            flush=True
+                            flush=True,
+                            className="border-top"
                         )
-                    ])
-                ], className="shadow-sm border-dark mb-4")
+                    ], className="p-0 bg-light")
+                ], className="shadow-sm border-0 mb-4")
+            ], width=12)
+        ]),
+
+        # --- PLOTS ---
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader(html.H6([html.I(className="bi bi-graph-up me-2"), "Live Telemetry Plots"], className="mb-0 text-primary fw-bold"), className="p-2 bg-white border-bottom-0"),
+                    dbc.CardBody([
+                        dbc.Accordion(
+                            build_graphs(layout_options),
+                            id="controller-plot-accordion",
+                            always_open=True,
+                            flush=True,
+                            className="border-top"
+                        )
+                    ], className="p-0")
+                ], className="shadow-sm border-0 mb-4")
             ], width=12)
         ]),
         
@@ -468,16 +473,16 @@ def layout(controller_id=None):
         dbc.Row([
             dbc.Col([
                 dbc.Card([
-                    dbc.CardHeader(html.H5("Calibration Values", className="mb-0")),
+                    dbc.CardHeader(html.H6([html.I(className="bi bi-tools me-2"), "Calibration Values"], className="mb-0 text-primary fw-bold"), className="p-2 bg-white border-bottom-0"),
                     dbc.CardBody([
                         html.Pre(
                             id="controller-calibration-display", 
                             children="Waiting for data...",
-                            className="bg-light p-3 border rounded text-dark font-monospace small",
+                            className="bg-white p-3 border rounded text-dark font-monospace small mb-0 shadow-sm",
                             style={"whiteSpace": "pre-wrap", "wordBreak": "break-all", "maxHeight": "300px", "overflowY": "auto"}
                         )
-                    ])
-                ], className="shadow-sm border-dark mb-4")
+                    ], className="p-3 bg-light")
+                ], className="shadow-sm border-0 mb-4")
             ], width=12)
         ]),
 
@@ -997,7 +1002,6 @@ def submit_setting_change(n_clicks_list, selected_rows_list, controller_meta):
         "source": f"envds.{config.daq_id}.dashboard",
         "data": {"settings": {col_id: {"requested": requested_val}}},
         "destpath": "envds/controller/settings/request",
-        # --- THE FIX: Pass the fully qualified ID (Make::Model::ID) to match backend expectations ---
         "controllerid": controller_meta["device_id"] 
     }
     return json.dumps(event)
@@ -1006,6 +1010,7 @@ def submit_setting_change(n_clicks_list, selected_rows_list, controller_meta):
     Output({"type": "controller-settings-table", "index": ALL}, "rowData"), 
     Input("controller-settings-buffer", "data"),
     State({"type": "controller-settings-table", "index": ALL}, "rowData"),
+    prevent_initial_call=True
 )
 def update_settings_table(controller_settings, row_data_list):
     if not controller_settings or not row_data_list: raise PreventUpdate
@@ -1020,8 +1025,12 @@ def update_settings_table(controller_settings, row_data_list):
                 continue
                 
             grid_patched = False
+            new_rows = [] 
+            
             for row in rows:
-                param_name = row["parameter"]
+                new_row = row.copy() # THE FIX: Break the memory reference pointer!
+                param_name = new_row["parameter"]
+                
                 if param_name in controller_settings.get("settings", {}):
                     param_data = controller_settings["settings"][param_name]
                     if isinstance(param_data, dict) and "data" in param_data:
@@ -1030,23 +1039,29 @@ def update_settings_table(controller_settings, row_data_list):
                     elif isinstance(param_data, dict):
                         actual_val = param_data.get("actual", "")
                         req_val = param_data.get("requested", "")
-                    else: continue
+                    else: 
+                        new_rows.append(new_row)
+                        continue
 
-                    if str(row.get("actual_value")) != str(actual_val):
-                        row["actual_value"] = actual_val
+                    if str(new_row.get("actual_value")) != str(actual_val):
+                        new_row["actual_value"] = actual_val
                         grid_patched = True
                         
-                    if row.get("requested_value") == "" or row.get("requested_value") is None:
-                        row["requested_value"] = req_val
+                    if new_row.get("requested_value") == "" or new_row.get("requested_value") is None:
+                        new_row["requested_value"] = req_val
                         grid_patched = True
+                
+                new_rows.append(new_row)
             
             if grid_patched:
-                updated_row_lists.append(rows)
+                updated_row_lists.append(new_rows)
                 has_updates = True
-            else: updated_row_lists.append(dash.no_update)
+            else: 
+                updated_row_lists.append(dash.no_update)
 
         if not has_updates: raise PreventUpdate
         return updated_row_lists
+        
     except Exception as e:
         print(f"settings-table live update failure: {e}")
         raise PreventUpdate
