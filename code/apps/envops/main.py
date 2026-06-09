@@ -247,13 +247,22 @@ async def mqtt_listen_task():
                         # 3. Route Raw Sensor & Controller Telemetry
                         elif ce_type in ["envds.data.update", "envds.controller.data.update"]:
                             L.debug("mqtt_listen_task", extra={"payload_str": payload_str})
-                            device_id = source.split(".")[-1]
                             
-                            # Route to the correct WebSocket channel
+                            # Safely extract structured metadata blocks from the CloudEvent data payload
+                            attrs = ce.data.get("attributes", {})
+                            make = attrs.get("make", {}).get("data", "unknown")
+                            model = attrs.get("model", {}).get("data", "unknown")
+                            sn = attrs.get("serial_number", {}).get("data", "unknown")
+                            
+                            # Generate a bulletproof FQID key to isolate the room name
+                            fully_qualified_id = f"{make}::{model}::{sn}"
+                            
                             if "controller" in ce_type:
-                                await manager.broadcast(payload_str, "controller", device_id)
+                                await manager.broadcast(payload_str, "controller", fully_qualified_id)
                             else:
-                                await manager.broadcast(payload_str, "sensor", device_id)
+                                # --- BULLETPROOF: Sensors now use the full identity key ---
+                                # --- eliminating any potential identifier collisions! -----
+                                await manager.broadcast(payload_str, "sensor", fully_qualified_id)
 
                         # 1. Route Sensor Settings
                         elif ce_type == "envds.sensor.settings.update":

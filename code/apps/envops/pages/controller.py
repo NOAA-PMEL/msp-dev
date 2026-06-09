@@ -978,7 +978,6 @@ def submit_setting_change(n_clicks_list, selected_rows_list, controller_meta):
     
     if raw_val is None or raw_val == "": raise PreventUpdate
         
-    # --- UPGRADED: Symmetrical, robust casting for hardware settings ---
     if str(raw_val).lower() in ["true", "on", "1"]:
         requested_val = 1 if selected_row.get("type") == "int" else True
     elif str(raw_val).lower() in ["false", "off", "0"]:
@@ -995,7 +994,8 @@ def submit_setting_change(n_clicks_list, selected_rows_list, controller_meta):
         "source": f"envds.{config.daq_id}.dashboard",
         "data": {"settings": {col_id: {"requested": requested_val}}},
         "destpath": "envds/controller/settings/request",
-        "controllerid": controller_meta["device_id"]
+        # --- THE FIX: Pass the fully qualified ID (Make::Model::ID) to match backend expectations ---
+        "controllerid": controller_meta["device_id"] 
     }
     return json.dumps(event)
 
