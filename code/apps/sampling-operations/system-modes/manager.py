@@ -461,6 +461,7 @@ class SystemModesManager:
         try:
             self.logger.debug("send_to_mqtt (MQTT)", extra={"topic": topic})
             payload = to_json(ce)
+            self.logger.debug("send_to_mqtt (MQTT)", extra={"payload": payload})
             await self.publish_queue.put((topic, payload))
         except Exception as e:
             self.logger.error("send_to_mqtt failed", extra={"reason": str(e)})
