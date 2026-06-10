@@ -290,6 +290,17 @@ class ShellyPro2(Controller):
                             self.settings.set_actual(name, target_val)
                             
                         elif name in ["channel_0_power", "channel_1_power"]:
+
+                            if isinstance(target_val, str):
+                                # Safely catch dashboard strings
+                                target_val = 1 if target_val.lower() in ["on", "yes", "1", "true"] else 0
+                            elif isinstance(target_val, bool):
+                                target_val = 1 if target_val else 0
+                            elif isinstance(target_val, (int, float)):
+                                # Safely catch raw numbers
+                                target_val = 1 if target_val > 0 else 0
+                            self.settings.set_requested(name, target_val)
+
                             ch = self.metadata["variables"][name]["attributes"]["channel"]["data"]
                             await self.set_channel_power(ch, target_val)
 
