@@ -14,6 +14,7 @@ from envds.util.util import time_to_next
 
 task_list = []
 
+
 class ShellyPro2(Controller):
     def __init__(self, config=None, **kwargs):
         super(ShellyPro2, self).__init__(config=config, **kwargs)
