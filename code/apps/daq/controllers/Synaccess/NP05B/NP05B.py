@@ -263,6 +263,15 @@ class NP05B(Controller):
                             self.settings.set_actual(name, target_val)
                             
                         elif name in ["outlet_1_power", "outlet_2_power", "outlet_3_power", "outlet_4_power", "outlet_5_power"]:
+
+                            if isinstance(target_val, str):
+                                # Safely catch dashboard strings
+                                target_val = 1 if target_val.lower() in ["on", "yes", "1", "true"] else 0
+                            elif isinstance(target_val, (int, float)):
+                                # Safely catch raw numbers
+                                target_val = 1 if target_val > 0 else 0
+                            self.settings.set_requested(name, target_val)
+
                             outlet = self.metadata["variables"][name]["attributes"]["outlet"]["data"]
                             await self.set_outlet_power(outlet, target_val)
 
