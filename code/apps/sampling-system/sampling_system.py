@@ -1710,6 +1710,14 @@ class SamplingSystem:
                                                 if src_var in hw_vars:
                                                     hw_attrs = hw_vars[src_var].get("attributes", {})
                                                     
+                                                    # --- THE FIX: Coordinate Hydration ---
+                                                    hw_var_type = hw_attrs.get("variable_type", {}).get("data", "")
+                                                    if hw_var_type == "coordinate":
+                                                        attrs["variable_type"] = {"type": "string", "data": "coordinate"}
+                                                        # Store the static array in the attributes so the evaluator can find it
+                                                        attrs["static_data"] = {"type": "array", "data": hw_vars[src_var].get("data", [])}
+                                                    # -------------------------------------
+                                                    
                                                     # Specific hydration for settings (limits)
                                                     if v_type == "setting":
                                                         for attr_key in ["valid_min", "valid_max", "step_increment"]:
@@ -2359,9 +2367,12 @@ class SamplingSystem:
                         # self.logger.debug("update_variableset_by_source", extra={"variablemap": variablemap["variablesets"]})
                         source_v = variablemap["variablesets"][vs_name]["variables"][v_name]["attributes"]["source_variable"]["data"]
                         # self.logger.debug("update_variableset_by_source", extra={"source_data": source_data.data})
-                        direct_map[v_name].append(
-                            source_data.data["variables"][source_v]["data"]
-                        )
+                        # --- THE FIX: Safely check if the variable is in the live payload ---
+                        if source_v in source_data.data["variables"]:
+                            direct_map[v_name].append(
+                                source_data.data["variables"][source_v]["data"]
+                            )
+                        # --------------------------------------------------------------------
                         # self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
 
                     # self.logger.debug("update_variableset_by_source", extra={"vm": variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]})
@@ -3184,12 +3195,43 @@ class SamplingSystem:
         try:
             target_time = time_index["index_ready"]
 
+            var_record = variableset_record["variables"][variable_name]
+
+            # --- THE FIX: Coordinate Fast-Path ---
+            attr_var_type = var_record.get("attributes", {}).get("variable_type", {}).get("data", "")
+            if attr_var_type == "coordinate":
+                static_array = var_record.get("attributes", {}).get("static_data", {}).get("data", [])
+                
+                # --- APPLY UNIT CONVERSION TO COORDINATES ---
+                target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+                native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                
+                if static_array and target_unit and native_unit and target_unit != native_unit:
+                    try:
+                        data_quantity = ureg.Quantity(static_array, native_unit)
+                        converted = data_quantity.to(target_unit).magnitude
+                        
+                        if isinstance(static_array, list):
+                            if hasattr(converted, "tolist"):
+                                static_array = [round(float(v), 3) for v in converted.tolist()]
+                            else:
+                                static_array = [round(float(v), 3) for v in converted]
+                        else:
+                            static_array = round(float(converted), 3)
+                    except Exception as e:
+                        self.logger.error("Unit conversion failed for coordinate", extra={"variable": variable_name, "reason": str(e)})
+                # --------------------------------------------
+
+                # Instantly yield the static array we hydrated earlier and exit
+                variableset_record["variables"][variable_name]["data"] = static_array
+                return
+            # -------------------------------------
+
             if data_buffer is not None:
                 indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
             else:
                 indexed_data = []
             
-            var_record = variableset_record["variables"][variable_name]
             v_type = var_record.get("type", "float")
             var_class = var_record.get("variable_type", "sensor") # 'setting', 'sensor', etc.
             shape = var_record.get("shape", ["time"])

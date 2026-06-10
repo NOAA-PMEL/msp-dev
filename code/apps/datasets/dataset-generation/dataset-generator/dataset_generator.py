@@ -83,7 +83,7 @@ class DatasetGenerator:
             L.error(f"Failed to execute {action_def}: {e}")
             return None
 
-    async def generate_dataset(self, config: dict, start_time: str, end_time: str):
+async def generate_dataset(self, config: dict, start_time: str, end_time: str):
         """
         Highly optimized pipeline that resolves mappings, fetches telemetry, 
         and extracts schemas exactly once per unique resource.
@@ -108,8 +108,7 @@ class DatasetGenerator:
 
             L.info("Deduplicated VariableSets discovered", extra={"unique_variablesets": list(unique_vs_ids)})
 
-            # Query the mapping definition registry exactly ONCE per unique variableset_id
-            vs_to_hardware_map = {} # Maps: vs_id -> active mapping details dictionary
+            vs_to_hardware_map = {} 
             for vs_id in unique_vs_ids:
                 vmap_name = vs_id.split("::")[0]
                 L.debug(f"Fetching variablemap mapping definition for: {vmap_name}")
@@ -117,7 +116,6 @@ class DatasetGenerator:
                 vmap_resp.raise_for_status()
                 vmaps = vmap_resp.json().get("results", [])
                 
-                # Locate active variablemap valid for this specific time window
                 query_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
                 active_vmap = None
                 for vmap in sorted(vmaps, key=lambda x: x.get("valid_config_time", "2020-01-01T00:00:00Z"), reverse=True):
@@ -137,9 +135,8 @@ class DatasetGenerator:
             # -----------------------------------------------------------------
             # PASS 2: Deduplicate and Bulk Fetch Raw Telemetry Sources ONCE
             # -----------------------------------------------------------------
-            # Trace target variables to extract their exact hardware source configurations
-            variable_tracing_registry = {} # Maps: (vs_id, vs_var) -> tracking dict
-            telemetry_sources_to_fetch = {} # Maps: source_id -> {source_type, variables_set}
+            variable_tracing_registry = {} 
+            telemetry_sources_to_fetch = {} 
 
             for var in config.get("variables", []):
                 if "static_value" in var: continue
@@ -154,6 +151,19 @@ class DatasetGenerator:
                     active_vmap = vs_to_hardware_map.get(vs_id)
                     if active_vmap and vs_var in active_vmap.get("variables", {}):
                         target_var_def = active_vmap["variables"][vs_var]
+                        
+                        # --- THE FIX: Tag Coordinate Arrays and skip telemetry queries ---
+                        var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+                        if var_type == "coordinate":
+                            variable_tracing_registry[(vs_id, vs_var)] = {
+                                "source_id": "STATIC_COORDINATE",
+                                "raw_variable_name": vs_var,
+                                "vmap_def_id": active_vmap.get("variablemap_definition_id"),
+                                "is_coordinate": True
+                            }
+                            continue
+                        # -----------------------------------------------------------------
+                        
                         direct_var = target_var_def.get("direct_value", {}).get("source_variable", vs_var)
                         src_info = target_var_def.get("source", {}).get(direct_var, {})
                         
@@ -162,20 +172,18 @@ class DatasetGenerator:
                         raw_var_name = src_info.get("source_variable", vs_var)
                         
                         if s_id:
-                            # Cache tracing paths for easy Pass 4 lookups
                             variable_tracing_registry[(vs_id, vs_var)] = {
                                 "source_id": s_id,
                                 "raw_variable_name": raw_var_name,
-                                "vmap_def_id": active_vmap.get("variablemap_definition_id")
+                                "vmap_def_id": active_vmap.get("variablemap_definition_id"),
+                                "is_coordinate": False
                             }
-                            # Group required fields under single physical stream queries
                             if s_id not in telemetry_sources_to_fetch:
                                 telemetry_sources_to_fetch[s_id] = {"source_type": s_type, "fields": set()}
                             telemetry_sources_to_fetch[s_id]["fields"].add(raw_var_name)
 
             L.info("Deduplicated Telemetry Sources discovered", extra={"unique_sources": list(telemetry_sources_to_fetch.keys())})
 
-            # Execute exactly ONE bulk HTTP download request per unique telemetry source stream
             bulk_telemetry_cache = {}
             for s_id, source_meta in telemetry_sources_to_fetch.items():
                 endpoint = f"/{source_meta['source_type']}/data/get/"
@@ -192,8 +200,6 @@ class DatasetGenerator:
                 records = resp.json().get("results", [])
                 bulk_telemetry_cache[s_id] = records
                 
-                # --- DEEP DIAGNOSTIC DEBUG LOG ---
-                # Exposes exactly what dictionary keys ERDDAP/Datastore returned vs what fields we need
                 sample_hardware_keys = list(records[0].get("variables", {}).keys()) if records else []
                 L.debug("Datastore telemetry payload structural check", extra={
                     "source_id": s_id,
@@ -234,11 +240,57 @@ class DatasetGenerator:
                 is_calculated = "calculate_method" in source_def
                 fetch_list = source_def.get("inputs", {}) if is_calculated else {"primary": source_def}
                 
+                # Identify primary VS info right away
+                primary_source = fetch_list.get("primary", next(iter(fetch_list.values()), {}))
+                primary_vs_id = primary_source.get("variableset_id")
+                primary_vs_var = primary_source.get("variable_name")
+
+                # --- THE FIX: Coordinate Fast-Path Short Circuit with Unit Conversion ---
+                trace_key = (primary_vs_id, primary_vs_var)
+                trace = variable_tracing_registry.get(trace_key, {})
+                
+                if trace.get("is_coordinate") and not is_calculated:
+                    vs_def = vs_defs_cache.get(primary_vs_id, {})
+                    native_vars = vs_def.get("variables", {})
+                    
+                    static_data = native_vars.get(primary_vs_var, {}).get("data", [])
+                    dims = native_vars.get(primary_vs_var, {}).get("shape", [out_name])
+                    
+                    # Create the 1D static coordinate array (no time dimension!)
+                    coords = {dims[0]: static_data} if len(dims) == 1 else {}
+                    da = xr.DataArray(data=static_data, coords=coords, dims=dims, name=out_name)
+                    
+                    # Global mappings and attributes
+                    native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
+                    for attr_key, attr_val in native_attrs.items(): da.attrs[attr_key] = attr_val
+                    
+                    # Safely extract native units for coordinates
+                    native_units_raw = da.attrs.get("units")
+                    native_units = native_units_raw.get("data") if isinstance(native_units_raw, dict) else native_units_raw
+                    
+                    target_units_raw = var.get("attributes", {}).get("units")
+                    target_units = target_units_raw.get("data") if isinstance(target_units_raw, dict) else target_units_raw
+                    
+                    for attr_key, attr_val in var.get("attributes", {}).items(): da.attrs[attr_key] = attr_val
+                    
+                    # --- APPLY UNIT CONVERSION TO COORDINATES ---
+                    if native_units and target_units and (native_units != target_units):
+                        try:
+                            data_quantity = ureg.Quantity(da.values, native_units)
+                            da.values = data_quantity.to(target_units).magnitude
+                            da.attrs["units"] = target_units
+                        except Exception as e:
+                            L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
+                            da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
+                    # --------------------------------------------
+                            
+                    data_arrays.append(da)
+                    continue # Drops out to the next variable in the config without trying to unpack telemetry!
+                # -------------------------------------------------------------------------
+
                 input_arrays = {}
                 unique_sources = set()
-                primary_vs_id = None
-                primary_vs_var = None
-                
+
                 for param_name, input_source in fetch_list.items():
                     vs_id = input_source.get("variableset_id")
                     vs_var = input_source.get("variable_name")
@@ -247,15 +299,10 @@ class DatasetGenerator:
                     if trace_key not in variable_tracing_registry: continue
                     trace = variable_tracing_registry[trace_key]
                     
-                    if not primary_vs_id:
-                        primary_vs_id = vs_id
-                        primary_vs_var = vs_var
-                    
                     records = bulk_telemetry_cache.get(trace["source_id"], [])
                     times, values = [], []
                     raw_key = trace["raw_variable_name"]
                     
-                    # Unpack timelines entirely out of local RAM cache
                     for r in records:
                         r_vars = r.get("variables", {})
                         if "time" in r_vars and raw_key in r_vars:
@@ -266,7 +313,6 @@ class DatasetGenerator:
                             hw_source = r_vars[raw_key].get("attributes", {}).get("source_id", {}).get("data")
                             if hw_source: unique_sources.add(hw_source)
                     
-                    # --- DEEP DIAGNOSTIC DEBUG LOG ---
                     L.debug("Variable extraction timeline metrics", extra={
                         "target_nc_field": out_name,
                         "extracted_from_key": raw_key,
@@ -279,7 +325,6 @@ class DatasetGenerator:
 
                 if not input_arrays: continue
 
-                # Vector math transformations
                 if is_calculated:
                     action_module = source_def["calculate_method"]["action_module"]
                     action_def = source_def["calculate_method"]["action_def"]
@@ -292,7 +337,6 @@ class DatasetGenerator:
                     final_values = input_arrays["primary"]["values"]
                     final_times = input_arrays["primary"]["times"]
 
-                # Extract cached grid configurations
                 vs_def = vs_defs_cache.get(primary_vs_id, {})
                 native_vars = vs_def.get("variables", {})
                 
@@ -304,7 +348,6 @@ class DatasetGenerator:
                 
                 da = xr.DataArray(data=final_values, coords=coords, dims=dims, name=out_name)
                 
-                # --- RE-ADDED 2D INTERPOLATION BLOCK ---
                 if "coordinates" in var:
                     for custom_dim, custom_grid in var["coordinates"].items():
                         if custom_dim in da.dims:
@@ -314,9 +357,7 @@ class DatasetGenerator:
                                 method="linear", 
                                 kwargs={"fill_value": np.nan}
                             )
-                # ---------------------------------------
 
-                # Global mappings, attributes and pint conversions
                 native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
                 for attr_key, attr_val in native_attrs.items(): da.attrs[attr_key] = attr_val
                 
@@ -338,7 +379,6 @@ class DatasetGenerator:
                 if unique_sources: da.attrs["sources"] = ", ".join(sorted(list(unique_sources)))
                 data_arrays.append(da)
 
-            # Assemble merged structure
             if not data_arrays:
                 L.warning("No data extracted for any target variables. Building blank schema.", extra={"dataset_id": dataset_id})
                 ds = xr.Dataset()
@@ -348,7 +388,6 @@ class DatasetGenerator:
             if "time" in ds.dims:
                 ds = ds.groupby("time").mean(dim="time")
             
-            # Rebin time centered averages
             half_base = freq_sec / 2.0
             if "time" in ds.dims and len(ds.time) > 0:
                 aligned_ds = ds.resample(time=f"{freq_sec}s", closed="left", label="right", offset=f"{half_base}s").mean(dim="time")
@@ -357,11 +396,9 @@ class DatasetGenerator:
             else:
                 aligned_ds = ds
 
-            # Force complete continuous bounds template
             master_time = pd.date_range(start=start_time.replace("Z", ""), end=end_time.replace("Z", ""), freq=f"{freq_sec}s", inclusive="left")
             aligned_ds = aligned_ds.reindex(time=master_time)
 
-            # Allocate stable NaN matrices for missing streams
             for var in config.get("variables", []):
                 if "static_value" in var: continue
                 out_name = var["name"]
@@ -381,7 +418,6 @@ class DatasetGenerator:
                     for attr_key, attr_val in var.get("attributes", {}).items(): empty_da.attrs[attr_key] = attr_val
                     aligned_ds[out_name] = empty_da
 
-            # Pre-allocate clean quality control byte masks
             for var_name in list(aligned_ds.data_vars.keys()):
                 if var_name in ["time", "latitude", "longitude", "altitude"] or var_name.startswith("qc_"): continue
                 
@@ -393,7 +429,6 @@ class DatasetGenerator:
                 qc_da.attrs["flag_meanings"] = "value_less_than_valid_min value_greater_than_valid_max sensor_offline flatline_detected"
                 aligned_ds[f"qc_{var_name}"] = qc_da
 
-            # Append static metrics
             for var in config.get("variables", []):
                 if "static_value" in var:
                     out_name = var["name"]
@@ -401,7 +436,6 @@ class DatasetGenerator:
                     for attr_key, attr_val in var.get("attributes", {}).items(): da.attrs[attr_key] = attr_val
                     aligned_ds[out_name] = da
 
-            # Write out to NetCDF disk
             aligned_ds.attrs["title"] = f"Dataset: {dataset_id}"
             aligned_ds.attrs["history"] = f"Generated {datetime.utcnow().isoformat()}Z"
             if "conventions" in config:
@@ -413,7 +447,6 @@ class DatasetGenerator:
             filepath = os.path.join(self.output_dir, filename)
             aligned_ds.to_netcdf(filepath, engine="netcdf4", format="NETCDF4")
 
-            # Push to storage vault
             storage_url = f"http://dataset-storage.{self.daq_id}-system.svc.cluster.local:80/upload/"
             try:
                 async with httpx.AsyncClient() as client:
