@@ -83,7 +83,7 @@ class DatasetGenerator:
             L.error(f"Failed to execute {action_def}: {e}")
             return None
 
-async def generate_dataset(self, config: dict, start_time: str, end_time: str):
+    async def generate_dataset(self, config: dict, start_time: str, end_time: str):
         """
         Highly optimized pipeline that resolves mappings, fetches telemetry, 
         and extracts schemas exactly once per unique resource.
