@@ -163,7 +163,11 @@ class ShellyPro1(Controller):
 
     async def set_channel_power(self, channel, state):
         if isinstance(state, str):
-            state = 1 if state.lower() in ["on", "yes", "1"] else 0 
+            # Safely catch dashboard strings (including "true")
+            state = 1 if state.lower() in ["on", "yes", "1", "true"] else 0 
+        elif isinstance(state, (int, float)):
+            # Safely catch raw numbers
+            state = 1 if state > 0 else 0
             
         cmd = "on" if state else "off"
         data = {

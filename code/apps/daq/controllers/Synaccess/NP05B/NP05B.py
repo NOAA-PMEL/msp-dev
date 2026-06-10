@@ -159,7 +159,11 @@ class NP05B(Controller):
 
     async def set_outlet_power(self, outlet, state):
         if isinstance(state, str):
-            state = 1 if state.lower() in ["on", "yes", "1"] else 0
+            # Safely catch dashboard strings
+            state = 1 if state.lower() in ["on", "yes", "1", "true"] else 0
+        elif isinstance(state, (int, float)):
+            # Safely catch raw numbers
+            state = 1 if state > 0 else 0
             
         cmd = 1 if state else 0
         message = {"data": f"pset {outlet} {cmd}\r"}
