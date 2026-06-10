@@ -14,7 +14,7 @@ from logfmter import Logfmter
 
 # Import the initialized Dash app from app.py
 from app import app as dash_app
-
+from envds.daq.event import DAQEvent
 
 # --- CONFIG ---
 class Settings(BaseSettings):
@@ -155,7 +155,7 @@ class ConnectionManager:
             if not self.active_connections[client_type][client_id]:
                 del self.active_connections[client_type][client_id]
             L.debug(f"WS Disconnected: {client_type}/{client_id}")
-            
+
     async def broadcast(self, message: str, client_type: str, client_id: str):
         """Instantly drops messages into the connection queues. Uses a Ring Buffer."""
         if client_id in self.active_connections.get(client_type, {}):
@@ -349,13 +349,14 @@ async def ws_variableset(websocket: WebSocket, variableset_id: str):
     try:
         while True:
             data = await websocket.receive_text()
+            L.info(f"\n--- [WS_VARIABLESET] INCOMING BROWSER PAYLOAD --- \n{data}")
             try:
                 payload = json.loads(data)
                 destpath = payload.get("destpath")
                 if destpath:
-                    # Forward the structured CloudEvent payload onto the central publish queue
+                    # Forward the payload onto the central publish queue
+                    L.info(f"--- [WS_VARIABLESET] ROUTING TO MQTT QUEUE --- \nTopic: {destpath}")
                     await mqtt_publish_queue.put((destpath, data))
-                    L.debug(f"Bridged VariableSet Command to MQTT: {destpath}")
             except Exception as e:
                 L.error(f"VariableSet Command Bridge Error: {e}")
     except WebSocketDisconnect:
@@ -367,25 +368,21 @@ async def ws_sensor(websocket: WebSocket, device_id: str):
     try:
         while True:
             data = await websocket.receive_text()
+            L.info(f"\n--- [WS_SENSOR] INCOMING BROWSER PAYLOAD --- \n{data}")
             try:
                 payload = json.loads(data)
                 destpath = payload.get("destpath")
                 if destpath:
                     # Construct a STRICT CloudEvent envelope matching your DAQ library
-                    ce_payload = {
-                        "specversion": "1.0",
-                        "id": str(ULID()),
-                        "source": payload.get("source", f"envds.{config.daq_id}.dashboard"),
-                        "type": "envds.sensor.settings.request",
-                        "datacontenttype": "application/json",
-                        "deviceid": payload.get("deviceid", ""), # Required by sensor.py
-                        "destpath": "envds/sensor/settings/request",
-                        "data": payload.get("data", {})
-                    }
+                    ce_payload = DAQEvent.create_sensor_settings_request(
+                        source=payload.get("source", f"envds.{config.daq_id}.dashboard"),
+                        data=payload.get("data", {}),
+                        extra_header={"deviceid": payload.get("deviceid", ""), "destpath": destpath}
+                    )
                     
-                    async with Client(config.mqtt_broker, port=config.mqtt_port) as client:
-                        await client.publish(destpath, payload=json.dumps(ce_payload))
-                        L.debug(f"Bridged Sensor Settings to MQTT: {destpath}")
+                    msg_str = json.dumps(ce_payload)
+                    L.info(f"--- [WS_SENSOR] ROUTING TO MQTT QUEUE --- \nTopic: {destpath}\nPayload: {msg_str}")
+                    await mqtt_publish_queue.put((destpath, msg_str))
             except Exception as e:
                 L.error(f"Sensor Bridge Error: {e}")
     except WebSocketDisconnect:
@@ -397,26 +394,21 @@ async def ws_controller(websocket: WebSocket, controller_id: str):
     try:
         while True:
             data = await websocket.receive_text()
+            L.info(f"\n--- [WS_CONTROLLER] INCOMING BROWSER PAYLOAD --- \n{data}")
             try:
                 payload = json.loads(data)
                 destpath = payload.get("destpath")
                 if destpath:
                     # Construct a STRICT CloudEvent envelope matching your DAQ library
-                    ce_payload = {
-                        "specversion": "1.0",
-                        "id": str(ULID()),
-                        "source": payload.get("source", f"envds.{config.daq_id}.dashboard"),
-                        "type": "envds.controller.settings.request",
-                        "datacontenttype": "application/json",
-                        "controllerid": payload.get("controllerid", ""), 
-                        "destpath": "envds/controller/settings/request",
-                        "data": payload.get("data", {})
-                    }
+                    ce_payload = DAQEvent.create_controller_settings_request(
+                        source=payload.get("source", f"envds.{config.daq_id}.dashboard"),
+                        data=payload.get("data", {}),
+                        extra_header={"controllerid": payload.get("controllerid", ""), "destpath": destpath}
+                    )
                     
-                    # --- FIXED TYPO: Symmetric with sensor, now using config.mqtt_port ---
-                    async with Client(config.mqtt_broker, port=config.mqtt_port) as client:
-                        await client.publish(destpath, payload=json.dumps(ce_payload))
-                        L.debug(f"Bridged Controller Settings to MQTT: {destpath}")
+                    msg_str = json.dumps(ce_payload)
+                    L.info(f"--- [WS_CONTROLLER] ROUTING TO MQTT QUEUE --- \nTopic: {destpath}\nPayload: {msg_str}")
+                    await mqtt_publish_queue.put((destpath, msg_str))
             except Exception as e:
                 L.error(f"Controller Bridge Error: {e}")
     except WebSocketDisconnect:
