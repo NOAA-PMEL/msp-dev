@@ -107,14 +107,15 @@ def build_tables(layout_options):
                                 rowData=options.get("row-data-skeletons", []),
                                 columnDefs=column_defs,
                                 columnSize="autoSize",
+                                defaultColDef={"resizable": True, "minWidth": 120},
                                 dashGridOptions={
-                                    "domLayout": "autoHeight", 
                                     "singleClickEdit": True, 
                                     "rowSelection": {"mode": "singleRow"},
                                     "suppressRowClickSelection": False,
-                                    "stopEditingWhenCellsLoseFocus": True
+                                    "stopEditingWhenCellsLoseFocus": True,
+                                    "autoSizeStrategy": {"type": "fitCellContents"}
                                 },
-                                style={"height": None, "maxHeight": "400px", "overflow": "auto"},
+                                style={"height": "400px", "width": "100%"},
                                 className="ag-theme-alpine mb-3 shadow-sm border"
                             ),
                             dbc.Button([html.I(className="bi bi-send-check me-2"), "Transmit Selected Setting"], id={"type": "submit-setting-btn", "index": dim}, color="primary", className="fw-bold shadow-sm")
@@ -133,8 +134,11 @@ def build_tables(layout_options):
                                 rowData=[],
                                 columnDefs=options["table-column-defs"],
                                 columnSize="autoSize",
-                                dashGridOptions={"domLayout": "autoHeight"},
-                                style={"height": None, "maxHeight": "400px", "overflow": "auto"},
+                                defaultColDef={"resizable": True, "minWidth": 120},
+                                dashGridOptions={
+                                    "autoSizeStrategy": {"type": "fitCellContents"}
+                                },
+                                style={"height": "400px", "width": "100%"},
                                 className="ag-theme-alpine shadow-sm border"
                             )
                         ],
@@ -152,8 +156,11 @@ def build_tables(layout_options):
                                 rowData=[],
                                 columnDefs=options["table-column-defs"],
                                 columnSize="autoSize",
-                                dashGridOptions={"domLayout": "autoHeight"},
-                                style={"height": None, "maxHeight": "400px", "overflow": "auto"},
+                                defaultColDef={"resizable": True, "minWidth": 120},
+                                dashGridOptions={
+                                    "autoSizeStrategy": {"type": "fitCellContents"}
+                                },
+                                style={"height": "400px", "width": "100%"},
                                 className="ag-theme-alpine shadow-sm border"
                             )
                         ],

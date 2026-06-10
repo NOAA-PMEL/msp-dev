@@ -232,18 +232,19 @@ def layout(deployment_id=None, variableset_id=None):
                                     "headerName": "Target Value (Click to Edit)", 
                                     "editable": True, 
                                     "width": 220,
-                                    # Visually indicates this is an input field
                                     "cellStyle": {"backgroundColor": "#f8f9fa", "border": "1px dashed #0d6efd", "cursor": "text"}
                                 }
                             ],
                             columnSize="autoSize",
+                            defaultColDef={"resizable": True, "minWidth": 120},
                             dashGridOptions={
-                                "domLayout": "autoHeight", 
                                 "singleClickEdit": True, 
                                 "rowSelection": {"mode": "singleRow"},
-                                "suppressRowClickSelection": False, # Automatically selects row when you click to edit!
-                                "stopEditingWhenCellsLoseFocus": True # Ensures the typed value is saved when "Apply" is clicked without hitting Enter
+                                "suppressRowClickSelection": False, 
+                                "stopEditingWhenCellsLoseFocus": True,
+                                "autoSizeStrategy": {"type": "fitCellContents"}
                             },
+                            style={"height": "400px", "width": "100%"},
                             className="ag-theme-alpine mb-3 shadow-sm border"
                         ),
                         dbc.Button([html.I(className="bi bi-send-check me-2"), "Transmit Selected Command"], id="vs-submit-setting-btn", color="primary", className="fw-bold shadow-sm")
@@ -271,8 +272,11 @@ def layout(deployment_id=None, variableset_id=None):
                         dag.AgGrid(
                             id="vs-data-table", 
                             rowData=[], columnDefs=table_columns, columnSize="autoSize",
-                            dashGridOptions={"domLayout": "autoHeight"},
-                            style={"height": None, "maxHeight": "400px", "overflow": "auto"},
+                            defaultColDef={"resizable": True, "minWidth": 120},
+                            dashGridOptions={
+                                "autoSizeStrategy": {"type": "fitCellContents"}
+                            },
+                            style={"height": "400px", "width": "100%"},
                             className="ag-theme-alpine shadow-sm border"
                         ), className="bg-light p-3"
                     )
@@ -284,6 +288,7 @@ def layout(deployment_id=None, variableset_id=None):
         dcc.Store(id="vs-meta", data={"variableset_id": variableset_id}),
         dcc.Store(id="vs-def-store", data=varset_def),
         WebSocket(id="ws-vs-instance", url=f"{ws_url_base}/envds/envops/ws/variableset/{variableset_id}"),
+        html.Div(id="ws-send-vs-buffer", children="", style={"display": "none"}),
         dcc.Store(id="vs-data-buffer", data={})
     ])
 

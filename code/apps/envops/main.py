@@ -26,7 +26,6 @@ class Settings(BaseSettings):
 
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
-    # Subscribe to relevant telemetry, status, and variableset updates
     mqtt_topic_subscriptions: str = "envds/+/+/+/data/#,envds/+/+/+/status/#"
     mqtt_client_id: str = Field(default_factory=lambda: f"envops-dash-{str(ULID())}")
 
@@ -41,81 +40,17 @@ handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger("EnvOps-Main")
-# L.setLevel(logging.DEBUG)
 numeric_level = getattr(logging, config.log_level.upper(), logging.INFO)
 L.setLevel(numeric_level)
-
-# --- CONNECTION MANAGER ---
-# class ConnectionManager:
-#     """Manages granular WebSocket connections for Dash drill-down pages."""
-#     def __init__(self):
-#         # We store connections grouped by type (e.g., 'deployment', 'variableset', 'sensor')
-#         # and then by their specific ID.
-#         self.active_connections: dict[str, dict[str, list[WebSocket]]] = {
-#             "fleet": {},
-#             "fleet_telemetry": {},
-#             "deployment_c2": {},
-#             "deployment_telemetry": {},
-#             "variableset": {},
-#             "sensor": {},
-#             "registry": {}
-#         }
-
-#     async def connect(self, websocket: WebSocket, client_type: str, client_id: str):
-#         await websocket.accept()
-#         if client_id not in self.active_connections[client_type]:
-#             self.active_connections[client_type][client_id] = []
-#         self.active_connections[client_type][client_id].append(websocket)
-#         L.debug(f"WS Connected: {client_type}/{client_id}. Total: {len(self.active_connections[client_type][client_id])}")
-
-#     def disconnect(self, websocket: WebSocket, client_type: str, client_id: str):
-#         if client_id in self.active_connections[client_type]:
-#             self.active_connections[client_type][client_id].remove(websocket)
-#             if not self.active_connections[client_type][client_id]:
-#                 del self.active_connections[client_type][client_id]
-#             L.debug(f"WS Disconnected: {client_type}/{client_id}")
-
-#     # async def broadcast(self, message: str, client_type: str, client_id: str):
-#     #     """Send a message strictly to the WebSockets listening to this specific client_id."""
-#     #     if client_id in self.active_connections.get(client_type, {}):
-#     #         for connection in self.active_connections[client_type][client_id]:
-#     #             try:
-#     #                 L.debug("broadcast", extra={"client_type": client_type, "client_id": client_id, "bcast_message": message})
-#     #                 await connection.send_text(message)
-#     #             except Exception as e:
-#     #                 L.error(f"WS Broadcast error on {client_type}/{client_id}: {e}")
-
-#     async def broadcast(self, message: str, client_type: str, client_id: str):
-#         """Instantly drops messages into the connection queues. Uses a Ring Buffer 
-#         approach to drop the oldest packets if the client browser is lagging."""
-#         if client_id in self.active_connections.get(client_type, {}):
-#             for websocket, (queue, worker_task) in list(self.active_connections[client_type][client_id].items()):
-#                 try:
-#                     queue.put_nowait(message)
-#                 except asyncio.QueueFull:
-#                     # --- RING BUFFER LOGIC: Drop the oldest to keep the newest ---
-#                     try:
-#                         # Yank the oldest message off the front of the line and throw it away
-#                         queue.get_nowait()
-#                         queue.task_done()
-#                         L.warning(f"Browser lagging on {client_type}/{client_id}. Dropped stale packet.")
-#                     except asyncio.QueueEmpty:
-#                         pass
-                    
-#                     # Now that there is guaranteed space, put the brand new message at the back
-#                     try:
-#                         queue.put_nowait(message)
-#                     except asyncio.QueueFull:
-#                         pass
 
 # --- CONNECTION MANAGER ---
 class ConnectionManager:
     """Manages granular WebSocket connections with bounded queues and load shedding."""
     def __init__(self):
-        # Format: { client_type: { client_id: { websocket: (queue, worker_task) } } }
         self.active_connections = {
             "fleet": {}, "fleet_telemetry": {}, "deployment_c2": {},
-            "deployment_telemetry": {}, "variableset": {}, "sensor": {}, "registry": {}
+            "deployment_telemetry": {}, "variableset": {}, "sensor": {}, "registry": {},
+            "chat": {} # Included for the Comms Widget
         }
 
     async def connect(self, websocket: WebSocket, client_type: str, client_id: str):
@@ -124,7 +59,6 @@ class ConnectionManager:
         ws_queue = asyncio.Queue(maxsize=50) 
         worker_task = asyncio.create_task(self._ws_sender_worker(websocket, ws_queue, client_type, client_id))
         
-        # --- THE FIX: Safely initialize missing client_types on the fly ---
         if client_type not in self.active_connections:
             self.active_connections[client_type] = {}
             
@@ -135,17 +69,15 @@ class ConnectionManager:
         L.debug(f"WS Connected: {client_type}/{client_id}")
 
     async def _ws_sender_worker(self, websocket: WebSocket, queue: asyncio.Queue, client_type: str, client_id: str):
-        """Dedicated background task that pushes data to the browser."""
         try:
             while True:
                 message = await queue.get()
                 await websocket.send_text(message)
                 queue.task_done()
         except Exception:
-            pass # Socket closures are handled cleanly by the disconnect method
+            pass 
 
     def disconnect(self, websocket: WebSocket, client_type: str, client_id: str):
-        # --- THE FIX: Safely check for existence before deleting ---
         if client_type in self.active_connections and client_id in self.active_connections[client_type]:
             if websocket in self.active_connections[client_type][client_id]:
                 queue, worker_task = self.active_connections[client_type][client_id][websocket]
@@ -157,7 +89,6 @@ class ConnectionManager:
             L.debug(f"WS Disconnected: {client_type}/{client_id}")
 
     async def broadcast(self, message: str, client_type: str, client_id: str):
-        """Instantly drops messages into the connection queues. Uses a Ring Buffer."""
         if client_id in self.active_connections.get(client_type, {}):
             for websocket, (queue, worker_task) in list(self.active_connections[client_type][client_id].items()):
                 try:
@@ -175,6 +106,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# THE FIX: Properly instantiated the MQTT publishing queue
 mqtt_publish_queue = asyncio.Queue()
 
 # --- MQTT BACKGROUND TASKS ---
@@ -186,7 +118,6 @@ async def mqtt_listen_task():
             L.info(f"Connecting to MQTT Broker: {config.mqtt_broker}:{config.mqtt_port}")
             async with Client(config.mqtt_broker, port=config.mqtt_port, identifier=config.mqtt_client_id) as client:
                 
-                # Subscribe to required topics
                 for topic in config.mqtt_topic_subscriptions.split(","):
                     if topic.strip():
                         await client.subscribe(topic.strip())
@@ -194,32 +125,20 @@ async def mqtt_listen_task():
 
                 async for message in client.messages:
                     try:
-                        L.debug("mqtt_listen_task", extra={"ce_message": message})
                         ce = from_json(message.payload)
-                        L.debug("mqtt_listen_task", extra={"ce-event": ce})
                         topic = message.topic.value
-                        L.debug("mqtt_listen_task", extra={"mqtt_topic": topic})
                         ce_type = ce.get("type", "")
-                        L.debug("mqtt_listen_task", extra={"ce-type": ce_type})
                         source = ce.get("source", "")
-                        L.debug("mqtt_listen_task", extra={"ce-source": source})
                         
-                        # payload_str = json.dumps({"data": message.payload.decode()})
-                        # payload_str = json.dumps(ce.data)
-                        # Create both formatted strings
-                        ce_str = message.payload.decode()  # The Full CloudEvent
-                        payload_str = json.dumps(ce.data)     # Just the payload
-                        L.debug("mqtt_listen_task", extra={"payload_str": payload_str})
+                        ce_str = message.payload.decode()  
+                        payload_str = json.dumps(ce.data)     
 
                         # 1. Route Operations Health (Status Updates)
                         if any(x in ce_type for x in ["systemmode", "samplingmode", "samplingstate", "samplingcondition"]):
-                            
                             for dep_id in manager.active_connections.get("deployment_c2", {}).keys():
-                                # deployment.py REQUIRES the full CloudEvent to group by deploymentref
                                 await manager.broadcast(ce_str, "deployment_c2", dep_id)
                             
                             for fleet_id in manager.active_connections.get("fleet", {}).keys():
-                                # home.py expects ONLY the inner payload
                                 await manager.broadcast(payload_str, "fleet", fleet_id)
 
                         # 2. Route Variableset Telemetry to Variableset WebSockets
@@ -227,10 +146,7 @@ async def mqtt_listen_task():
                             vs_id = source.split(".")[-1] 
                             await manager.broadcast(payload_str, "variableset", vs_id)
                             
-                            # Extract nav/gps data dynamically for the global fleet map
                             variables = ce.data.get("variables", {})
-                            
-                            # Check the actual payload keys instead of the variableset name
                             if "latitude" in variables and "longitude" in variables:
                                 try:
                                     target_id = None
@@ -248,25 +164,19 @@ async def mqtt_listen_task():
 
                         # 3. Route Raw Sensor & Controller Telemetry
                         elif ce_type in ["envds.data.update", "envds.controller.data.update"]:
-                            L.debug("mqtt_listen_task", extra={"payload_str": payload_str})
-                            
-                            # Safely extract structured metadata blocks from the CloudEvent data payload
                             attrs = ce.data.get("attributes", {})
                             make = attrs.get("make", {}).get("data", "unknown")
                             model = attrs.get("model", {}).get("data", "unknown")
                             sn = attrs.get("serial_number", {}).get("data", "unknown")
                             
-                            # Generate a bulletproof FQID key to isolate the room name
                             fully_qualified_id = f"{make}::{model}::{sn}"
                             
                             if "controller" in ce_type:
                                 await manager.broadcast(payload_str, "controller", fully_qualified_id)
                             else:
-                                # --- BULLETPROOF: Sensors now use the full identity key ---
-                                # --- eliminating any potential identifier collisions! -----
                                 await manager.broadcast(payload_str, "sensor", fully_qualified_id)
 
-                        # 1. Route Sensor Settings
+                        # 4. Route Sensor Settings
                         elif ce_type == "envds.sensor.settings.update":
                             attrs = ce.data.get("attributes", {})
                             make = attrs.get("make", {}).get("data", "unknown")
@@ -276,7 +186,7 @@ async def mqtt_listen_task():
                             device_id = f"{make}::{model}::{sn}"
                             await manager.broadcast(payload_str, "sensor", device_id)
                             
-                        # 2. Route Controller Settings
+                        # 5. Route Controller Settings
                         elif ce_type == "envds.controller.settings.update":
                             attrs = ce.data.get("attributes", {})
                             make = attrs.get("make", {}).get("data", "unknown")
@@ -300,25 +210,40 @@ async def mqtt_publish_task():
     """Takes outbound messages (like C2 requests) from Dash and pushes them to MQTT."""
     reconnect_delay = 5
     client_id = f"envops-pub-{str(ULID())}"
+    
+    L.info("--- [MQTT_PUB] Background publish task started. ---")
+    
     while True:
         try:
+            L.info(f"--- [MQTT_PUB] Connecting to Broker: {config.mqtt_broker}:{config.mqtt_port} ---")
             async with Client(config.mqtt_broker, port=config.mqtt_port, identifier=client_id) as client:
+                L.info("--- [MQTT_PUB] Publisher successfully connected! Waiting for queue... ---")
+                
                 while True:
                     topic, payload = await mqtt_publish_queue.get()
-                    await client.publish(topic, payload, qos=1)
-                    mqtt_publish_queue.task_done()
+                    L.info(f"\n--- [MQTT_PUB] DEQUEUED MESSAGE --- \nTarget Topic: {topic}\nPayload: {payload}")
+                    
+                    try:
+                        await client.publish(topic, payload, qos=1)
+                        L.info("--- [MQTT_PUB] Successfully published to broker! ---")
+                    except Exception as pub_err:
+                        L.error(f"--- [MQTT_PUB] FAILED TO PUBLISH: {pub_err} ---")
+                    finally:
+                        mqtt_publish_queue.task_done()
+                        
         except MqttError as e:
-            L.error(f"MQTT Publisher dropped: {e}. Reconnecting...")
+            L.error(f"--- [MQTT_PUB] MQTT Connection dropped: {e}. Reconnecting in {reconnect_delay}s... ---")
             await asyncio.sleep(reconnect_delay)
-
+        except Exception as e:
+            L.error(f"--- [MQTT_PUB] CRITICAL TASK CRASH: {e} ---")
+            await asyncio.sleep(reconnect_delay)
+            
 # --- APP LIFECYCLE ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Launch background tasks
     task_listen = asyncio.create_task(mqtt_listen_task())
     task_publish = asyncio.create_task(mqtt_publish_task())
     yield
-    # Shutdown: Clean up tasks
     task_listen.cancel()
     task_publish.cancel()
 
@@ -331,12 +256,10 @@ async def ws_deployment_c2(websocket: WebSocket, deployment_id: str):
     try:
         while True:
             data = await websocket.receive_text()
-            # Incoming data from the dashboard C2 panel (Auto/Manual request)
             try:
                 event = json.loads(data)
                 topic = event.get("destpath")
                 if topic:
-                    # Drop it onto the MQTT publisher queue
                     await mqtt_publish_queue.put((topic, data))
             except json.JSONDecodeError:
                 pass
@@ -354,7 +277,6 @@ async def ws_variableset(websocket: WebSocket, variableset_id: str):
                 payload = json.loads(data)
                 destpath = payload.get("destpath")
                 if destpath:
-                    # Forward the payload onto the central publish queue
                     L.info(f"--- [WS_VARIABLESET] ROUTING TO MQTT QUEUE --- \nTopic: {destpath}")
                     await mqtt_publish_queue.put((destpath, data))
             except Exception as e:
@@ -373,7 +295,6 @@ async def ws_sensor(websocket: WebSocket, device_id: str):
                 payload = json.loads(data)
                 destpath = payload.get("destpath")
                 if destpath:
-                    # Construct a STRICT CloudEvent envelope matching your DAQ library
                     ce_payload = DAQEvent.create_sensor_settings_request(
                         source=payload.get("source", f"envds.{config.daq_id}.dashboard"),
                         data=payload.get("data", {}),
@@ -399,7 +320,6 @@ async def ws_controller(websocket: WebSocket, controller_id: str):
                 payload = json.loads(data)
                 destpath = payload.get("destpath")
                 if destpath:
-                    # Construct a STRICT CloudEvent envelope matching your DAQ library
                     ce_payload = DAQEvent.create_controller_settings_request(
                         source=payload.get("source", f"envds.{config.daq_id}.dashboard"),
                         data=payload.get("data", {}),
@@ -432,11 +352,19 @@ async def ws_fleet_status(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket, "fleet", "global")
 
+@app.websocket("/ws/chat")
+async def ws_chat(websocket: WebSocket):
+    await manager.connect(websocket, "chat", "global")
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await manager.broadcast(data, "chat", "global")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, "chat", "global")
+
 # --- MOUNT DASH FRONTEND ---
-# Traefik strips `/envds/envops`, so FastAPI mounts this at the root.
 app.mount("/", WSGIMiddleware(dash_app.server))
 
 if __name__ == "__main__":
     import uvicorn
-    # When running locally without Docker
     uvicorn.run("main:app", host=config.host, port=config.port, log_level="info")
