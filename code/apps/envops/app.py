@@ -204,8 +204,7 @@ floating_chat_widget = html.Div([
                     {'label': 'Guest', 'value': 'Guest'}
                 ],
                 placeholder="Identify yourself...",
-                className="mb-2 shadow-sm",
-                size="sm"
+                className="mb-2 shadow-sm"  # <-- Removed size="sm" from here!
             ),
             
             # Chat history rendering box
