@@ -65,67 +65,56 @@ async def fetch_operational_status(start_time: str, end_time: str, dataset_id: s
     ]
     return mock_status_events
 
-async def process_default_qc(filename: str, dataset_id: str, download_url: str):
+async def process_default_qc(filename: str, dataset_id: str, download_url: str, delete_url: str):
     local_path = os.path.join(WORK_DIR, filename)
-    new_local_path = None
     
     try:
-        # 1. Download the a1 dataset
+        # 1. Download the raw a1 dataset
         async with httpx.AsyncClient() as client:
             resp = await client.get(download_url, timeout=30.0)
             resp.raise_for_status()
             with open(local_path, "wb") as f:
                 f.write(resp.content)
 
-        # 2. Open Dataset to determine the time window
+        # 2-4. Open Dataset, Fetch Status, Apply Flags... (Same as before)
         ds = xr.open_dataset(local_path)
-        start_time = str(ds.time.values[0])
-        end_time = str(ds.time.values[-1])
-
-        # 3. Fetch Operational Status
+        start_time, end_time = str(ds.time.values[0]), str(ds.time.values[-1])
         ops_events = await fetch_operational_status(start_time, end_time, dataset_id)
 
-        # 4. Apply the Operational Flags to the pre-allocated qc_ variables
         if ops_events:
-            L.info(f"Applying {len(ops_events)} operational status flags to {filename}")
             for event in ops_events:
                 var_name = event["variable"]
                 qc_var = f"qc_{var_name}"
-                
                 if qc_var in ds.data_vars:
-                    # Create a boolean mask for the affected time window
                     start_dt = np.datetime64(event["start"].replace("Z", ""))
                     end_dt = np.datetime64(event["end"].replace("Z", ""))
-                    
                     time_mask = (ds.time >= start_dt) & (ds.time <= end_dt)
-                    
-                    # Apply the bitwise operational flag to that specific time window!
                     ds[qc_var].values[time_mask] |= event["qc_flag"]
 
-        # 5. Save the updated dataset as 'b1'
-        new_dataset_id = dataset_id.replace(".a1", ".b1")
-        new_filename = filename.replace(".a1.", ".b1.")
-        new_local_path = os.path.join(WORK_DIR, new_filename)
-        
-        ds.to_netcdf(new_local_path, engine="netcdf4", format="NETCDF4")
+        # 5. Overwrite the file LOCALLY (Keep it as .a1)
+        ds.to_netcdf(local_path, engine="netcdf4", format="NETCDF4")
         ds.close()
 
-        # 6. Push back to Storage Vault to trigger the next Knative service
+        # 6. Push back to Storage Vault to the "qc" stage!
+        upload_url = f"{config.storage_url}qc" 
         async with httpx.AsyncClient() as client:
-            with open(new_local_path, "rb") as f:
-                files = {"file": (new_filename, f, "application/x-netcdf")}
-                params = {"dataset_id": new_dataset_id}
-                upload_resp = await client.post(config.storage_url, files=files, params=params, timeout=30.0)
+            with open(local_path, "rb") as f:
+                files = {"file": (filename, f, "application/x-netcdf")}
+                params = {"dataset_id": dataset_id}
+                upload_resp = await client.post(upload_url, files=files, params=params, timeout=30.0)
                 upload_resp.raise_for_status()
                 
-        L.info(f"Default Operational QC complete. Pushed {new_filename} to vault.")
+        L.info(f"QC complete. Pushed {filename} to 'qc' stage.")
+
+        # 7. Delete the raw file from storage to save space
+        if delete_url:
+            async with httpx.AsyncClient() as client:
+                await client.delete(delete_url, timeout=10.0)
 
     except Exception as e:
-        L.error("Default QC failed", extra={"reason": str(e)}, exc_info=True)
+        L.error("Default QC failed", extra={"reason": str(e)})
     finally:
         if os.path.exists(local_path): os.remove(local_path)
-        if new_local_path and os.path.exists(new_local_path): os.remove(new_local_path)
-
 
 @app.post("/")
 async def handle_event(request: Request, background_tasks: BackgroundTasks):
@@ -133,14 +122,16 @@ async def handle_event(request: Request, background_tasks: BackgroundTasks):
         ce = from_http(request.headers, await request.body())
         if ce.get("type") == "envds.dataset.stored":
             data = ce.data
-            dataset_id = data.get("dataset_id", "")
             
-            # The Default QC Service ONLY operates on a1 files
-            if ".a1" in dataset_id:
-                L.info(f"Default QC triggered for {dataset_id}")
-                background_tasks.add_task(process_default_qc, data["filename"], dataset_id, data["download_url"])
-                
+            # STRICT FILTER: Only grab raw .a1 files
+            if ".a1" in data.get("dataset_id", "") and data.get("stage") == "raw":
+                background_tasks.add_task(
+                    process_default_qc, 
+                    data["filename"], 
+                    data["dataset_id"], 
+                    data["download_url"],
+                    data.get("delete_url")
+                )
     except Exception as e:
         L.error("Event handling failed", extra={"reason": str(e)})
-        
     return Response(status_code=status.HTTP_204_NO_CONTENT)
