@@ -10,6 +10,7 @@ from ulid import ULID
 from aiomqtt import Client, MqttError
 
 from cloudevents.http import from_json
+from cloudevents.conversion import to_json
 from logfmter import Logfmter
 
 # Import the initialized Dash app from app.py
