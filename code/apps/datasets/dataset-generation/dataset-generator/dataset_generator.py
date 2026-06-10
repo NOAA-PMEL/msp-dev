@@ -447,7 +447,10 @@ async def generate_dataset(self, config: dict, start_time: str, end_time: str):
             filepath = os.path.join(self.output_dir, filename)
             aligned_ds.to_netcdf(filepath, engine="netcdf4", format="NETCDF4")
 
-            storage_url = f"http://dataset-storage.{self.daq_id}-system.svc.cluster.local:80/upload/"
+            # storage_url = f"http://dataset-storage.{self.daq_id}-system.svc.cluster.local:80/upload/"
+            # Force the output to go to the 'raw' stage so QC picks it up!
+            storage_url = f"http://dataset-storage.{self.daq_id}-system.svc.cluster.local:80/upload/raw"
+            
             try:
                 async with httpx.AsyncClient() as client:
                     with open(filepath, "rb") as f:
