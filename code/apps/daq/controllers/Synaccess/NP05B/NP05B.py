@@ -267,6 +267,8 @@ class NP05B(Controller):
                             if isinstance(target_val, str):
                                 # Safely catch dashboard strings
                                 target_val = 1 if target_val.lower() in ["on", "yes", "1", "true"] else 0
+                            elif isinstance(target_val, bool):
+                                target_val = 1 if target_val else 0
                             elif isinstance(target_val, (int, float)):
                                 # Safely catch raw numbers
                                 target_val = 1 if target_val > 0 else 0
