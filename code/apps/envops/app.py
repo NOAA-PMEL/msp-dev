@@ -1,25 +1,30 @@
 import os
+import json
 import pandas as pd
 from datetime import datetime
 from flask import Flask
 import dash
 import httpx
 import logging
-from dash import Dash, html, dcc, Input, Output, State, dash_table, no_update
+from dash import Dash, html, dcc, Input, Output, State, dash_table, no_update, Patch
 import dash_bootstrap_components as dbc
 from pydantic import BaseSettings
+from dash_extensions import WebSocket
 
 L = logging.getLogger(__name__)
 
 # --- CONFIG ---
 class Settings(BaseSettings):
     daq_id: str = "default"
+    external_hostname: str = "localhost"
+    ws_port: int = 80
     class Config:
         env_prefix = "ENVOPS_"
         case_sensitive = False
 
 config = Settings()
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
+ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 
 # --- HELPER: REST FETCH ---
 def fetch_registry_data(resource_type: str):
@@ -61,6 +66,11 @@ sidebar_header = dbc.Row([
             "EnvOps"
         ], className="fw-bold text-dark mb-0", style={"fontSize": "1.4rem", "letterSpacing": "0.5px"})
     ]),
+    # CHAT TOGGLE BUTTON ADDED HERE
+    dbc.Col(
+        dbc.Button([html.I(className="bi bi-chat-dots-fill text-primary")], id="nav-chat-btn", color="light", size="sm", className="shadow-sm border rounded-circle"),
+        width="auto", className="pe-1"
+    ),
     dbc.Col(
         html.Button(
             html.Span(className="navbar-toggler-icon"),
@@ -112,7 +122,6 @@ sidebar = html.Div(
             ),
         ], className="px-2"),
         
-        # Refreshes the dynamic sidebar every 60 seconds
         dcc.Interval(id="sidebar-interval", interval=60000, n_intervals=0) 
     ],
     id="sidebar",
@@ -175,15 +184,134 @@ offcanvas_logbook = dbc.Offcanvas([
     )
 ], id="global-offcanvas", title="", is_open=False, style={"width": "600px"}, className="border-start shadow")
 
+
+# --- EPHEMERAL LIVE CHAT WIDGET ---
+floating_chat_widget = html.Div([
+    dbc.Card([
+        dbc.CardHeader([
+            html.I(className="bi bi-chat-dots-fill me-2"), 
+            "Comms Channel",
+            html.Button(html.I(className="bi bi-x-lg"), id="close-chat-btn", className="btn-close btn-close-white float-end", style={"fontSize": "0.6rem"})
+        ], className="bg-primary text-white py-2 fw-bold small shadow-sm"),
+        
+        dbc.CardBody([
+            dcc.Dropdown(
+                id="chat-user-select",
+                options=[
+                    {'label': 'Derek Coffman', 'value': 'Derek'},
+                    {'label': 'Hanna Best', 'value': 'Hanna'},
+                    {'label': 'Lucia Upchurch', 'value': 'Lucia'},
+                    {'label': 'Guest', 'value': 'Guest'}
+                ],
+                placeholder="Identify yourself...",
+                className="mb-2 shadow-sm",
+                size="sm"
+            ),
+            
+            # Chat history rendering box
+            html.Div(
+                id="chat-messages-container", 
+                children=[], 
+                style={"height": "220px", "overflowY": "auto", "fontSize": "0.85rem"}, 
+                className="mb-2 p-2 bg-light border rounded shadow-inner"
+            ),
+            
+            dbc.InputGroup([
+                dbc.Input(id="chat-message-input", placeholder="Message fleet...", size="sm", className="border-end-0"),
+                dbc.Button(html.I(className="bi bi-send"), id="chat-send-btn", color="primary", size="sm")
+            ], className="shadow-sm")
+        ], className="p-2")
+    ], className="shadow-lg border-0 h-100")
+], id="chat-floating-window", style={
+    "position": "fixed", 
+    "bottom": "20px", 
+    "right": "20px", 
+    "width": "320px", 
+    "zIndex": 1050, 
+    "display": "none",
+    "borderRadius": "8px"
+})
+
+
 # --- APP LAYOUT ---
 app.layout = html.Div([
     dcc.Location(id="url"),
     sidebar,
     html.Div(dash.page_container, id="page-content"), 
-    offcanvas_logbook
+    offcanvas_logbook,
+    floating_chat_widget,
+    WebSocket(id="ws-chat-channel", url=f"{ws_url_base}/envds/envops/ws/chat")
 ])
 
 # --- CALLBACKS ---
+
+# 1. Toggle Chat Widget Visibility
+@app.callback(
+    Output("chat-floating-window", "style"),
+    [Input("nav-chat-btn", "n_clicks"), Input("close-chat-btn", "n_clicks")],
+    State("chat-floating-window", "style"),
+    prevent_initial_call=True
+)
+def toggle_chat(open_clicks, close_clicks, style):
+    ctx = dash.callback_context
+    if not ctx.triggered: return dash.no_update
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if trigger_id == "nav-chat-btn":
+        style["display"] = "block"
+    elif trigger_id == "close-chat-btn":
+        style["display"] = "none"
+    return style
+
+# 2. Transmit Chat Message
+@app.callback(
+    Output("ws-chat-channel", "send"),
+    Output("chat-message-input", "value"),
+    Input("chat-send-btn", "n_clicks"),
+    Input("chat-message-input", "n_submit"),
+    State("chat-message-input", "value"),
+    State("chat-user-select", "value"),
+    prevent_initial_call=True
+)
+def send_chat(n_clicks, n_submit, message, user):
+    if not message or not user:
+        return dash.no_update, dash.no_update
+        
+    payload = json.dumps({
+        "user": user, 
+        "message": message, 
+        "timestamp": datetime.now().strftime("%H:%M:%S")
+    })
+    
+    # Return payload to send to WS, and clear the input box
+    return payload, ""
+
+# 3. Receive & Display Chat Message (Using Patch to prevent re-renders)
+@app.callback(
+    Output("chat-messages-container", "children"),
+    Input("ws-chat-channel", "message"),
+    prevent_initial_call=True
+)
+def receive_chat(msg):
+    if not msg or "data" not in msg: return dash.no_update
+        
+    data = json.loads(msg["data"])
+    
+    # Build a clean message bubble
+    new_msg = html.Div([
+        html.Div([
+            html.Span(data['user'], className="fw-bold text-primary", style={"fontSize": "0.75rem"}),
+            html.Span(data['timestamp'], className="text-muted ms-2", style={"fontSize": "0.6rem"}),
+        ]),
+        html.Div(data['message'], className="bg-white border rounded p-1 shadow-sm mt-1 mb-2", style={"fontSize": "0.85rem", "display": "inline-block"})
+    ], className="mb-1")
+    
+    # Append it directly to the DOM using Patch()
+    patched_list = Patch()
+    patched_list.append(new_msg)
+    
+    return patched_list
+
 
 @app.callback(
     Output("sidebar-dynamic-missions", "children"),
@@ -243,7 +371,6 @@ def update_sidebar_missions(n):
 
 @app.callback(Output("sidebar", "className"), Input("toggle", "n_clicks"), State("sidebar", "className"))
 def toggle_classname(n, classname):
-    # Base classes are preserved while toggling the collapsed state
     base_classes = "bg-light shadow-sm border-end"
     if n and "collapsed" not in classname: 
         return f"{base_classes} collapsed"

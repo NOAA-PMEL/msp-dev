@@ -207,7 +207,7 @@ async def mqtt_listen_task():
             await asyncio.sleep(reconnect_delay)
 
 async def mqtt_publish_task():
-    """Takes outbound messages (like C2 requests) from Dash and pushes them to MQTT."""
+    """Takes validated CloudEvent objects from the queue and publishes them to MQTT."""
     reconnect_delay = 5
     client_id = f"envops-pub-{str(ULID())}"
     
@@ -215,17 +215,18 @@ async def mqtt_publish_task():
     
     while True:
         try:
-            L.info(f"--- [MQTT_PUB] Connecting to Broker: {config.mqtt_broker}:{config.mqtt_port} ---")
             async with Client(config.mqtt_broker, port=config.mqtt_port, identifier=client_id) as client:
                 L.info("--- [MQTT_PUB] Publisher successfully connected! Waiting for queue... ---")
                 
                 while True:
-                    topic, payload = await mqtt_publish_queue.get()
-                    L.info(f"\n--- [MQTT_PUB] DEQUEUED MESSAGE --- \nTarget Topic: {topic}\nPayload: {payload}")
+                    topic, ce_obj = await mqtt_publish_queue.get()
+                    L.info(f"\n--- [MQTT_PUB] DEQUEUED CLOUDEVENT --- \nTopic: {topic} | Type: {ce_obj.get('type')}")
                     
                     try:
-                        await client.publish(topic, payload, qos=1)
-                        L.info("--- [MQTT_PUB] Successfully published to broker! ---")
+                        # STRICT COMPLIANCE: Serialize the CloudEvent object right before publish
+                        payload_bytes = to_json(ce_obj)
+                        await client.publish(topic, payload_bytes, qos=1)
+                        L.info("--- [MQTT_PUB] Successfully published CloudEvent to broker! ---")
                     except Exception as pub_err:
                         L.error(f"--- [MQTT_PUB] FAILED TO PUBLISH: {pub_err} ---")
                     finally:
@@ -257,14 +258,16 @@ async def ws_deployment_c2(websocket: WebSocket, deployment_id: str):
         while True:
             data = await websocket.receive_text()
             try:
-                event = json.loads(data)
-                topic = event.get("destpath")
+                # Parse the frontend string directly into a CloudEvent object
+                ce_obj = from_json(data.encode('utf-8'))
+                topic = ce_obj.get("destpath")
                 if topic:
-                    await mqtt_publish_queue.put((topic, data))
-            except json.JSONDecodeError:
-                pass
+                    await mqtt_publish_queue.put((topic, ce_obj))
+            except Exception as e:
+                L.error(f"Deployment C2 Bridge Error: {e}")
     except WebSocketDisconnect:
         manager.disconnect(websocket, "deployment_c2", deployment_id)
+
 
 @app.websocket("/ws/variableset/{variableset_id}")
 async def ws_variableset(websocket: WebSocket, variableset_id: str):
@@ -272,17 +275,34 @@ async def ws_variableset(websocket: WebSocket, variableset_id: str):
     try:
         while True:
             data = await websocket.receive_text()
-            L.info(f"\n--- [WS_VARIABLESET] INCOMING BROWSER PAYLOAD --- \n{data}")
             try:
                 payload = json.loads(data)
                 destpath = payload.get("destpath")
-                if destpath:
-                    L.info(f"--- [WS_VARIABLESET] ROUTING TO MQTT QUEUE --- \nTopic: {destpath}")
-                    await mqtt_publish_queue.put((destpath, data))
+                target_type = payload.get("target_type")
+                target_id = payload.get("target_id")
+
+                if destpath and target_type:
+                    # --- THE FIX: Gateway takes ownership of building the CloudEvent ---
+                    if target_type == "controller":
+                        ce_obj = DAQEvent.create_controller_settings_request(
+                            source=payload.get("source", f"envds.{config.daq_id}.dashboard"),
+                            data=payload.get("data", {}),
+                            extra_header={"controllerid": target_id, "destpath": destpath}
+                        )
+                    else:
+                        ce_obj = DAQEvent.create_sensor_settings_request(
+                            source=payload.get("source", f"envds.{config.daq_id}.dashboard"),
+                            data=payload.get("data", {}),
+                            extra_header={"deviceid": target_id, "destpath": destpath}
+                        )
+                        
+                    # Drop the validated object directly onto the publisher queue
+                    await mqtt_publish_queue.put((destpath, ce_obj))
             except Exception as e:
                 L.error(f"VariableSet Command Bridge Error: {e}")
     except WebSocketDisconnect:
         manager.disconnect(websocket, "variableset", variableset_id)
+
 
 @app.websocket("/ws/sensor/{device_id}")
 async def ws_sensor(websocket: WebSocket, device_id: str):
@@ -290,24 +310,22 @@ async def ws_sensor(websocket: WebSocket, device_id: str):
     try:
         while True:
             data = await websocket.receive_text()
-            L.info(f"\n--- [WS_SENSOR] INCOMING BROWSER PAYLOAD --- \n{data}")
             try:
                 payload = json.loads(data)
                 destpath = payload.get("destpath")
                 if destpath:
-                    ce_payload = DAQEvent.create_sensor_settings_request(
+                    # Build the CloudEvent object using the DAQEvent helper
+                    ce_obj = DAQEvent.create_sensor_settings_request(
                         source=payload.get("source", f"envds.{config.daq_id}.dashboard"),
                         data=payload.get("data", {}),
                         extra_header={"deviceid": payload.get("deviceid", ""), "destpath": destpath}
                     )
-                    
-                    msg_str = json.dumps(ce_payload)
-                    L.info(f"--- [WS_SENSOR] ROUTING TO MQTT QUEUE --- \nTopic: {destpath}\nPayload: {msg_str}")
-                    await mqtt_publish_queue.put((destpath, msg_str))
+                    await mqtt_publish_queue.put((destpath, ce_obj))
             except Exception as e:
                 L.error(f"Sensor Bridge Error: {e}")
     except WebSocketDisconnect:
         manager.disconnect(websocket, "sensor", device_id)
+
 
 @app.websocket("/ws/controller/{controller_id}")
 async def ws_controller(websocket: WebSocket, controller_id: str):
@@ -315,20 +333,17 @@ async def ws_controller(websocket: WebSocket, controller_id: str):
     try:
         while True:
             data = await websocket.receive_text()
-            L.info(f"\n--- [WS_CONTROLLER] INCOMING BROWSER PAYLOAD --- \n{data}")
             try:
                 payload = json.loads(data)
                 destpath = payload.get("destpath")
                 if destpath:
-                    ce_payload = DAQEvent.create_controller_settings_request(
+                    # Build the CloudEvent object using the DAQEvent helper
+                    ce_obj = DAQEvent.create_controller_settings_request(
                         source=payload.get("source", f"envds.{config.daq_id}.dashboard"),
                         data=payload.get("data", {}),
                         extra_header={"controllerid": payload.get("controllerid", ""), "destpath": destpath}
                     )
-                    
-                    msg_str = json.dumps(ce_payload)
-                    L.info(f"--- [WS_CONTROLLER] ROUTING TO MQTT QUEUE --- \nTopic: {destpath}\nPayload: {msg_str}")
-                    await mqtt_publish_queue.put((destpath, msg_str))
+                    await mqtt_publish_queue.put((destpath, ce_obj))
             except Exception as e:
                 L.error(f"Controller Bridge Error: {e}")
     except WebSocketDisconnect:

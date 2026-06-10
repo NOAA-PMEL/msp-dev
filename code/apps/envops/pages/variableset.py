@@ -509,11 +509,11 @@ def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, 
     return heatmaps
 
 @callback(
-    Output("ws-vs-instance", "send"),
+    Output("ws-vs-instance", "send"), 
     Input("vs-submit-setting-btn", "n_clicks"),
     State("vs-settings-table", "selectedRows"),
     State("vs-def-store", "data"),
-    State("vs-data-buffer", "data"), # <-- THE FIX: Pull routing from the live stream
+    State("vs-data-buffer", "data"), 
     prevent_initial_call=True
 )
 def handle_vs_setting_submission(n_clicks, selected_rows, varset_def, live_data):
@@ -526,12 +526,9 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def, live_data)
     raw_val = selected_row.get("requested_value")
     
     if raw_val is None or raw_val == "": 
-        print("Aborting: requested_value is empty.")
         raise PreventUpdate
     
-    # --- THE FIX: Extract routing directly from the live data stream ---
     if not live_data:
-        print("Aborting: No live data stream received yet to extract routing.")
         raise PreventUpdate
         
     live_var = live_data.get("variables", {}).get(param_name, {})
@@ -541,15 +538,10 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def, live_data)
     t_type = attrs.get("source_type", {}).get("data", "sensor").lower()
     src_var = attrs.get("source_variable", {}).get("data", param_name)
 
-    print(f"Routing -> Type: {t_type}, ID: {t_id}, Native Var: {src_var}")
-
     if t_id == "unknown":
-        print("CRITICAL: Routing failed. Hardware ID is unknown.")
         raise PreventUpdate
 
-    event_type = "envds.controller.settings.request" if t_type == "controller" else "envds.sensor.settings.request"
     dest_topic = "envds/controller/settings/request" if t_type == "controller" else "envds/sensor/settings/request"
-    id_key = "controllerid" if t_type == "controller" else "deviceid"
     
     if str(raw_val).lower() in ["true", "on", "1"]:
         requested_val = 1 if selected_row.get("type") == "int" else True
@@ -559,25 +551,21 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def, live_data)
         try: requested_val = int(raw_val) if selected_row.get("type") == "int" else float(raw_val)
         except (ValueError, TypeError): requested_val = raw_val
 
-    event = {
-        "specversion": "1.0",
-        "id": str(ULID()),
+    # --- THE FIX: Just send a lightweight raw dictionary with routing hints ---
+    payload = {
         "source": f"envds.{config.daq_id}.dashboard",
-        "type": event_type,
-        "datacontenttype": "application/json",
-        "destpath": dest_topic,
-        id_key: t_id, 
         "data": {
             "settings": {
-                src_var: { 
-                    "requested": requested_val
-                }
+                src_var: {"requested": requested_val}
             }
-        }
+        },
+        "destpath": dest_topic,
+        "target_type": t_type, 
+        "target_id": t_id
     }
-    
-    print(f"SUCCESS! Transmitting: {json.dumps(event)}")
-    return json.dumps(event)
+
+    print(f"SUCCESS! Transmitting lightweight dict: {payload}")
+    return json.dumps(payload)
 
 @callback(
     Output("vs-settings-table", "rowData"),
