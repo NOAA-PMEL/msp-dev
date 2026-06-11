@@ -378,6 +378,20 @@ class TAP(Sensor):
             except Exception as e:
                 self.logger.error("TAP physics calc error", extra={"error": str(e)})
 
+            # ---------------------------------------------------------
+            # 4. Pack Calibration Data (only included on metadata ticks)
+            # ---------------------------------------------------------
+            if "last_active_spot" in record["variables"]:
+                record["variables"]["last_active_spot"]["data"] = self.last_active_spot
+                
+            if "last_calibrated_wf_ratios" in record["variables"]:
+                record["variables"]["last_calibrated_wf_ratios"]["data"] = self.wf_ratios
+                
+            if "white_filter_ratios" in record["variables"]:
+                # The active applied ratios (can just mirror the persistent ones for UI display)
+                record["variables"]["white_filter_ratios"]["data"] = self.wf_ratios
+            # ---------------------------------------------------------
+            
             return record
             
         except Exception as e:
