@@ -122,7 +122,7 @@ class SystemMode:
         # SystemMode reports its 'active' flag status to the registry
         is_changed = (self.active != self.current_state)
         # Force a refresh every 30 seconds for dashboard persistence
-        is_heartbeat = (now - self.last_status_time >= 30)
+        is_heartbeat = (now - self.last_status_time >= 30) and self.active
 
         if is_changed or is_heartbeat:
             self.current_state = self.active
@@ -139,7 +139,7 @@ class SystemMode:
                 },
                 "state": {
                     "system_active": { # State key matches SystemMode expectations
-                        "requested": "true",
+                        "requested": status_str,
                         "actual": status_str
                     }
                 },
@@ -241,6 +241,11 @@ class SystemModesManager:
 
             self.modes[name] = SystemMode(cfg, self.status_buffer, self.transitions_buffer)
             
+            # ---> THE FIX: Restore active state if this mode was already running <---
+            if self.active_mode == name:
+                self.modes[name].active = True
+            # ------------------------------------------------------------------------
+
             # SUCCESS LOG: Explicitly confirms the definition is now working in memory
             self.logger.info("mode_instance_created", extra={
                 "res_name": name, 
@@ -411,7 +416,7 @@ class SystemModesManager:
                             if ce.get("source") == my_id: continue
                             
                             if "status.update" in ce.get("type", ""):
-                                
+
                                 # ---> ADD THIS BLOCK: Replicas obey the primary <---
                                 if ce.get("isprimarycontroller") == "true" and not self.config.is_primary_controller:
                                     # Ensure it's a SystemMode update
