@@ -92,6 +92,6 @@ async def delete_dataset(stage: str, filename: str):
     file_path = os.path.join(config.storage_dir, stage, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
-        L.info(f"File deleted from {stage} PVC", extra={"filename": filename})
+        L.info(f"File deleted from {stage} PVC", extra={"deleted_file": filename})
         return {"status": "success"}
     raise HTTPException(status_code=404, detail="File not found.")
