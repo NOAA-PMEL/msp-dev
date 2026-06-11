@@ -795,6 +795,8 @@ class RedisClient(DBClient):
             
             # id = f"{name}::{valid_time}"
             # key = f"{database}:{collection}:{id}"
+
+            ns = request.get("metadata", {}).get("sampling_namespace", "unknown")
             
             # ---> The new 3-part ID: namespace::name::time <---
             id = f"{ns}::{name}::{valid_time}"

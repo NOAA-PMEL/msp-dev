@@ -304,7 +304,13 @@ def aggregate_health(message, current_store):
     try:
         payload = json.loads(message["data"])
         status_data = payload.get("data", {})
-        dep_ref = payload.get("deploymentref", "unknown")
+        
+        # ---> THE FIX: Strict validation, default to empty string <---
+        dep_ref = payload.get("deploymentref", "")
+        if not dep_ref or dep_ref.lower() == "unknown": 
+            raise PreventUpdate
+        # -------------------------------------------------------------
+        
         app_uid = status_data.get("id", {}).get("app_uid", "")
         
         if dep_ref and app_uid:

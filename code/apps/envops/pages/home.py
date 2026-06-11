@@ -242,6 +242,20 @@ def render_fleet_grid(projects, deployments, health_store):
             subs = group["subs"]
             h_display = host_data.get("data", {}).get("display_name", host_name)
             
+            # ---> THE FIX: UI-SIDE HEALTH ROLLUP <---
+            # If the host has no active state machine, aggregate from its children
+            if host_name not in health_store and subs:
+                sub_healths = [health_store.get(s.get("metadata", {}).get("name"), {}).get("health", "secondary") for s in subs]
+                
+                if "danger" in sub_healths: agg_health = "danger"
+                elif "warning" in sub_healths: agg_health = "warning"
+                elif "ok" in sub_healths: agg_health = "ok"
+                else: agg_health = "secondary"
+                
+                # Inject the computed health so the badge generator finds it
+                health_store[host_name] = {"health": agg_health, "text": "AGGREGATED"}
+            # ----------------------------------------
+            
             host_state = health_store.get(host_name, {}).get("health", "ok")
             if host_state == "danger": proj_health_status = "danger"
             elif host_state == "warning" and proj_health_status != "danger": proj_health_status = "warning"

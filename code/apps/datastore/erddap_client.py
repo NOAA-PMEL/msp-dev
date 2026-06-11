@@ -264,11 +264,11 @@ class ErddapClient:
         if "name" in query and query["name"]:
             parts = query["name"].split("::")
             
-            # Since we dropped legacy, extract 'name' from the middle segment
+            # Extract both namespace and name to guarantee strict node isolation
             if len(parts) >= 3:
+                namespace_part = parts[0]
                 name_part = parts[1]
-                # Optional: If ERDDAP has a namespace column, you could query it here!
-                # query_args.append(f'sampling_namespace="{parts[0]}"')
+                query_args.append(f'namespace="{namespace_part}"')
             else:
                 name_part = parts[0] # Just in case a legacy call slips through
                 
