@@ -411,6 +411,19 @@ class SystemModesManager:
                             if ce.get("source") == my_id: continue
                             
                             if "status.update" in ce.get("type", ""):
+                                
+                                # ---> ADD THIS BLOCK: Replicas obey the primary <---
+                                if ce.get("isprimarycontroller") == "true" and not self.config.is_primary_controller:
+                                    # Ensure it's a SystemMode update
+                                    if ce.data.get("id", {}).get("app_group") == "system":
+                                        remote_mode = ce.data.get("id", {}).get("app_uid")
+                                        is_active = str(ce.data.get("state", {}).get("system_active", {}).get("actual", "false")).lower() == "true"
+                                        
+                                        if is_active and self.active_mode != remote_mode:
+                                            self.logger.info(f"Aligning replica state to primary: {remote_mode}")
+                                            await self.activate_system_mode(remote_mode)
+                                # ---------------------------------------------------
+
                                 # Update evaluation map for current active mode
                                 # for mode in self.modes.values(): 
                                 #     await mode.update(ce.data.get("status", {}))
@@ -543,6 +556,9 @@ class SystemModesManager:
                 destpath = f"envds/{self.config.daq_id}/system-modes/status/update"
                 event["destpath"] = destpath
                 event["deploymentref"] = self.config.deployment_ref
+
+                # ---> ADD THIS LINE: Broadcast our primary authority <---
+                event["isprimarycontroller"] = str(self.config.is_primary_controller).lower()
 
                 # 4. Broadcast via the manager's MQTT publish queue
                 await self.send_to_mqtt(destpath, event)
