@@ -120,7 +120,7 @@ async def process_default_qc(filename: str, dataset_id: str, download_url: str, 
     finally:
         # Clean up both the downloaded file and the temporary QC file
         if os.path.exists(local_path): os.remove(local_path)
-        if 'temp_local_path' in locals() and os.path.exists(temp_local_path): os.remove(temp_local_path
+        if 'temp_local_path' in locals() and os.path.exists(temp_local_path): os.remove(temp_local_path)
 
 @app.post("/")
 async def handle_event(request: Request, background_tasks: BackgroundTasks):
