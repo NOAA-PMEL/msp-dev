@@ -52,6 +52,7 @@ class SystemModesConfig(BaseSettings):
     
     class Config:
         env_prefix = "SYSTEM_MODES_"
+        case_sensitive = False
 
 class SystemMode:
     """Orchestrates system-level transitions based on SamplingMode statuses."""
