@@ -49,6 +49,8 @@ class MAGIC250(Sensor):
         self.enable_task_list.append(self.sampling_monitor())
         self.collecting = False
 
+        self.qfc = 1
+
     def configure(self):
         super(MAGIC250, self).configure()
 
@@ -94,6 +96,16 @@ class MAGIC250(Sensor):
                 requested = conf["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
+
+        # ---> ADD THIS BLOCK: Extract persistent calibrations <---
+        cal_def = self.get_definition_by_variable_type(self.metadata, variable_type="calibration")
+        for name, cal in cal_def.get("variables", {}).items():
+            if name == "qfc":
+                self.qfc = cal["attributes"].get("default_value", {}).get("data", 1)
+            if "calibrations" in conf and name in conf["calibrations"]:
+                if name == "qfc":
+                    self.qfc = conf["calibrations"][name]
+        # ---------------------------------------------------------
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
@@ -285,6 +297,11 @@ class MAGIC250(Sensor):
                             record["variables"][name]["data"] = ""
                         else:
                             record["variables"][name]["data"] = None
+
+            # ---> ADD THIS BLOCK: Pack Calibration Data <---
+            if "qfc" in record["variables"]:
+                record["variables"]["qfc"]["data"] = self.qfc
+            # -----------------------------------------------
 
             return record
 
