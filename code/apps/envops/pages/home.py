@@ -134,11 +134,22 @@ def update_live_health(message, current_health):
         return dash.no_update
         
     try:
-        status_data = json.loads(message["data"])
+        # status_data = json.loads(message["data"])
+        # app_uid = status_data.get("id", {}).get("app_uid", "")
+        # app_group = status_data.get("id", {}).get("app_group", "")
+        # state_dict = status_data.get("state", {})
+        
+        # ---> THE FIX: Parse the full CloudEvent envelope <---
+        ce = json.loads(message["data"])
+        dep_ref = ce.get("deploymentref", "")
+        if not dep_ref: return dash.no_update
+        
+        status_data = ce.get("data", {})
         app_uid = status_data.get("id", {}).get("app_uid", "")
         app_group = status_data.get("id", {}).get("app_group", "")
         state_dict = status_data.get("state", {})
-        
+        # -----------------------------------------------------
+
         health = "ok"
         status_text = "AUTO"
         
@@ -152,15 +163,26 @@ def update_live_health(message, current_health):
             elif actual in ["error", "degraded", "maintenance"]:
                 health = "danger"
 
-        if app_uid:
+        # if app_uid:
+        #     current_health = current_health or {}
+        #     existing = current_health.get(app_uid, {})
+            
+        #     if existing.get("health") != health or existing.get("text") != status_text:
+        #         new_health = current_health.copy()
+        #         new_health[app_uid] = {"health": health, "text": status_text}
+        #         return new_health
+            
+        # ---> THE FIX: Save the health state under the deployment ID <---
+        if dep_ref:
             current_health = current_health or {}
-            existing = current_health.get(app_uid, {})
+            existing = current_health.get(dep_ref, {})
             
             if existing.get("health") != health or existing.get("text") != status_text:
                 new_health = current_health.copy()
-                new_health[app_uid] = {"health": health, "text": status_text}
+                new_health[dep_ref] = {"health": health, "text": status_text}
                 return new_health
-            
+        # ----------------------------------------------------------------
+
     except Exception as e:
         L.error(f"Fleet Health Stream Error: {e}")
         

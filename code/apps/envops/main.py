@@ -140,7 +140,8 @@ async def mqtt_listen_task():
                                 await manager.broadcast(ce_str, "deployment_c2", dep_id)
                             
                             for fleet_id in manager.active_connections.get("fleet", {}).keys():
-                                await manager.broadcast(payload_str, "fleet", fleet_id)
+                                # ---> THE FIX: Send ce_str instead of payload_str <---
+                                await manager.broadcast(ce_str, "fleet", fleet_id)
 
                         # 2. Route Variableset Telemetry to Variableset WebSockets
                         elif ce_type in ["envds.variableset.data.update"]:

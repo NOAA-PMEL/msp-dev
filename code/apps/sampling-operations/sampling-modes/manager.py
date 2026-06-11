@@ -532,16 +532,29 @@ class SamplingModesManager:
             except MqttError:
                 await asyncio.sleep(5)
 
+    # async def mode_evaluation_loop(self):
+    #     """Drives evaluation and catches errors to prevent silent task death."""
+    #     while True:
+    #         try:
+    #             for mode in list(self.modes.values()): 
+    #                 # --- EDGE AUTONOMY FILTER ---
+    #                 exec_node = mode.config.get("metadata", {}).get("execution_node", "global")
+    #                 if exec_node == "global" or exec_node == self.config.daq_id:
+    #                     await mode.evaluate()
+    #                 # ----------------------------
+    #         except Exception as e:
+    #             self.logger.error("mode_evaluation_loop error", extra={"reason": str(e)})
+                
+    #         await asyncio.sleep(time_to_next(1))
+
     async def mode_evaluation_loop(self):
-        """Drives evaluation and catches errors to prevent silent task death."""
+        """Primary calculation loop: Evaluates all synced node configs centrally."""
         while True:
             try:
                 for mode in list(self.modes.values()): 
-                    # --- EDGE AUTONOMY FILTER ---
-                    exec_node = mode.config.get("metadata", {}).get("execution_node", "global")
-                    if exec_node == "global" or exec_node == self.config.daq_id:
-                        await mode.evaluate()
-                    # ----------------------------
+                    # Removed exec_node check so pmel-dev calculates everything!
+                    await mode.evaluate()
+                    
             except Exception as e:
                 self.logger.error("mode_evaluation_loop error", extra={"reason": str(e)})
                 
