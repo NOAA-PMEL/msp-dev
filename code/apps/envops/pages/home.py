@@ -142,12 +142,14 @@ def update_live_health(message, current_health):
         health = "ok"
         status_text = "AUTO"
         
-        if app_group == "systemmode" or "system_mode" in state_dict:
-            actual = state_dict.get("system_mode", {}).get("actual", "unknown").lower()
+        if app_group == "system" or "system_active" in state_dict:
+            # We want to read the name of the active mode (e.g. "normal" or "manual")
+            actual = app_uid.lower() 
             status_text = actual.upper()
+            
             if actual == "manual":
                 health = "warning"
-            elif actual == "error" or actual == "degraded":
+            elif actual in ["error", "degraded", "maintenance"]:
                 health = "danger"
 
         if app_uid:
