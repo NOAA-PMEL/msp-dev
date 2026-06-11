@@ -793,9 +793,13 @@ class RedisClient(DBClient):
             # valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z").replace(":", "")
             valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z")
             
-            id = f"{name}::{valid_time}"
-            key = f"{database}:{collection}:{id}"
+            # id = f"{name}::{valid_time}"
+            # key = f"{database}:{collection}:{id}"
             
+            # ---> The new 3-part ID: namespace::name::time <---
+            id = f"{ns}::{name}::{valid_time}"
+            key = f"{database}:{collection}:{id}"
+
             result = await self.client.json().set(key, "$", {"registration": request})
             if result and ttl > 0:
                 await self.client.expire(key, ttl)

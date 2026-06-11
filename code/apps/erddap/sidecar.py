@@ -878,6 +878,25 @@ async def sync_definitions_loop():
             except Exception as e:
                 L.error(f"Discovery failed to parse hardware file {jsonl_file.name}", extra={"reason": str(e)})
 
+    # sys_path = base_data_path / "system"
+    # if sys_path.exists():
+    #     for jsonl_file in sys_path.glob("*/*_registry.jsonl"):
+    #         try:
+    #             with open(jsonl_file, "r") as f:
+    #                 for line in f:
+    #                     if line.startswith("["):
+    #                         row = json.loads(line)
+    #                         if len(row) > 3 and row[0] not in ["time", "double"]: 
+    #                             namespace, name = row[2], row[3]
+    #                             endpoint_key = jsonl_file.parent.name 
+                                
+    #                             if endpoint_key in ["variablemap-definition", "variableset-definition"]:
+    #                                 payload = json.loads(row[6])
+    #                                 def_id = payload.get(f"{endpoint_key.replace('-', '_')}_id")
+    #                                 if def_id:
+    #                                     known_ids[endpoint_key].add(def_id)
+    #                             else:
+    #                                 known_ids[endpoint_key].add(name)
     sys_path = base_data_path / "system"
     if sys_path.exists():
         for jsonl_file in sys_path.glob("*/*_registry.jsonl"):
@@ -886,8 +905,9 @@ async def sync_definitions_loop():
                     for line in f:
                         if line.startswith("["):
                             row = json.loads(line)
-                            if len(row) > 3 and row[0] not in ["time", "double"]: 
-                                namespace, name = row[2], row[3]
+                            # FIX: Check for len > 4 to extract valid_time safely
+                            if len(row) > 4 and row[0] not in ["time", "double"]: 
+                                namespace, name, valid_time = row[2], row[3], row[4]
                                 endpoint_key = jsonl_file.parent.name 
                                 
                                 if endpoint_key in ["variablemap-definition", "variableset-definition"]:
@@ -896,7 +916,8 @@ async def sync_definitions_loop():
                                     if def_id:
                                         known_ids[endpoint_key].add(def_id)
                                 else:
-                                    known_ids[endpoint_key].add(name)
+                                    # ---> NEW ID FORMAT: namespace::name::time <---
+                                    known_ids[endpoint_key].add(f"{namespace}::{name}::{valid_time}")
             except Exception as e:
                 L.error(f"Discovery failed to parse system file {jsonl_file.name}", extra={"reason": str(e)})
 

@@ -262,7 +262,16 @@ class ErddapClient:
         query_args = [f'kind="{kind}"']
         
         if "name" in query and query["name"]:
-            name_part = query["name"].split("::")[0]
+            parts = query["name"].split("::")
+            
+            # Since we dropped legacy, extract 'name' from the middle segment
+            if len(parts) >= 3:
+                name_part = parts[1]
+                # Optional: If ERDDAP has a namespace column, you could query it here!
+                # query_args.append(f'sampling_namespace="{parts[0]}"')
+            else:
+                name_part = parts[0] # Just in case a legacy call slips through
+                
             query_args.append(f'name="{name_part}"')
             
         query_args.append("orderByLimitMax(%22-time%22)")
