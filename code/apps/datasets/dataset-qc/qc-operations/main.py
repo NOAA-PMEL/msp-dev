@@ -91,30 +91,36 @@ async def process_default_qc(filename: str, dataset_id: str, download_url: str, 
                     time_mask = (ds.time >= start_dt) & (ds.time <= end_dt)
                     ds[qc_var].values[time_mask] |= event["qc_flag"]
 
-        # 5. Overwrite the file LOCALLY (Keep it as .a1)
-        ds.to_netcdf(local_path, engine="netcdf4", format="NETCDF4")
-        ds.close()
+        # 5. Save the updated dataset to a temp path (avoids Xarray read-lock)
+        temp_local_path = local_path + ".tmp"
+        ds.to_netcdf(temp_local_path, engine="netcdf4", format="NETCDF4")
+        ds.close() # Free memory and release the file handle
 
-        # 6. Push back to Storage Vault to the "qc" stage!
-        upload_url = f"{config.storage_url}qc" 
+        # 6. Push back to Storage Vault to the "qc" stage endpoint
+        upload_url = f"{config.storage_url}qc"
         async with httpx.AsyncClient() as client:
-            with open(local_path, "rb") as f:
+            # Open the TEMP file, but tell the server its name is the ORIGINAL filename
+            with open(temp_local_path, "rb") as f:
                 files = {"file": (filename, f, "application/x-netcdf")}
                 params = {"dataset_id": dataset_id}
                 upload_resp = await client.post(upload_url, files=files, params=params, timeout=30.0)
                 upload_resp.raise_for_status()
                 
-        L.info(f"QC complete. Pushed {filename} to 'qc' stage.")
+        L.info(f"Default Operational QC complete. Pushed {filename} to 'qc' stage.")
 
-        # 7. Delete the raw file from storage to save space
+        # 7. Clean up the 'raw' file from the central storage PVC
         if delete_url:
+            L.info(f"Cleaning up raw file from storage...", extra={"processed_file": filename})
             async with httpx.AsyncClient() as client:
-                await client.delete(delete_url, timeout=10.0)
+                del_resp = await client.delete(delete_url, timeout=10.0)
+                del_resp.raise_for_status()
 
     except Exception as e:
-        L.error("Default QC failed", extra={"reason": str(e)})
+        L.error("Default QC failed", extra={"reason": str(e)}, exc_info=True)
     finally:
+        # Clean up both the downloaded file and the temporary QC file
         if os.path.exists(local_path): os.remove(local_path)
+        if 'temp_local_path' in locals() and os.path.exists(temp_local_path): os.remove(temp_local_path
 
 @app.post("/")
 async def handle_event(request: Request, background_tasks: BackgroundTasks):
