@@ -7,6 +7,9 @@ import yaml
 import json
 import struct
 import math
+from collections import deque
+import statistics
+import time
 from envds.core import envdsLogger
 from envds.daq.sensor import Sensor
 from envds.daq.device import DeviceConfig, DeviceMetadata
@@ -31,6 +34,19 @@ class TAP(Sensor):
         self.last_I = {"red": None, "green": None, "blue": None}
         self.last_sample_vol = None
         self.last_spot_for_abs = None
+
+        # --- NEW: Calibration specific tracking ---
+        self.cal_buffer_size = 60
+        self.cal_start_time = None
+        self.cal_buffers = {
+            spot: {
+                "red": deque(maxlen=self.cal_buffer_size),
+                "green": deque(maxlen=self.cal_buffer_size),
+                "blue": deque(maxlen=self.cal_buffer_size)
+            }
+            for spot in range(1, 9)
+        }
+        # ------------------------------------------
 
         try:            
             with open(self.sensor_definition_file, "r") as f:
@@ -199,11 +215,87 @@ class TAP(Sensor):
         await asyncio.sleep(2)
         while True:
             try:
-                # White Filter Calibration Tracker
                 cal_obj = self.settings.get_setting("calibration_routine")
                 current_cal = str(cal_obj.get("requested", "none")).lower() if isinstance(cal_obj, dict) else "none"
 
-                if self.last_cal_routine == "white_filter" and current_cal != "white_filter":
+                # ---------------------------------------------------------
+                # NEW: Calibration State Machine
+                # ---------------------------------------------------------
+                # Phase 1: Detect switch to calibration
+                if self.last_cal_routine != "white_filter" and current_cal == "white_filter":
+                    self.logger.info("Starting white filter calibration. Pausing flow.")
+                    self.cal_start_time = time.time()
+                    
+                    # Clear buffers for fresh tracking
+                    for spot in range(1, 9):
+                        for color in ["red", "green", "blue"]:
+                            self.cal_buffers[spot][color].clear()
+                    
+                    self.settings.set_setting("calibration_status", requested="in_progress")
+                    self.settings.set_actual("calibration_status", "in_progress")
+                    
+                    # Force instrument to spot=0 (stops flow and active sampling)
+                    await self.interface_send_data(data={"data": "spot=0\r"})
+                    self.current_requested_spot = 0
+                    need_start = True
+
+                # Phase 2: Monitor stability over time
+                elif self.last_cal_routine == "white_filter" and current_cal == "white_filter":
+                    if self.cal_start_time is not None:
+                        elapsed_minutes = (time.time() - self.cal_start_time) / 60.0
+                        
+                        # Only calculate CV if the buffer is entirely full
+                        if len(self.cal_buffers[1]["red"]) == self.cal_buffer_size:
+                            is_stable = True
+                            new_wf_ratios = [[1.0, 1.0, 1.0] for _ in range(8)]
+                            
+                            # Dynamic easing threshold
+                            current_threshold = 0.001
+                            if elapsed_minutes > 30.0:
+                                extra_minutes = int(elapsed_minutes - 30.0)
+                                current_threshold += (extra_minutes * 0.001)
+                            if current_threshold > 0.005:  # Hard Cap
+                                current_threshold = 0.005
+                                
+                            for spot in range(1, 9):
+                                for i, color in enumerate(["red", "green", "blue"]):
+                                    data = self.cal_buffers[spot][color]
+                                    mean_val = statistics.mean(data)
+                                    
+                                    if mean_val > 0:
+                                        cv = statistics.stdev(data) / mean_val
+                                        if cv > current_threshold:
+                                            is_stable = False
+                                            break
+                                    
+                                    new_wf_ratios[spot-1][i] = round(mean_val, 6)
+                                if not is_stable:
+                                    break
+                            
+                            # Success Event
+                            if is_stable:
+                                self.logger.info("White filter calibration SUCCESS. Save ratios and reset state.")
+                                self.wf_ratios = new_wf_ratios
+                                
+                                self.settings.set_setting("calibration_status", requested="success")
+                                self.settings.set_actual("calibration_status", "success")
+                                self.settings.set_setting("calibration_routine", requested="none")
+                                self.settings.set_actual("calibration_routine", "none")
+                        
+                        # Phase 3: Timeout and Fallback
+                        if elapsed_minutes > 45.0:
+                            self.logger.error("White filter calibration TIMEOUT. FALLING BACK to previous baselines.")
+                            for spot in range(1, 9):
+                                for color in ["red", "green", "blue"]:
+                                    self.cal_buffers[spot][color].clear()
+                                    
+                            self.settings.set_setting("calibration_status", requested="timeout_fallback")
+                            self.settings.set_actual("calibration_status", "timeout_fallback")
+                            self.settings.set_setting("calibration_routine", requested="none")
+                            self.settings.set_actual("calibration_routine", "none")
+
+                # Phase 4: Detect successful end of calibration (External or Internal)
+                elif self.last_cal_routine == "white_filter" and current_cal != "white_filter":
                     self.logger.info("White filter calibration completed. Resetting active spot to 1.")
                     self.last_active_spot = 1
                     self.settings.set_setting("set_active_spot", requested=0)
@@ -211,30 +303,33 @@ class TAP(Sensor):
 
                 self.last_cal_routine = current_cal
 
+                # ---------------------------------------------------------
                 # Core Sampling Logic
-                state_obj = self.settings.get_setting("sampling_state")
-                state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
-                state_str = str(state).lower()
+                # (Only execute if we are NOT in the middle of a calibration)
+                # ---------------------------------------------------------
+                if current_cal != "white_filter":
+                    state_obj = self.settings.get_setting("sampling_state")
+                    state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
+                    state_str = str(state).lower()
 
-                if self.sampling() and state_str == "sampling":
-                    target_spot_obj = self.settings.get_setting("set_active_spot")
-                    
-                    # --- FIX: SAFE EXTRACTION TO PREVENT TypeError ---
-                    req = target_spot_obj.get("requested") if isinstance(target_spot_obj, dict) else None
-                    target_spot = int(req) if req is not None else 0
-                    
-                    # Cast last_active_spot to int as well, just in case config loaded it as a string
-                    spot_to_request = target_spot if target_spot > 0 else int(self.last_active_spot)
-                    
-                    if need_start or spot_to_request != self.current_requested_spot:
-                        await self.interface_send_data(data={"data": f"spot={spot_to_request}\r"})
-                        self.current_requested_spot = spot_to_request
-                        need_start = False
-                else:
-                    if not need_start:
-                        await self.interface_send_data(data={"data": "spot=0\r"})
-                        self.current_requested_spot = 0
-                        need_start = True
+                    if self.sampling() and state_str == "sampling":
+                        target_spot_obj = self.settings.get_setting("set_active_spot")
+                        
+                        req = target_spot_obj.get("requested") if isinstance(target_spot_obj, dict) else None
+                        target_spot = int(req) if req is not None else 0
+                        
+                        spot_to_request = target_spot if target_spot > 0 else int(self.last_active_spot)
+                        
+                        if need_start or spot_to_request != self.current_requested_spot:
+                            await self.interface_send_data(data={"data": f"spot={spot_to_request}\r"})
+                            self.current_requested_spot = spot_to_request
+                            need_start = False
+                    else:
+                        if not need_start:
+                            await self.interface_send_data(data={"data": "spot=0\r"})
+                            self.current_requested_spot = 0
+                            need_start = True
+
             except Exception as e:
                 self.logger.error("sampling_monitor error", extra={"error": str(e)})
             await asyncio.sleep(1)
@@ -306,6 +401,25 @@ class TAP(Sensor):
                             record["variables"][var_name]["data"] = None
                     except (ValueError, struct.error):
                         record["variables"][var_name]["data"] = None
+
+            # --- NEW: Siphon data into calibration buffers if routine is active ---
+            if self.last_cal_routine == "white_filter":
+                for spot in range(1, 9):
+                    ref_ch = 9 if spot % 2 != 0 else 0
+                    for color in ["red", "green", "blue"]:
+                        try:
+                            s_dark = record["variables"][f"ch{spot}_dark_intensity"]["data"]
+                            s_col = record["variables"][f"ch{spot}_{color}_intensity"]["data"]
+                            r_dark = record["variables"][f"ch{ref_ch}_dark_intensity"]["data"]
+                            r_col = record["variables"][f"ch{ref_ch}_{color}_intensity"]["data"]
+                            
+                            if None not in (s_dark, s_col, r_dark, r_col):
+                                if (r_col - r_dark) > 0:
+                                    ratio = (s_col - s_dark) / (r_col - r_dark)
+                                    self.cal_buffers[spot][color].append(ratio)
+                        except KeyError:
+                            pass
+            # ----------------------------------------------------------------------
 
             # 3. Physics Calculations (Transmission & Absorption)
             try:
@@ -388,8 +502,12 @@ class TAP(Sensor):
                 record["variables"]["last_calibrated_wf_ratios"]["data"] = self.wf_ratios
                 
             if "white_filter_ratios" in record["variables"]:
-                # The active applied ratios (can just mirror the persistent ones for UI display)
                 record["variables"]["white_filter_ratios"]["data"] = self.wf_ratios
+                
+            # Add new status variable to UI updates
+            if "calibration_status" in record["variables"]:
+                cal_stat = self.settings.get_setting("calibration_status")
+                record["variables"]["calibration_status"]["data"] = cal_stat.get("actual", "none") if isinstance(cal_stat, dict) else "none"
             # ---------------------------------------------------------
             
             return record

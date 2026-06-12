@@ -23,6 +23,10 @@ class Aurora3000(Sensor):
         self.current_valve_state = "position_0"
         self.current_cal_routine = "none"
 
+        # Sequencer tracking
+        self.current_major_state = 0
+        self.full_cal_step = "idle"
+
         try:            
             with open(self.sensor_definition_file, "r") as f:
                 self.metadata = json.load(f)
@@ -153,21 +157,70 @@ class Aurora3000(Sensor):
             cal_obj = self.settings.get_setting("calibration_routine")
             cal_req = str(cal_obj.get("requested", "none")).lower() if isinstance(cal_obj, dict) else "none"
 
-            if cal_req != self.current_cal_routine:
+            # --- 1. SINGLE-STEP CALIBRATIONS ---
+            if cal_req != self.current_cal_routine and cal_req != "full_cal":
                 self.logger.info(f"Initiating Aurora 3000 calibration routine: {cal_req}")
                 
                 if cal_req == "span_cal_co2":
-                    await self.interface_send_data(data={"data": "**0J1\r"})  # Span calibration
+                    await self.interface_send_data(data={"data": "**0J1\r"})
+                    self.settings.set_setting("calibration_status", requested="spanning")
+                    self.settings.set_actual("calibration_status", "spanning")
                 elif cal_req == "zero_cal":
-                    await self.interface_send_data(data={"data": "**0J2\r"})  # Zero calibration
+                    await self.interface_send_data(data={"data": "**0J2\r"})
+                    self.settings.set_setting("calibration_status", requested="zeroing")
+                    self.settings.set_actual("calibration_status", "zeroing")
                 elif cal_req == "span_check":
-                    await self.interface_send_data(data={"data": "**0J3\r"})  # Span check
+                    await self.interface_send_data(data={"data": "**0J3\r"})
+                    self.settings.set_setting("calibration_status", requested="spanning")
+                    self.settings.set_actual("calibration_status", "spanning")
                 elif cal_req == "zero_check":
-                    await self.interface_send_data(data={"data": "**0J4\r"})  # Zero check
+                    await self.interface_send_data(data={"data": "**0J4\r"})
+                    self.settings.set_setting("calibration_status", requested="zeroing")
+                    self.settings.set_actual("calibration_status", "zeroing")
                 elif cal_req == "none":
-                    await self.interface_send_data(data={"data": "**0J0\r"})  # Normal Monitoring
+                    await self.interface_send_data(data={"data": "**0J0\r"})
+                    self.settings.set_setting("calibration_status", requested="none")
+                    self.settings.set_actual("calibration_status", "none")
+                    self.full_cal_step = "idle"  # Reset sequencer on manual abort
                 
                 self.current_cal_routine = cal_req
+
+            # --- 2. FULL CALIBRATION SEQUENCER ---
+            elif cal_req == "full_cal":
+                # Start of sequence
+                if self.full_cal_step == "idle":
+                    self.logger.info("Starting Full Calibration: Phase 1 (Zero Calibration)")
+                    await self.interface_send_data(data={"data": "**0J2\r"})
+                    self.settings.set_setting("calibration_status", requested="zeroing")
+                    self.settings.set_actual("calibration_status", "zeroing")
+                    self.full_cal_step = "wait_zero_start"
+                    self.current_cal_routine = cal_req
+
+                # Wait for Aurora to acknowledge the Zero Cal state (2)
+                elif self.full_cal_step == "wait_zero_start" and self.current_major_state == 2:
+                    self.full_cal_step = "wait_zero_finish"
+
+                # Wait for Aurora to finish Zero Cal and return to Normal (0)
+                elif self.full_cal_step == "wait_zero_finish" and self.current_major_state == 0:
+                    self.logger.info("Zero Calibration complete. Starting Phase 2 (Span Calibration)")
+                    await self.interface_send_data(data={"data": "**0J1\r"})
+                    self.settings.set_setting("calibration_status", requested="spanning")
+                    self.settings.set_actual("calibration_status", "spanning")
+                    self.full_cal_step = "wait_span_start"
+
+                # Wait for Aurora to acknowledge the Span Cal state (1)
+                elif self.full_cal_step == "wait_span_start" and self.current_major_state == 1:
+                    self.full_cal_step = "wait_span_finish"
+
+                # Wait for Aurora to finish Span Cal and return to Normal (0)
+                elif self.full_cal_step == "wait_span_finish" and self.current_major_state == 0:
+                    self.logger.info("Full Calibration Sequence Complete.")
+                    self.settings.set_setting("calibration_status", requested="success")
+                    self.settings.set_actual("calibration_status", "success")
+                    self.settings.set_setting("calibration_routine", requested="none")
+                    self.settings.set_actual("calibration_routine", "none")
+                    self.current_cal_routine = "none"
+                    self.full_cal_step = "idle"
 
         except Exception as e:
             self.logger.error("manage_calibration error", extra={"error": str(e)})
@@ -200,17 +253,12 @@ class Aurora3000(Sensor):
             await asyncio.sleep(1)
 
     async def polling_loop(self):
-        """Strictly timed loop to request data without being delayed by control logic."""
+        """Strictly timed loop to request data continuously to monitor instrument state."""
         await asyncio.sleep(2)
         while True:
             try:
-                state_obj = self.settings.get_setting("sampling_state")
-                state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
-                state_str = str(state).lower()
-
-                # If we are actively sampling, fire the data request
-                if self.sampling() and state_str == "sampling":
-                    await self.interface_send_data(data={"data": "VI099\r"})
+                # Always poll! We must watch `major_state` during calibrations.
+                await self.interface_send_data(data={"data": "VI099\r"})
                     
             except Exception as e:
                 self.logger.error("polling_loop error", extra={"error": str(e)})
@@ -248,34 +296,21 @@ class Aurora3000(Sensor):
             if not raw_str or len(raw_str) < 5:
                 return None
                 
-            # parts = [x.strip() for x in raw_str.split(",")]
             raw_parts = [x.strip() for x in raw_str.split(",")]
             # --- ALIGNMENT FIX ---
             first_chunk = raw_parts[0].split()
             if len(first_chunk) >= 2:
-                # Clean up firmware ASCII bug in the time string
                 clean_time = first_chunk[1].replace(";", "0")
                 parts = [first_chunk[0], clean_time] + raw_parts[1:]
             else:
                 parts = raw_parts
-            # ---------------------
 
             # --- VI099 MAPPING LIST ---
             variable_map = [
-                "aurora_date",
-                "aurora_time",
-                "scat_coef_ch1_red",
-                "scat_coef_ch2_green",
-                "scat_coef_ch3_blue",
-                "backscatter_ch1_red",
-                "backscatter_ch2_green",
-                "backscatter_ch3_blue",
-                "sample_T",
-                "enclosure_T",
-                "rh",
-                "pressure",
-                "major_state",
-                "DIO_state"
+                "aurora_date", "aurora_time", "scat_coef_ch1_red",
+                "scat_coef_ch2_green", "scat_coef_ch3_blue", "backscatter_ch1_red",
+                "backscatter_ch2_green", "backscatter_ch3_blue", "sample_T",
+                "enclosure_T", "rh", "pressure", "major_state", "DIO_state"
             ]
 
             for i, var_name in enumerate(variable_map):
@@ -290,14 +325,25 @@ class Aurora3000(Sensor):
             # --- CONTINUOUS TRACKING: Auto-reset calibration state ---
             try:
                 major_state = record["variables"].get("major_state", {}).get("data")
-                # If Aurora returns to Normal Monitoring (0) but framework thinks we are calibrating
-                if major_state == 0 and self.current_cal_routine != "none":
+                if major_state is not None:
+                    self.current_major_state = int(major_state)
+
+                # Reset single-step calibrations safely. 
+                # (We ignore "full_cal" here because the sequencer handles its own termination)
+                if self.current_major_state == 0 and self.current_cal_routine not in ["none", "full_cal"]:
                     self.logger.info("Calibration sequence finished. Resetting UI to 'none'.")
+                    self.settings.set_setting("calibration_status", requested="success")
+                    self.settings.set_actual("calibration_status", "success")
                     self.settings.set_setting("calibration_routine", requested="none")
                     self.settings.set_actual("calibration_routine", "none")
                     self.current_cal_routine = "none"
             except (KeyError, TypeError):
                 pass
+                
+            # Add status variable to UI updates
+            if "calibration_status" in record["variables"]:
+                cal_stat = self.settings.get_setting("calibration_status")
+                record["variables"]["calibration_status"]["data"] = cal_stat.get("actual", "none") if isinstance(cal_stat, dict) else "none"
 
             return record
             
