@@ -591,18 +591,20 @@ class Registrar:
                     event["destpath"] = destpath
                     await self.send_event(event)
 
-                # 3. Dynamic catch-all for Sampling (Already fixed in last step)
+                # 3. Dynamic catch-all for Sampling definitions
                 elif update_type.endswith("-definition-update"):
-                    resource_type = update_type.replace("-update", "") # e.g. 'samplingcondition-definition'
+                    # FIX: Strip the full suffix to get the clean resource name (e.g. 'samplingcondition')
+                    resource_type = update_type.replace("-definition-update", "") 
                     
                     event = SamplingEvent.create_definition_registry_update(
                         resource=resource_type,
                         source=f"envds.{self.config.daq_id}.registrar",
-                        data={resource_type: update}
+                        # Explicitly format the data key to match datastore expectations
+                        data={f"{resource_type}-definition": update} 
                     )
                     
-                    # Route to the standard datastore topic format
-                    destpath = f"envds/{self.config.daq_id}/{resource_type}/registry/update"
+                    # FIX: Manually append the singular '-definition' suffix for the routing topic
+                    destpath = f"envds/{self.config.daq_id}/{resource_type}-definition/registry/update"
                     event["destpath"] = destpath
                     
                     self.logger.debug(
