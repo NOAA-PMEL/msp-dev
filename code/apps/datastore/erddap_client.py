@@ -197,7 +197,8 @@ class ErddapClient:
                 query_args.append(f'model="{parts[1]}"')
                 query_args.append(f'version="{parts[2]}"')
             
-        query_args.append("orderByLimitMax(%22-time%22)")
+        # FIX: Group by identifiers and return the row with the max time
+        query_args.append("orderByMax(%22make,model,version,time%22)")
         result = await self._fetch_tabledap(dataset_id, query_args)
         
         parsed_results = []
@@ -218,7 +219,8 @@ class ErddapClient:
         if query_id:
             query_args.append(f'name="{query_id}"')
             
-        query_args.append("orderByLimitMax(%22-time%22)")
+        # FIX: Group by name and return the row with the max time
+        query_args.append("orderByMax(%22name,time%22)")
         result = await self._fetch_tabledap(dataset_id, query_args)
         
         parsed_results = []
@@ -274,7 +276,8 @@ class ErddapClient:
                 
             query_args.append(f'name="{name_part}"')
             
-        query_args.append("orderByLimitMax(%22-time%22)")
+        # FIX: Group by namespace and name, returning the row with the max time
+        query_args.append("orderByMax(%22namespace,name,time%22)")
         result = await self._fetch_tabledap(dataset_id, query_args)
         
         parsed_results = []

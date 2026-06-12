@@ -4053,6 +4053,25 @@ class SamplingSystem:
                     variableset["variables"]["time"] = {"shape": ["time"], "type": "string", "data": ""}
                 variableset["variables"]["time"]["data"] = target_time
 
+                # --- THE FIX: CULL EMPTY VARIABLESETS BEFORE PUBLISHING ---
+                # Scan the evaluated variableset to see if any real telemetry exists
+                has_active_data = False
+                for v_name, v_record in variableset["variables"].items():
+                    # Safely check the variable type
+                    raw_type = v_record.get("variable_type")
+                    attr_type = v_record.get("attributes", {}).get("variable_type", {}).get("data")
+                    v_type = str(raw_type or attr_type or "").lower()
+                    
+                    # If it's not a coordinate, and it has actual data, the payload is alive!
+                    if v_type != "coordinate" and v_record.get("data") is not None and v_record.get("data") != "":
+                        has_active_data = True
+                        break
+                        
+                if not has_active_data:
+                    self.logger.debug(f"CULLING: Variableset '{vs_name}' contains no active telemetry (only coordinates). Dropping payload.")
+                    continue  # Skip the MQTT broadcast entirely
+                # ----------------------------------------------------------
+                
                 # --- 3. DYNAMIC MULTI-TENANT CONTEXT RESOLUTION ---
                 dep_ref, proj_ref = self.resolve_context_for_varmap(variablemap, target_time)
                 
