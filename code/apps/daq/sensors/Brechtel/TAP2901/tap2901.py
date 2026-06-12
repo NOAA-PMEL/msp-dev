@@ -223,7 +223,7 @@ class TAP(Sensor):
                 # ---------------------------------------------------------
                 # Phase 1: Detect switch to calibration
                 if self.last_cal_routine != "white_filter" and current_cal == "white_filter":
-                    self.logger.info("Starting white filter calibration. Pausing flow.")
+                    self.logger.debug("[CAL DEBUG] Phase 1: Starting white filter calibration. Pausing flow.")
                     self.cal_start_time = time.time()
                     
                     # Clear buffers for fresh tracking
@@ -257,6 +257,8 @@ class TAP(Sensor):
                             if current_threshold > 0.005:  # Hard Cap
                                 current_threshold = 0.005
                                 
+                            self.logger.debug(f"[CAL DEBUG] Phase 2: Buffer Full. Elapsed: {elapsed_minutes:.1f}m | Dynamic Threshold: {current_threshold:.4f}")
+                                
                             for spot in range(1, 9):
                                 for i, color in enumerate(["red", "green", "blue"]):
                                     data = self.cal_buffers[spot][color]
@@ -264,6 +266,11 @@ class TAP(Sensor):
                                     
                                     if mean_val > 0:
                                         cv = statistics.stdev(data) / mean_val
+                                        
+                                        # [CAL DEBUG]: Print Spot 1 stats to watch it stabilize
+                                        if spot == 1 and color == "red":
+                                            self.logger.debug(f"[CAL DEBUG] Spot 1 Red -> Mean: {mean_val:.4f} | CV: {cv:.5f}")
+                                            
                                         if cv > current_threshold:
                                             is_stable = False
                                             break
@@ -274,7 +281,7 @@ class TAP(Sensor):
                             
                             # Success Event
                             if is_stable:
-                                self.logger.info("White filter calibration SUCCESS. Save ratios and reset state.")
+                                self.logger.debug("[CAL DEBUG] Phase 2: STABILITY ACHIEVED! Saving ratios.")
                                 self.wf_ratios = new_wf_ratios
                                 
                                 self.settings.set_setting("calibration_status", requested="success")
@@ -284,7 +291,7 @@ class TAP(Sensor):
                         
                         # Phase 3: Timeout and Fallback
                         if elapsed_minutes > 45.0:
-                            self.logger.error("White filter calibration TIMEOUT. FALLING BACK to previous baselines.")
+                            self.logger.debug(f"[CAL DEBUG] Phase 3: TIMEOUT at {elapsed_minutes:.1f}m. Falling back.")
                             for spot in range(1, 9):
                                 for color in ["red", "green", "blue"]:
                                     self.cal_buffers[spot][color].clear()
@@ -296,7 +303,7 @@ class TAP(Sensor):
 
                 # Phase 4: Detect successful end of calibration (External or Internal)
                 elif self.last_cal_routine == "white_filter" and current_cal != "white_filter":
-                    self.logger.info("White filter calibration completed. Resetting active spot to 1.")
+                    self.logger.debug("[CAL DEBUG] Phase 4: Calibration closed. Sending spot=1 command.")
                     self.last_active_spot = 1
                     self.settings.set_setting("set_active_spot", requested=0)
                     self.settings.set_actual("set_active_spot", 0)
@@ -321,6 +328,7 @@ class TAP(Sensor):
                         spot_to_request = target_spot if target_spot > 0 else int(self.last_active_spot)
                         
                         if need_start or spot_to_request != self.current_requested_spot:
+                            self.logger.debug(f"[CAL DEBUG] Resuming flow -> Sending spot={spot_to_request} command.")
                             await self.interface_send_data(data={"data": f"spot={spot_to_request}\r"})
                             self.current_requested_spot = spot_to_request
                             need_start = False
@@ -364,13 +372,11 @@ class TAP(Sensor):
             raw_str = raw_payload.get("data", "").strip()
             parts = [x.strip() for x in raw_str.split(",")]
             
-            self.logger.debug(f"default_parse: Raw payload split into {len(parts)} parts")
             if len(parts) < 49:
                 self.logger.warning("default_parse: Payload length < 49. Aborting parse.")
                 return None
                 
             # 1. Map standard scalar fields
-            self.logger.debug("default_parse: Mapping standard scalars...")
             standard_map = [
                 "record_type", "status_flags", "elapsed_time", "filter_id", 
                 "active_spot", "flow_rate", "sample_vol_active_spot", 
@@ -387,7 +393,6 @@ class TAP(Sensor):
                         record["variables"][var_name]["data"] = "" if instvar.type == "str" else None
 
             # 2. Map 40 Intensity fields & decode IEEE754 Hex
-            self.logger.debug("default_parse: Decoding Hex intensities...")
             intensity_map = []
             for ch in range(10):
                 intensity_map.extend([
@@ -409,9 +414,7 @@ class TAP(Sensor):
                         record["variables"][var_name]["data"] = None
 
             # --- NEW: Siphon data into calibration buffers if routine is active ---
-            self.logger.debug(f"default_parse: Checking calibration state. Current routine: '{self.last_cal_routine}'")
             if self.last_cal_routine == "white_filter":
-                self.logger.debug("default_parse: IN CALIBRATION MODE. Siphoning intensities...")
                 for spot in range(1, 9):
                     ref_ch = 9 if spot % 2 != 0 else 0
                     for color in ["red", "green", "blue"]:
@@ -425,15 +428,18 @@ class TAP(Sensor):
                                 if (r_col - r_dark) > 0:
                                     ratio = (s_col - s_dark) / (r_col - r_dark)
                                     self.cal_buffers[spot][color].append(ratio)
+                                    
+                                    # [CAL DEBUG]: Print Spot 1 Red
+                                    if spot == 1 and color == "red":
+                                        buf_len = len(self.cal_buffers[spot][color])
+                                        self.logger.debug(f"[CAL DEBUG] Siphoning -> Spot 1 Red Ratio: {ratio:.4f} | Buffer Size: {buf_len}/{self.cal_buffer_size}")
                         except KeyError:
                             pass
             # ----------------------------------------------------------------------
 
             # 3. Physics Calculations (Transmission & Absorption)
-            self.logger.debug("default_parse: Starting transmission & absorption physics...")
             try:
                 active_spot = record["variables"]["active_spot"]["data"]
-                self.logger.debug(f"default_parse: active_spot read as {active_spot}")
                 
                 if active_spot is not None and int(active_spot) > 0:
                     sample_ch = int(active_spot)
@@ -459,7 +465,6 @@ class TAP(Sensor):
                         "green": calc_I("green"),
                         "blue": calc_I("blue")
                     }
-                    self.logger.debug(f"default_parse: I_curr calculated: {I_curr}")
                     
                     # Safely fetch white filter ratios for the active spot
                     spot_wf = self.wf_ratios[sample_ch - 1] if sample_ch <= len(self.wf_ratios) else [1.0, 1.0, 1.0]
@@ -474,24 +479,23 @@ class TAP(Sensor):
                             tau[color] = None
                             record["variables"][f"{color}_transmission"]["data"] = None
 
-                    self.logger.debug(f"default_parse: tau calculated: {tau}")
-
+                    # ---------------------------------------------------------
                     # Ogren 2010 Absorption Calculation
-                    curr_vol = record["variables"]["sample_vol_active_spot"]["data"]
-                    self.logger.debug(f"default_parse: vol tracker -> curr_vol={curr_vol}, last_vol={self.last_sample_vol}, spot_tracker={self.last_spot_for_abs}")
+                    # ---------------------------------------------------------
+                    # BYPASS FIRMWARE BUG: Calculate delta_V using live flow rate
+                    flow_lpm = record["variables"]["flow_rate"]["data"]
                     
                     if self.last_spot_for_abs != sample_ch:
-                        self.logger.debug("default_parse: Spot changed. Resetting physics baselines.")
+                        self.logger.debug(f"default_parse: Spot changed to {sample_ch}. Resetting physics baselines.")
                         self.last_I = I_curr
-                        self.last_sample_vol = curr_vol
                         self.last_spot_for_abs = sample_ch
                     else:
-                        delta_V = curr_vol - self.last_sample_vol if curr_vol and self.last_sample_vol else 0
-                        self.logger.debug(f"default_parse: delta_V evaluated to: {delta_V}")
+                        # Convert LPM to m^3 per second: (L/min) * (1 min / 60 sec) * (0.001 m^3 / L)
+                        delta_V = (flow_lpm / 60.0) * 0.001 if flow_lpm is not None else 0
                         
                         if delta_V > 0:
-                            self.logger.debug("default_parse: delta_V > 0. Calculating Ogren Absorption...")
-                            A = 2.5281e-5 # m^2 filter area for Azumi
+                            # Use Pall Emfab/E70 Filter Area constant
+                            A = 3.0721e-5 
                             
                             for color in ["red", "green", "blue"]:
                                 I_c = I_curr[color]
@@ -499,19 +503,21 @@ class TAP(Sensor):
                                 t_c = tau[color]
                                 
                                 if I_c and I_p and I_c > 0 and I_p > 0 and t_c:
+                                    # Perform Ogren Math
                                     f_tau = 1.0 / (1.0796 * t_c + 0.71)
                                     sigma_psap = f_tau * (A / delta_V) * math.log(I_p / I_c)
                                     sigma_ap = 0.85 * sigma_psap / 1.22
+                                    
                                     record["variables"][f"{color}_absorption"]["data"] = round(sigma_ap * 1e6, 4)
-                                    self.logger.debug(f"default_parse: {color}_absorption successful = {record['variables'][f'{color}_absorption']['data']}")
                                 else:
-                                    self.logger.debug(f"default_parse: missing component for {color} Ogren math (I_c={I_c}, I_p={I_p}, t_c={t_c})")
                                     record["variables"][f"{color}_absorption"]["data"] = None
                                     
+                            # CRITICAL FIX: Only update the baseline AFTER a successful calculation tick
                             self.last_I = I_curr
-                            self.last_sample_vol = curr_vol
                         else:
-                            self.logger.debug("default_parse: delta_V <= 0. SKIPPING absorption calculation.")
+                            self.logger.debug("default_parse: Flow rate is 0. SKIPPING absorption calculation.")
+                            for color in ["red", "green", "blue"]:
+                                record["variables"][f"{color}_absorption"]["data"] = None
                 else:
                     self.logger.debug("default_parse: active_spot is invalid or 0. SKIPPING physics block.")
             except Exception as e:
@@ -520,7 +526,6 @@ class TAP(Sensor):
             # ---------------------------------------------------------
             # 4. Pack Calibration Data (only included on metadata ticks)
             # ---------------------------------------------------------
-            self.logger.debug("default_parse: Packing calibration variables...")
             if "last_active_spot" in record["variables"]:
                 record["variables"]["last_active_spot"]["data"] = self.last_active_spot
                 
@@ -536,7 +541,6 @@ class TAP(Sensor):
                 record["variables"]["calibration_status"]["data"] = cal_stat.get("actual", "none") if isinstance(cal_stat, dict) else "none"
             # ---------------------------------------------------------
             
-            self.logger.debug("default_parse: PARSE COMPLETE, yielding record.")
             return record
             
         except Exception as e:
