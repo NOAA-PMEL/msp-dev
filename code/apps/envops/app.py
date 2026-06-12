@@ -92,7 +92,8 @@ sidebar = html.Div(
         dbc.Nav(
             [
                 dbc.NavLink([html.I(className="bi bi-globe-americas me-2"), "Fleet Overview"], href=dash.get_relative_path("/"), active="exact", className="fw-bold mb-1 rounded text-dark"),
-                dbc.NavLink([html.I(className="bi bi-server me-2"), "Asset Registry"], href=dash.get_relative_path("/assets"), active="exact", className="fw-bold mb-3 rounded text-dark"),
+                dbc.NavLink([html.I(className="bi bi-server me-2"), "Asset Registry"], href=dash.get_relative_path("/assets"), active="exact", className="fw-bold mb-1 rounded text-dark"),
+                dbc.NavLink([html.I(className="bi bi-journal-bookmark me-2"), "Documentation"], href=dash.get_relative_path("/docs"), active="exact", className="fw-bold mb-3 rounded text-dark"),
             ],
             vertical=True,
             pills=True,
