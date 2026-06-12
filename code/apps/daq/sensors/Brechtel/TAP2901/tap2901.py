@@ -244,8 +244,8 @@ class TAP(Sensor):
                     if self.cal_start_time is not None:
                         elapsed_minutes = (time.time() - self.cal_start_time) / 60.0
                         
-                        # Only calculate CV if the buffer is entirely full
-                        if len(self.cal_buffers[1]["red"]) == self.cal_buffer_size:
+                        # Only calculate CV if the buffer is entirely full AND 15 minutes have elapsed
+                        if len(self.cal_buffers[1]["red"]) == self.cal_buffer_size and elapsed_minutes > 15.0:
                             is_stable = True
                             new_wf_ratios = [[1.0, 1.0, 1.0] for _ in range(8)]
                             
@@ -257,7 +257,7 @@ class TAP(Sensor):
                             if current_threshold > 0.005:  # Hard Cap
                                 current_threshold = 0.005
                                 
-                            self.logger.debug(f"[CAL DEBUG] Phase 2: Buffer Full. Elapsed: {elapsed_minutes:.1f}m | Dynamic Threshold: {current_threshold:.4f}")
+                            self.logger.debug(f"[CAL DEBUG] Phase 2: Buffer Full & Warmed Up. Elapsed: {elapsed_minutes:.1f}m | Threshold: {current_threshold:.4f}")
                                 
                             for spot in range(1, 9):
                                 for i, color in enumerate(["red", "green", "blue"]):
