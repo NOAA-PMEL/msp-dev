@@ -363,19 +363,18 @@ class SystemModesManager:
         while True:
             try:
                 for obj in self.modes.values():
-                    # 1. Strip the suffix so Datastore doesn't double it
+                    # Strip the suffix so Datastore doesn't double it
                     event = SamplingEvent.create_definition_registry_update(
                         resource="systemmode",
                         source=f"envds.{self.config.daq_id}.system-modes",
                         data={"systemmode": obj.config}
                     )
                     
-                    # 2. Fix the routing topic
                     destpath = f"envds/{self.config.daq_id}/systemmode/registry/update"
                     event["destpath"] = destpath
                     
-                    # 3. Route via MQTT for edge-to-cloud sync
-                    await self.send_to_mqtt(destpath, event)
+                    # FIX: Must use HTTP Knative Broker, NOT MQTT, so the Trigger routes it to Datastore!
+                    await self.send_event(event)
                     
             except Exception as e: 
                 self.logger.error("publish_failed", extra={"reason": str(e)})
