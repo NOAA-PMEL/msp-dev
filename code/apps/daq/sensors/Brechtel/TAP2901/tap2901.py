@@ -35,6 +35,15 @@ class TAP(Sensor):
         self.last_sample_vol = None
         self.last_spot_for_abs = None
 
+        # --- NEW: Boxcar Average Buffers for Absorption ---
+        self.abs_boxcar_size = 60
+        self.abs_buffers = {
+            "red": deque(maxlen=self.abs_boxcar_size),
+            "green": deque(maxlen=self.abs_boxcar_size),
+            "blue": deque(maxlen=self.abs_boxcar_size)
+        }
+        # --------------------------------------------------
+
         # --- NEW: Calibration specific tracking ---
         self.cal_buffer_size = 60
         self.cal_start_time = None
@@ -489,6 +498,12 @@ class TAP(Sensor):
                         self.logger.debug(f"default_parse: Spot changed to {sample_ch}. Resetting physics baselines.")
                         self.last_I = I_curr
                         self.last_spot_for_abs = sample_ch
+                        
+                        # --- NEW: Clear boxcar buffers on spot change ---
+                        for color in ["red", "green", "blue"]:
+                            self.abs_buffers[color].clear()
+                            record["variables"][f"{color}_absorption"]["data"] = None
+                        # ------------------------------------------------
                     else:
                         # Convert LPM to m^3 per second: (L/min) * (1 min / 60 sec) * (0.001 m^3 / L)
                         delta_V = (flow_lpm / 60.0) * 0.001 if flow_lpm is not None else 0
@@ -508,7 +523,13 @@ class TAP(Sensor):
                                     sigma_psap = f_tau * (A / delta_V) * math.log(I_p / I_c)
                                     sigma_ap = 0.85 * sigma_psap / 1.22
                                     
-                                    record["variables"][f"{color}_absorption"]["data"] = round(sigma_ap * 1e6, 4)
+                                    raw_abs = sigma_ap * 1e6
+                                    
+                                    # --- NEW: Apply Boxcar Average ---
+                                    self.abs_buffers[color].append(raw_abs)
+                                    smoothed_abs = statistics.mean(self.abs_buffers[color])
+                                    record["variables"][f"{color}_absorption"]["data"] = round(smoothed_abs, 4)
+                                    # ---------------------------------
                                 else:
                                     record["variables"][f"{color}_absorption"]["data"] = None
                                     
