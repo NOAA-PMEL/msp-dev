@@ -242,30 +242,35 @@ class SamplingCondition:
             self.data_buffer.put_nowait(data)
 
     async def condition_monitor(self):
-
         while True:
-            # self.logger.debug("condition_monitor", extra={"data_buffer": self.data_buffer})
             try:
                 data = await self.data_buffer.get()
-                # self.logger.debug("condition_monitor", extra={"data_buffer": data})
                 if "condition_variables" in data:
                     variables = data["condition_variables"]
-                    dt = variables["time"]["data"]
+                    
+                    # --- FOOLPROOF EXTRACTION ---
+                    # Safely handles both flat strings and nested {"data": "..."} dicts
+                    time_var = variables.get("time", {})
+                    if isinstance(time_var, dict):
+                        dt = time_var.get("data")
+                    else:
+                        dt = time_var
+
                     for varname, var in variables.items():
                         if varname == "time":
                             continue
                         if varname in self.source_map:
-                            self.source_map[varname][dt] = var["data"]
+                            # Safely extract the data payload whether it's a dict or scalar
+                            self.source_map[varname][dt] = var.get("data", var) if isinstance(var, dict) else var
 
-                    # self.logger.debug("condition_monitor", extra={"src_map": self.source_map})
                     await self.evaluate_criteria(dt)
 
             except Exception as e:
-                self.logger.error("condition_monitor", extra={"reason": e})
-
-            # await asyncio.sleep(0.001)
-            self.data_buffer.task_done()
-
+                self.logger.error("condition_monitor", extra={"reason": str(e)})
+                
+            finally:
+                if 'data' in locals():
+                    self.data_buffer.task_done()
     # async def update_status(self, status):
 
     #     cond_name = status["condition"]["name"]
@@ -1282,10 +1287,8 @@ class SamplingConditionsManager:
     async def condition_status_monitor(self):
         while True:
             try:
-                # 1. Pull the new envdsStatus format payload from the buffer
                 status_data = await self.status_buffer.get()
 
-                # Extract the metadata to build the CloudEvent topics
                 cond_name = status_data["id"]["app_uid"]
                 cond_ns = status_data["id"]["sampling_namespace"]
                 cond_valid_time = status_data["id"]["valid_config_time"]
@@ -1293,7 +1296,6 @@ class SamplingConditionsManager:
                 source_id = f"envds.{self.config.daq_id}.sampling-conditions"
                 self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
                 
-                # 2. Build standard wrapper using your existing factory method
                 event = SamplingEvent.create_sampling_condition_status_update(
                     source=source_id,
                     data=status_data,
@@ -1301,23 +1303,30 @@ class SamplingConditionsManager:
                 
                 self.logger.debug("condition_status_monitor", extra={"event-type": event["type"]})
                 
-                # 3. Add custom routing headers
                 destpath = f"envds/{self.config.daq_id}/sampling-conditions/status/update"
                 event["destpath"] = destpath
                 event["samplingnamespace"] = cond_ns
                 event["validconfigtime"] = cond_valid_time
-                event["deploymentref"] = self.config.deployment_ref
+                
+                # --- DYNAMIC ROUTING PATCH ---
+                # This guarantees foreign conditions don't get mis-stamped with local host IDs
+                if "deploy.pmel." in cond_ns:
+                    dep_ref = cond_ns.split("deploy.pmel.")[-1].split("_in_")[0]
+                else:
+                    dep_ref = self.config.deployment_ref if self.config.deployment_ref else "unknown"
+                
+                event["deploymentref"] = dep_ref
+                # -----------------------------
                 
                 self.logger.debug(
                     "evaluate_criteria",
                     extra={"data": event, "destpath": destpath},
                 )
 
-                # 4. Dispatch!
                 await self.send_to_mqtt(destpath, event)
 
             except Exception as e:
-                self.logger.error("condition_event_monitor", extra={"reason": e})
+                self.logger.error("condition_status_monitor", extra={"reason": str(e)})
             
             finally:
                 if 'status_data' in locals():
@@ -1421,7 +1430,6 @@ class SamplingConditionsManager:
                 await asyncio.sleep(reconnect)
 
     async def variableset_data_update(self, ce: CloudEvent):
-
         try:
             self.logger.debug("variableset_data_update", extra={"ce": ce})
             src_id = ce["source"].split(".")[-1]
@@ -1439,22 +1447,24 @@ class SamplingConditionsManager:
                     data_map[cond_key] = {"variables": dict()}
 
                 condition = self.sampling_conditions["conditions"][cond_key]
-                dt = ce.data["variables"]["time"]["data"] if isinstance(ce.data["variables"]["time"], dict) else ce.data["variables"]["time"]
+                
+                # Safe time extraction
+                time_val = ce.data["variables"]["time"]
+                dt = time_val["data"] if isinstance(time_val, dict) else time_val
 
                 if target["source_variable"] in ce.data["variables"]:
                     val_block = ce.data["variables"][target["source_variable"]]
                     
-                    # --- FIXED: Extract the raw primitive float out of the schema dict ---
-                    if isinstance(val_block, dict) and "data" in val_block:
-                        val = val_block["data"]
-                    else:
-                        val = val_block
-                    # --------------------------------------------------------------------
-
                     if target["source_name"] not in data_map[cond_key]["variables"]:
-                        data_map[cond_key]["variables"][target["source_name"]] = {
-                            "data": val
-                        }
+                        # --- SCHEMA ENFORCER ---
+                        # If the payload is already a compliant dictionary (which it should be), 
+                        # pass it completely untouched. If it's a raw scalar from a legacy 
+                        # service, wrap it in the 'data' tag to enforce the CF rule.
+                        if not isinstance(val_block, dict):
+                            val_block = {"data": val_block}
+                        # -----------------------
+
+                        data_map[cond_key]["variables"][target["source_name"]] = val_block
 
             for cond_key, cond_data in data_map.items():
                 cond_data["variables"]["time"] = dt
@@ -1464,7 +1474,7 @@ class SamplingConditionsManager:
                 await self.sampling_conditions["conditions"][cond_key]["condition"].update(payload)
 
         except Exception as e:
-            self.logger.error("variableset_data_update", extra={"reason": e})      
+            self.logger.error("variableset_data_update", extra={"reason": str(e)})    
 
     async def handle_condition_request(self, ce: CloudEvent):
 

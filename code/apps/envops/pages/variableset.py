@@ -45,9 +45,11 @@ def fetch_registry_data(resource_type: str):
                     doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
                     if doc_response.status_code == 200:
                         doc_results = doc_response.json().get("results", [])
-                        if doc_results: docs.append(doc_results[0])
+                        if doc_results: 
+                            # Safe for overlapping names across namespaces!
+                            docs.extend(doc_results)
     except Exception as e:
-        L.error(f"Failed to fetch {resource_type}: {e}")
+        L.error(f"Failed to fetch {resource_type} definitions: {e}")
     return docs
 
 def get_bundle_varsets(host_id):
