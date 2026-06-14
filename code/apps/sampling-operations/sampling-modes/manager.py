@@ -220,19 +220,36 @@ class SamplingModesManager:
         self.configure()
 
     def configure(self):
-        """Loads definitions from local mounted files."""
+        """Loads definitions from local mounted files and boot-straps identity context."""
+        self.logger.debug("configure", extra={"self.config": self.config})
         try:
+            # 1. Load sampling modes and extract the unique deployment reference
             modes_path = "/app/config/sampling_modes_modes.json"
             if os.path.exists(modes_path):
                 with open(modes_path, "r") as f:
-                    for cfg in json.load(f): self.load_mode(cfg)
+                    modes = json.load(f)
+                    
+                    # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+                    # Secure true container identity exclusively from local volume config file
+                    if modes and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
+                        first_ns = modes[0].get("metadata", {}).get("sampling_namespace", "")
+                        if "deploy.pmel." in first_ns:
+                            self.config.deployment_ref = first_ns.split("deploy.pmel.")[-1].split("_in_")[0]
+                            self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+                    # -------------------------------------
+                    
+                    for cfg in modes:
+                        self.load_mode(cfg)
             
+            # 2. Load associated local sampling actions
             actions_path = "/app/config/sampling_modes_actions.json"
             if os.path.exists(actions_path):
                 with open(actions_path, "r") as f:
-                    for cfg in json.load(f): self.load_action(cfg)
+                    for cfg in json.load(f):
+                        self.load_action(cfg)
+                        
         except Exception as e:
-            L.error("configure_failed", extra={"reason": str(e)})
+            self.logger.error("configure error", extra={"reason": str(e)})
 
     def load_mode(self, cfg):
         """Processes a definition and instantiates a SamplingMode object using a composite key."""
@@ -243,14 +260,6 @@ class SamplingModesManager:
             name = cfg["metadata"]["name"]
             ns = cfg.get("metadata", {}).get("sampling_namespace", "")
             
-            # --- THE RESTORED REF EXTRACTION ---
-            # Automatically parse deployment_ref from the namespace string if currently unconfigured
-            if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
-                if "deploy.pmel." in ns:
-                    self.config.deployment_ref = ns.split("deploy.pmel.")[-1].split("_in_")[0]
-                    self.logger.info(f"Auto-configured deployment_ref from loaded mode namespace: {self.config.deployment_ref}")
-            # -----------------------------------
-
             # Create the compound tuple key
             composite_key = (name, ns)
             
@@ -268,15 +277,7 @@ class SamplingModesManager:
         try:
             name = cfg["metadata"]["name"]
             ns = cfg.get("metadata", {}).get("sampling_namespace", "")
-            
-            # --- THE RESTORED REF EXTRACTION ---
-            # Guard lookup in case the actions configuration manifest processes first
-            if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
-                if "deploy.pmel." in ns:
-                    self.config.deployment_ref = ns.split("deploy.pmel.")[-1].split("_in_")[0]
-                    self.logger.info(f"Auto-configured deployment_ref from loaded action namespace: {self.config.deployment_ref}")
-            # -----------------------------------
-            
+                        
             # Create the compound tuple key
             composite_key = (name, ns)
             

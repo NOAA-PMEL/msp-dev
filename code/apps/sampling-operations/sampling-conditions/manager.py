@@ -873,11 +873,20 @@ class SamplingConditionsManager:
     def configure(self):
         self.logger.debug("configure", extra={"self.config": self.config})
         try:
-            # load sampling conditions from file
             conditions_path = "/app/config/sampling_conditions.json"
             if os.path.exists(conditions_path):
                 with open(conditions_path, "r") as f:
                     conditions = json.load(f)
+                    
+                    # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+                    # Secure true container identity exclusively from local volume config file
+                    if conditions and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
+                        first_ns = conditions[0].get("metadata", {}).get("sampling_namespace", "")
+                        if "deploy.pmel." in first_ns:
+                            self.config.deployment_ref = first_ns.split("deploy.pmel.")[-1].split("_in_")[0]
+                            self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+                    # -------------------------------------
+                    
                     for condition in conditions:
                         self.load_condition(condition)
                 self.logger.debug("configure", extra={"sampling_conditions": self.sampling_conditions})
@@ -885,7 +894,7 @@ class SamplingConditionsManager:
                 self.logger.info(f"{conditions_path} not found. Skipping local load.")
         except Exception as e:
             self.logger.error("configure error", extra={"reason": e})
-
+            
     # def load_condition(self, condition: dict):
     #     """Helper to process definitions from either local files or Datastore API."""
     #     if condition.get("kind") != "SamplingCondition":
@@ -939,14 +948,6 @@ class SamplingConditionsManager:
 
         cond_name = condition["metadata"]["name"]
         cond_ns = condition.get("metadata", {}).get("sampling_namespace", "")
-        
-        # --- THE RESTORED REF EXTRACTION ---
-        # Automatically extract deployment_ref from the namespace string if currently unconfigured
-        if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
-            if "deploy.pmel." in cond_ns:
-                self.config.deployment_ref = cond_ns.split("deploy.pmel.")[-1].split("_in_")[0]
-                self.logger.info(f"Auto-configured deployment_ref from loaded condition namespace: {self.config.deployment_ref}")
-        # -----------------------------------
         
         # Create the compound tuple key to completely isolate platform domains
         composite_key = (cond_name, cond_ns)
@@ -1423,8 +1424,6 @@ class SamplingConditionsManager:
 
         try:
             self.logger.debug("variableset_data_update", extra={"ce": ce})
-            
-            # REVERT BACK TO THIS: This is 100% correct for variableset data streams
             src_id = ce["source"].split(".")[-1]
 
             if src_id not in self.sampling_conditions["sources"]:
@@ -1434,24 +1433,29 @@ class SamplingConditionsManager:
             data_map = dict()
 
             for target in self.sampling_conditions["sources"][src_id]["targets"]:
-                
-                # Extract the composite tuple key directly from the target reference map
-                cond_key = target["condition"] 
+                cond_key = target["condition"]
                 
                 if cond_key not in data_map:
                     data_map[cond_key] = {"variables": dict()}
 
                 condition = self.sampling_conditions["conditions"][cond_key]
-                dt = ce.data["variables"]["time"]
+                dt = ce.data["variables"]["time"]["data"] if isinstance(ce.data["variables"]["time"], dict) else ce.data["variables"]["time"]
 
                 if target["source_variable"] in ce.data["variables"]:
-                    val = ce.data["variables"][target["source_variable"]]
+                    val_block = ce.data["variables"][target["source_variable"]]
+                    
+                    # --- FIXED: Extract the raw primitive float out of the schema dict ---
+                    if isinstance(val_block, dict) and "data" in val_block:
+                        val = val_block["data"]
+                    else:
+                        val = val_block
+                    # --------------------------------------------------------------------
+
                     if target["source_name"] not in data_map[cond_key]["variables"]:
                         data_map[cond_key]["variables"][target["source_name"]] = {
                             "data": val
                         }
 
-            # Once all condition data compiled, route to condition for processing via composite keys
             for cond_key, cond_data in data_map.items():
                 cond_data["variables"]["time"] = dt
                 payload = {"condition_variables": cond_data["variables"]}
@@ -1460,7 +1464,7 @@ class SamplingConditionsManager:
                 await self.sampling_conditions["conditions"][cond_key]["condition"].update(payload)
 
         except Exception as e:
-            self.logger.error("variableset_data_update", extra={"reason": e})          
+            self.logger.error("variableset_data_update", extra={"reason": e})      
 
     async def handle_condition_request(self, ce: CloudEvent):
 
