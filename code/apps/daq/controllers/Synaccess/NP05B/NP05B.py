@@ -106,7 +106,9 @@ class NP05B(Controller):
                     "port": {"data": client_port},
                     "device-interface-properties": {
                         "read-properties": {
-                                "read-method": "readline",
+                                # "read-method": "readline",
+                                "read-method": "read_until",
+                                "read-until-delimiter": ">",
                                 "decode-errors": "strict",
                                 "send-method": "ascii",
                         }
