@@ -163,12 +163,16 @@ class SamplingMode:
                 await self.execute_actions(self.current_state)
 
     async def execute_actions(self, state: bool):
-        """Pushes configured actions to the buffer when the mode state changes."""
+        """Pushes configured actions and their namespace to the buffer when state changes."""
         run_type = str(state).lower()
         if self.actions.get(run_type):
             for act in self.actions[run_type]:
                 await self.actions_buffer.put({
-                    "action": {"name": act}, 
+                    "action": {
+                        "name": act,
+                        # Pass the namespace down so the monitor can match the composite key
+                        "namespace": self.config["metadata"].get("sampling_namespace", "")
+                    }, 
                     "state": state
                 })
 class SamplingAction:
@@ -231,40 +235,46 @@ class SamplingModesManager:
             L.error("configure_failed", extra={"reason": str(e)})
 
     def load_mode(self, cfg):
-        """Processes a definition and instantiates a SamplingMode object."""
+        """Processes a definition and instantiates a SamplingMode object using a composite key."""
         if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)
         if self.actions_buffer is None: self.actions_buffer = asyncio.Queue(maxsize=2000)
         
         try:
             name = cfg["metadata"]["name"]
-            self.modes[name] = SamplingMode(cfg, self.status_buffer, self.actions_buffer)
-            self.logger.info("mode_instance_created", extra={"res_name": name, "req_count": len(cfg.get("requirements", []))})
+            ns = cfg.get("metadata", {}).get("sampling_namespace", "")
+            
+            # Create the compound tuple key
+            composite_key = (name, ns)
+            
+            # Pass your correct buffers directly to the constructor
+            self.modes[composite_key] = SamplingMode(cfg, self.status_buffer, self.actions_buffer)
+            self.logger.info("mode_instance_created", extra={"res_name": name, "namespace": ns, "req_count": len(cfg.get("requirements", []))})
         except KeyError as e:
             self.logger.error("mode_load_failed_metadata", extra={"reason": f"Missing key: {str(e)}", "config": cfg})
             
     def load_action(self, cfg):
-        """Processes a definition and instantiates a SamplingAction object."""
+        """Processes a definition and instantiates a SamplingAction object using a composite key."""
         if self.actions_target_buffer is None: 
             self.actions_target_buffer = asyncio.Queue(maxsize=2000)
         
-        name = cfg["metadata"]["name"]
-        
-        # 1. PREVENT TASK LEAKS: Stop the old action if it already exists 
-        # (matching the pattern used in other services)
-        if name in self.actions:
-            old_action = self.actions[name]
-            if hasattr(old_action, 'stop'):
-                old_action.stop()
-
         try:
-            # 2. Instantiate and Cache
-            self.actions[name] = SamplingAction(cfg, self.actions_target_buffer)
+            name = cfg["metadata"]["name"]
+            ns = cfg.get("metadata", {}).get("sampling_namespace", "")
             
-            # 3. VERIFICATION LOG: Use 'res_name' for consistency with load_mode
-            L.info("loaded_action", extra={"res_name": name, "res_module": cfg["metadata"].get("action_module")})
+            # Create the compound tuple key
+            composite_key = (name, ns)
+            
+            if composite_key in self.actions:
+                old_action = self.actions[composite_key]
+                if hasattr(old_action, 'stop'):
+                    old_action.stop()
+
+            # Instantiate and Cache using the tuple key
+            self.actions[composite_key] = SamplingAction(cfg, self.actions_target_buffer)
+            L.info("loaded_action", extra={"res_name": name, "namespace": ns, "res_module": cfg["metadata"].get("action_module")})
             
         except Exception as e:
-            L.error("action_load_failed", extra={"res_name": name, "reason": str(e)})
+            L.error("action_load_failed", extra={"res_name": cfg.get("metadata", {}).get("name"), "reason": str(e)})
 
     async def setup(self):
         """Infrastructure and background task initialization."""
@@ -331,9 +341,17 @@ class SamplingModesManager:
                 })
 
                 for registry, res_type in [(self.actions, "action"), (self.modes, "samplingmode")]:
-                    # Changed to .items() so we can easily log the name along with the object
-                    for name, obj in registry.items(): 
+                    for key, obj in registry.items(): 
                         
+                        # Unpack composite tuple keys vs standalone string action keys
+                        if isinstance(key, tuple):
+                            name, ns = key
+                            # Only broadcast if it belongs to our deployment overlay
+                            if self.config.deployment_ref not in ns and ns != "":
+                                continue
+                        else:
+                            name, ns = key, ""
+
                         # DEBUG A2: Output the exact definition payload that was loaded for this specific item
                         self.logger.debug("local_definition_loaded", extra={
                             "resource_type": res_type,
@@ -503,11 +521,25 @@ class SamplingModesManager:
                                 mode_name = ce.data.get("mode_name")
                                 active_flag = ce.data.get("active", False)
                                 
-                                if mode_name in self.modes:
-                                    self.modes[mode_name].active = active_flag
+                                # Unpack composite keys to locate the mode matching our deployment namespace
+                                target_mode = None
+                                for (m_name, m_ns), m_obj in self.modes.items():
+                                    if m_name == mode_name and self.config.deployment_ref in m_ns:
+                                        target_mode = m_obj
+                                        break
+                                
+                                # Fallback lookup if no custom namespace override exists
+                                if not target_mode:
+                                    for (m_name, m_ns), m_obj in self.modes.items():
+                                        if m_name == mode_name:
+                                            target_mode = m_obj
+                                            break
+
+                                if target_mode:
+                                    target_mode.active = active_flag
                                     self.logger.info(f"Received Command: Set SamplingMode '{mode_name}' active = {active_flag}")
                                     # Force an immediate evaluation so it updates its heartbeat and executes actions if ready
-                                    await self.modes[mode_name].evaluate()
+                                    await target_mode.evaluate()
                             # ----------------------------------------------------------
                             
                             # --- NEW: Listen for incoming remote transition overrides ---
@@ -650,22 +682,33 @@ class SamplingModesManager:
         while True:
             req = await self.actions_buffer.get()
             name = req.get("action", {}).get("name")
+            ns = req.get("action", {}).get("namespace", "")
             
-            if name in self.actions:
-                action_obj = self.actions[name]
-                
-                # --- EDGE AUTONOMY / DIGITAL TWIN FILTER ---
+            # Unpack composite tuple keys to find the execution block matching our scope
+            action_obj = None
+            for (a_name, a_ns), a_obj in self.actions.items():
+                if a_name == name and ns == a_ns:
+                    action_obj = a_obj
+                    break
+                    
+            # Fallback check targeting deployment_ref if explicit namespace routing is missing
+            if not action_obj:
+                for (a_name, a_ns), a_obj in self.actions.items():
+                    if a_name == name and (self.config.deployment_ref in a_ns or not a_ns):
+                        action_obj = a_obj
+                        break
+            
+            if action_obj:
                 exec_node = action_obj.config.get("metadata", {}).get("execution_node", "global")
                 
                 if exec_node == "global" or exec_node == self.config.daq_id:
-                    self.logger.info("executing_action", extra={"res_name": name})
+                    self.logger.info("executing_action", extra={"res_name": name, "namespace": ns})
                     await action_obj.run()
                 else:
                     self.logger.debug(
                         "skipping_action_execution (Digital Twin mode)", 
                         extra={"res_name": name, "assigned_node": exec_node}
                     )
-                # -------------------------------------------
                 
             self.actions_buffer.task_done()
             

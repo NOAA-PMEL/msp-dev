@@ -933,35 +933,35 @@ class SamplingConditionsManager:
     #     self.sampling_conditions["conditions"][cond_name]["condition"] = condition_instance
 
     def load_condition(self, condition: dict):
-        """Helper to process definitions from either local files or Datastore API."""
+        """Helper to process definitions from either local files or Datastore API using a composite key."""
         if condition.get("kind") != "SamplingCondition":
             return
 
         cond_name = condition["metadata"]["name"]
+        cond_ns = condition.get("metadata", {}).get("sampling_namespace", "")
         
-        # 1. Check if condition already exists
-        existing_entry = self.sampling_conditions["conditions"].get(cond_name)
+        # Create the compound tuple key to completely isolate platform domains
+        composite_key = (cond_name, cond_ns)
+        
+        # 1. Check if condition already exists using the composite key lookup
+        existing_entry = self.sampling_conditions["conditions"].get(composite_key)
 
         if existing_entry:
-            # If the config hasn't changed at all, do nothing! 
-            # This handles 99% of the 60-second Datastore syncs effortlessly.
             if existing_entry.get("config") == condition:
                 return
             
-            # If config changed, gracefully shut down the old tasks before overwriting
             old_condition_instance = existing_entry.get("condition")
             if old_condition_instance:
                 old_condition_instance.shutdown()
         else:
             # Initialize dictionary for a brand-new condition
-            self.sampling_conditions["conditions"][cond_name] = {
+            self.sampling_conditions["conditions"][composite_key] = {
                 "config": None,
                 "event_buffer": getattr(self, "status_buffer", None),
                 "condition": None,
             }
             
-        # Update state with the new config
-        self.sampling_conditions["conditions"][cond_name]["config"] = condition
+        self.sampling_conditions["conditions"][composite_key]["config"] = condition
 
         # Map sources to targets
         for source_name, source in condition.get("sources", {}).items():
@@ -974,7 +974,7 @@ class SamplingConditionsManager:
                 
             source_variable = source["variable"]
             target_entry = {
-                "condition": cond_name,
+                "condition": composite_key, # FIXED: Pass the composite key tuple to routing targets
                 "source_name": source_name,
                 "source_variable": source_variable,
             }
@@ -982,17 +982,15 @@ class SamplingConditionsManager:
             if target_entry not in self.sampling_conditions["sources"][src_id]["targets"]:
                 self.sampling_conditions["sources"][src_id]["targets"].append(target_entry)
 
-        # Ensure status buffer exists if load_condition runs during sync loop
         if not getattr(self, "status_buffer", None):
             self.status_buffer = asyncio.Queue(maxsize=2000)
-            self.sampling_conditions["conditions"][cond_name]["event_buffer"] = self.status_buffer
+            self.sampling_conditions["conditions"][composite_key]["event_buffer"] = self.status_buffer
 
-        # Instantiate and assign the fresh condition
         condition_instance = SamplingCondition(
             config=condition,
             status_buffer=self.status_buffer,
         )
-        self.sampling_conditions["conditions"][cond_name]["condition"] = condition_instance
+        self.sampling_conditions["conditions"][composite_key]["condition"] = condition_instance
 
     # def open_http_client(self):
     #     # create a new client for each request
@@ -1150,7 +1148,14 @@ class SamplingConditionsManager:
                 condition_count = len(self.sampling_conditions["conditions"])
                 self.logger.debug("publish_local_definitions: STARTING LOOP", extra={"total_conditions": condition_count})
                 
-                for cond_name, cond_data in self.sampling_conditions["conditions"].items():
+                # Unpack the composite tuple key structure from memory
+                for composite_key, cond_data in self.sampling_conditions["conditions"].items():
+                    cond_name, cond_ns = composite_key
+                    
+                    # Ignore foreign configurations synchronized into memory
+                    if self.config.deployment_ref not in cond_ns and cond_ns != "":
+                        continue
+                        
                     config = cond_data["config"]
                     self.logger.debug(f"publish_local_definitions: processing condition '{cond_name}'", extra={"has_config": bool(config)})
                     
@@ -1409,68 +1414,43 @@ class SamplingConditionsManager:
     async def variableset_data_update(self, ce: CloudEvent):
 
         try:
-            
             self.logger.debug("variableset_data_update", extra={"ce": ce})
-            # get source_id
-            # src_id = "111::222::aaa"
-            # get target from dict and send source data to all databuffers
             src_id = ce["source"].split(".")[-1]
 
-            # --- ADD THIS CHECK ---
             if src_id not in self.sampling_conditions["sources"]:
                 self.logger.debug("variableset_data_update", extra={"mesg": f"Source {src_id} not mapped in conditions. Ignoring."})
                 return
-            # ----------------------
 
             data_map = dict()
 
-            # self.logger.debug("variableset_data_update", extra={"src_id": src_id, "sampling_conditions": self.sampling_conditions})
             for target in self.sampling_conditions["sources"][src_id]["targets"]:
-                # self.logger.debug("variableset_data_update", extra={"target": target})
-                cond_name = target["condition"]
-                # self.logger.debug("variableset_data_update", extra={"cond_name": cond_name})
-                if cond_name not in data_map:
-                    data_map[cond_name] = {"variables": dict()}
+                
+                # Extract the composite tuple key directly from the target reference map
+                cond_key = target["condition"] 
+                
+                if cond_key not in data_map:
+                    data_map[cond_key] = {"variables": dict()}
 
-                # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
-                condition = self.sampling_conditions["conditions"][cond_name]
-                # self.logger.debug("variableset_data_update", extra={"condition": condition})
+                condition = self.sampling_conditions["conditions"][cond_key]
                 dt = ce.data["variables"]["time"]
-
-                # if "time" not in data_map[cond_name]["variables"]:
-                #     data_map[cond_name]["variables"]["time"] = {"data": dt["data"]}
-
-                # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
 
                 if target["source_variable"] in ce.data["variables"]:
                     val = ce.data["variables"][target["source_variable"]]
-                    if target["source_name"] not in data_map[cond_name]["variables"]:
-                        data_map[cond_name]["variables"][target["source_name"]] = {
+                    if target["source_name"] not in data_map[cond_key]["variables"]:
+                        data_map[cond_key]["variables"][target["source_name"]] = {
                             "data": val
                         }
-            # self.logger.debug("variableset_data_update", extra={"data_map": data_map})
 
-            # once all condition data compiled, send all to condition for processing
-            for cond_name, cond_data in data_map.items():
+            # Once all condition data compiled, route to condition for processing via composite keys
+            for cond_key, cond_data in data_map.items():
                 cond_data["variables"]["time"] = dt
                 payload = {"condition_variables": cond_data["variables"]}
                 self.logger.debug("variableset_data_update", extra={"cond_payload": payload})
-                # db = self.sampling_conditions["conditions"][cond_name]["data_buffer"]
-                # self.logger.debug("variableset_data_update", extra={"data_buffer": db})
-                # await db.put(payload)
-                # self.logger.debug("variableset_data_update", extra={"db_q": db.qsize()})
-                await self.sampling_conditions["conditions"][cond_name]["condition"].update(payload)
-                # payload = {
-                #     "variables": {
-                #         "time": {"data": dt["data"]},
-                #         condition["source_name"]: {"data": val["data"]}
-                #     }
-                # }
-                # await condition["data_buffer"].put(payload)
+                
+                await self.sampling_conditions["conditions"][cond_key]["condition"].update(payload)
 
         except Exception as e:
-            self.logger.error("variableset_data_update", extra={"reason": e})
-        pass            
+            self.logger.error("variableset_data_update", extra={"reason": e})            
 
     async def handle_condition_request(self, ce: CloudEvent):
 

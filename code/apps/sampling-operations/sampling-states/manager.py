@@ -796,31 +796,36 @@ class SamplingStatesManager:
             return {}
         
     def load_state(self, state: dict):
-        """Helper to process definitions from either local files or Datastore API."""
+        """Helper to process definitions from either local files or Datastore API using a composite key."""
         if state.get("kind") != "SamplingState":
             return
             
         state_name = state["metadata"]["name"]
+        state_ns = state.get("metadata", {}).get("sampling_namespace", "")
+        
+        # Create the compound tuple key to completely isolate platform domains
+        composite_key = (state_name, state_ns)
         
         # Ensure status_buffer exists if loaded during sync loop
         if not getattr(self, "status_buffer", None):
             self.status_buffer = asyncio.Queue(maxsize=2000)
 
-        # STOP OLD TASKS BEFORE OVERWRITING
-        if state_name in self.sampling_states["states"]:
-            old_state = self.sampling_states["states"][state_name].get("state")
+        # STOP OLD TASKS BEFORE OVERWRITING (Using the composite key lookup)
+        if composite_key in self.sampling_states["states"]:
+            old_state = self.sampling_states["states"][composite_key].get("state")
             if old_state:
                 old_state.stop()
 
-        if state_name not in self.sampling_states["states"]:
-            self.sampling_states["states"][state_name] = {"config": None, "state": None}
+        if composite_key not in self.sampling_states["states"]:
+            self.sampling_states["states"][composite_key] = {"config": None, "state": None}
             
-        self.sampling_states["states"][state_name]["config"] = state
-        self.sampling_states["states"][state_name]["state"] = SamplingState(state, self.status_buffer)
+        self.sampling_states["states"][composite_key]["config"] = state
+        self.sampling_states["states"][composite_key]["state"] = SamplingState(state, self.status_buffer)
         
         # SUCCESS LOG: Explicit verification
         self.logger.info("state_instance_created", extra={
             "res_name": state_name, 
+            "namespace": state_ns,
             "req_count": len(state.get("requirements", []))
         })
         
@@ -833,8 +838,9 @@ class SamplingStatesManager:
             if req_name not in self.sampling_states["requirement_map"][req_kind]:
                 self.sampling_states["requirement_map"][req_kind][req_name] = []
                 
-            if state_name not in self.sampling_states["requirement_map"][req_kind][req_name]:
-                self.sampling_states["requirement_map"][req_kind][req_name].append(state_name)
+            # Map the composite key tuple to track cross-references cleanly
+            if composite_key not in self.sampling_states["requirement_map"][req_kind][req_name]:
+                self.sampling_states["requirement_map"][req_kind][req_name].append(composite_key)
 
     # def open_http_client(self):
     #     # create a new client for each request
@@ -962,7 +968,14 @@ class SamplingStatesManager:
         await asyncio.sleep(5)
         while True:
             try:
-                for state_name, state_data in self.sampling_states["states"].items():
+                # Unpack the composite tuple key structure from memory
+                for composite_key, state_data in self.sampling_states["states"].items():
+                    state_name, state_ns = composite_key
+                    
+                    # Only re-publish profiles that genuinely belong to our node namespace
+                    if self.config.deployment_ref not in state_ns and state_ns != "":
+                        continue
+                        
                     config = state_data["config"]
                     if not config: continue
                     
@@ -974,7 +987,7 @@ class SamplingStatesManager:
                     event["destpath"] = f"envds/{self.config.daq_id}/samplingstate-definition/registry/update"
                     await self.send_event(event)
             except Exception as e:
-                self.logger.error("publish_local_definitions", extra={"reason": e})
+                self.logger.error("publish_local_definitions", extra={"reason": str(e)})
             await asyncio.sleep(60)
 
     async def sync_sampling_definitions_loop(self):
@@ -1323,16 +1336,18 @@ class SamplingStatesManager:
 
             self.logger.debug("requirement_status_update mapped", extra={"mapped_status": mapped_status})
             
-            # Route to the appropriate states that rely on this requirement
+            # Route to the appropriate states that rely on this requirement using tuple lookups
             if req_kind in self.sampling_states.get("requirement_map", {}) and req_name in self.sampling_states["requirement_map"][req_kind]:
-                for state_name in self.sampling_states["requirement_map"][req_kind][req_name]:
-                    state = self.sampling_states["states"][state_name]["state"]
-                    await state.update(mapped_status)
+                for composite_key in self.sampling_states["requirement_map"][req_kind][req_name]:
+                    state_data = self.sampling_states["states"].get(composite_key)
+                    if state_data:
+                        state = state_data["state"]
+                        await state.update(mapped_status)
             else:
                 self.logger.debug("Requirement not tracked by any active state", extra={"req_name": req_name})
 
         except Exception as e:
-            self.logger.error("requirement_status_update", extra={"reason": str(e)})
+            self.logger.error("requirement_status_update error", extra={"reason": str(e)})
 
 async def shutdown():
     print("shutting down")
