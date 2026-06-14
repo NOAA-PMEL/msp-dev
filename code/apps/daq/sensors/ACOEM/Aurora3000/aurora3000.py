@@ -157,88 +157,86 @@ class Aurora3000(Sensor):
             cal_obj = self.settings.get_setting("calibration_routine")
             cal_req = str(cal_obj.get("requested", "none")).lower() if isinstance(cal_obj, dict) else "none"
 
-            # --- 1. SINGLE-STEP CALIBRATIONS ---
-            if cal_req != self.current_cal_routine and cal_req != "full_cal":
-                self.logger.info(f"Initiating Aurora 3000 calibration routine: {cal_req}")
+            # --- 1. TRIGGER NEW ROUTINE ---
+            if cal_req != self.current_cal_routine:
+                self.logger.info(f"Initiating calibration routine: {cal_req}")
                 
-                if cal_req == "span_cal_co2":
-                    await self.interface_send_data(data={"data": "**0J1\r"})
+                if cal_req == "span_cal_co2" or cal_req == "span_check":
+                    cmd = "**0J1\r" if cal_req == "span_cal_co2" else "**0J3\r"
+                    await self.interface_send_data(data={"data": cmd})
                     self.settings.set_setting("calibration_status", requested="spanning")
                     self.settings.set_actual("calibration_status", "spanning")
-                elif cal_req == "zero_cal":
-                    await self.interface_send_data(data={"data": "**0J2\r"})
-                    self.settings.set_setting("calibration_status", requested="zeroing")
-                    self.settings.set_actual("calibration_status", "zeroing")
-                elif cal_req == "span_check":
-                    await self.interface_send_data(data={"data": "**0J3\r"})
-                    self.settings.set_setting("calibration_status", requested="spanning")
-                    self.settings.set_actual("calibration_status", "spanning")
-                elif cal_req == "zero_check":
-                    await self.interface_send_data(data={"data": "**0J4\r"})
-                    self.settings.set_setting("calibration_status", requested="zeroing")
-                    self.settings.set_actual("calibration_status", "zeroing")
-                elif cal_req == "none":
-                    await self.interface_send_data(data={"data": "**0J0\r"})
-                    self.settings.set_setting("calibration_status", requested="none")
-                    self.settings.set_actual("calibration_status", "none")
-                    self.full_cal_step = "idle"  # Reset sequencer on manual abort
+                    self.full_cal_step = "wait_span_start"
                 
-                self.current_cal_routine = cal_req
-
-            # --- 2. FULL CALIBRATION SEQUENCER ---
-            elif cal_req == "full_cal":
-                # Start of sequence
-                if self.full_cal_step == "idle":
-                    self.logger.info("Starting Full Calibration: Phase 1 (Zero Calibration)")
+                elif cal_req == "zero_cal" or cal_req == "zero_check":
+                    cmd = "**0J2\r" if cal_req == "zero_cal" else "**0J4\r"
+                    await self.interface_send_data(data={"data": cmd})
+                    self.settings.set_setting("calibration_status", requested="zeroing")
+                    self.settings.set_actual("calibration_status", "zeroing")
+                    self.full_cal_step = "wait_zero_start"
+                
+                elif cal_req == "full_cal":
                     await self.interface_send_data(data={"data": "**0J2\r"})
                     self.settings.set_setting("calibration_status", requested="zeroing")
                     self.settings.set_actual("calibration_status", "zeroing")
                     self.full_cal_step = "wait_zero_start"
-                    self.current_cal_routine = cal_req
+                    
+                elif cal_req == "none":
+                    await self.interface_send_data(data={"data": "**0J0\r"})
+                    self.settings.set_setting("calibration_status", requested="none")
+                    self.settings.set_actual("calibration_status", "none")
+                    self.full_cal_step = "idle"
+                    
+                self.current_cal_routine = cal_req
 
-                # Wait for Aurora to acknowledge the Zero Cal state (2)
-                elif self.full_cal_step == "wait_zero_start" and self.current_major_state == 2:
+            # --- 2. STATE MACHINE PROGRESS ---
+            if self.current_cal_routine != "none":
+                
+                # Wait to enter ZERO state (2)
+                if self.full_cal_step == "wait_zero_start" and self.current_major_state == 2:
                     self.full_cal_step = "wait_zero_finish"
-
-                # Wait for Aurora to finish Zero Cal
-                elif self.full_cal_step == "wait_zero_finish":
-                    if self.current_major_state == 0:
-                        self.logger.info("Zero Calibration complete. Starting Phase 2 (Span Calibration)")
+                    
+                # Wait to finish ZERO state
+                elif self.full_cal_step == "wait_zero_finish" and self.current_major_state == 0:
+                    if self.current_cal_routine == "full_cal":
+                        self.logger.info("Zero complete. Starting Phase 2 (Span Calibration).")
                         await self.interface_send_data(data={"data": "**0J1\r"})
                         self.settings.set_setting("calibration_status", requested="spanning")
                         self.settings.set_actual("calibration_status", "spanning")
                         self.full_cal_step = "wait_span_start"
-                    elif self.current_major_state not in [0, 2]:
-                        self.logger.error(f"Zero calibration failed! Instrument returned major state: {self.current_major_state}")
-                        self.settings.set_setting("calibration_status", requested="error")
-                        self.settings.set_actual("calibration_status", "error")
-                        self.settings.set_setting("calibration_routine", requested="none")
-                        self.settings.set_actual("calibration_routine", "none")
-                        self.current_cal_routine = "none"
-                        self.full_cal_step = "idle"
-
-                # Wait for Aurora to acknowledge the Span Cal state (1)
-                elif self.full_cal_step == "wait_span_start" and self.current_major_state == 1:
-                    self.full_cal_step = "wait_span_finish"
-
-                # Wait for Aurora to finish Span Cal
-                elif self.full_cal_step == "wait_span_finish":
-                    if self.current_major_state == 0:
-                        self.logger.info("Full Calibration Sequence Complete.")
+                    else: 
+                        # Standalone zero cal or zero check finished
+                        self.logger.info("Zero Routine Complete.")
                         self.settings.set_setting("calibration_status", requested="success")
                         self.settings.set_actual("calibration_status", "success")
                         self.settings.set_setting("calibration_routine", requested="none")
                         self.settings.set_actual("calibration_routine", "none")
                         self.current_cal_routine = "none"
                         self.full_cal_step = "idle"
-                    elif self.current_major_state not in [0, 1]:
-                        self.logger.error(f"Span calibration failed! Instrument returned major state: {self.current_major_state}")
-                        self.settings.set_setting("calibration_status", requested="error")
-                        self.settings.set_actual("calibration_status", "error")
-                        self.settings.set_setting("calibration_routine", requested="none")
-                        self.settings.set_actual("calibration_routine", "none")
-                        self.current_cal_routine = "none"
-                        self.full_cal_step = "idle"
+
+                # Wait to enter SPAN state (1)
+                elif self.full_cal_step == "wait_span_start" and self.current_major_state == 1:
+                    self.full_cal_step = "wait_span_finish"
+
+                # Wait to finish SPAN state
+                elif self.full_cal_step == "wait_span_finish" and self.current_major_state == 0:
+                    self.logger.info("Span Routine Complete.")
+                    self.settings.set_setting("calibration_status", requested="success")
+                    self.settings.set_actual("calibration_status", "success")
+                    self.settings.set_setting("calibration_routine", requested="none")
+                    self.settings.set_actual("calibration_routine", "none")
+                    self.current_cal_routine = "none"
+                    self.full_cal_step = "idle"
+                    
+                # Catch Error States (e.g., if calibration math fails)
+                elif self.full_cal_step in ["wait_zero_finish", "wait_span_finish"] and self.current_major_state not in [0, 1, 2]:
+                    self.logger.error(f"Routine failed! Instrument returned error major state: {self.current_major_state}")
+                    self.settings.set_setting("calibration_status", requested="error")
+                    self.settings.set_actual("calibration_status", "error")
+                    self.settings.set_setting("calibration_routine", requested="none")
+                    self.settings.set_actual("calibration_routine", "none")
+                    self.current_cal_routine = "none"
+                    self.full_cal_step = "idle"
 
         except Exception as e:
             self.logger.error("manage_calibration error", extra={"error": str(e)})
@@ -340,23 +338,23 @@ class Aurora3000(Sensor):
                     except ValueError:
                         record["variables"][var_name]["data"] = "" if instvar.type in ("str", "char") else None
 
-            # --- CONTINUOUS TRACKING: Auto-reset calibration state ---
-            try:
-                major_state = record["variables"].get("major_state", {}).get("data")
-                if major_state is not None:
-                    self.current_major_state = int(major_state)
+            # # --- CONTINUOUS TRACKING: Auto-reset calibration state ---
+            # try:
+            #     major_state = record["variables"].get("major_state", {}).get("data")
+            #     if major_state is not None:
+            #         self.current_major_state = int(major_state)
 
-                # Reset single-step calibrations safely. 
-                # (We ignore "full_cal" here because the sequencer handles its own termination)
-                if self.current_major_state == 0 and self.current_cal_routine not in ["none", "full_cal"]:
-                    self.logger.info("Calibration sequence finished. Resetting UI to 'none'.")
-                    self.settings.set_setting("calibration_status", requested="success")
-                    self.settings.set_actual("calibration_status", "success")
-                    self.settings.set_setting("calibration_routine", requested="none")
-                    self.settings.set_actual("calibration_routine", "none")
-                    self.current_cal_routine = "none"
-            except (KeyError, TypeError):
-                pass
+            #     # Reset single-step calibrations safely. 
+            #     # (We ignore "full_cal" here because the sequencer handles its own termination)
+            #     if self.current_major_state == 0 and self.current_cal_routine not in ["none", "full_cal"]:
+            #         self.logger.info("Calibration sequence finished. Resetting UI to 'none'.")
+            #         self.settings.set_setting("calibration_status", requested="success")
+            #         self.settings.set_actual("calibration_status", "success")
+            #         self.settings.set_setting("calibration_routine", requested="none")
+            #         self.settings.set_actual("calibration_routine", "none")
+            #         self.current_cal_routine = "none"
+            # except (KeyError, TypeError):
+            #     pass
                 
             # Add status variable to UI updates
             if "calibration_status" in record["variables"]:

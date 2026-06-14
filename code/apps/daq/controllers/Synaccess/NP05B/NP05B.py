@@ -215,7 +215,7 @@ class NP05B(Controller):
                 record["variables"]["time"]["data"] = timestamp
 
             # Status payload is like "$A0,10101\r\n"
-            if "$A0," in tcp_data:
+            if "$A5," in tcp_data:
                 try:
                     init_status_data = tcp_data.split(',')[1]
                     status_data = init_status_data[:5]
