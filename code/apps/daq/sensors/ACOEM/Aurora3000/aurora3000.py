@@ -200,27 +200,45 @@ class Aurora3000(Sensor):
                 elif self.full_cal_step == "wait_zero_start" and self.current_major_state == 2:
                     self.full_cal_step = "wait_zero_finish"
 
-                # Wait for Aurora to finish Zero Cal and return to Normal (0)
-                elif self.full_cal_step == "wait_zero_finish" and self.current_major_state == 0:
-                    self.logger.info("Zero Calibration complete. Starting Phase 2 (Span Calibration)")
-                    await self.interface_send_data(data={"data": "**0J1\r"})
-                    self.settings.set_setting("calibration_status", requested="spanning")
-                    self.settings.set_actual("calibration_status", "spanning")
-                    self.full_cal_step = "wait_span_start"
+                # Wait for Aurora to finish Zero Cal
+                elif self.full_cal_step == "wait_zero_finish":
+                    if self.current_major_state == 0:
+                        self.logger.info("Zero Calibration complete. Starting Phase 2 (Span Calibration)")
+                        await self.interface_send_data(data={"data": "**0J1\r"})
+                        self.settings.set_setting("calibration_status", requested="spanning")
+                        self.settings.set_actual("calibration_status", "spanning")
+                        self.full_cal_step = "wait_span_start"
+                    elif self.current_major_state not in [0, 2]:
+                        self.logger.error(f"Zero calibration failed! Instrument returned major state: {self.current_major_state}")
+                        self.settings.set_setting("calibration_status", requested="error")
+                        self.settings.set_actual("calibration_status", "error")
+                        self.settings.set_setting("calibration_routine", requested="none")
+                        self.settings.set_actual("calibration_routine", "none")
+                        self.current_cal_routine = "none"
+                        self.full_cal_step = "idle"
 
                 # Wait for Aurora to acknowledge the Span Cal state (1)
                 elif self.full_cal_step == "wait_span_start" and self.current_major_state == 1:
                     self.full_cal_step = "wait_span_finish"
 
-                # Wait for Aurora to finish Span Cal and return to Normal (0)
-                elif self.full_cal_step == "wait_span_finish" and self.current_major_state == 0:
-                    self.logger.info("Full Calibration Sequence Complete.")
-                    self.settings.set_setting("calibration_status", requested="success")
-                    self.settings.set_actual("calibration_status", "success")
-                    self.settings.set_setting("calibration_routine", requested="none")
-                    self.settings.set_actual("calibration_routine", "none")
-                    self.current_cal_routine = "none"
-                    self.full_cal_step = "idle"
+                # Wait for Aurora to finish Span Cal
+                elif self.full_cal_step == "wait_span_finish":
+                    if self.current_major_state == 0:
+                        self.logger.info("Full Calibration Sequence Complete.")
+                        self.settings.set_setting("calibration_status", requested="success")
+                        self.settings.set_actual("calibration_status", "success")
+                        self.settings.set_setting("calibration_routine", requested="none")
+                        self.settings.set_actual("calibration_routine", "none")
+                        self.current_cal_routine = "none"
+                        self.full_cal_step = "idle"
+                    elif self.current_major_state not in [0, 1]:
+                        self.logger.error(f"Span calibration failed! Instrument returned major state: {self.current_major_state}")
+                        self.settings.set_setting("calibration_status", requested="error")
+                        self.settings.set_actual("calibration_status", "error")
+                        self.settings.set_setting("calibration_routine", requested="none")
+                        self.settings.set_actual("calibration_routine", "none")
+                        self.current_cal_routine = "none"
+                        self.full_cal_step = "idle"
 
         except Exception as e:
             self.logger.error("manage_calibration error", extra={"error": str(e)})
