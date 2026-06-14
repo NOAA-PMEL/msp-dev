@@ -106,9 +106,9 @@ class NP05B(Controller):
                     "port": {"data": client_port},
                     "device-interface-properties": {
                         "read-properties": {
-                                # "read-method": "readline",
-                                "read-method": "readuntil",
-                                "read-terminator": "\r",
+                                "read-method": "readline",
+                                # "read-method": "readuntil",
+                                # "read-terminator": "\r",
                                 "decode-errors": "strict",
                                 "send-method": "ascii",
                         }
@@ -222,7 +222,9 @@ class NP05B(Controller):
             if "$A0," in tcp_data:
                 try:
                     self.logger.debug("default_parse", extra={"tcp_data": tcp_data})
-                    init_status_data = tcp_data.split(',')[1].strip()
+                    
+                    # Split safely by picking up the text right after the match string
+                    init_status_data = tcp_data.split('$A0,')[1].strip()
                     status_data = init_status_data[:5]
                     self.logger.debug("default_parse", extra={"init_status_data": init_status_data, "status_data": status_data})
 
@@ -236,12 +238,12 @@ class NP05B(Controller):
                         outlet_num = i + 1
                         name = f"outlet_{outlet_num}_power"
                         
-                        # 1. Update the internal state (this triggers the settings/update MQTT message)
+                        # Update the internal state machine
                         if name in self.settings.get_settings():
                             self.logger.debug("default_parse", extra={"out_name": name, "actual": outlet_status})
                             self.settings.set_actual(name=name, actual=outlet_status)
                             
-                        # 2. Inject into the data record (only applies when metadata is included)
+                        # Inject into the data record
                         if name in record["variables"]:
                             record["variables"][name]["data"] = outlet_status
                             
@@ -280,31 +282,20 @@ class NP05B(Controller):
                         elif name in ["outlet_1_power", "outlet_2_power", "outlet_3_power", "outlet_4_power", "outlet_5_power"]:
 
                             if isinstance(target_val, str):
-                                # Safely catch dashboard strings
                                 target_val = 1 if target_val.lower() in ["on", "yes", "1", "true"] else 0
                             elif isinstance(target_val, bool):
                                 target_val = 1 if target_val else 0
                             elif isinstance(target_val, (int, float)):
-                                # Safely catch raw numbers
                                 target_val = 1 if target_val > 0 else 0
                             self.settings.set_requested(name, target_val)
 
                             outlet = self.metadata["variables"][name]["attributes"]["outlet"]["data"]
                             
-                            # --- CRITICAL FIX: Command Cooldown ---
-                            import time
+                            # 1. Dispatch the power write action
+                            await self.set_outlet_power(outlet, target_val)
                             
-                            # Initialize the tracking dictionary dynamically if it doesn't exist yet
-                            if not hasattr(self, "last_command_time"):
-                                self.last_command_time = {}
-                                
-                            current_time = time.time()
-                            last_time = self.last_command_time.get(name, 0)
-                            
-                            # Only fire the command if 2.5 seconds have passed since the last attempt
-                            if (current_time - last_time) > 2.5:
-                                await self.set_outlet_power(outlet, target_val)
-                                self.last_command_time[name] = current_time # Reset the timer for this specific outlet
+                            # 2. OPTIMISTIC UPDATE: Satisfy the framework loop immediately
+                            self.settings.set_actual(name, target_val)
 
                     except Exception as e:
                         self.logger.error("settings_check error", extra={"reason": str(e)})
