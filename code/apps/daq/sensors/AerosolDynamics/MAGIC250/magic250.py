@@ -33,6 +33,7 @@ class MAGIC250(Sensor):
             "case_T", "wick_sensor", "mod_T_sp", "humid_exit_dew_point",
             "abs_pressure", "flow", "log_interval", "corr_live_time",
             "meas_dead_time", "raw_counts", "dthr2_pctl", "status_hex",
+            "instrument_extra_1", "instrument_extra_2",
             "status_ascii", "magic_serial_number"
         ]
 

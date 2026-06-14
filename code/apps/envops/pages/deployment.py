@@ -276,7 +276,12 @@ def layout(deployment_id=None):
             # Health Nodes (Right)
             dbc.Col([
                 dbc.Card([
-                    dbc.CardHeader(html.H6(html.B("Fleet Operations Health"), className="mb-0 text-primary"), className="p-2 bg-white border-bottom-0"),
+                    dbc.CardHeader([
+                        html.H6(html.B("Fleet Operations Health"), className="mb-0 text-primary float-start mt-1"),
+                        dbc.Button([html.I(className="bi bi-diagram-3 me-1"), "View Dependency Tree"], 
+                                   id="btn-open-deps", size="sm", color="primary", outline=True, 
+                                   className="float-end fw-bold shadow-sm")
+                    ], className="p-2 bg-white border-bottom-0 clearfix"),
                     dbc.CardBody(id="ops-health-container", className="p-0 bg-white")
                 ], className="shadow-sm mb-4 border-0 h-100")
             ], lg=8, md=12)
