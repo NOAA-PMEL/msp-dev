@@ -108,7 +108,7 @@ class NP05B(Controller):
                         "read-properties": {
                                 # "read-method": "readline",
                                 "read-method": "readuntil",
-                                "read-terminator": ">",
+                                "read-terminator": "\r",
                                 "decode-errors": "strict",
                                 "send-method": "ascii",
                         }
