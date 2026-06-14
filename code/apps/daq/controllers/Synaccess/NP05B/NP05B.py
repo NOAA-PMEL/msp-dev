@@ -224,7 +224,7 @@ class NP05B(Controller):
                     self.logger.debug("default_parse", extra={"init_status_data": init_status_data, "status_data": status_data})
 
                     status_list = [int(digit) for digit in str(status_data)]
-                    self.loggerv("default_parse", extra={"status_list": status_list})
+                    self.logger.debug("default_parse", extra={"status_list": status_list})
                     
                     # Synaccess puts outlet 1 on the far right, so we reverse it
                     status_list.reverse() 
