@@ -108,108 +108,135 @@ def make_kpi_col(title, id_val, icon=None):
         ], className="bg-white border rounded shadow-sm p-2 h-100 d-flex flex-column justify-content-center align-items-center")
     ], style={"flex": "1 1 auto", "minWidth": "140px"})
 
-def build_live_dependency_tree(active_mode_name, health_store, host_id):
+def build_live_dependency_tree(health_store, host_id):
     """
-    Concurrently traverses declarative JSON definitions and cross-references 
-    them against the live browser state cache using exact code properties.
+    Traverses declarative JSON definitions and cross-references them against 
+    ALL deployments (Host + Sub-Nodes) in the live browser state cache.
     """
-    # 1. Fetch live metadata frameworks through existing data gateway
     systemmodes = fetch_registry_data("systemmode")
     samplingmodes = fetch_registry_data("samplingmode")
     samplingstates = fetch_registry_data("samplingstate")
     
-    # Map into O(1) tracking structures indexed by name
     sys_mode_map = {sm.get("metadata", {}).get("name"): sm for sm in systemmodes if sm.get("metadata", {}).get("name")}
     samp_mode_map = {sm.get("metadata", {}).get("name"): sm for sm in samplingmodes if sm.get("metadata", {}).get("name")}
     samp_state_map = {ss.get("metadata", {}).get("name"): ss for ss in samplingstates if ss.get("metadata", {}).get("name")}
     
-    # Isolate active deployment records for the designated host node
-    node_telemetry = health_store.get(host_id, {}) if health_store else {}
-    
-    # 2. FOOLPROOF ACTIVATION CHECKER (Replaces the placeholder logic using your real layout)
-    def check_if_uid_is_active(uid):
-        status_record = node_telemetry.get(uid)
-        if not status_record:
-            return False
-        state_block = status_record.get("state", {})
-        for k, v in state_block.items():
-            actual = str(v.get("actual", "") if isinstance(v, dict) else v).lower()
-            if actual in ["true", "active", "1", "yes"]:
-                return True
-        return False
+    if not health_store:
+        return html.P("No telemetry available to build dependency tree.", className="text-danger text-center my-4")
 
-    # 3. Graph Traversal Generation
-    tree_components = []
-    mode_config = sys_mode_map.get(active_mode_name)
+    # Sort so the Host Node appears first, followed by the payloads
+    sorted_deps = sorted(health_store.keys(), key=lambda x: 0 if x == host_id else 1)
+    accordion_items = []
     
-    if not mode_config:
-        return html.P(f"No declarative dependency schema registered for: '{active_mode_name}'", className="text-muted text-center my-4 fst-italic")
+    for dep_ref in sorted_deps:
+        node_telemetry = health_store.get(dep_ref, {})
         
-    requirements = mode_config.get("requirements", [])
-    if not requirements:
-        return html.P(f"System Mode '{active_mode_name.upper()}' has no upstream dependencies and operates standalone.", className="text-success text-center fw-bold my-4")
+        def check_if_uid_is_active(uid):
+            status_record = node_telemetry.get(uid)
+            if not status_record: return False
+            state_block = status_record.get("state", {})
+            for k, v in state_block.items():
+                actual = str(v.get("actual", "") if isinstance(v, dict) else v).lower()
+                if actual in ["true", "active", "1", "yes"]: return True
+            return False
 
-    for req in requirements:
-        if req.get("kind") == "SamplingMode":
-            sm_name = req.get("name")
-            sm_is_active = check_if_uid_is_active(sm_name)
-            
-            sm_badge_color = "success" if sm_is_active else "warning"
-            sm_status_label = "RUNNING" if sm_is_active else "PENDING / INACTIVE"
-            
-            # Walk down into the second tier: Sampling Modes -> Sampling States
-            nested_state_rows = []
-            sm_definition = samp_mode_map.get(sm_name)
-            
-            if sm_definition:
-                for sm_req in sm_definition.get("requirements", []):
-                    if sm_req.get("kind") == "SamplingState":
-                        ss_name = sm_req.get("name")
-                        ss_is_active = check_if_uid_is_active(ss_name)
-                        
-                        ss_badge_color = "success" if ss_is_active else "secondary"
-                        ss_status_label = "STABILIZED" if ss_is_active else "AWAITING STABILIZATION"
-                        
-                        # Walk down into the third tier: Sampling States -> Sampling Conditions
-                        nested_condition_items = []
-                        ss_definition = samp_state_map.get(ss_name)
-                        
-                        if ss_definition:
-                            for cond_req in ss_definition.get("requirements", []):
-                                if cond_req.get("kind") == "SamplingCondition":
-                                    cond_name = cond_req.get("name")
-                                    cond_is_met = check_if_uid_is_active(cond_name)
-                                    cond_icon = "bi-check-circle-fill text-success" if cond_is_met else "bi-dash-circle text-muted"
-                                    
-                                    nested_condition_items.append(html.Li([
-                                        html.I(className=f"bi {cond_icon} me-2"),
-                                        html.Span(f"Condition rule: {cond_name} ", className="font-monospace text-muted small"),
-                                        dbc.Badge("MET" if cond_is_met else "UNMET", color="success" if cond_is_met else "light", text_color="dark" if not cond_is_met else None, className="ms-1 small")
-                                    ], className="list-group-item ps-5 border-0 bg-transparent py-1"))
+        active_system_mode = "unknown"
+        active_sampling_modes = []
+        
+        # Determine exactly what is running on this specific node
+        for uid, status in node_telemetry.items():
+            app_group = status.get("id", {}).get("app_group", "")
+            if check_if_uid_is_active(uid):
+                if app_group == "system":
+                    active_system_mode = uid
+                elif app_group == "mode":
+                    active_sampling_modes.append(uid)
 
-                        nested_state_rows.append(html.Div([
-                            html.Li([
-                                html.I(className="bi bi-arrow-return-right me-2 opacity-50 text-primary"),
-                                html.Span(f"Prerequisite State: {ss_name.replace('_', ' ').title()}", className="fw-bold text-dark me-2 small"),
-                                dbc.Badge(ss_status_label, color=ss_badge_color, className="fw-bold", style={"fontSize": "0.6rem"})
-                            ], className="list-group-item ps-4 border-0 bg-transparent pb-1"),
-                            html.Ul(nested_condition_items, className="list-group list-group-flush") if nested_condition_items else ""
-                        ]))
+        is_host = (dep_ref == host_id)
+        node_label = "HOST NODE" if is_host else "SUB-NODE"
+        icon_class = "bi-hdd-network text-primary" if is_host else "bi-hdd text-info"
+        
+        # --- Graph Traversal for THIS Deployment ---
+        tree_components = []
+        mode_config = sys_mode_map.get(active_system_mode)
+        
+        # Gather all sampling modes to display (Required by SystemMode OR currently active via telemetry)
+        display_sm_names = set(active_sampling_modes)
+        if mode_config:
+            for req in mode_config.get("requirements", []):
+                if req.get("kind") == "SamplingMode":
+                    display_sm_names.add(req.get("name"))
+                    
+        if not display_sm_names:
+            tree_components.append(html.P(f"System Mode '{active_system_mode.upper()}' is operating standalone with no active or required sampling logic.", className="text-success text-center fw-bold my-3"))
+        else:
+            for sm_name in sorted(list(display_sm_names)):
+                sm_is_active = check_if_uid_is_active(sm_name)
+                sm_badge_color = "success" if sm_is_active else "warning"
+                sm_status_label = "RUNNING" if sm_is_active else "PENDING / INACTIVE"
+                
+                nested_state_rows = []
+                sm_definition = samp_mode_map.get(sm_name)
+                
+                if sm_definition:
+                    for sm_req in sm_definition.get("requirements", []):
+                        if sm_req.get("kind") == "SamplingState":
+                            ss_name = sm_req.get("name")
+                            ss_is_active = check_if_uid_is_active(ss_name)
+                            
+                            ss_badge_color = "success" if ss_is_active else "secondary"
+                            ss_status_label = "STABILIZED" if ss_is_active else "AWAITING STABILIZATION"
+                            
+                            nested_condition_items = []
+                            ss_definition = samp_state_map.get(ss_name)
+                            
+                            if ss_definition:
+                                for cond_req in ss_definition.get("requirements", []):
+                                    if cond_req.get("kind") == "SamplingCondition":
+                                        cond_name = cond_req.get("name")
+                                        cond_is_met = check_if_uid_is_active(cond_name)
+                                        cond_icon = "bi-check-circle-fill text-success" if cond_is_met else "bi-dash-circle text-muted"
+                                        
+                                        nested_condition_items.append(html.Li([
+                                            html.I(className=f"bi {cond_icon} me-2"),
+                                            html.Span(f"Condition rule: {cond_name} ", className="font-monospace text-muted small"),
+                                            dbc.Badge("MET" if cond_is_met else "UNMET", color="success" if cond_is_met else "light", text_color="dark" if not cond_is_met else None, className="ms-1 small")
+                                        ], className="list-group-item ps-5 border-0 bg-transparent py-1"))
 
-            # Append the visual card section block
-            tree_components.append(dbc.Card([
-                dbc.CardHeader([
-                    html.I(className="bi bi-toggles me-2 text-primary"),
-                    html.Span(sm_name.replace("_", " ").title(), className="fw-bold text-dark"),
-                    dbc.Badge(sm_status_label, color=sm_badge_color, className="float-end fw-bold mt-1 shadow-sm")
-                ], className="bg-white border-bottom-0 p-2"),
-                dbc.CardBody(
-                    html.Ul(nested_state_rows, className="list-group list-group-flush p-0 m-0"),
-                    className="p-1 bg-light border-top"
-                ) if nested_state_rows else ""
-            ], className="mb-3 shadow-sm border"))
+                            nested_state_rows.append(html.Div([
+                                html.Li([
+                                    html.I(className="bi bi-arrow-return-right me-2 opacity-50 text-primary"),
+                                    html.Span(f"Prerequisite State: {ss_name.replace('_', ' ').title()}", className="fw-bold text-dark me-2 small"),
+                                    dbc.Badge(ss_status_label, color=ss_badge_color, className="fw-bold", style={"fontSize": "0.6rem"})
+                                ], className="list-group-item ps-4 border-0 bg-transparent pb-1"),
+                                html.Ul(nested_condition_items, className="list-group list-group-flush") if nested_condition_items else ""
+                            ]))
 
-    return html.Div(tree_components)
+                tree_components.append(dbc.Card([
+                    dbc.CardHeader([
+                        html.I(className="bi bi-toggles me-2 text-primary"),
+                        html.Span(sm_name.replace("_", " ").title(), className="fw-bold text-dark"),
+                        dbc.Badge(sm_status_label, color=sm_badge_color, className="float-end fw-bold mt-1 shadow-sm")
+                    ], className="bg-white border-bottom-0 p-2"),
+                    dbc.CardBody(
+                        html.Ul(nested_state_rows, className="list-group list-group-flush p-0 m-0"),
+                        className="p-1 bg-light border-top"
+                    ) if nested_state_rows else ""
+                ], className="mb-2 shadow-sm border"))
+
+        # Build the accordion item for this deployment
+        accordion_items.append(dbc.AccordionItem(
+            tree_components,
+            title=html.Div([
+                html.I(className=f"bi {icon_class} me-2"),
+                html.Span(f"{node_label}: ", className="small fw-bold text-muted me-1"),
+                html.Span(dep_ref, className="font-monospace fw-bold text-dark me-3"),
+                dbc.Badge(f"MODE: {active_system_mode.upper()}", color="dark", className="shadow-sm")
+            ]),
+            item_id=dep_ref
+        ))
+        
+    return dbc.Accordion(accordion_items, start_collapsed=False, always_open=True, active_item=sorted_deps)
 
 def layout(deployment_id=None):
     if not deployment_id:
@@ -696,20 +723,8 @@ def handle_dependency_modal_toggle(open_clicks, close_clicks, is_open, health_st
         return False, dash.no_update, dash.no_update
         
     if triggered_component == "btn-open-deps":
-        # Scan host telemetry records to locate the active system mode configuration
-        active_system_mode = "unknown"
-        if health_store and host_id in health_store:
-            for uid, status in health_store[host_id].items():
-                if status.get("id", {}).get("app_group", "") == "system":
-                    state_block = status.get("state", {})
-                    for k, v in state_block.items():
-                        actual = str(v.get("actual", "") if isinstance(v, dict) else v).lower()
-                        if actual in ["true", "active", "1", "yes"]:
-                            active_system_mode = uid
-                            break
-                            
-        modal_title = f"System Lineage Dependency Mapping: Mode [{active_system_mode.upper()}]"
-        modal_rendered_content = build_live_dependency_tree(active_system_mode, health_store, host_id)
+        modal_title = html.Span([html.I(className="bi bi-diagram-3 me-2"), "Fleet System Lineage & Dependencies"])
+        modal_rendered_content = build_live_dependency_tree(health_store, host_id)
         
         return True, modal_title, modal_rendered_content
         
