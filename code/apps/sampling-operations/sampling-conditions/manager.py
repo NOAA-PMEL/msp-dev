@@ -248,20 +248,15 @@ class SamplingCondition:
                 if "condition_variables" in data:
                     variables = data["condition_variables"]
                     
-                    # --- FOOLPROOF EXTRACTION ---
-                    # Safely handles both flat strings and nested {"data": "..."} dicts
-                    time_var = variables.get("time", {})
-                    if isinstance(time_var, dict):
-                        dt = time_var.get("data")
-                    else:
-                        dt = time_var
+                    # STRICT SCHEMA: Extract time
+                    dt = variables["time"]["data"]
 
                     for varname, var in variables.items():
                         if varname == "time":
                             continue
                         if varname in self.source_map:
-                            # Safely extract the data payload whether it's a dict or scalar
-                            self.source_map[varname][dt] = var.get("data", var) if isinstance(var, dict) else var
+                            # STRICT SCHEMA: Store the entire CF-compliant dictionary
+                            self.source_map[varname][dt] = var
 
                     await self.evaluate_criteria(dt)
 
@@ -539,17 +534,22 @@ class SamplingCondition:
 
                         src_payload = self.source_map[src_name][timestamp]
                         
-                        # 2. DEAD-MAN CHECK: Did sampling-system explicitly declare it empty/offline?
-                        if src_payload is None or src_payload.get("data") is None:
-                            self.logger.info(
-                                "evaluate_criteria explicit null",
-                                extra={"reason": "sensor offline / missing data", "src_name": src_name, "ts": timestamp}
-                            )
+                        # 2. DEAD-MAN & SCHEMA CHECK
+                        if src_payload is None:
+                            self.logger.info("evaluate_criteria explicit null", extra={"src_name": src_name})
                             has_all_sources = False
                             break
                             
-                        # Data is present and valid
-                        data[src_name] = src_payload["data"]
+                        # --- FOOLPROOF PAYLOAD EXTRACTION ---
+                        # Handle both primitive floats (2200.0) and CF-dictionaries
+                        if isinstance(src_payload, dict):
+                            if src_payload.get("data") is None:
+                                has_all_sources = False
+                                break
+                            data[src_name] = src_payload["data"]
+                        else:
+                            data[src_name] = src_payload
+                        # ------------------------------------
 
                     # If the sensor was declared offline, the condition instantly fails
                     if not has_all_sources:
@@ -614,7 +614,7 @@ class SamplingCondition:
                 await self.status_buffer.put(status)
 
         except Exception as e:
-            self.logger.error("evaluate_criteria", extra={"reason": e})
+            self.logger.error("evaluate_criteria", extra={"reason": str(e)})
 
         # finally:
         #     # 6. Memory cleanup for stale data > 60 seconds old
@@ -1435,7 +1435,6 @@ class SamplingConditionsManager:
             src_id = ce["source"].split(".")[-1]
 
             if src_id not in self.sampling_conditions["sources"]:
-                self.logger.debug("variableset_data_update", extra={"mesg": f"Source {src_id} not mapped in conditions. Ignoring."})
                 return
 
             data_map = dict()
@@ -1448,28 +1447,19 @@ class SamplingConditionsManager:
 
                 condition = self.sampling_conditions["conditions"][cond_key]
                 
-                # Safe time extraction
-                time_val = ce.data["variables"]["time"]
-                dt = time_val["data"] if isinstance(time_val, dict) else time_val
+                # STRICT SCHEMA: Extract time
+                dt = ce.data["variables"]["time"]["data"]
 
                 if target["source_variable"] in ce.data["variables"]:
+                    # STRICT SCHEMA: Pass the entire CF-compliant dictionary untouched
                     val_block = ce.data["variables"][target["source_variable"]]
                     
                     if target["source_name"] not in data_map[cond_key]["variables"]:
-                        # --- SCHEMA ENFORCER ---
-                        # If the payload is already a compliant dictionary (which it should be), 
-                        # pass it completely untouched. If it's a raw scalar from a legacy 
-                        # service, wrap it in the 'data' tag to enforce the CF rule.
-                        if not isinstance(val_block, dict):
-                            val_block = {"data": val_block}
-                        # -----------------------
-
                         data_map[cond_key]["variables"][target["source_name"]] = val_block
 
             for cond_key, cond_data in data_map.items():
-                cond_data["variables"]["time"] = dt
+                cond_data["variables"]["time"] = {"data": dt} # Keep time in schema format too
                 payload = {"condition_variables": cond_data["variables"]}
-                self.logger.debug("variableset_data_update", extra={"cond_payload": payload})
                 
                 await self.sampling_conditions["conditions"][cond_key]["condition"].update(payload)
 
