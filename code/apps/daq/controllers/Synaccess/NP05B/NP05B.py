@@ -215,11 +215,16 @@ class NP05B(Controller):
                 record["variables"]["time"]["data"] = timestamp
 
             # Status payload is like "$A0,10101\r\n"
-            if "$A5," in tcp_data:
+            self.logger("default_parse", extra={"tcp_data": tcp_data})
+            if "$A0," in tcp_data:
                 try:
+                    self.logger("default_parse", extra={"tcp_data": tcp_data})
                     init_status_data = tcp_data.split(',')[1].strip()
                     status_data = init_status_data[:5]
+                    self.logger("default_parse", extra={"init_status_data": init_status_data, "status_data": status_data})
+
                     status_list = [int(digit) for digit in str(status_data)]
+                    self.logger("default_parse", extra={"status_list": status_list})
                     
                     # Synaccess puts outlet 1 on the far right, so we reverse it
                     status_list.reverse() 
@@ -227,8 +232,15 @@ class NP05B(Controller):
                     for i, outlet_status in enumerate(status_list):
                         outlet_num = i + 1
                         name = f"outlet_{outlet_num}_power"
+                        
+                        # 1. Update the internal state (this triggers the settings/update MQTT message)
                         if name in self.settings.get_settings():
+                            self.logger("default_parse", extra={"out_name": name, "actual": outlet_status})
                             self.settings.set_actual(name=name, actual=outlet_status)
+                            
+                        # 2. Inject into the data record (only applies when metadata is included)
+                        if name in record["variables"]:
+                            record["variables"][name]["data"] = outlet_status
                             
                     return record
                 except Exception as e:
