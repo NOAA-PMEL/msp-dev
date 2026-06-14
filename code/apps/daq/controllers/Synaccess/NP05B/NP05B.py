@@ -42,6 +42,7 @@ class NP05B(Controller):
         self.enable_task_list.append(self.recv_data_loop())
         self.enable_task_list.append(self.sampling_monitor())
         self.collecting = False
+        self.last_command_time = {}
 
     def configure(self):
         super(NP05B, self).configure()
@@ -132,7 +133,7 @@ class NP05B(Controller):
             message = {"data": get_status_cmd}
             self.logger.debug("get_status_loop", extra={"payload": message})
             await self.send_data(message)
-            await asyncio.sleep(time_to_next(5))
+            await asyncio.sleep(1)
 
     async def sampling_monitor(self):
         """Watchdog to manage active TCP polling loop based on UI state"""
@@ -287,7 +288,21 @@ class NP05B(Controller):
                             self.settings.set_requested(name, target_val)
 
                             outlet = self.metadata["variables"][name]["attributes"]["outlet"]["data"]
-                            await self.set_outlet_power(outlet, target_val)
+                            
+                            # --- CRITICAL FIX: Command Cooldown ---
+                            import time
+                            
+                            # Initialize the tracking dictionary dynamically if it doesn't exist yet
+                            if not hasattr(self, "last_command_time"):
+                                self.last_command_time = {}
+                                
+                            current_time = time.time()
+                            last_time = self.last_command_time.get(name, 0)
+                            
+                            # Only fire the command if 2.5 seconds have passed since the last attempt
+                            if (current_time - last_time) > 2.5:
+                                await self.set_outlet_power(outlet, target_val)
+                                self.last_command_time[name] = current_time # Reset the timer for this specific outlet
 
                     except Exception as e:
                         self.logger.error("settings_check error", extra={"reason": str(e)})
