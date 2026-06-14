@@ -29,22 +29,22 @@ class TAP(Sensor):
         self.last_active_spot = 1 
         self.last_cal_routine = "none"
         self.wf_ratios = [[1.0, 1.0, 1.0] for _ in range(8)]
+        self.state_file = "/app/state/tap_state.json"  # <-- ADDED
         
         # Internal tracking for absorption physics calculation
         self.last_I = {"red": None, "green": None, "blue": None}
         self.last_sample_vol = None
         self.last_spot_for_abs = None
 
-        # --- NEW: Boxcar Average Buffers for Absorption ---
+        # --- Boxcar Average Buffers for Absorption ---
         self.abs_boxcar_size = 60
         self.abs_buffers = {
             "red": deque(maxlen=self.abs_boxcar_size),
             "green": deque(maxlen=self.abs_boxcar_size),
             "blue": deque(maxlen=self.abs_boxcar_size)
         }
-        # --------------------------------------------------
 
-        # --- NEW: Calibration specific tracking ---
+        # --- Calibration specific tracking ---
         self.cal_buffer_size = 60
         self.cal_start_time = None
         self.cal_buffers = {
@@ -55,7 +55,6 @@ class TAP(Sensor):
             }
             for spot in range(1, 9)
         }
-        # ------------------------------------------
 
         try:            
             with open(self.sensor_definition_file, "r") as f:
@@ -113,20 +112,34 @@ class TAP(Sensor):
                 requested = conf["settings"][name]
             self.settings.set_setting(name, requested=requested)
 
-        # Extract defaults for persistent calibrations
-        cal_def = self.get_definition_by_variable_type(self.metadata, variable_type="calibration")
-        for name, cal in cal_def.get("variables", {}).items():
-            if name == "last_active_spot":
-                self.last_active_spot = cal["attributes"].get("default_value", {}).get("data", 1)
-            elif name == "last_calibrated_wf_ratios":
-                self.wf_ratios = cal["attributes"].get("default_value", {}).get("data", [[1.0]*3]*8)
-                
-            # Support framework-injected saved states
-            if "calibrations" in conf and name in conf["calibrations"]:
+        # --- NEW: Load from persistent volume first ---
+        state_loaded = False
+        if hasattr(self, 'state_file') and os.path.exists(self.state_file):
+            try:
+                with open(self.state_file, "r") as f:
+                    saved_state = json.load(f)
+                    self.last_active_spot = saved_state.get("last_active_spot", 1)
+                    self.wf_ratios = saved_state.get("last_calibrated_wf_ratios", [[1.0]*3]*8)
+                    self.logger.info("Loaded TAP persistent state from disk.")
+                    state_loaded = True
+            except Exception as e:
+                self.logger.error("Failed to load state file", extra={"error": str(e)})
+
+        # Extract defaults for persistent calibrations if no save file exists
+        if not state_loaded:
+            cal_def = self.get_definition_by_variable_type(self.metadata, variable_type="calibration")
+            for name, cal in cal_def.get("variables", {}).items():
                 if name == "last_active_spot":
-                    self.last_active_spot = conf["calibrations"][name]
+                    self.last_active_spot = cal["attributes"].get("default_value", {}).get("data", 1)
                 elif name == "last_calibrated_wf_ratios":
-                    self.wf_ratios = conf["calibrations"][name]
+                    self.wf_ratios = cal["attributes"].get("default_value", {}).get("data", [[1.0]*3]*8)
+                    
+                # Support framework-injected saved states
+                if "calibrations" in conf and name in conf["calibrations"]:
+                    if name == "last_active_spot":
+                        self.last_active_spot = conf["calibrations"][name]
+                    elif name == "last_calibrated_wf_ratios":
+                        self.wf_ratios = conf["calibrations"][name]
 
         meta = DeviceMetadata(
             attributes=self.metadata["attributes"],
@@ -152,6 +165,21 @@ class TAP(Sensor):
         if "interfaces" in conf:
             for name, iface in conf["interfaces"].items():
                 self.add_interface(name, iface)
+
+    def save_state(self):
+        """Dumps current spot and calibration ratios to the persistent volume."""
+        try:
+            state_data = {
+                "last_active_spot": self.last_active_spot,
+                "last_calibrated_wf_ratios": self.wf_ratios
+            }
+            # Ensure the directory exists just in case
+            os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
+            with open(self.state_file, "w") as f:
+                json.dump(state_data, f)
+            self.logger.debug(f"Saved persistent state to {self.state_file}")
+        except Exception as e:
+            self.logger.error("Failed to save state", extra={"error": str(e)})
 
     async def handle_interface_data(self, message: CloudEvent):
         await super(TAP, self).handle_interface_data(message)
@@ -293,6 +321,9 @@ class TAP(Sensor):
                                 self.logger.debug("[CAL DEBUG] Phase 2: STABILITY ACHIEVED! Saving ratios.")
                                 self.wf_ratios = new_wf_ratios
                                 
+                                # --- NEW: SAVE TO DISK ---
+                                self.save_state()
+                                
                                 self.settings.set_setting("calibration_status", requested="success")
                                 self.settings.set_actual("calibration_status", "success")
                                 self.settings.set_setting("calibration_routine", requested="none")
@@ -314,6 +345,7 @@ class TAP(Sensor):
                 elif self.last_cal_routine == "white_filter" and current_cal != "white_filter":
                     self.logger.debug("[CAL DEBUG] Phase 4: Calibration closed. Sending spot=1 command.")
                     self.last_active_spot = 1
+                    self.save_state() # Save spot change
                     self.settings.set_setting("set_active_spot", requested=0)
                     self.settings.set_actual("set_active_spot", 0)
 
@@ -422,7 +454,7 @@ class TAP(Sensor):
                     except (ValueError, struct.error):
                         record["variables"][var_name]["data"] = None
 
-            # --- NEW: Siphon data into calibration buffers if routine is active ---
+            # --- Siphon data into calibration buffers if routine is active ---
             if self.last_cal_routine == "white_filter":
                 for spot in range(1, 9):
                     ref_ch = 9 if spot % 2 != 0 else 0
@@ -499,7 +531,10 @@ class TAP(Sensor):
                         self.last_I = I_curr
                         self.last_spot_for_abs = sample_ch
                         
-                        # --- NEW: Clear boxcar buffers on spot change ---
+                        # --- NEW: Save state when the spot physically changes ---
+                        self.save_state()
+                        
+                        # Clear boxcar buffers on spot change
                         for color in ["red", "green", "blue"]:
                             self.abs_buffers[color].clear()
                             record["variables"][f"{color}_absorption"]["data"] = None
@@ -525,7 +560,7 @@ class TAP(Sensor):
                                     
                                     raw_abs = sigma_ap * 1e6
                                     
-                                    # --- NEW: Apply Boxcar Average ---
+                                    # Apply Boxcar Average
                                     self.abs_buffers[color].append(raw_abs)
                                     smoothed_abs = statistics.mean(self.abs_buffers[color])
                                     record["variables"][f"{color}_absorption"]["data"] = round(smoothed_abs, 4)
