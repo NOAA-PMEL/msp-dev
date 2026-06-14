@@ -107,8 +107,8 @@ class NP05B(Controller):
                     "device-interface-properties": {
                         "read-properties": {
                                 # "read-method": "readline",
-                                "read-method": "read_until",
-                                "read-until-delimiter": ">",
+                                "read-method": "readuntil",
+                                "read-terminator": ">",
                                 "decode-errors": "strict",
                                 "send-method": "ascii",
                         }
