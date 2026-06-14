@@ -217,7 +217,7 @@ class NP05B(Controller):
             # Status payload is like "$A0,10101\r\n"
             if "$A5," in tcp_data:
                 try:
-                    init_status_data = tcp_data.split(',')[1]
+                    init_status_data = tcp_data.split(',')[1].strip()
                     status_data = init_status_data[:5]
                     status_list = [int(digit) for digit in str(status_data)]
                     
