@@ -243,6 +243,14 @@ class SamplingModesManager:
             name = cfg["metadata"]["name"]
             ns = cfg.get("metadata", {}).get("sampling_namespace", "")
             
+            # --- THE RESTORED REF EXTRACTION ---
+            # Automatically parse deployment_ref from the namespace string if currently unconfigured
+            if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+                if "deploy.pmel." in ns:
+                    self.config.deployment_ref = ns.split("deploy.pmel.")[-1].split("_in_")[0]
+                    self.logger.info(f"Auto-configured deployment_ref from loaded mode namespace: {self.config.deployment_ref}")
+            # -----------------------------------
+
             # Create the compound tuple key
             composite_key = (name, ns)
             
@@ -260,6 +268,14 @@ class SamplingModesManager:
         try:
             name = cfg["metadata"]["name"]
             ns = cfg.get("metadata", {}).get("sampling_namespace", "")
+            
+            # --- THE RESTORED REF EXTRACTION ---
+            # Guard lookup in case the actions configuration manifest processes first
+            if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+                if "deploy.pmel." in ns:
+                    self.config.deployment_ref = ns.split("deploy.pmel.")[-1].split("_in_")[0]
+                    self.logger.info(f"Auto-configured deployment_ref from loaded action namespace: {self.config.deployment_ref}")
+            # -----------------------------------
             
             # Create the compound tuple key
             composite_key = (name, ns)

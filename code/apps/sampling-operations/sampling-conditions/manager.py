@@ -940,6 +940,14 @@ class SamplingConditionsManager:
         cond_name = condition["metadata"]["name"]
         cond_ns = condition.get("metadata", {}).get("sampling_namespace", "")
         
+        # --- THE RESTORED REF EXTRACTION ---
+        # Automatically extract deployment_ref from the namespace string if currently unconfigured
+        if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+            if "deploy.pmel." in cond_ns:
+                self.config.deployment_ref = cond_ns.split("deploy.pmel.")[-1].split("_in_")[0]
+                self.logger.info(f"Auto-configured deployment_ref from loaded condition namespace: {self.config.deployment_ref}")
+        # -----------------------------------
+        
         # Create the compound tuple key to completely isolate platform domains
         composite_key = (cond_name, cond_ns)
         
@@ -1416,29 +1424,19 @@ class SamplingConditionsManager:
         try:
             self.logger.debug("variableset_data_update", extra={"ce": ce})
             
-            # --- FIXED: Dynamically extract tracking metadata out of envds event attributes ---
-            attrs = ce.data.get("attributes", {})
-            vm_name = attrs.get("variablemap", {}).get("data")
-            vs_name = attrs.get("variableset", {}).get("data")
-
-            if not vm_name or not vs_name:
-                self.logger.warning("Inbound telemetry CloudEvent missing variablemap or variableset tracking metadata.")
-                return
-
-            # Reconstruct the exact compound identifier string to match load_condition
-            src_id = f"{vm_name}::{vs_name}"
+            # REVERT BACK TO THIS: This is 100% correct for variableset data streams
+            src_id = ce["source"].split(".")[-1]
 
             if src_id not in self.sampling_conditions["sources"]:
                 self.logger.debug("variableset_data_update", extra={"mesg": f"Source {src_id} not mapped in conditions. Ignoring."})
                 return
-            # ----------------------------------------------------------------------------------
 
             data_map = dict()
 
             for target in self.sampling_conditions["sources"][src_id]["targets"]:
                 
                 # Extract the composite tuple key directly from the target reference map
-                cond_key = target["condition"]
+                cond_key = target["condition"] 
                 
                 if cond_key not in data_map:
                     data_map[cond_key] = {"variables": dict()}
@@ -1462,7 +1460,7 @@ class SamplingConditionsManager:
                 await self.sampling_conditions["conditions"][cond_key]["condition"].update(payload)
 
         except Exception as e:
-            self.logger.error("variableset_data_update", extra={"reason": e})           
+            self.logger.error("variableset_data_update", extra={"reason": e})          
 
     async def handle_condition_request(self, ce: CloudEvent):
 

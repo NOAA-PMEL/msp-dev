@@ -803,6 +803,14 @@ class SamplingStatesManager:
         state_name = state["metadata"]["name"]
         state_ns = state.get("metadata", {}).get("sampling_namespace", "")
         
+        # --- THE RESTORED REF EXTRACTION ---
+        # Automatically extract deployment_ref from the namespace string if currently unconfigured
+        if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+            if "deploy.pmel." in state_ns:
+                self.config.deployment_ref = state_ns.split("deploy.pmel.")[-1].split("_in_")[0]
+                self.logger.info(f"Auto-configured deployment_ref from loaded state namespace: {self.config.deployment_ref}")
+        # -----------------------------------
+        
         # Create the compound tuple key to completely isolate platform domains
         composite_key = (state_name, state_ns)
         
