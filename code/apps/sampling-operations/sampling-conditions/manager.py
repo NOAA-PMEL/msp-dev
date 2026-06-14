@@ -1415,18 +1415,30 @@ class SamplingConditionsManager:
 
         try:
             self.logger.debug("variableset_data_update", extra={"ce": ce})
-            src_id = ce["source"].split(".")[-1]
+            
+            # --- FIXED: Dynamically extract tracking metadata out of envds event attributes ---
+            attrs = ce.data.get("attributes", {})
+            vm_name = attrs.get("variablemap", {}).get("data")
+            vs_name = attrs.get("variableset", {}).get("data")
+
+            if not vm_name or not vs_name:
+                self.logger.warning("Inbound telemetry CloudEvent missing variablemap or variableset tracking metadata.")
+                return
+
+            # Reconstruct the exact compound identifier string to match load_condition
+            src_id = f"{vm_name}::{vs_name}"
 
             if src_id not in self.sampling_conditions["sources"]:
                 self.logger.debug("variableset_data_update", extra={"mesg": f"Source {src_id} not mapped in conditions. Ignoring."})
                 return
+            # ----------------------------------------------------------------------------------
 
             data_map = dict()
 
             for target in self.sampling_conditions["sources"][src_id]["targets"]:
                 
                 # Extract the composite tuple key directly from the target reference map
-                cond_key = target["condition"] 
+                cond_key = target["condition"]
                 
                 if cond_key not in data_map:
                     data_map[cond_key] = {"variables": dict()}
@@ -1450,7 +1462,7 @@ class SamplingConditionsManager:
                 await self.sampling_conditions["conditions"][cond_key]["condition"].update(payload)
 
         except Exception as e:
-            self.logger.error("variableset_data_update", extra={"reason": e})            
+            self.logger.error("variableset_data_update", extra={"reason": e})           
 
     async def handle_condition_request(self, ce: CloudEvent):
 
