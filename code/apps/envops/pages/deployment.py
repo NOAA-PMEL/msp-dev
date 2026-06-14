@@ -32,24 +32,54 @@ ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
 def fetch_registry_data(resource_type: str):
+    """Fetches definitions from the Datastore with extensive debugging logs."""
     url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
     docs = []
+    seen_uids = set()
+    
+    print(f"\n========== DEBUG: FETCHING {resource_type.upper()} ==========")
+    
     try:
         timeout = httpx.Timeout(10.0)
         id_response = httpx.get(url, timeout=timeout)
+        
         if id_response.status_code == 200:
-            ids = id_response.json().get("results", [])
+            raw_ids = id_response.json().get("results", [])
+            ids = set(raw_ids)
+            
+            print(f"RAW IDs Returned ({len(raw_ids)} total, {len(ids)} unique): {raw_ids}")
+            
             for doc_id in ids:
-                if doc_id:
-                    doc_url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
-                    doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
-                    if doc_response.status_code == 200:
-                        doc_results = doc_response.json().get("results", [])
-                        if doc_results: 
-                            # ---> THE FIX: Keep ALL versions of the mode, don't throw them away! <---
-                            docs.extend(doc_results)
+                if not doc_id: continue
+                
+                doc_url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
+                doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
+                
+                if doc_response.status_code == 200:
+                    doc_results = doc_response.json().get("results", [])
+                    print(f"  -> Fetching ID '{doc_id}': Found {len(doc_results)} document bodies.")
+                    
+                    for i, d in enumerate(doc_results):
+                        name = d.get("metadata", {}).get("name", "unknown")
+                        ns = d.get("metadata", {}).get("sampling_namespace", "unknown")
+                        uid = f"{name}::{ns}"
+                        
+                        if uid not in seen_uids:
+                            seen_uids.add(uid)
+                            docs.append(d)
+                            print(f"    [+] KEPT: {uid}")
+                        else:
+                            print(f"    [-] SKIPPED (Duplicate in memory): {uid}")
+                else:
+                    print(f"  -> Failed to fetch body for '{doc_id}', status: {doc_response.status_code}")
+        else:
+            print(f"Failed to fetch IDs, status: {id_response.status_code}")
+            
     except Exception as e:
+        print(f"EXCEPTION fetching {resource_type}: {e}")
         L.error(f"Failed to fetch {resource_type} definitions: {e}")
+        
+    print(f"========== END DEBUG: {resource_type.upper()} (Total returned to UI: {len(docs)}) ==========\n")
     return docs
 
 def get_deployment_bundle(host_id):
