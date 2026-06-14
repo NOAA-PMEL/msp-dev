@@ -3190,6 +3190,17 @@ class SamplingSystem:
 
     #     return
 
+    def normalize_unit_string(self, unit_str: str) -> str:
+        """
+        Converts UDUNITS/CF style unit exponents (like cm3 min-1 or W m-2)
+        into Pint-compatible explicit exponent formats (cm**3 min**-1)
+        to prevent the parser from interpreting dashes as subtraction.
+        """
+        if not unit_str or not isinstance(unit_str, str):
+            return unit_str
+        import re
+        return re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
+    
     async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict, data_buffer: dict = None):
         map_type = "direct"
         try:
@@ -3208,8 +3219,12 @@ class SamplingSystem:
                 
                 if static_array and target_unit and native_unit and target_unit != native_unit:
                     try:
-                        data_quantity = ureg.Quantity(static_array, native_unit)
-                        converted = data_quantity.to(target_unit).magnitude
+                        # FIXED: Normalize unit expressions to shield them from pint subtraction bugs
+                        norm_native = self.normalize_unit_string(native_unit)
+                        norm_target = self.normalize_unit_string(target_unit)
+                        
+                        data_quantity = ureg.Quantity(static_array, norm_native)
+                        converted = data_quantity.to(norm_target).magnitude
                         
                         if isinstance(static_array, list):
                             if hasattr(converted, "tolist"):
@@ -3268,7 +3283,7 @@ class SamplingSystem:
                         age = (target_dt - cached_dt).total_seconds()
                         
                         if age <= max_age_seconds:
-                            val = cached_record["val"] # Note: This was already converted when it entered the cache!
+                            val = cached_record["val"] 
                         else:
                             val = "" if v_type in ["string", "str", "char"] else None
                     except Exception as e:
@@ -3310,8 +3325,12 @@ class SamplingSystem:
                     
                     if target_unit and native_unit and target_unit != native_unit:
                         try:
-                            data_quantity = ureg.Quantity(val, native_unit)
-                            converted = data_quantity.to(target_unit).magnitude
+                            # FIXED: Clean native and target strings before handing to Pint Quantity bindings
+                            norm_native = self.normalize_unit_string(native_unit)
+                            norm_target = self.normalize_unit_string(target_unit)
+                            
+                            data_quantity = ureg.Quantity(val, norm_native)
+                            converted = data_quantity.to(norm_target).magnitude
                             
                             if isinstance(val, list):
                                 if hasattr(converted, "tolist"):
@@ -4032,15 +4051,15 @@ class SamplingSystem:
 
                 # Tier Routing: Decide if we should publish THIS variableset right now
                 if update_type == "direct" and has_calculated:
-                    self.logger.error(f"ROUTING: Skipping {vs_name} (Waiting for Tier 2)")
+                    self.logger.debug(f"ROUTING: Skipping {vs_name} (Waiting for Tier 2)")
                     continue 
                 if update_type == "calculated" and not has_calculated:
-                    self.logger.error(f"ROUTING: Skipping {vs_name} (Already sent in Tier 1)")
+                    self.logger.debug(f"ROUTING: Skipping {vs_name} (Already sent in Tier 1)")
                     continue 
                 
                 # Process Calculations
                 for v_name in calc_vars:
-                    self.logger.error(f"ROUTING: Sending {v_name} to calculation method")
+                    self.logger.debug(f"ROUTING: Sending {v_name} to calculation method")
                     try:
                         await self.update_calculated_variable_by_time_index(
                             variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
