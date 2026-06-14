@@ -229,27 +229,31 @@ class SystemModesManager:
             return {}
 
     def load_mode(self, cfg):
-        """Processes a definition and instantiates a SystemMode object."""
+        """Processes a definition and instantiates a SystemMode object using a composite key."""
         if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)
         if self.transitions_buffer is None: self.transitions_buffer = asyncio.Queue(maxsize=2000)
         
         try:
             name = cfg["metadata"]["name"]
+            ns = cfg.get("metadata", {}).get("sampling_namespace", "")
+            
+            # Create the compound tuple key to prevent namespace clashes
+            composite_key = (name, ns)
             
             # PREVENT TASK LEAKS: Stop the old instance if it exists
-            if name in self.modes:
-                self.modes[name].stop()
+            if composite_key in self.modes:
+                self.modes[composite_key].stop()
 
-            self.modes[name] = SystemMode(cfg, self.status_buffer, self.transitions_buffer)
+            self.modes[composite_key] = SystemMode(cfg, self.status_buffer, self.transitions_buffer)
             
-            # ---> THE FIX: Restore active state if this mode was already running <---
-            if self.active_mode == name:
-                self.modes[name].active = True
-            # ------------------------------------------------------------------------
+            # Restore active state if this specific node mode was already running
+            if self.active_mode == name and (self.config.deployment_ref in ns or not self.config.deployment_ref):
+                self.modes[composite_key].active = True
 
             # SUCCESS LOG: Explicitly confirms the definition is now working in memory
             self.logger.info("mode_instance_created", extra={
                 "res_name": name, 
+                "namespace": ns,
                 "req_count": len(cfg.get("requirements", [])),
                 "trans_count": len(cfg.get("transitions", {}))
             })
@@ -307,22 +311,35 @@ class SystemModesManager:
 
     async def activate_system_mode(self, name):
         """Switches the active macro-mode and commands subordinate SamplingModes."""
-        if name not in self.modes or name == self.active_mode: return
+        # Helper to find a composite key tuple by its simple string name, prioritizing local node
+        def find_mode_by_string(target_name):
+            for (m_name, m_ns), m_obj in self.modes.items():
+                if m_name == target_name and self.config.deployment_ref in m_ns:
+                    return (m_name, m_ns), m_obj
+            for (m_name, m_ns), m_obj in self.modes.items():
+                if m_name == target_name:
+                    return (m_name, m_ns), m_obj
+            return None, None
+
+        target_key, target_mode = find_mode_by_string(name)
+        if not target_mode or name == self.active_mode: return
         
         # 1. Deactivate current mode and command its SamplingModes to stop
         if self.active_mode: 
-            self.modes[self.active_mode].active = False
-            for req in self.modes[self.active_mode].config.get("requirements", []):
-                if req.get("kind") == "SamplingMode":
-                    await self.send_activation_request(req.get("name"), False)
+            _, current_mode = find_mode_by_string(self.active_mode)
+            if current_mode:
+                current_mode.active = False
+                for req in current_mode.config.get("requirements", []):
+                    if req.get("kind") == "SamplingMode":
+                        await self.send_activation_request(req.get("name"), False)
                     
         # 2. Activate new mode
         self.active_mode = name
-        self.modes[name].active = True
+        target_mode.active = True
         self.logger.info("system_mode_activated", extra={"mode": name})
         
         # 3. Command new subordinate SamplingModes to start
-        for req in self.modes[name].config.get("requirements", []):
+        for req in target_mode.config.get("requirements", []):
             if req.get("kind") == "SamplingMode":
                 await self.send_activation_request(req.get("name"), True)
 
@@ -359,22 +376,23 @@ class SystemModesManager:
             self.transitions_buffer.task_done()
 
     async def publish_local_definitions(self):
+        """Publishes only local overlay files to the database, leaving synchronized profiles intact."""
         await asyncio.sleep(5)
         while True:
             try:
-                for obj in self.modes.values():
-                    # Strip the suffix so Datastore doesn't double it
-                    event = SamplingEvent.create_definition_registry_update(
-                        resource="systemmode",
-                        source=f"envds.{self.config.daq_id}.system-modes",
-                        data={"systemmode": obj.config}
-                    )
-                    
-                    destpath = f"envds/{self.config.daq_id}/systemmode/registry/update"
-                    event["destpath"] = destpath
-                    
-                    # FIX: Must use HTTP Knative Broker, NOT MQTT, so the Trigger routes it to Datastore!
-                    await self.send_event(event)
+                for (name, ns), obj in self.modes.items():
+                    # Only re-publish profiles that genuinely belong to our node namespace
+                    if self.config.deployment_ref in ns or not self.config.deployment_ref:
+                        event = SamplingEvent.create_definition_registry_update(
+                            resource="systemmode",
+                            source=f"envds.{self.config.daq_id}.system-modes",
+                            data={"systemmode": obj.config}
+                        )
+                        
+                        destpath = f"envds/{self.config.daq_id}/systemmode/registry/update"
+                        event["destpath"] = destpath
+                        
+                        await self.send_event(event)
                     
             except Exception as e: 
                 self.logger.error("publish_failed", extra={"reason": str(e)})
