@@ -135,6 +135,11 @@ class SamplingEvent(envdsEvent):
     def create_dataset_generate_request(source: str, data: dict = {}, extra_header: dict = None):
         return SamplingEvent.create(type=et.dataset_generate_request(), source=source, data=data, extra_header=extra_header)
     
+    @staticmethod
+    def create_operations_log(source: str, data: dict = {}, extra_header: dict = None):
+        """Assembles a standardized operational log CloudEvent."""
+        return SamplingEvent.create(type="envds.operations.log", source=source, data=data, extra_header=extra_header)
+    
     # @staticmethod
     # def create_interface_connect_request(source: str, data: dict = {}, extra_header: dict = None):
     #     return DAQEvent.create(type=et.interface_connect_request(), source=source, data=data, extra_header=extra_header)
