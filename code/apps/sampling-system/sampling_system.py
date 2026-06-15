@@ -3166,7 +3166,7 @@ class SamplingSystem:
             target_time = time_index["index_ready"]
             var_record = variableset_record["variables"][variable_name]
 
-            # --- THE FIX: Coordinate Fast-Path ---
+            # --- Coordinate Fast-Path ---
             attr_var_type = var_record.get("attributes", {}).get("variable_type", {}).get("data", "")
             if attr_var_type == "coordinate":
                 static_array = var_record.get("attributes", {}).get("static_data", {}).get("data", [])
@@ -3192,13 +3192,11 @@ class SamplingSystem:
                             static_array = round(float(converted), 3)
                     except Exception as e:
                         self.logger.error("Unit conversion failed for coordinate", extra={"variable": variable_name, "reason": str(e)})
-                # --------------------------------------------
 
                 # Instantly yield the static array we hydrated earlier and exit
                 variableset_record["variables"][variable_name]["data"] = static_array
-                self.logger.debug(f"EVALUATED [COORDINATE]: {variableset_name}::{variable_name} = {static_array}")
+                self.logger.debug(f"EVALUATED [COORDINATE]: Clock={get_datetime_string()} BinTime={target_time} Var='{variableset_name}::{variable_name}' = {static_array}")
                 return
-            # -------------------------------------
 
             if data_buffer is not None:
                 indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
@@ -3274,37 +3272,37 @@ class SamplingSystem:
                             else:
                                 val = round(sum(indexed_data) / len(indexed_data), 3)
 
-                # --- UNIT CONVERSION LOGIC ---
-                if val is not None and isinstance(val, (int, float, list)):
-                    target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
-                    native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
-                    
-                    if target_unit and native_unit and target_unit != native_unit:
-                        try:
-                            norm_native = self.normalize_unit_string(native_unit)
-                            norm_target = self.normalize_unit_string(target_unit)
-                            
-                            data_quantity = ureg.Quantity(val, norm_native)
-                            converted = data_quantity.to(norm_target).magnitude
-                            
-                            if isinstance(val, list):
-                                if hasattr(converted, "tolist"):
-                                    val = [round(float(v), 3) for v in converted.tolist()]
+                    # --- UNIT CONVERSION LOGIC ---
+                    if val is not None and isinstance(val, (int, float, list)):
+                        target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+                        native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                        
+                        if target_unit and native_unit and target_unit != native_unit:
+                            try:
+                                norm_native = self.normalize_unit_string(native_unit)
+                                norm_target = self.normalize_unit_string(target_unit)
+                                
+                                data_quantity = ureg.Quantity(val, norm_native)
+                                converted = data_quantity.to(norm_target).magnitude
+                                
+                                if isinstance(val, list):
+                                    if hasattr(converted, "tolist"):
+                                        val = [round(float(v), 3) for v in converted.tolist()]
+                                    else:
+                                        val = [round(float(v), 3) for v in converted]
                                 else:
-                                    val = [round(float(v), 3) for v in converted]
-                            else:
-                                val = round(float(converted), 3)
-                        except Exception as e:
-                            self.logger.error("Unit conversion failed", extra={"variable": variable_name, "native": native_unit, "target": target_unit, "reason": str(e)})
+                                    val = round(float(converted), 3)
+                            except Exception as e:
+                                self.logger.error("Unit conversion failed", extra={"variable": variable_name, "native": native_unit, "target": target_unit, "reason": str(e)})
 
-                # --- UPDATE CACHE ---
-                self.forward_fill_cache[cache_key] = {
-                    "val": val,
-                    "timestamp": target_time
-                }
+                    # --- UPDATE CACHE ---
+                    self.forward_fill_cache[cache_key] = {
+                        "val": val,
+                        "timestamp": target_time
+                    }
 
             variableset_record["variables"][variable_name]["data"] = val
-            self.logger.debug(f"EVALUATED [DIRECT]: {variableset_name}::{variable_name} = {val}")
+            self.logger.debug(f"EVALUATED [DIRECT]: Clock={get_datetime_string()} BinTime={target_time} Var='{variableset_name}::{variable_name}' = {val}")
 
         except Exception as e:
             self.logger.error("update_direct_variable_by_time_index", extra={"reason": str(e)})
@@ -4397,7 +4395,7 @@ class SamplingSystem:
                 final_val = result
 
             variableset_record["variables"][variable_name]["data"] = final_val
-            self.logger.debug(f"EVALUATED [CALCULATED]: {variableset_name}::{variable_name} = {final_val}")
+            self.logger.debug(f"EVALUATED [CALCULATED]: Clock={get_datetime_string()} BinTime={time_index['index_ready']} Var='{variableset_name}::{variable_name}' = {final_val}")
 
         except Exception as e:
             self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
