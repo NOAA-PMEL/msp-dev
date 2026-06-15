@@ -340,7 +340,7 @@ class SamplingState:
 
     async def requirement_monitor(self):
         """
-        Monitors requirements for state transitions. 
+        Monitors requirements for state transitions using contiguous streak tracking. 
         Triggers update immediately on change or every 30s as a heartbeat.
         """
         while True:
@@ -352,30 +352,32 @@ class SamplingState:
                 for req_type, req_kind in self.requirements.items():
                     for req_name, req in req_kind.items():
                         current_status = req["status"]
+                        target_status = not current_status
                         
                         # Determine transition window
-                        transition_time = req["transition_time"]["to_become_false"]
-                        if current_status is False:
-                            transition_time = req["transition_time"]["to_become_true"]
-                        
-                        transition_dt = get_datetime_with_delta(delta=(-(transition_time)), dt=current_dt)
+                        transition_time = req["transition_time"]["to_become_true"] if not current_status else req["transition_time"]["to_become_false"]
+                        transition_dt = get_datetime_with_delta(delta=(-transition_time), dt=current_dt)
                         
                         # --- CPU OPTIMIZATION ---
-                        # Generate the cutoff string exactly once per requirement cycle
                         transition_str = datetime_to_string(transition_dt)
 
-                        req_status = []
-                        for ts, st in req["data"].items():
-                            # Fast lexicographical string comparison (O(N) in C)
-                            # replaces heavy string_to_datetime() parsing
-                            if ts > transition_str:
-                                req_status.append(st)
-
-                        # FIX: Prevent the all([]) == True bug
-                        if not req_status:
-                            req["status"] = False
-                        else:
-                            req["status"] = all(req_status)
+                        timestamps = sorted(req["data"].keys())
+                        
+                        if timestamps:
+                            # Is the latest reading pointing towards our target transition?
+                            latest_ts = timestamps[-1]
+                            if req["data"][latest_ts] == target_status:
+                                # We are on a streak. Traverse backwards to see how far back it goes.
+                                streak_start_ts = latest_ts
+                                for ts in reversed(timestamps):
+                                    if req["data"][ts] == target_status:
+                                        streak_start_ts = ts
+                                    else:
+                                        break
+                                
+                                # If the streak started before or exactly at the required time boundary, transition!
+                                if streak_start_ts <= transition_str:
+                                    req["status"] = target_status
 
                         state_status.append(req["status"])
 
@@ -390,7 +392,7 @@ class SamplingState:
                 if is_changed or is_heartbeat:
                     self.logger.info(
                         "state evaluation trigger", 
-                        extra={"state_name": self.config["metadata"]["name"], "change": is_changed, "hb": is_heartbeat}
+                        extra={"state_name": self.config.get("metadata", {}).get("name"), "change": is_changed, "hb": is_heartbeat, "new_status": latest_status}
                     )
                     
                     # Update internal state and reset heartbeat timer
@@ -468,24 +470,26 @@ class SamplingState:
                 for req_type, req_kind in self.requirements.items():
                     for req_name, req in req_kind.items():
                         # Determine the maximum time we need to hold data for this specific requirement
-                        gc_time = req["transition_time"]["to_become_false"]
-                        if req["transition_time"]["to_become_true"] > gc_time:
-                            gc_time = req["transition_time"]["to_become_true"]
+                        gc_time = max(
+                            req["transition_time"]["to_become_false"], 
+                            req["transition_time"]["to_become_true"]
+                        )
                         
                         dt_now = get_datetime().replace(tzinfo=timezone.utc)
-                        gc_dt = get_datetime_with_delta(delta=(-(gc_time)), dt=dt_now)
+                        
+                        # --- FIX: Padding GC by 60 seconds ---
+                        # We MUST pad the GC time. If we delete exactly at the boundary, 
+                        # the requirement_monitor can't prove a streak started before the window.
+                        gc_dt = get_datetime_with_delta(delta=(-(gc_time + 60)), dt=dt_now)
                         
                         # --- CPU OPTIMIZATION ---
-                        # Generate the cutoff string exactly once per requirement cycle
                         gc_str = datetime_to_string(gc_dt)
                         
                         keys = list(req["data"].keys())
                         
                         for k in keys:
                             # Fast lexicographical string comparison (O(N) in C)
-                            # Replaces the expensive string_to_datetime() parsing
                             if k < gc_str:
-                                # Safe pop to avoid KeyErrors if another task removed it
                                 req["data"].pop(k, None) 
                                 
                 self.logger.debug("data_gc complete", extra={"state_name": self.config.get("metadata", {}).get("name")})
