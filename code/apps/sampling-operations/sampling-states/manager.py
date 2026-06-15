@@ -755,8 +755,8 @@ class SamplingStatesManager:
                     # --- IMMUTABLE IDENTITY BOOTSTRAP ---
                     if states and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
                         first_ns = states[0].get("metadata", {}).get("sampling_namespace", "")
-                        if "deploy.pmel." in first_ns:
-                            self.config.deployment_ref = first_ns.split("deploy.pmel.")[-1].split("_in_")[0]
+                        if "/" in first_ns:
+                            self.config.deployment_ref = first_ns.split("/")[-1]
                             self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
                     # -------------------------------------
                     
@@ -1105,7 +1105,7 @@ class SamplingStatesManager:
                 # Parse from the new envdsStatus format
                 id_block = status_data.get("id", {})
                 state_name = id_block.get("app_uid")
-                state_ns = id_block.get("sampling_namespace")
+                state_ns = id_block.get("sampling_namespace", "")
                 state_valid_time = id_block.get("valid_config_time")
 
                 source_id = f"envds.{self.config.daq_id}.sampling-states"
@@ -1120,7 +1120,15 @@ class SamplingStatesManager:
                 event["destpath"] = destpath
                 event["samplingnamespace"] = state_ns
                 event["validconfigtime"] = state_valid_time
-                event["deploymentref"] = self.config.deployment_ref
+                
+                # --- DYNAMIC ROUTING PATCH ---
+                if "/" in state_ns:
+                    dep_ref = state_ns.split("/")[-1]
+                else:
+                    dep_ref = self.config.deployment_ref if self.config.deployment_ref else "unknown"
+                    
+                event["deploymentref"] = dep_ref
+                # -----------------------------
                 
                 self.logger.debug("state_status_monitor", extra={"event-type": event["type"], "destpath": destpath})
 

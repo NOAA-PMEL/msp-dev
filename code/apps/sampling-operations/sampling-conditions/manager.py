@@ -884,11 +884,10 @@ class SamplingConditionsManager:
                     conditions = json.load(f)
                     
                     # --- IMMUTABLE IDENTITY BOOTSTRAP ---
-                    # Secure true container identity exclusively from local volume config file
                     if conditions and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
                         first_ns = conditions[0].get("metadata", {}).get("sampling_namespace", "")
-                        if "deploy.pmel." in first_ns:
-                            self.config.deployment_ref = first_ns.split("deploy.pmel.")[-1].split("_in_")[0]
+                        if "/" in first_ns:
+                            self.config.deployment_ref = first_ns.split("/")[-1]
                             self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
                     # -------------------------------------
                     
@@ -899,52 +898,6 @@ class SamplingConditionsManager:
                 self.logger.info(f"{conditions_path} not found. Skipping local load.")
         except Exception as e:
             self.logger.error("configure error", extra={"reason": e})
-            
-    # def load_condition(self, condition: dict):
-    #     """Helper to process definitions from either local files or Datastore API."""
-    #     if condition.get("kind") != "SamplingCondition":
-    #         return
-
-    #     cond_name = condition["metadata"]["name"]
-        
-    #     if cond_name not in self.sampling_conditions["conditions"]:
-    #         self.sampling_conditions["conditions"][cond_name] = {
-    #             "config": None,
-    #             "event_buffer": getattr(self, "status_buffer", None),
-    #             "condition": None,
-    #         }
-            
-    #     self.sampling_conditions["conditions"][cond_name]["config"] = condition
-
-    #     # Map sources to targets
-    #     for source_name, source in condition.get("sources", {}).items():
-    #         vm_name = source["variablemap_name"]
-    #         vs_name = source["variableset_name"]
-    #         src_id = "::".join([vm_name, vs_name])
-
-    #         if src_id not in self.sampling_conditions["sources"]:
-    #             self.sampling_conditions["sources"][src_id] = {"targets": []}
-                
-    #         source_variable = source["variable"]
-    #         target_entry = {
-    #             "condition": cond_name,
-    #             "source_name": source_name,
-    #             "source_variable": source_variable,
-    #         }
-            
-    #         if target_entry not in self.sampling_conditions["sources"][src_id]["targets"]:
-    #             self.sampling_conditions["sources"][src_id]["targets"].append(target_entry)
-
-    #     # Ensure status buffer exists if load_condition runs during sync loop
-    #     if not getattr(self, "status_buffer", None):
-    #         self.status_buffer = asyncio.Queue(maxsize=2000)
-    #         self.sampling_conditions["conditions"][cond_name]["event_buffer"] = self.status_buffer
-
-    #     condition_instance = SamplingCondition(
-    #         config=condition,
-    #         status_buffer=self.status_buffer,
-    #     )
-    #     self.sampling_conditions["conditions"][cond_name]["condition"] = condition_instance
 
     def load_condition(self, condition: dict):
         """Helper to process definitions from either local files or Datastore API using a composite key."""
@@ -1309,9 +1262,8 @@ class SamplingConditionsManager:
                 event["validconfigtime"] = cond_valid_time
                 
                 # --- DYNAMIC ROUTING PATCH ---
-                # This guarantees foreign conditions don't get mis-stamped with local host IDs
-                if "deploy.pmel." in cond_ns:
-                    dep_ref = cond_ns.split("deploy.pmel.")[-1].split("_in_")[0]
+                if "/" in cond_ns:
+                    dep_ref = cond_ns.split("/")[-1]
                 else:
                     dep_ref = self.config.deployment_ref if self.config.deployment_ref else "unknown"
                 

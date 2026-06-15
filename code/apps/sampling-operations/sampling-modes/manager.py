@@ -235,11 +235,10 @@ class SamplingModesManager:
                     modes = json.load(f)
                     
                     # --- IMMUTABLE IDENTITY BOOTSTRAP ---
-                    # Secure true container identity exclusively from local volume config file
                     if modes and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
                         first_ns = modes[0].get("metadata", {}).get("sampling_namespace", "")
-                        if "deploy.pmel." in first_ns:
-                            self.config.deployment_ref = first_ns.split("deploy.pmel.")[-1].split("_in_")[0]
+                        if "/" in first_ns:
+                            self.config.deployment_ref = first_ns.split("/")[-1]
                             self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
                     # -------------------------------------
                     
@@ -691,7 +690,16 @@ class SamplingModesManager:
                 # 3. Route to the sampling-modes status update topic
                 destpath = f"envds/{self.config.daq_id}/sampling-modes/status/update"
                 event["destpath"] = destpath
-                event["deploymentref"] = self.config.deployment_ref
+                
+                # --- DYNAMIC ROUTING PATCH ---
+                mode_ns = status_data.get("id", {}).get("sampling_namespace", "")
+                if "/" in mode_ns:
+                    dep_ref = mode_ns.split("/")[-1]
+                else:
+                    dep_ref = self.config.deployment_ref if self.config.deployment_ref else "unknown"
+                    
+                event["deploymentref"] = dep_ref
+                # -----------------------------
                 
                 # 4. Broadcast via MQTT
                 await self.send_to_mqtt(destpath, event)
