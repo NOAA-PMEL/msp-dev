@@ -824,9 +824,14 @@ class SamplingStatesManager:
         if not getattr(self, "status_buffer", None):
             self.status_buffer = asyncio.Queue(maxsize=2000)
 
-        # STOP OLD TASKS BEFORE OVERWRITING (Using the composite key lookup)
-        if composite_key in self.sampling_states["states"]:
-            old_state = self.sampling_states["states"][composite_key].get("state")
+        # --- FIX: Prevent Amnesia / Memory Wipes ---
+        # Check if the config is actually different before destroying the state instance
+        existing_entry = self.sampling_states["states"].get(composite_key)
+        if existing_entry:
+            if existing_entry.get("config") == state:
+                return # Config hasn't changed, do not restart!
+                
+            old_state = existing_entry.get("state")
             if old_state:
                 old_state.stop()
 
@@ -855,58 +860,6 @@ class SamplingStatesManager:
             # Map the composite key tuple to track cross-references cleanly
             if composite_key not in self.sampling_states["requirement_map"][req_kind][req_name]:
                 self.sampling_states["requirement_map"][req_kind][req_name].append(composite_key)
-
-    # def open_http_client(self):
-    #     # create a new client for each request
-    #     self.http_client = httpx.AsyncClient()
-
-    # async def send_event(self, ce):
-    #     try:
-    #         self.logger.debug(ce)  # , extra=template)
-    #         if not self.http_client:
-    #             self.open_http_client()
-    #         try:
-    #             timeout = httpx.Timeout(5.0, read=0.1)
-    #             headers, body = to_structured(ce)
-    #             self.logger.debug(
-    #                 "send_event",
-    #                 extra={
-    #                     "broker": self.config.knative_broker,
-    #                     "h": headers,
-    #                     "b": body,
-    #                 },
-    #             )
-
-    #             r = await self.http_client.post(
-    #                 self.config.knative_broker,
-    #                 headers=headers,
-    #                 data=body,
-    #                 timeout=timeout,
-    #             )
-
-    #             r.raise_for_status()
-    #         except InvalidStructuredJSON:
-    #             self.logger.error(f"INVALID MSG: {ce}")
-    #         except httpx.TimeoutException:
-    #             pass
-    #         except httpx.HTTPError as e:
-    #             self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
-    #     except Exception as e:
-    #         print("error", e)
-    #     await asyncio.sleep(0.01)
-
-    # async def submit_request(self, path: str, query: dict):
-    #     try:
-    #         self.logger.debug("submit_request", extra={"path": path, "query": query})
-    #         # results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
-    #         results = await self.http_client.get(
-    #             f"http://{self.datastore_url}/{path}/", params=query
-    #         )
-    #         self.logger.debug("submit_request", extra={"results": results.json()})
-    #         return results.json()
-    #     except Exception as e:
-    #         self.logger.error("submit_request", extra={"reason": e})
-    #         return {}
 
     async def submit_get(self, path: str):
         try:
