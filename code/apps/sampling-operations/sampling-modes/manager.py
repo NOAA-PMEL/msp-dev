@@ -53,6 +53,8 @@ class SamplingModesConfig(BaseSettings):
 class SamplingMode:
     """Evaluates environmental requirements and triggers assigned SamplingActions."""
     def __init__(self, config, status_buffer, actions_buffer):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
         self.config = config
         self.status_buffer = status_buffer
         self.actions_buffer = actions_buffer
@@ -77,12 +79,6 @@ class SamplingMode:
                 if act not in self.actions[act_test]:
                     self.actions[act_test].append(act)
 
-    # async def update(self, status_update: dict):
-    #     """Updates internal requirement cache from external status updates."""
-    #     kind, name, status = status_update.get("kind"), status_update.get("name"), status_update.get("status")
-    #     if kind in self.requirements and name in self.requirements[kind]:
-    #         self.requirements[kind][name]["status"] = status
-
     async def update(self, payload: dict):
         """Updates the status of requirements (e.g., SamplingStates or SamplingConditions)."""
         id_block = payload.get("id", {})
@@ -106,8 +102,11 @@ class SamplingMode:
             
         is_met = (str(actual_status).lower() == "true")
         
+        self.logger.debug("SamplingMode update", extra={"mode_name": self.config.get("metadata", {}).get("name"), "req_kind": req_kind, "req_name": name, "is_met": is_met})
+        
         if req_kind in self.requirements and name in self.requirements[req_kind]:
             self.requirements[req_kind][name]["status"] = is_met
+            self.logger.debug("Requirement updated internally", extra={"mode_name": self.config.get("metadata", {}).get("name"), "req_name": name, "new_status": is_met})
 
     async def evaluate(self):
         """
@@ -126,12 +125,16 @@ class SamplingMode:
         
         latest_status = all(mode_status) if mode_status else False
         
+        self.logger.debug("evaluate", extra={"mode_name": self.config.get("metadata", {}).get("name"), "mode_status_array": mode_status, "latest_status": latest_status})
+
         # 2. Check for Heartbeat or Change
         now = get_datetime().timestamp()
         is_changed = (latest_status != self.current_state)
         is_heartbeat = (now - self.last_status_time >= 30)
 
         if is_changed or is_heartbeat:
+            self.logger.info("mode evaluation trigger", extra={"mode_name": self.config.get("metadata", {}).get("name"), "change": is_changed, "hb": is_heartbeat, "new_status": latest_status})
+            
             # Update internal state and reset heartbeat timer
             self.current_state = latest_status
             self.last_status_time = now
@@ -160,6 +163,7 @@ class SamplingMode:
 
             # 5. Handle action execution on state change
             if is_changed:
+                self.logger.info("Executing actions for state change", extra={"mode_name": self.config.get("metadata", {}).get("name"), "new_state": self.current_state})
                 await self.execute_actions(self.current_state)
 
     async def execute_actions(self, state: bool):
@@ -167,6 +171,7 @@ class SamplingMode:
         run_type = str(state).lower()
         if self.actions.get(run_type):
             for act in self.actions[run_type]:
+                self.logger.debug("Queueing action", extra={"mode_name": self.config.get("metadata", {}).get("name"), "action": act, "state": state})
                 await self.actions_buffer.put({
                     "action": {
                         "name": act,
@@ -519,6 +524,7 @@ class SamplingModesManager:
                             if ce.get("source") == my_id: continue
                             
                             if "data.update" in ce_type:
+                                self.logger.debug("mqtt_listen_loop received data.update", extra={"ce_type": ce_type, "ce_source": ce.get("source")})
                                 src_id = ce.get("source", "").split(".")[-1]
                                 ts = ce.data.get("variables", {}).get("time", {}).get("data")
                                 for action_obj in self.actions.values():
@@ -530,6 +536,7 @@ class SamplingModesManager:
                                                 action_obj.sources["data"][rid][k] = {"data": v.get("data"), "last_update": ts}
                             
                             elif "status.update" in ce_type:
+                                self.logger.debug("mqtt_listen_loop received status.update", extra={"ce_type": ce_type, "ce_source": ce.get("source")})
                                 for mode in self.modes.values(): 
                                     await mode.update(ce.data)
                                     
@@ -537,6 +544,7 @@ class SamplingModesManager:
                             elif ce_type == "envds.samplingmode.activation.request":
                                 mode_name = ce.data.get("mode_name")
                                 active_flag = ce.data.get("active", False)
+                                self.logger.debug("mqtt_listen_loop received activation.request", extra={"mode_name": mode_name, "is_active": active_flag})
                                 
                                 # Unpack composite keys to locate the mode matching our deployment namespace
                                 target_mode = None
