@@ -3949,15 +3949,35 @@ class SamplingSystem:
         index_value = time_index["index_value"]
         update_type = time_index["update_type"] 
         target_time = time_index["index_ready"]
-        
-        # self.logger.error(f"--- TICK START: {update_type.upper()} at {target_time} ---")
 
         try:
             indexed_dict = variablemap.get("indexed", {})
             type_dict = indexed_dict.get(index_type, {})
             val_dict = type_dict.get(index_value, {})
             
-            target_time_data_buffer = val_dict.get("data", {}).get(target_time, {})
+            # --- CLOCK SKEW AGGREGATOR ---
+            # Intercepts orphaned data caused by network jitter/clock skew
+            target_time_data_buffer = {}
+            idx_data = val_dict.get("data", {})
+            
+            # Find all buckets older than or equal to the current tick
+            valid_keys = sorted([t for t in idx_data.keys() if t <= target_time])
+            
+            for t_key in valid_keys:
+                bucket_data = idx_data[t_key]
+                for m_type, vs_dict in bucket_data.items():
+                    if m_type not in target_time_data_buffer:
+                        target_time_data_buffer[m_type] = {}
+                    for vs_name, v_dict in vs_dict.items():
+                        if vs_name not in target_time_data_buffer[m_type]:
+                            target_time_data_buffer[m_type][vs_name] = {}
+                        for v_name, val_list in v_dict.items():
+                            if v_name not in target_time_data_buffer[m_type][vs_name]:
+                                target_time_data_buffer[m_type][vs_name][v_name] = []
+                            # Combine the arrays
+                            target_time_data_buffer[m_type][vs_name][v_name].extend(val_list)
+            # -----------------------------
+            
             vs_names = val_dict.get("variablesets", [])
 
             if not vs_names:
@@ -4003,16 +4023,15 @@ class SamplingSystem:
                         calc_vars.append(v_name)
                         
                 has_calculated = len(calc_vars) > 0
-                
-                # self.logger.error(f"EVAL {vs_name}: has_calculated={has_calculated}, calculated_vars={calc_vars}")
 
-                # Tier Routing: Decide if we should publish THIS variableset right now
+                # --- JITTER & DELAY ROUTING (TIER 1 vs TIER 2) ---
                 if update_type == "direct" and has_calculated:
                     self.logger.debug(f"ROUTING: Skipping {vs_name} (Waiting for Tier 2)")
                     continue 
                 if update_type == "calculated" and not has_calculated:
                     self.logger.debug(f"ROUTING: Skipping {vs_name} (Already sent in Tier 1)")
                     continue 
+                # -------------------------------------------------
                 
                 # Process Calculations
                 for v_name in calc_vars:
@@ -4029,33 +4048,28 @@ class SamplingSystem:
                     variableset["variables"]["time"] = {"shape": ["time"], "type": "string", "data": ""}
                 variableset["variables"]["time"]["data"] = target_time
 
-                # --- THE FIX: CULL EMPTY VARIABLESETS BEFORE PUBLISHING ---
-                # Scan the evaluated variableset to see if any real telemetry exists
+                # --- CULL EMPTY VARIABLESETS BEFORE PUBLISHING ---
                 has_active_data = False
                 for v_name, v_record in variableset["variables"].items():
-                    # Safely check the variable type
                     raw_type = v_record.get("variable_type")
                     attr_type = v_record.get("attributes", {}).get("variable_type", {}).get("data")
                     v_type = str(raw_type or attr_type or "").lower()
                     
-                    # If it's not a coordinate, and it has actual data, the payload is alive!
                     if v_type != "coordinate" and v_record.get("data") is not None and v_record.get("data") != "":
                         has_active_data = True
                         break
                         
                 if not has_active_data:
                     self.logger.debug(f"CULLING: Variableset '{vs_name}' contains no active telemetry (only coordinates). Dropping payload.")
-                    continue  # Skip the MQTT broadcast entirely
-                # ----------------------------------------------------------
+                    continue  
+                # -------------------------------------------------
                 
-                # --- 3. DYNAMIC MULTI-TENANT CONTEXT RESOLUTION ---
                 dep_ref, proj_ref = self.resolve_context_for_varmap(variablemap, target_time)
                 
                 if "attributes" not in variableset:
                     variableset["attributes"] = {}
                 variableset["attributes"]["project_ref"] = {"type": "string", "data": proj_ref}
                 variableset["attributes"]["deployment_ref"] = {"type": "string", "data": dep_ref}
-                # --------------------------------------------------
                 
                 varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
                 varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
@@ -4068,13 +4082,9 @@ class SamplingSystem:
                 event["samplingnamespace"] = varmap_ns
                 event["variablesetid"] = varset_id
                 event["variablesetfullid"] = varset_full_id
-
-                # --- 4. INJECT EXTENSIONS FOR EASY KNATIVE ROUTING ---
                 event["projectref"] = getattr(self, "active_project_ref", "unknown")
                 event["deploymentref"] = getattr(self, "active_deployment_ref", "unknown")
-                # -----------------------------------------------------
 
-                # self.logger.error(f"PUBLISHING: {vs_name} via MQTT")
                 await self.send_to_mqtt(event["destpath"], event)
 
         except Exception as e:
