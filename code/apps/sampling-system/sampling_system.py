@@ -2284,37 +2284,21 @@ class SamplingSystem:
             self.logger.error("update_by_source", extra={"reason": e})
 
     async def update_variableset_by_source(self, variablemap:dict, source_id:str, source_data:CloudEvent):
-
         try:
-            # print(f"update_variableset_by_source: variablemap = {variablemap}")
             self.logger.debug("update_variableset_by_source", extra={"source_id": source_id})
             source_time = source_data.data["variables"]["time"]["data"]
-            self.logger.debug("update_variableset_by_source", extra={"source_time": source_time})
-            for k,v in variablemap.items():
-                # print(f"***variablemap[{k}] = {v}")
-                if k == "source_id" and v == source_id:
-                    print("***YES***")
             
             if source_id not in variablemap["sources"]:
-                print(f"!!! source_id: {source_id} not in variablemap[sources]: {variablemap['sources'].keys()}")
                 return
             
-            # print(f"update_variableset_by_source: {variablemap['sources']}")
             for src_xref in variablemap["sources"][source_id]:
-                self.logger.debug("update_variableset_by_source", extra={"source_xref": src_xref})
-                # print(f"update_variableset_by_source: variablemap = {variablemap}")
-                # for k in variablemap.keys():
-                #     print(f"update_variableset_by_source: variablemap[{k}] = {variablemap[k]}")
                 variableset = variablemap["variablesets"][src_xref["variableset"]]
                 index_type = variableset["attributes"]["index_type"]["data"]
                 index_value = variableset["attributes"]["index_value"]["data"]
-                # if index_type not in variablemap["indexed"]["data"]:
+                
                 if index_type not in variablemap["indexed"]:
-                    # variablemap["indexed"]["data"][index_type] = dict()
                     variablemap["indexed"][index_type] = dict()
-                # if index_value not in variablemap["indexed"]["data"][index_type]:
                 if index_value not in variablemap["indexed"][index_type]:
-                    # variablemap["indexed"]["data"][index_type][index_value] = dict()
                     variablemap["indexed"][index_type][index_value] = dict()
                 if "variablesets" not in variablemap["indexed"][index_type][index_value]:
                     variablemap["indexed"][index_type][index_value]["variablesets"] = []
@@ -2322,21 +2306,13 @@ class SamplingSystem:
                     variablemap["indexed"][index_type][index_value]["data"] = dict()
 
                 if index_type == "time":
-                    self.logger.debug("update_variableset_by_source", extra={"index_value": index_value, "source_time": source_time})
-
                     indexed_time = await self.get_indexed_time_value(
                         index_time=index_value,
                         source_time=source_time)
-                    self.logger.debug("update_variableset_by_source", extra={"indexed_time": indexed_time})
                     
-                    # if indexed_time not in variablemap["indexed"]["data"][index_type][index_value]:
-                    #     variablemap["indexed"]["data"][index_type][index_value][indexed_time] = dict()
                     if indexed_time not in variablemap["indexed"][index_type][index_value]["data"]:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time] = dict()
-                    # print(f"update_variableset_by_source: variablemap = {variablemap}")
-                    
-                    # if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"]["data"][indexed_time]:
-                    #     variablemap["indexed"]["data"][indexed_time][vs_name] = dict()
+                        
                     vs_name = src_xref["variableset"]
                     if vs_name not in variablemap["indexed"][index_type][index_value]["variablesets"]:
                         variablemap["indexed"][index_type][index_value]["variablesets"].append(vs_name)
@@ -2346,38 +2322,22 @@ class SamplingSystem:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type] = dict()
                     if vs_name not in variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type]:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name] = dict()
-                    # print(f"update_variableset_by_source: variablemap = {variablemap}")
-
-                    # if src_xref["map_type"] == "direct":
-                    #     # if "direct" not in variablemap["indexed"]["data"][indexed_time][vs_name]:
-                    #     #     variablemap["indexed"]["data"][indexed_time][vs_name]["direct"] = dict()
-                    #     if "direct" not in variablemap["indexed"][indexed_time][index_type][index_value]["data"][indexed_time]:
-                    #         variablemap["indexed"][index_type][index_value]["data"][indexed_time]["direct"] = dict()
-                    #     if vs_name not in variablemap["indexed"][index_type][index_value]["data"][indexed_time]["direct"][vs_name]:
-                    #         variablemap["indexed"][index_type][index_value]["data"][indexed_time]["direct"][vs_name] = dict()
-
                     
                     if map_type == "direct":
-                        print(f"update_variableset_by_source: vs_name = {vs_name}")
                         direct_map = variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name]
-                        # self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
                         if (v_name:=src_xref["variable"]) not in direct_map:
                             direct_map[v_name] = []
-                        # self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
-                        # self.logger.debug("update_variableset_by_source", extra={"variablemap": variablemap["variablesets"]})
+                            
                         source_v = variablemap["variablesets"][vs_name]["variables"][v_name]["attributes"]["source_variable"]["data"]
-                        # self.logger.debug("update_variableset_by_source", extra={"source_data": source_data.data})
+                        
                         # --- THE FIX: Safely check if the variable is in the live payload ---
                         if source_v in source_data.data["variables"]:
-                            direct_map[v_name].append(
-                                source_data.data["variables"][source_v]["data"]
-                            )
+                            val = source_data.data["variables"][source_v]["data"]
+                            direct_map[v_name].append(val)
+                            self.logger.debug(f"MAPPED [LIVE]: Incoming '{source_v}' -> '{v_name}' = {val}")
+                        else:
+                            self.logger.debug(f"MISSING: Incoming payload lacks source variable '{source_v}' (expected for '{v_name}')")
                         # --------------------------------------------------------------------
-                        # self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
-
-                    # self.logger.debug("update_variableset_by_source", extra={"vm": variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]})
-                    # print(f'!!!source_data: {variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]}')
-                    # print(f'!!!source_data: {variablemap["indexed"]["data"]}')
 
         except Exception as e:
             self.logger.error("update_variableset_by_source", extra={"reason": e})
@@ -3205,7 +3165,6 @@ class SamplingSystem:
         map_type = "direct"
         try:
             target_time = time_index["index_ready"]
-
             var_record = variableset_record["variables"][variable_name]
 
             # --- THE FIX: Coordinate Fast-Path ---
@@ -3219,7 +3178,6 @@ class SamplingSystem:
                 
                 if static_array and target_unit and native_unit and target_unit != native_unit:
                     try:
-                        # FIXED: Normalize unit expressions to shield them from pint subtraction bugs
                         norm_native = self.normalize_unit_string(native_unit)
                         norm_target = self.normalize_unit_string(target_unit)
                         
@@ -3239,6 +3197,7 @@ class SamplingSystem:
 
                 # Instantly yield the static array we hydrated earlier and exit
                 variableset_record["variables"][variable_name]["data"] = static_array
+                self.logger.debug(f"EVALUATED [COORDINATE]: {variableset_name}::{variable_name} = {static_array}")
                 return
             # -------------------------------------
 
@@ -3248,10 +3207,9 @@ class SamplingSystem:
                 indexed_data = []
             
             v_type = var_record.get("type", "float")
-            var_class = var_record.get("variable_type", "sensor") # 'setting', 'sensor', etc.
+            var_class = var_record.get("variable_type", "sensor") 
             shape = var_record.get("shape", ["time"])
             
-            # Get raw definition to extract index_method and fill_strategy
             raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
             
             idx_meth_raw = raw_var_def.get("index_method", "average")
@@ -3293,7 +3251,6 @@ class SamplingSystem:
                     val = "" if v_type in ["string", "str", "char"] else None
             
             else:
-                # WE HAVE NEW DATA TO EVALUATE
                 if len(indexed_data) == 1:
                     val = indexed_data[0]
                 else:
@@ -3325,7 +3282,6 @@ class SamplingSystem:
                     
                     if target_unit and native_unit and target_unit != native_unit:
                         try:
-                            # FIXED: Clean native and target strings before handing to Pint Quantity bindings
                             norm_native = self.normalize_unit_string(native_unit)
                             norm_target = self.normalize_unit_string(target_unit)
                             
@@ -3349,6 +3305,7 @@ class SamplingSystem:
                 }
 
             variableset_record["variables"][variable_name]["data"] = val
+            self.logger.debug(f"EVALUATED [DIRECT]: {variableset_name}::{variable_name} = {val}")
 
         except Exception as e:
             self.logger.error("update_direct_variable_by_time_index", extra={"reason": str(e)})
@@ -4349,23 +4306,18 @@ class SamplingSystem:
 
     async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
         import importlib
-        
-        self.logger.debug(f"ENTERED update_calculated_variable_by_time_index for {variable_name}")
-        
         try:
             raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
             
             calc_method = raw_var_def.get("calculate_method") or raw_var_def.get("calculation_method") or raw_var_def.get("action") or {}
             
             if not calc_method:
-                self.logger.warning(f"ABORT: Missing calculate/calculation_method for {variable_name} in raw definition.")
                 return
 
             module_name = calc_method.get("action_module", calc_method.get("service", "calculations.default"))
             def_name = calc_method.get("action_def", calc_method.get("path", "").strip("/"))
 
             if not def_name:
-                self.logger.warning(f"ABORT: No definition/function name provided for calculated variable: {variable_name}")
                 return
 
             try:
@@ -4386,26 +4338,20 @@ class SamplingSystem:
                 if src_var_alias and src_var_alias in sources:
                     src_def = sources[src_var_alias]
                     
-                    # 1. Get the actual variable name (e.g., "diameter")
                     real_src_var = src_def.get("source_variable", src_var_alias)
-                    
-                    # 2. Get the target variableset (e.g., "main")
                     target_vset_name = src_def.get("variableset", variableset_name)
 
-                    # 3. Hunt for the data in evaluated_vsets
                     if evaluated_vsets and target_vset_name in evaluated_vsets:
                         target_vset = evaluated_vsets[target_vset_name]
                         if real_src_var in target_vset["variables"]:
                             target_var_def = target_vset["variables"][real_src_var]
                             
-                            # --- NEW: Route static coordinate data from attributes ---
                             var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
                             if var_type == "coordinate":
                                 val = target_var_def.get("attributes", {}).get("data", {}).get("data")
                             else:
                                 val = target_var_def.get("data")
                     
-                    # --- NEW: 4. Hunt in the foreign variableset cache (Bridged from Payload 01/02) ---
                     elif hasattr(self, "foreign_vsets") and target_vset_name in self.foreign_vsets:
                         target_vset = self.foreign_vsets[target_vset_name]
                         if real_src_var in target_vset["variables"]:
@@ -4416,11 +4362,9 @@ class SamplingSystem:
                             else:
                                 val = target_var_def.get("data")
 
-                    # 5. Fallback to local
                     elif real_src_var in variableset_record["variables"]:
                         target_var_def = variableset_record["variables"][real_src_var]
                         
-                        # --- NEW: Route static coordinate data from attributes ---
                         var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
                         if var_type == "coordinate":
                             val = target_var_def.get("attributes", {}).get("data", {}).get("data")
@@ -4428,13 +4372,7 @@ class SamplingSystem:
                             val = target_var_def.get("data")
 
                 kwargs[param_name] = val
-                
-                # IMPORTANT DEBUG: Show exactly what was pulled for each parameter
-                self.logger.debug(f"CALC EXTRACT: {variable_name} -> param '{param_name}' got value: {val}")
-
-            self.logger.debug("update_calculated_variable_by_time_index EXECUTE", extra={"variable": variable_name, "kwargs": kwargs})
             
-            # Execute with explicit exception catching around the user function
             try:
                 if asyncio.iscoroutinefunction(calc_func):
                     result = await calc_func(self, **kwargs)
@@ -4443,8 +4381,6 @@ class SamplingSystem:
             except Exception as user_func_err:
                 self.logger.debug(f"USER FUNCTION CRASH: {def_name} failed.", extra={"reason": str(user_func_err)})
                 return
-                
-            self.logger.debug("update_calculated_variable_by_time_index SUCCESS", extra={"variable": variable_name, "result": result})
  
             if isinstance(result, dict) and variable_name in result:
                 final_val = result[variable_name]
@@ -4452,6 +4388,7 @@ class SamplingSystem:
                 final_val = result
 
             variableset_record["variables"][variable_name]["data"] = final_val
+            self.logger.debug(f"EVALUATED [CALCULATED]: {variableset_name}::{variable_name} = {final_val}")
 
         except Exception as e:
             self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
@@ -4470,8 +4407,8 @@ class SamplingSystem:
                 "project_ref": proj_ref
             }
 
-            # 2. Use the new factory method you just added to envdsEvent!
-            event = sampet.create_operations_log(
+            # 2. FIXED: Use the correct SamplingEvent factory wrapper class instead of its type registry
+            event = SamplingEvent.create_operations_log(
                 source=f"envds.{self.config.daq_id}.sampling-system",
                 data=payload
             )
