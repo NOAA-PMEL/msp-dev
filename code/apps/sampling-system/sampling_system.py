@@ -74,7 +74,7 @@ handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
-L.setLevel(logging.INFO)
+L.setLevel(logging.DEBUG)
 
 
 # test
@@ -3961,7 +3961,7 @@ class SamplingSystem:
             vs_names = val_dict.get("variablesets", [])
 
             if not vs_names:
-                self.logger.error("TICK ABORT: No active variablesets found for this index.")
+                self.logger.debug(f"Tick bypassed: No {index_value}s variablesets found in this map.")
                 return
 
             # --- PHASE 1: Build evaluated state for ALL variablesets ---
