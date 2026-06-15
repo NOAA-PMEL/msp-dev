@@ -2330,14 +2330,13 @@ class SamplingSystem:
                             
                         source_v = variablemap["variablesets"][vs_name]["variables"][v_name]["attributes"]["source_variable"]["data"]
                         
-                        # --- THE FIX: Safely check if the variable is in the live payload ---
+                        # --- Safely check if the variable is in the live payload ---
                         if source_v in source_data.data["variables"]:
                             val = source_data.data["variables"][source_v]["data"]
                             direct_map[v_name].append(val)
-                            self.logger.debug(f"MAPPED [LIVE]: Incoming '{source_v}' -> '{v_name}' = {val}")
+                            self.logger.debug(f"MAPPED [LIVE]: Clock={get_datetime_string()} PacketTime={source_time} BucketTime={indexed_time} InnerVar='{source_v}' -> VarmapVar='{v_name}' = {val}")
                         else:
-                            self.logger.debug(f"MISSING: Incoming payload lacks source variable '{source_v}' (expected for '{v_name}')")
-                        # --------------------------------------------------------------------
+                            self.logger.debug(f"MISSING: Clock={get_datetime_string()} PacketTime={source_time} BucketTime={indexed_time} Inbound lacks source variable '{source_v}' (expected for '{v_name}')")
 
         except Exception as e:
             self.logger.error("update_variableset_by_source", extra={"reason": e})
