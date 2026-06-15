@@ -47,7 +47,7 @@ class SamplingCriterion:
         return self.source_names
 
     async def evaluate(self, sources) -> bool:
-        self.debug("evaluate-base")
+        self.logger.debug("evaluate-base")
         return False
 
 class LimitMinMax(SamplingCriterion):
@@ -56,11 +56,11 @@ class LimitMinMax(SamplingCriterion):
     """
 
     def __init__(self, config):
+        self.min_val = None
+        self.max_val = None
+        self.true_if = "inside"  # inside or outside of value >=min and <=max
         super(LimitMinMax, self).__init__(config)
         self.logger.debug("LimitMinMax instantiated")
-        self.min_value = None
-        self.max_value = None
-        self.true_if = "inside"  # inside or outside of value >=min and <=max
 
     def configure(self):
         super(LimitMinMax, self).configure()
@@ -74,7 +74,7 @@ class LimitMinMax(SamplingCriterion):
                 self.true_if = val
 
     async def evaluate(self, sources) -> bool:
-        super(LimitMinMax, self).evaluate(sources)
+        await super(LimitMinMax, self).evaluate(sources)
         result = []
         self.logger.debug("evaluate", extra={"src_vals": sources})
         for source_var in self.get_sources():
@@ -86,7 +86,7 @@ class LimitMinMax(SamplingCriterion):
                 elif self.true_if == "outside":
                     result.append(source_val < self.min_val or source_val > self.max_val)
                 self.logger.debug("evaluate", extra={"eval_result": result, "return_result": all(result)})
-        return all(result)
+        return all(result) if result else False
 
 class LatLonRegionLocation(SamplingCriterion):
     """
@@ -96,11 +96,11 @@ class LatLonRegionLocation(SamplingCriterion):
     Supports regions spanning the International Date Line.
     """
     def __init__(self, config):
-        super(LatLonRegionLocation, self).__init__(config)
         self.label = config.get("label", "Unknown Region")
         self.region = config.get("region", [])
         self.coords_map = config.get("coordinates", {})
         self.true_if = config.get("true_if", "inside")
+        super(LatLonRegionLocation, self).__init__(config)
 
     def _normalize_longitude(self, lon, wrap_offset=0):
         """Helper to shift longitudes to 0-360 if the polygon crosses the IDL."""
@@ -130,7 +130,7 @@ class LatLonRegionLocation(SamplingCriterion):
         return inside
 
     async def evaluate(self, sources) -> bool:
-        super(LatLonRegionLocation, self).evaluate(sources)
+        await super(LatLonRegionLocation, self).evaluate(sources)
         
         lat_src = self.coords_map.get("latitude")
         lon_src = self.coords_map.get("longitude")
@@ -252,5 +252,3 @@ async def evaluate_criteria(criteria: dict, sources:dict, evaluation_time:int=1)
             results.append(not all(group_results))
 
     return all(results)
-
-
