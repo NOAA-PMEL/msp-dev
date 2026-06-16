@@ -240,9 +240,27 @@ class SystemModesManager:
             # Create the compound tuple key to prevent namespace clashes
             composite_key = (name, ns)
             
-            # PREVENT TASK LEAKS: Stop the old instance if it exists
-            if composite_key in self.modes:
-                self.modes[composite_key].stop()
+            new_time_str = cfg.get("metadata", {}).get("valid_config_time", "")
+            new_time = string_to_datetime(new_time_str)
+
+            existing_entry = self.modes.get(composite_key)
+            if existing_entry:
+                existing_config = existing_entry.config
+                existing_time_str = existing_config.get("metadata", {}).get("valid_config_time", "")
+                existing_time = string_to_datetime(existing_time_str)
+
+                # --- TIME-GATING FIX: Reject stale configs from Datastore ---
+                if new_time and existing_time:
+                    if new_time < existing_time:
+                        self.logger.warning(f"REJECTED STALE CONFIG: {name} ({new_time_str} is older than active {existing_time_str})")
+                        return
+                    if new_time == existing_time:
+                        if existing_config == cfg:
+                            return # Config hasn't changed and timestamp is the same
+                # ------------------------------------------------------------
+                
+                # PREVENT TASK LEAKS: Stop the old instance if it exists
+                existing_entry.stop()
 
             self.modes[composite_key] = SystemMode(cfg, self.status_buffer, self.transitions_buffer)
             
