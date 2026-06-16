@@ -338,23 +338,23 @@ class Aurora3000(Sensor):
                     except ValueError:
                         record["variables"][var_name]["data"] = "" if instvar.type in ("str", "char") else None
 
-            # # --- CONTINUOUS TRACKING: Auto-reset calibration state ---
-            # try:
-            #     major_state = record["variables"].get("major_state", {}).get("data")
-            #     if major_state is not None:
-            #         self.current_major_state = int(major_state)
+            # --- CONTINUOUS TRACKING: Auto-reset calibration state ---
+            try:
+                major_state = record["variables"].get("major_state", {}).get("data")
+                if major_state is not None:
+                    self.current_major_state = int(major_state)
 
-            #     # Reset single-step calibrations safely. 
-            #     # (We ignore "full_cal" here because the sequencer handles its own termination)
-            #     if self.current_major_state == 0 and self.current_cal_routine not in ["none", "full_cal"]:
-            #         self.logger.info("Calibration sequence finished. Resetting UI to 'none'.")
-            #         self.settings.set_setting("calibration_status", requested="success")
-            #         self.settings.set_actual("calibration_status", "success")
-            #         self.settings.set_setting("calibration_routine", requested="none")
-            #         self.settings.set_actual("calibration_routine", "none")
-            #         self.current_cal_routine = "none"
-            # except (KeyError, TypeError):
-            #     pass
+                # Reset single-step calibrations safely. 
+                # (We ignore "full_cal" here because the sequencer handles its own termination)
+                if self.current_major_state == 0 and self.current_cal_routine not in ["none", "full_cal"]:
+                    self.logger.info("Calibration sequence finished. Resetting UI to 'none'.")
+                    self.settings.set_setting("calibration_status", requested="success")
+                    self.settings.set_actual("calibration_status", "success")
+                    self.settings.set_setting("calibration_routine", requested="none")
+                    self.settings.set_actual("calibration_routine", "none")
+                    self.current_cal_routine = "none"
+            except (KeyError, TypeError):
+                pass
                 
             # Add status variable to UI updates
             if "calibration_status" in record["variables"]:
