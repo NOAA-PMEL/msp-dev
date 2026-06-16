@@ -482,6 +482,21 @@ class SystemModesManager:
                                     await mode.update(ce.data)
                             elif "transition.request" in ce.get("type", ""):
                                 await self.transitions_buffer.put({"transition": ce.data, "is_remote_command": True})
+                            elif "control.request" in ce.get("type", ""):
+                                req = ce.data.get("system_mode", {}).get("requested")
+                                if req in ["auto", "manual"]:
+                                    self.control_mode = req
+                                    self.logger.info(f"System control mode switched to {req}")
+                                    
+                                    # Instantly echo the state change back to the UI
+                                    event = SamplingEvent.create_system_control_update(
+                                        source=f"envds.{self.config.daq_id}.system-modes", 
+                                        data={"mode": self.control_mode}
+                                    )
+                                    await self.send_to_mqtt(f"envds/{self.config.daq_id}/system-modes/control/update", event)
+                                elif req: 
+                                    # Catch manual mode dropdown selections
+                                    await self.activate_system_mode(req)
                         except Exception: pass
             except MqttError: await asyncio.sleep(5)
 

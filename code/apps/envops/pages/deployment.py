@@ -536,19 +536,27 @@ def aggregate_health(message, current_store):
     if not message or "data" not in message: raise PreventUpdate
     
     try:
-        payload = json.loads(message["data"])
-        status_data = payload.get("data", {})
+        ce = json.loads(message["data"])
+        ce_type = ce.get("type", "")
+        dep_ref = ce.get("deploymentref", "")
         
-        # ---> THE FIX: Strict validation, default to empty string <---
-        dep_ref = payload.get("deploymentref", "")
+        # ---> 1. Catch Explicit Control Updates <---
+        if "control.update" in ce_type:
+            mode = ce.get("data", {}).get("mode", "auto")
+            if "control" not in current_store: current_store["control"] = {}
+            current_store["control"]["mode"] = mode
+            return current_store
+
         if not dep_ref or dep_ref.lower() == "unknown": 
             raise PreventUpdate
-        # -------------------------------------------------------------
         
+        status_data = ce.get("data", {})
         app_uid = status_data.get("id", {}).get("app_uid", "")
         
         if dep_ref and app_uid:
             if dep_ref not in current_store: current_store[dep_ref] = {}
+            # ---> 2. Inject the primary controller flag so the UI can find it <---
+            status_data["isprimarycontroller"] = ce.get("isprimarycontroller", "false")
             current_store[dep_ref][app_uid] = status_data
             return current_store
     except Exception as e:
@@ -566,7 +574,8 @@ def aggregate_health(message, current_store):
     prevent_initial_call=True
 )
 def render_bundle_health(health_store, host_id):
-    if not health_store: return html.P("Waiting for telemetry...", className="text-muted text-center m-3"), True, False, {"display": "none"}
+    if not health_store: 
+        return html.P("Waiting for telemetry...", className="text-muted text-center m-3"), True, False, {"display": "none"}
 
     host_sys_mode = "unknown"
     node_cols = [] 
@@ -574,6 +583,10 @@ def render_bundle_health(health_store, host_id):
     sorted_deps = sorted(health_store.keys(), key=lambda x: 0 if x == host_id else 1)
 
     for dep_ref in sorted_deps:
+        # Skip our special control state injection so we don't try to draw a card for it
+        if dep_ref == "control": 
+            continue
+
         statuses = health_store[dep_ref]
         sys_modes, samp_modes, samp_states = [], [], []
 
@@ -594,7 +607,10 @@ def render_bundle_health(health_store, host_id):
                 elif app_group == "mode": samp_modes.append(clean_name)
                 elif app_group == "state": samp_states.append(clean_name)
 
-        if dep_ref == host_id and sys_modes:
+        # ---> NEW: Primary Controller Flag Parsing <---
+        is_primary = any(s.get("isprimarycontroller") == "true" for s in statuses.values())
+
+        if (dep_ref == host_id or is_primary) and sys_modes:
             host_sys_mode = sys_modes[0]
 
         def build_badge_group(items, color):
@@ -630,7 +646,14 @@ def render_bundle_health(health_store, host_id):
         
         node_cols.append(dbc.Col(node_card, lg=6, md=12, className="p-0"))
 
-    is_auto = host_sys_mode.lower() in ["auto", "normal", "nominal", "nominal sampling"]
+    # ---> NEW: Explicit Control Mode Logic <---
+    ctrl_mode = health_store.get("control", {}).get("mode")
+    if ctrl_mode:
+        is_auto = (ctrl_mode == "auto")
+    else:
+        # Fallback to the old logic if the control packet hasn't arrived yet
+        is_auto = host_sys_mode.lower() in ["auto", "normal", "nominal", "nominal sampling"]
+        
     auto_outline = not is_auto
     manual_outline = is_auto
     manual_style = {"display": "none"} if is_auto else {"display": "block"}
