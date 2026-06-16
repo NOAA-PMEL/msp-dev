@@ -161,6 +161,22 @@ class ShellyPro1(Controller):
                 self.logger.error("sampling_monitor error", extra={"error": str(e)})
             await asyncio.sleep(1)
 
+    # async def set_channel_power(self, channel, state):
+    #     if isinstance(state, str):
+    #         # Safely catch dashboard strings (including "true")
+    #         state = 1 if state.lower() in ["on", "yes", "1", "true"] else 0 
+    #     elif isinstance(state, (int, float)):
+    #         # Safely catch raw numbers
+    #         state = 1 if state > 0 else 0
+            
+    #     cmd = "on" if state else "off"
+    #     data = {
+    #         "path": f"{self.controller_id_prefix}/command/switch:{channel}",
+    #         "message": cmd
+    #     }
+    #     self.logger.debug("set_channel_power", extra={"payload": data})
+    #     await self.send_data(data)
+
     async def set_channel_power(self, channel, state):
         if isinstance(state, str):
             # Safely catch dashboard strings (including "true")
@@ -169,10 +185,16 @@ class ShellyPro1(Controller):
             # Safely catch raw numbers
             state = 1 if state > 0 else 0
             
-        cmd = "on" if state else "off"
+        rpc_payload = {
+            "id": random.randint(1, 9999),
+            "src": f"{self.controller_id_prefix}-cmd",
+            "method": "Switch.Set",
+            "params": {"id": channel, "on": bool(state)}
+        }
+        
         data = {
-            "path": f"{self.controller_id_prefix}/command/switch:{channel}",
-            "message": cmd
+            "path": f"{self.controller_id_prefix}/rpc",
+            "message": json.dumps(rpc_payload)
         }
         self.logger.debug("set_channel_power", extra={"payload": data})
         await self.send_data(data)
