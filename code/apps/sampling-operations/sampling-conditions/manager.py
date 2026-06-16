@@ -96,98 +96,29 @@ class SamplingCondition:
         self.logger.debug("SamplingCondition instantiated")
 
         self.config = config
-        # self.data_buffer = data_buffer
         self.data_buffer = asyncio.Queue(maxsize=60)
         self.status_buffer = status_buffer
-        # self.source_map = {"source_id": dict(), "source_name": dict()}
         self.source_map = dict()
         self.criteria_map = dict()
-        # self.source_data = dict()
         self.default_criterion_module: str = "criteria.default"
 
         self.current_state = False
-        self.last_status_time = 0
+        
+        # --- WATCHDOG TRACKING ---
+        self.last_eval_time = get_datetime().timestamp()
+        # Default to 5 minutes if not specified in json
+        self.source_max_age = self.config.get("source_max_age", 300) 
+        # -------------------------
 
         self.criterion_tasks = []
         
         self.configure()
-        self._monitor_task = asyncio.create_task(self.condition_monitor())
-        self._status_task =asyncio.create_task(self.update_status_loop())
+        
+        # Safely create background tasks
+        if hasattr(self, "condition_monitor"):
+            self._monitor_task = asyncio.create_task(self.condition_monitor())
+        self._status_task = asyncio.create_task(self.update_status_loop())
         self._cleanup_task = asyncio.create_task(self.cleanup_loop())
-
-    # def configure(self):
-
-    #     if not self.config or "sources" not in self.config:
-    #         return
-
-    #     # for source_name, source in self.config["sources"].items():
-    #     #     vm = source["variablemap_name"]
-    #     #     vs = source["variableset_name"]
-    #     #     v = source["variable"]
-
-    #     for source_name, _ in self.config["sources"].items():
-    #         if source_name not in self.source_map:
-    #             # self.source_map[source_name] = {"data": dict(), "criteria": []}
-    #             self.source_map[source_name] = {"data": dict()}
-
-    #     #     if vm not in self.data:
-    #     #         self.data[vm] = dict()
-    #     #     if vs not in self.data[vm]:
-    #     #         self.data[vm][vs] = dict()
-    #     #     if v not in self.data[vm][vs]:
-    #     #         self.data[vm][vs][v] = dict()
-
-    #     try:
-    #         if "criteria" in self.config:
-    #             for group_type, group in self.config["criteria"].items():
-    #                 if group_type not in self.criteria_map:
-    #                     self.criteria_map[group_type] = {"criteria": []}
-    #                 for criterion_config in group:
-    #                     criterion_module = self.default_criterion_module
-    #                     if "criterion_module" in criterion_config:
-    #                         self.criterion_module = criterion_config["criterion_module"]
-    #                     mod_ = importlib.import_module(criterion_module)
-    #                     criterion_class = criterion_config["criterion_class"]
-    #                     criterion = getattr(mod_, criterion_class)(criterion_config)
-    #                     self.criteria_map[group_type]["criteria"].append(criterion)
-    #     except Exception as e:
-    #         self.logger.error("configure", extra={"reason": e})
-    #         # sys.exit()
-    #     # for source_name, _ in self.config["sources"].items():
-    #     #     if source_name not in self.source_map:
-    #     #         self.source_map[source_name] = {"data": dict(), "criteria": []}
-
-    #     # # for source_name, source in self.config["sources"].items():
-    #     # #     # TODO: fix this with "source_id"
-    #     # #     source_id = "variableset::variablemap::variable"
-    #     # #     if source_id not in self.source_map["source_id"]:
-    #     # #         self.source_map["source_id"][source_id] = {
-    #     # #             "source_name": source_name,
-    #     # #         }
-    #     # #     if source_name not in self.source_map["source_name"]:
-    #     # #         self.source_map["source_name"][source_name] = {
-    #     # #             "criteria": [],
-    #     # #         }
-
-    #     # if "criteria" in self.config:
-    #     #     for group_type, group in self.config["criteria"].items():
-    #     #         if group_type not in self.criteria_map:
-    #     #             self.criteria_map[group_type] = dict()
-    #     #         for _, criterion_config in group.items():
-    #     #             criterion_module = self.default_criterion_module
-    #     #             if "criterion_module" in criterion_config:
-    #     #                 self.criterion_module = criterion_config["criterion_module"]
-    #     #             mod_ = importlib.import_module(criterion_module)
-    #     #             criterion_class = criterion_config["criterion_class"]
-    #     #             criterion = getattr(mod_, criterion_class)(criterion_config)
-
-    #     # for source in criterion_config[group_type]["sources"]:
-    #     #     # if source in self.source_map["source_name"]:
-    #     #     if source in self.source_map:
-    #     #         # self.source_map["source_name"][source]["criteria"].append(
-    #     #         self.source_map[source]["criteria"].append(
-    #     #             {"sources":  criterion
-    #     #         )
 
     def configure(self):
         """
@@ -197,317 +128,25 @@ class SamplingCondition:
         if not self.config or "sources" not in self.config:
             return
 
-        # Initialize source mapping for each variable defined in the config
         for source_name, _ in self.config["sources"].items():
             if source_name not in self.source_map:
                 self.source_map[source_name] = {"data": dict()}
 
         try:
-            # Process criteria groups (e.g., "all", "any", "none")
             if "criteria" in self.config:
                 for group_type, group in self.config["criteria"].items():
                     if group_type not in self.criteria_map:
                         self.criteria_map[group_type] = {"criteria": []}
                     
                     for criterion_config in group:
-                        # Check for the user-specified 'conditions_module', 
-                        # otherwise default to 'criteria.default'
-                        conditions_module = criterion_config.get(
-                            "conditions_module", 
-                            "criteria.default"
-                        )
-                        
-                        # Dynamically import the module and instantiate the class
+                        conditions_module = criterion_config.get("conditions_module", "criteria.default")
                         mod_ = importlib.import_module(conditions_module)
                         criterion_class = criterion_config["criterion_class"]
                         criterion = getattr(mod_, criterion_class)(criterion_config)
-                        
-                        # Add the instantiated criterion to the criteria map
                         self.criteria_map[group_type]["criteria"].append(criterion)
                         
         except Exception as e:
             self.logger.error("configure", extra={"reason": e})
-
-    async def update(self, data):
-        self.logger.debug("update", extra={"update_data": data})
-        # await self.data_buffer.put(data)
-        # FIX: Prevent Head-Of-Line blocking. If buffer is full, drop the oldest 
-        # evaluation frame instead of freezing the main MQTT ingestion loop.
-        try:
-            self.data_buffer.put_nowait(data)
-        except asyncio.QueueFull:
-            self.logger.warning("Condition data_buffer full. Dropping oldest frame.")
-            self.data_buffer.get_nowait()
-            self.data_buffer.task_done()
-            self.data_buffer.put_nowait(data)
-
-    async def condition_monitor(self):
-        while True:
-            try:
-                data = await self.data_buffer.get()
-                if "condition_variables" in data:
-                    variables = data["condition_variables"]
-                    
-                    # STRICT SCHEMA: Extract time
-                    dt = variables["time"]["data"]
-
-                    for varname, var in variables.items():
-                        if varname == "time":
-                            continue
-                        if varname in self.source_map:
-                            # STRICT SCHEMA: Store the entire CF-compliant dictionary
-                            self.source_map[varname][dt] = var
-
-                    await self.evaluate_criteria(dt)
-
-            except Exception as e:
-                self.logger.error("condition_monitor", extra={"reason": str(e)})
-                
-            finally:
-                if 'data' in locals():
-                    self.data_buffer.task_done()
-    # async def update_status(self, status):
-
-    #     cond_name = status["condition"]["name"]
-    #     cond_ns = status["condition"]["sampling_namespace"]
-    #     cond_valid_time = status["condition"]["valid_config_time"]
-
-    #     source_id = (
-    #         f"envds.{self.config.daq_id}.condition.{cond_name}"
-    #     )
-    #     self.logger.debug("evaluate_criteria", extra={"source_id": source_id})
-        
-    #     source_topic = source_id.replace(".", "/")
-
-    #     event = SamplingEvent.create_condition_status_update(
-    #         # source="sensor.mockco-mock1-1234", data=record
-    #         source=source_id,
-    #         data=status,
-    #     )
-    #     destpath = f"{source_topic}/status/update"
-    #     event["destpath"] = destpath
-    #     event["samplingnamespace"] = cond_ns
-    #     event["validconfigtime"] = cond_valid_time
-    #     self.logger.debug(
-    #         "evaluate_criteria",
-    #         extra={"data": event, "destpath": destpath},
-    #     )
-        
-    #     # await self.send_event(event)
-    #     await self.status_buffer.put(status)
-
-
-
-    # async def evaluate_criteria(self, timestamp):
-
-    #     try:
-    #         crit_states = []
-    #         for group_type, group in self.criteria_map.items():
-    #             group_states = []
-    #             for criterion in group["criteria"]:
-    #                 data = {"time": timestamp}
-    #                 for src_name in criterion.get_sources():
-    #                     # self.logger.debug("evaluate_criteria", extra={"src_name": src_name})
-    #                     if (
-    #                         timestamp not in self.source_map[src_name]
-    #                         or self.source_map[src_name][timestamp] is None
-    #                     ):
-    #                         # missing source data, can't evaluate
-    #                         self.logger.info(
-    #                             "evaluate_criteria",
-    #                             extra={
-    #                                 "src_name": src_name,
-    #                                 "ts": timestamp,
-    #                                 "success": False,
-    #                                 "reason": "missing source value",
-    #                             },
-    #                         )
-    #                         return
-    #                     data[src_name] = self.source_map[src_name][timestamp]["data"]
-    #                 self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
-    #                 try:
-    #                     group_states.append(await criterion.evaluate(sources=data))
-    #                 except Exception as e:
-    #                     # what to do on error?
-    #                     group_states.append(False)
-    #                 # group_states.append(res)
-    #             if group_type == "all":
-    #                 crit_states.append(all(group_states))
-    #             elif group_type == "any":
-    #                 crit_states.append(any(group_states))
-    #             elif group_type == "none":
-    #                 crit_states.append(not any(group_states))
-            
-    #         state = all(crit_states)
-    #         self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
-    #         # if state != self.current_state:
-    #             # send event with updated condition state
-            
-    #         # Send status whenever data is available
-    #         self.logger.debug("evaluate_criteria - send update with new state")
-    
-    #         cond_name = self.config["metadata"]["name"]
-    #         cond_ns = self.config["metadata"]["sampling_namespace"]
-    #         cond_valid_time = self.config["metadata"]["valid_config_time"]
-
-    #         self.current_state = state
-
-    #         status = {
-    #             "status": {
-    #                 "kind": "SamplingCondition",
-    #                 "time": timestamp,
-    #                 "name": cond_name,
-    #                 "sampling_namespace": cond_ns,
-    #                 "valid_config_time": cond_valid_time,
-    #                 "status": state
-    #             }
-    #         }
-    #         await self.status_buffer.put(status)
-
-    #         # await self.update_status(status)
-
-
-    #         # for src_name, _ in self.source_map.items():
-    #         #     # self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
-    #         #     # src_data.pop(timestamp)
-    #         #     self.source_map[src_name].pop(timestamp)
-
-    #     except Exception as e:
-    #         self.logger.error("evaluate_criteria", extra={"reason": e})
-
-    #     finally:
-    #         # This guarantees cleanup runs even if the function hits a 'return'
-    #         try:
-    #             # Safely parse current timestamp
-    #             current_dt_raw = string_to_datetime(timestamp)
-    #             if not current_dt_raw:
-    #                 # If we can't parse the current time, skip cleanup this round
-    #                 return 
-                    
-    #             # Calculate a cutoff time (e.g., 60 seconds ago)
-    #             current_dt = current_dt_raw.replace(tzinfo=timezone.utc)
-    #             cutoff_dt = current_dt - timedelta(seconds=60)
-                
-    #             for src_name, src_dict in self.source_map.items():
-    #                 # Safely find all valid timestamps older than 60 seconds
-    #                 stale_keys = []
-    #                 for ts in src_dict.keys():
-    #                     dt_obj = string_to_datetime(ts)
-    #                     if dt_obj and dt_obj.replace(tzinfo=timezone.utc) < cutoff_dt:
-    #                         stale_keys.append(ts)
-                            
-    #                 # Delete them
-    #                 for ts in stale_keys:
-    #                     src_dict.pop(ts, None)
-    #         except Exception as clean_e:
-    #             self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
-
-    # async def evaluate_criteria(self, timestamp):
-    #     try:
-    #         crit_states = []
-    #         for group_type, group in self.criteria_map.items():
-    #             group_states = []
-    #             for criterion in group["criteria"]:
-    #                 data = {"time": timestamp}
-    #                 has_all_sources = True
-                    
-    #                 for src_name in criterion.get_sources():
-                        
-    #                     # 1. JITTER CHECK: Has the data arrived for this timestamp yet?
-    #                     if timestamp not in self.source_map[src_name]:
-    #                         # Data hasn't arrived. It might be calculated data in the Tier 2 wave (T+1.5s).
-    #                         # We abort evaluation for now and wait for the rest of the MQTT packets.
-    #                         self.logger.debug(
-    #                             "evaluate_criteria aborted",
-    #                             extra={"reason": "waiting for pending data", "src_name": src_name, "ts": timestamp}
-    #                         )
-    #                         return 
-
-    #                     src_payload = self.source_map[src_name][timestamp]
-                        
-    #                     # 2. DEAD-MAN CHECK: Did sampling-system explicitly declare it empty/offline?
-    #                     if src_payload is None or src_payload.get("data") is None:
-    #                         self.logger.info(
-    #                             "evaluate_criteria explicit null",
-    #                             extra={"reason": "sensor offline / missing data", "src_name": src_name, "ts": timestamp}
-    #                         )
-    #                         # The hardware is offline. We mark this criterion as a failure.
-    #                         has_all_sources = False
-    #                         break
-                            
-    #                     # Data is present and valid
-    #                     data[src_name] = src_payload["data"]
-
-    #                 # If the sensor was declared offline, the condition instantly fails
-    #                 if not has_all_sources:
-    #                     group_states.append(False)
-    #                     continue
-
-    #                 # 3. Evaluate normally
-    #                 self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
-    #                 try:
-    #                     group_states.append(await criterion.evaluate(sources=data))
-    #                 except Exception as e:
-    #                     # Fallback to False if custom math throws an error
-    #                     group_states.append(False)
-
-    #             # Group evaluations
-    #             if group_type == "all":
-    #                 crit_states.append(all(group_states))
-    #             elif group_type == "any":
-    #                 crit_states.append(any(group_states))
-    #             elif group_type == "none":
-    #                 crit_states.append(not any(group_states))
-            
-    #         # Final state determination
-    #         state = all(crit_states)
-    #         self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
-            
-    #         # Update internal state and broadcast the new status
-    #         self.logger.debug("evaluate_criteria - send update with new state")
-    
-    #         cond_name = self.config["metadata"]["name"]
-    #         cond_ns = self.config["metadata"]["sampling_namespace"]
-    #         cond_valid_time = self.config["metadata"]["valid_config_time"]
-
-    #         self.current_state = state
-
-    #         status = {
-    #             "status": {
-    #                 "kind": "SamplingCondition",
-    #                 "time": timestamp,
-    #                 "name": cond_name,
-    #                 "sampling_namespace": cond_ns,
-    #                 "valid_config_time": cond_valid_time,
-    #                 "status": state
-    #             }
-    #         }
-    #         await self.status_buffer.put(status)
-
-    #     except Exception as e:
-    #         self.logger.error("evaluate_criteria", extra={"reason": e})
-
-    #     finally:
-    #         # Memory cleanup for stale data > 60 seconds old
-    #         try:
-    #             current_dt_raw = string_to_datetime(timestamp)
-    #             if not current_dt_raw:
-    #                 return 
-                    
-    #             current_dt = current_dt_raw.replace(tzinfo=timezone.utc)
-    #             cutoff_dt = current_dt - timedelta(seconds=60)
-                
-    #             for src_name, src_dict in self.source_map.items():
-    #                 stale_keys = []
-    #                 for ts in src_dict.keys():
-    #                     dt_obj = string_to_datetime(ts)
-    #                     if dt_obj and dt_obj.replace(tzinfo=timezone.utc) < cutoff_dt:
-    #                         stale_keys.append(ts)
-                            
-    #                 for ts in stale_keys:
-    #                     src_dict.pop(ts, None)
-    #         except Exception as clean_e:
-    #             self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
 
     async def evaluate_criteria(self, timestamp):
         """
@@ -519,7 +158,7 @@ class SamplingCondition:
             is_at_pmel = (cond_name == "at_pmel")
 
             if is_at_pmel:
-                self.logger.info(f"DEBUG EVAL [at_pmel]: Triggered evaluation for ts={timestamp}")
+                self.logger.warning(f"[DEBUG-EVAL] Triggered evaluation for at_pmel at ts={timestamp}")
 
             crit_states = []
             for group_type, group in self.criteria_map.items():
@@ -529,21 +168,10 @@ class SamplingCondition:
                     has_all_sources = True
                     
                     for src_name in criterion.get_sources():
-                        
-                        if is_at_pmel:
-                            self.logger.info(f"DEBUG EVAL [at_pmel]: Checking source map for '{src_name}'...")
-
-                        # 1. JITTER CHECK: Has the data arrived for this timestamp yet?
-                        if timestamp not in self.source_map[src_name]:
+                        # 1. JITTER CHECK
+                        if timestamp not in self.source_map.get(src_name, {}):
                             if is_at_pmel:
-                                self.logger.warning(
-                                    f"DEBUG EVAL [at_pmel]: ABORTED! Missing '{src_name}' for ts={timestamp}. "
-                                    f"Available timestamps in source_map: {list(self.source_map[src_name].keys())}"
-                                )
-                            self.logger.debug(
-                                "evaluate_criteria aborted",
-                                extra={"reason": "waiting for pending data", "src_name": src_name, "ts": timestamp}
-                            )
+                                self.logger.warning(f"[DEBUG-EVAL] ABORT! Missing '{src_name}' in buffer for ts={timestamp}. Available: {list(self.source_map.get(src_name, {}).keys())}")
                             return 
 
                         src_payload = self.source_map[src_name][timestamp]
@@ -551,43 +179,35 @@ class SamplingCondition:
                         # 2. DEAD-MAN & SCHEMA CHECK
                         if src_payload is None:
                             if is_at_pmel:
-                                self.logger.warning(f"DEBUG EVAL [at_pmel]: source payload for '{src_name}' is None!")
-                            self.logger.info("evaluate_criteria explicit null", extra={"src_name": src_name})
-                            has_all_sources = False
-                            break
+                                self.logger.warning(f"[DEBUG-EVAL] payload for '{src_name}' is None!")
+                            return 
                             
                         # --- FOOLPROOF PAYLOAD EXTRACTION ---
-                        # Handle both primitive floats (2200.0) and CF-dictionaries
                         if isinstance(src_payload, dict):
                             if src_payload.get("data") is None:
                                 if is_at_pmel:
-                                    self.logger.warning(f"DEBUG EVAL [at_pmel]: source payload ['data'] for '{src_name}' is explicitly None!")
-                                has_all_sources = False
-                                break
+                                    self.logger.warning(f"[DEBUG-EVAL] payload['data'] for '{src_name}' is None!")
+                                return 
                             data[src_name] = src_payload["data"]
                         else:
                             data[src_name] = src_payload
                         # ------------------------------------
                         
                         if is_at_pmel:
-                            self.logger.info(f"DEBUG EVAL [at_pmel]: Successfully extracted '{src_name}' = {data[src_name]}")
+                            self.logger.warning(f"[DEBUG-EVAL] Successfully extracted '{src_name}' = {data[src_name]}")
 
-                    # If the sensor was declared offline, the condition instantly fails
                     if not has_all_sources:
                         group_states.append(False)
                         continue
 
                     # 3. Evaluate normally
-                    self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
                     try:
                         group_states.append(await criterion.evaluate(sources=data))
                     except Exception as e:
                         if is_at_pmel:
-                            self.logger.error(f"DEBUG EVAL [at_pmel]: FATAL MATH CRASH! Error: {e}")
-                        # Fallback to False if custom math throws an error
+                            self.logger.warning(f"[DEBUG-EVAL] FATAL MATH CRASH! Error: {e}")
                         group_states.append(False)
 
-                # Group evaluations
                 if group_type == "all":
                     crit_states.append(all(group_states))
                 elif group_type == "any":
@@ -595,31 +215,29 @@ class SamplingCondition:
                 elif group_type == "none":
                     crit_states.append(not any(group_states))
             
+            # --- TICK THE WATCHDOG ---
+            now = get_datetime().timestamp()
+            self.last_eval_time = now
+            # -------------------------
+
             # 4. Final state determination
             state = all(crit_states) if crit_states else False
             
             if is_at_pmel:
-                self.logger.info(f"DEBUG EVAL [at_pmel]: Final State calculated as: {state} (crit_states: {crit_states})")
+                self.logger.warning(f"[DEBUG-EVAL] Final state for at_pmel calculated as: {state}")
                 
-            self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
-            
-            now = get_datetime().timestamp()
             is_changed = (self.current_state != state)
 
             # 5. ONLY push immediately if the state actually flipped
             if is_changed:
-                self.logger.info("condition state change", extra={"new_state": state})
+                self.logger.warning(f"condition state change", extra={"new_state": state})
                 
-                # Update internal tracking
                 self.current_state = state
-                self.last_status_time = now # Reset heartbeat timer
 
                 cond_ns = self.config["metadata"].get("sampling_namespace", "")
                 cond_valid_time = self.config["metadata"].get("valid_config_time", "")
-
                 status_str = "true" if state else "false"
                 
-                # --- envds-COMPLIANT STATUS BLOCK ---
                 status = {
                     "id": {
                         "app_group": "condition",
@@ -635,96 +253,29 @@ class SamplingCondition:
                     },
                     "timestamp": get_datetime_string()
                 }
-                # ------------------------------------
                 
                 await self.status_buffer.put(status)
 
         except Exception as e:
             self.logger.error("evaluate_criteria", extra={"reason": str(e)})
 
-        # finally:
-        #     # 6. Memory cleanup for stale data > 60 seconds old
-        #     try:
-        #         current_dt_raw = string_to_datetime(timestamp)
-        #         if not current_dt_raw:
-        #             return 
-                    
-        #         current_dt = current_dt_raw.replace(tzinfo=timezone.utc)
-        #         cutoff_dt = current_dt - timedelta(seconds=60)
-                
-        #         for src_name, src_dict in self.source_map.items():
-        #             stale_keys = []
-        #             for ts in src_dict.keys():
-        #                 dt_obj = string_to_datetime(ts)
-        #                 if dt_obj and dt_obj.replace(tzinfo=timezone.utc) < cutoff_dt:
-        #                     stale_keys.append(ts)
-                            
-        #             for ts in stale_keys:
-        #                 src_dict.pop(ts, None)
-        #     except Exception as clean_e:
-        #         self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
-        # finally:
-        #     # 6. FAST Memory cleanup for stale data > 60 seconds old
-        #     try:
-        #         current_dt_raw = string_to_datetime(timestamp)
-        #         if not current_dt_raw:
-        #             return 
-                    
-        #         cutoff_dt = current_dt_raw.replace(tzinfo=timezone.utc) - timedelta(seconds=60)
-        #         cutoff_str = datetime_to_string(cutoff_dt) # Generate the string once
-                
-        #         for src_name, src_dict in self.source_map.items():
-        #             # Fast lexicographical string comparison (O(N) but highly optimized in C)
-        #             stale_keys = [ts for ts in src_dict.keys() if ts < cutoff_str]
-                            
-        #             for ts in stale_keys:
-        #                 src_dict.pop(ts, None)
-        #     except Exception as clean_e:
-        #         self.logger.error("evaluate_criteria cleanup error", extra={"reason": clean_e})
-
-    # async def update_status_loop(self):
-    #     while True:
-    #         self.logger.debug("update_state_loop - send update")
-
-    #         cond_name = self.config["metadata"]["name"]
-    #         cond_ns = self.config["metadata"]["sampling_namespace"]
-    #         cond_valid_time = self.config["metadata"]["valid_config_time"]
-
-    #         status = {
-    #             "status": {
-    #                 "kind": "SamplingCondition",
-    #                 "time": get_datetime_string(),
-    #                 "name": cond_name,
-    #                 "sampling_namespace": cond_ns,
-    #                 "valid_config_time": cond_valid_time,
-    #                 "status": self.current_state
-    #             }
-    #         }
-    #         await self.status_buffer.put(status)
-
-    #         # await self.update_status(status)
-
-    #         await asyncio.sleep(10)
-
     async def cleanup_loop(self):
         """
         Runs in the background every 10 seconds to purge stale data from the source_map.
+        Expanded to 300 seconds to allow slow sensors to evaluate safely.
         """
         while True:
             try:
-                # Give the event loop room to breathe
                 await asyncio.sleep(10)
                 
                 now_raw = get_datetime()
                 if not now_raw:
                     continue
                     
-                cutoff_dt = now_raw.replace(tzinfo=timezone.utc) - timedelta(seconds=60)
+                cutoff_dt = now_raw.replace(tzinfo=timezone.utc) - timedelta(seconds=300)
                 cutoff_str = datetime_to_string(cutoff_dt)
                 
                 for src_name, src_dict in self.source_map.items():
-                    # FIX: Evaluate all keys. Do not break early, as out-of-order 
-                    # MQTT arrivals will get trapped behind newer insertions.
                     stale_keys = [ts for ts in src_dict if ts < cutoff_str]
                             
                     for ts in stale_keys:
@@ -734,35 +285,49 @@ class SamplingCondition:
                 self.logger.error("cleanup_loop error", extra={"reason": clean_e})
 
     async def update_status_loop(self):
+        """
+        Periodically broadcasts status. Acts as a Watchdog to force a False state 
+        if the sensor hasn't updated within the source_max_age.
+        """
         while True:
-            self.logger.debug("update_state_loop - send update")
+            try:
+                await asyncio.sleep(10)
 
-            cond_name = self.config["metadata"]["name"]
-            cond_ns = self.config["metadata"]["sampling_namespace"]
-            cond_valid_time = self.config["metadata"]["valid_config_time"]
+                cond_name = self.config["metadata"]["name"]
+                cond_ns = self.config["metadata"]["sampling_namespace"]
+                cond_valid_time = self.config["metadata"]["valid_config_time"]
 
-            # --- NEW envds-COMPLIANT STATUS BLOCK ---
-            status_str = "true" if self.current_state else "false"
+                # --- WATCHDOG CHECK ---
+                now = get_datetime().timestamp()
+                age = now - self.last_eval_time
+                
+                if self.current_state is True and age > self.source_max_age:
+                    self.logger.warning(f"WATCHDOG TRIGGERED for {cond_name}: Data is {age:.1f}s old (Max {self.source_max_age}s). Forcing False.")
+                    self.current_state = False
+                # ----------------------
 
-            status = {
-                "id": {
-                    "app_group": "condition",
-                    "app_uid": cond_name,
-                    "sampling_namespace": cond_ns,
-                    "valid_config_time": cond_valid_time
-                },
-                "state": {
-                    "condition_met": {
-                        "requested": "true", 
-                        "actual": status_str
-                    }
-                },
-                "timestamp": get_datetime_string()
-            }
-            # ----------------------------------------
-            
-            await self.status_buffer.put(status)
-            await asyncio.sleep(10)
+                status_str = "true" if self.current_state else "false"
+
+                status = {
+                    "id": {
+                        "app_group": "condition",
+                        "app_uid": cond_name,
+                        "sampling_namespace": cond_ns,
+                        "valid_config_time": cond_valid_time
+                    },
+                    "state": {
+                        "condition_met": {
+                            "requested": "true", 
+                            "actual": status_str
+                        }
+                    },
+                    "timestamp": get_datetime_string()
+                }
+                
+                await self.status_buffer.put(status)
+
+            except Exception as e:
+                self.logger.error("update_status_loop error", extra={"reason": str(e)})
 
     def shutdown(self):
         """Cancels background tasks to prevent task leaks when this condition is replaced."""
@@ -770,7 +335,6 @@ class SamplingCondition:
         if hasattr(self, '_status_task'): self._status_task.cancel()
         if hasattr(self, '_cleanup_task'): self._cleanup_task.cancel()
         self.logger.info(f"Condition '{self.config['metadata']['name']}' safely shut down.")
-
 class SamplingConditionsManager:
     """docstring for SamplingConditionsManager."""
 
@@ -936,12 +500,25 @@ class SamplingConditionsManager:
         # Create the compound tuple key to completely isolate platform domains
         composite_key = (cond_name, cond_ns)
         
+        new_time_str = condition.get("metadata", {}).get("valid_config_time", "")
+        new_time = string_to_datetime(new_time_str)
+
         # 1. Check if condition already exists using the composite key lookup
         existing_entry = self.sampling_conditions["conditions"].get(composite_key)
 
         if existing_entry:
-            if existing_entry.get("config") == condition:
-                return
+            existing_config = existing_entry.get("config", {})
+            existing_time_str = existing_config.get("metadata", {}).get("valid_config_time", "")
+            existing_time = string_to_datetime(existing_time_str)
+
+            # --- TIME-GATING FIX: Reject stale configs from Datastore ---
+            if new_time and existing_time:
+                if new_time < existing_time:
+                    self.logger.warning(f"REJECTED STALE CONFIG: {cond_name} ({new_time_str} is older than active {existing_time_str})")
+                    return
+                if new_time == existing_time:
+                    return # Already active
+            # ------------------------------------------------------------
             
             old_condition_instance = existing_entry.get("condition")
             if old_condition_instance:
@@ -967,7 +544,7 @@ class SamplingConditionsManager:
                 
             source_variable = source["variable"]
             target_entry = {
-                "condition": composite_key, # FIXED: Pass the composite key tuple to routing targets
+                "condition": composite_key,
                 "source_name": source_name,
                 "source_variable": source_variable,
             }
@@ -984,78 +561,6 @@ class SamplingConditionsManager:
             status_buffer=self.status_buffer,
         )
         self.sampling_conditions["conditions"][composite_key]["condition"] = condition_instance
-
-    # def open_http_client(self):
-    #     # create a new client for each request
-    #     self.http_client = httpx.AsyncClient()
-
-    # async def send_event(self, ce):
-    #     try:
-    #         self.logger.debug(ce)  # , extra=template)
-    #         if not self.http_client:
-    #             self.open_http_client()
-    #         try:
-    #             timeout = httpx.Timeout(5.0, read=0.1)
-    #             headers, body = to_structured(ce)
-    #             self.logger.debug(
-    #                 "send_event",
-    #                 extra={
-    #                     "broker": self.config.knative_broker,
-    #                     "h": headers,
-    #                     "b": body,
-    #                 },
-    #             )
-    #             # send to knative broker
-    #             # async with httpx.AsyncClient() as client:
-    #             #     r = await client.post(
-    #             #         self.config.knative_broker,
-    #             #         headers=headers,
-    #             #         data=body,
-    #             #         timeout=timeout,
-    #             #     )
-
-    #             r = await self.http_client.post(
-    #                 self.config.knative_broker,
-    #                 headers=headers,
-    #                 data=body,
-    #                 timeout=timeout,
-    #             )
-
-    #             r.raise_for_status()
-    #         except InvalidStructuredJSON:
-    #             self.logger.error(f"INVALID MSG: {ce}")
-    #         except httpx.TimeoutException:
-    #             pass
-    #         except httpx.HTTPError as e:
-    #             self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
-    #     except Exception as e:
-    #         print("error", e)
-    #     await asyncio.sleep(0.01)
-
-    # async def send_event(self, ce):
-    #     try:
-    #         self.logger.debug("send_event", extra={"cepayload": ce})
-    #         if not getattr(self, 'http_client', None):
-    #             self.open_http_client()
-    #         try:
-    #             timeout = httpx.Timeout(5.0, read=10.0)
-    #             headers, body = to_structured(ce)
-                
-    #             r = await self.http_client.post(
-    #                 self.config.knative_broker,
-    #                 headers=headers,
-    #                 data=body,
-    #                 timeout=timeout,
-    #             )
-    #             r.raise_for_status()
-    #         except InvalidStructuredJSON:
-    #             self.logger.error(f"INVALID MSG: {ce}")
-    #         except httpx.TimeoutException:
-    #             pass
-    #         except httpx.HTTPError as e:
-    #             self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
-    #     except Exception as e:
-    #         print("error", e)
 
     async def send_event(self, ce):
         """Routes registry definitions to the Datastore via Knative HTTP Broker."""
@@ -1491,110 +996,6 @@ class SamplingConditionsManager:
     async def handle_condition_update(self, ce: CloudEvent):
         pass
 
-        # async def sampling_mode_monitor(self):
-        #     while True:
-
-        #         # get current sampling mode
-        #         #   or trigger off mode updates
-
-        #         await asyncio.sleep(1)
-
-        # # TODO change this for sampling-system
-        # async def device_data_update(self, ce: CloudEvent):
-
-        #     try:
-        #         attributes = ce.data["attributes"]
-        #         # dimensions = ce.data["dimensions"]
-        #         # variables = ce.data["variables"]
-
-        #         make = attributes["make"]["data"]
-        #         model = attributes["model"]["data"]
-        #         serial_number = attributes["serial_number"]["data"]
-        #         device_id = "::".join([make, model, serial_number])
-        #         self.logger.debug("device_data_update", extra={"device_id": device_id})
-        #         # if device_id in self.variablesets["sources"]:
-        #         await self.update_by_source(
-        #             source_id=device_id, source_data=ce
-        #         )
-
-        #     except Exception as e:
-        #         self.logger.error("device_data_update", extra={"reason": e})
-        #     pass
-
-
-        # async def index_monitor(self):
-        while True:
-            update = await self.index_ready_buffer.get()
-            self.index_ready_buffer.task_done()
-            try:
-                self.logger.debug("index_monitor", extra={"update": update})
-                index_type = update["index_type"]
-                index_value = update["index_value"]
-                update_type = update["update_type"]
-                target_time = update["index_ready"]
-
-                vm_list = await self.get_valid_variablemaps(target_time=target_time)
-                self.logger.debug(
-                    "index_monitor", extra={"len": len(vm_list), "vm_list": vm_list}
-                )
-                for vm in vm_list:
-                    # await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
-                    print(f"index_monitor:vm = {vm}")
-                    variablemap = vm["variablemap"]
-                    print(f"index_monitor: variablemap = {variablemap}")
-
-                    index_type = update["index_type"]
-                    if index_type == "time":
-                        print(f"index_monitor: index_type = {index_type}")
-                        await self.update_variablesets_by_time_index(
-                            variablemap=variablemap, time_index=update
-                        )
-                    # # handle timebase update
-                    # vm_name = update["variablemap"]
-                    # vm_cfg_time =  update["variablemap_revision_time"]
-                    # target_vm = self.platform_variablesets["maps"][vm_name][vm_cfg_time]
-                    # index_value = update["index_value"]
-                    # # for vg in self.platform_variablesets["maps"][vm_name]["indices"][index_type][index_value]["variablegroups"]:
-                    # for vg in target_vm["indices"][index_type][index_value]["variablegroups"]:
-                    #     var_set = {
-                    #         "attributes": {
-                    #             "variablemap": {"type": "string", "data": vm_name},
-                    #             "variablemap_revision_time": {"type": "string", "data": vm_cfg_time},
-                    #             "variablegroup": {"type": "string", "data": vg},
-                    #             "index_type": {"type": "string", "data": index_type},
-                    #             "index_value": {"type": "int", "data": index_value}
-                    #         },
-                    #         "dimensions": {"time": 1},
-                    #         "variables": {}
-                    #     }
-
-                    #     # for name, variable in self.platform_variablesets["maps"][vm_name]["indices"][index_type][index_value]["variablegroups"][vg]["variables"].items():
-                    #     for name, variable in target_vm["indices"][index_type][index_value]["variablegroups"][vg]["variables"].items():
-                    #         map_type = variable["map_type"]
-                    #         source = variable["source"]
-                    #         index_method = variable["index_method"]
-                    #         attributes = variable["attributes"]
-                    #         if map_type == "direct":
-                    #             source_variable = variable["direct_value"]["source_variable"]
-                    #         else:
-                    #             continue # TODO fill in for other types
-                    #         mapped_var = {
-                    #             "type": "float",
-                    #             "shape": ["time"],
-                    #             "attributes": {
-                    #                 # how to make sure these are always using proper config?
-                    #                 "source_type": {"type": "string", "data": source[source_variable]["source_type"]},
-                    #                 "source_id": {"type": "string", "data": source[source_variable]["source_id"]},
-                    #                 "source_variable": {"type": "string", "data": source[source_variable]["source_variable"]},
-                    #             }
-                    #         }
-
-                    pass
-                else:
-                    pass
-
-            except Exception as e:
-                self.logger.error("index_monitor", extra={"reason": e})
 
 async def shutdown():
     print("shutting down")
