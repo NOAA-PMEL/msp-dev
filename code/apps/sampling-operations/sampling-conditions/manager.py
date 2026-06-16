@@ -148,6 +148,35 @@ class SamplingCondition:
         except Exception as e:
             self.logger.error("configure", extra={"reason": e})
 
+    async def update(self, payload: dict):
+        """
+        Receives new telemetry payloads, updates the local memory buffer (source_map),
+        and triggers an immediate evaluation of the condition logic.
+        """
+        try:
+            vars_dict = payload.get("condition_variables", {})
+            if "time" not in vars_dict:
+                return
+                
+            # Extract the precise timestamp for this data frame
+            # (Handles both nested dicts and raw string formats safely)
+            time_block = vars_dict["time"]
+            timestamp = time_block.get("data") if isinstance(time_block, dict) else time_block
+            
+            # 1. Store the incoming variables into the source_map cache
+            for var_name, var_payload in vars_dict.items():
+                if var_name == "time":
+                    continue
+                # Ensure the variable is one we actually care about
+                if var_name in self.source_map:
+                    self.source_map[var_name][timestamp] = var_payload
+                    
+            # 2. Trigger the math evaluation instantly
+            await self.evaluate_criteria(timestamp)
+            
+        except Exception as e:
+            self.logger.error("update method error", extra={"reason": str(e)})
+            
     async def evaluate_criteria(self, timestamp):
         """
         Evaluates sensor data against the condition's criteria logic.
