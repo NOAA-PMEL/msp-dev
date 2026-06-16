@@ -515,6 +515,12 @@ class SamplingCondition:
         Pushes an immediate status update ONLY if the resulting state changes.
         """
         try:
+            cond_name = self.config["metadata"]["name"]
+            is_at_pmel = (cond_name == "at_pmel")
+
+            if is_at_pmel:
+                self.logger.info(f"DEBUG EVAL [at_pmel]: Triggered evaluation for ts={timestamp}")
+
             crit_states = []
             for group_type, group in self.criteria_map.items():
                 group_states = []
@@ -524,8 +530,16 @@ class SamplingCondition:
                     
                     for src_name in criterion.get_sources():
                         
+                        if is_at_pmel:
+                            self.logger.info(f"DEBUG EVAL [at_pmel]: Checking source map for '{src_name}'...")
+
                         # 1. JITTER CHECK: Has the data arrived for this timestamp yet?
                         if timestamp not in self.source_map[src_name]:
+                            if is_at_pmel:
+                                self.logger.warning(
+                                    f"DEBUG EVAL [at_pmel]: ABORTED! Missing '{src_name}' for ts={timestamp}. "
+                                    f"Available timestamps in source_map: {list(self.source_map[src_name].keys())}"
+                                )
                             self.logger.debug(
                                 "evaluate_criteria aborted",
                                 extra={"reason": "waiting for pending data", "src_name": src_name, "ts": timestamp}
@@ -536,6 +550,8 @@ class SamplingCondition:
                         
                         # 2. DEAD-MAN & SCHEMA CHECK
                         if src_payload is None:
+                            if is_at_pmel:
+                                self.logger.warning(f"DEBUG EVAL [at_pmel]: source payload for '{src_name}' is None!")
                             self.logger.info("evaluate_criteria explicit null", extra={"src_name": src_name})
                             has_all_sources = False
                             break
@@ -544,12 +560,17 @@ class SamplingCondition:
                         # Handle both primitive floats (2200.0) and CF-dictionaries
                         if isinstance(src_payload, dict):
                             if src_payload.get("data") is None:
+                                if is_at_pmel:
+                                    self.logger.warning(f"DEBUG EVAL [at_pmel]: source payload ['data'] for '{src_name}' is explicitly None!")
                                 has_all_sources = False
                                 break
                             data[src_name] = src_payload["data"]
                         else:
                             data[src_name] = src_payload
                         # ------------------------------------
+                        
+                        if is_at_pmel:
+                            self.logger.info(f"DEBUG EVAL [at_pmel]: Successfully extracted '{src_name}' = {data[src_name]}")
 
                     # If the sensor was declared offline, the condition instantly fails
                     if not has_all_sources:
@@ -561,6 +582,8 @@ class SamplingCondition:
                     try:
                         group_states.append(await criterion.evaluate(sources=data))
                     except Exception as e:
+                        if is_at_pmel:
+                            self.logger.error(f"DEBUG EVAL [at_pmel]: FATAL MATH CRASH! Error: {e}")
                         # Fallback to False if custom math throws an error
                         group_states.append(False)
 
@@ -574,6 +597,10 @@ class SamplingCondition:
             
             # 4. Final state determination
             state = all(crit_states) if crit_states else False
+            
+            if is_at_pmel:
+                self.logger.info(f"DEBUG EVAL [at_pmel]: Final State calculated as: {state} (crit_states: {crit_states})")
+                
             self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
             
             now = get_datetime().timestamp()
@@ -587,7 +614,6 @@ class SamplingCondition:
                 self.current_state = state
                 self.last_status_time = now # Reset heartbeat timer
 
-                cond_name = self.config["metadata"]["name"]
                 cond_ns = self.config["metadata"].get("sampling_namespace", "")
                 cond_valid_time = self.config["metadata"].get("valid_config_time", "")
 
@@ -1431,10 +1457,17 @@ class SamplingConditionsManager:
                 cond_data["variables"]["time"] = {"data": dt} # Keep time in schema format too
                 payload = {"condition_variables": cond_data["variables"]}
                 
+                # --- NEW DEBUG FOR AT_PMEL INGEST ---
+                if isinstance(cond_key, tuple) and cond_key[0] == "at_pmel":
+                    self.logger.info(f"DEBUG INGEST [at_pmel]: Preparing to push payload to buffer. Variables present: {list(cond_data['variables'].keys())}")
+                elif cond_key == "at_pmel": # Fallback if routing uses string instead of tuple
+                    self.logger.info(f"DEBUG INGEST [at_pmel]: Preparing to push payload to buffer. Variables present: {list(cond_data['variables'].keys())}")
+                # ------------------------------------
+
                 await self.sampling_conditions["conditions"][cond_key]["condition"].update(payload)
 
         except Exception as e:
-            self.logger.error("variableset_data_update", extra={"reason": str(e)})   
+            self.logger.error("variableset_data_update", extra={"reason": str(e)})
 
     async def handle_condition_request(self, ce: CloudEvent):
 

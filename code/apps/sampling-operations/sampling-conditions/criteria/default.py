@@ -135,21 +135,24 @@ class LatLonRegionLocation(SamplingCriterion):
         lat_src = self.coords_map.get("latitude")
         lon_src = self.coords_map.get("longitude")
 
+        self.logger.info(f"DEBUG MATH [LatLonRegionLocation - {self.label}]: evaluating with lat_src='{lat_src}', lon_src='{lon_src}', sources_keys={list(sources.keys())}")
+
         if lat_src not in sources or lon_src not in sources:
-            self.logger.warning(f"Missing coordinate sources for {self.label}")
+            self.logger.warning(f"DEBUG MATH [LatLonRegionLocation - {self.label}]: Missing coordinate sources! Available sources={list(sources.keys())}")
             return False
 
         # --- FIX: Ensure floats and handle potential None/string values safely ---
         try:
             curr_lat = float(sources[lat_src])
             curr_lon = float(sources[lon_src])
-        except (TypeError, ValueError):
-            self.logger.warning(f"Invalid coordinate values for {self.label}: lat={sources.get(lat_src)}, lon={sources.get(lon_src)}")
+            self.logger.info(f"DEBUG MATH [LatLonRegionLocation - {self.label}]: Parsed floats safely: lat={curr_lat}, lon={curr_lon}")
+        except (TypeError, ValueError) as e:
+            self.logger.warning(f"DEBUG MATH [LatLonRegionLocation - {self.label}]: Invalid coordinate values: lat={sources.get(lat_src)}, lon={sources.get(lon_src)} | Error: {e}")
             return False
         # ------------------------------------------------------------------------
 
         if len(self.region) < 2:
-            self.logger.warning(f"Region {self.label} must have at least 2 points defined.")
+            self.logger.warning(f"DEBUG MATH [LatLonRegionLocation - {self.label}]: Region must have at least 2 points defined. Found: {len(self.region)}")
             return False
 
         # ---------------------------------------------------------
@@ -193,16 +196,8 @@ class LatLonRegionLocation(SamplingCriterion):
         # ---------------------------------------------------------
         result = is_inside if self.true_if == "inside" else not is_inside
         
-        self.logger.debug(
-            "evaluate LatLonRegionLocation", 
-            extra={
-                "label": self.label,
-                "lat": curr_lat, 
-                "lon": curr_lon, 
-                "is_inside": is_inside, 
-                "result": result,
-                "mode": "bounding_box" if len(self.region) == 2 else "polygon"
-            }
+        self.logger.info(
+            f"DEBUG MATH [LatLonRegionLocation - {self.label}]: Final Result={result} | calculated_is_inside={is_inside} | configured_true_if={self.true_if} | mode={'bounding_box' if len(self.region) == 2 else 'polygon'}"
         )
         
         return result
