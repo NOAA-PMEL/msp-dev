@@ -54,7 +54,7 @@ class SamplingMode:
     """Evaluates environmental requirements and triggers assigned SamplingActions."""
     def __init__(self, config, status_buffer, actions_buffer):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
         self.config = config
         self.status_buffer = status_buffer
         self.actions_buffer = actions_buffer

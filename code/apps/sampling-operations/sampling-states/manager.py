@@ -92,7 +92,7 @@ class SamplingState:
 
     def __init__(self, config, status_buffer):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
         self.logger.debug("SamplingState instantiated")
 
         self.config = config
