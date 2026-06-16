@@ -820,16 +820,29 @@ class SamplingStatesManager:
         # Create the compound tuple key to completely isolate platform domains
         composite_key = (state_name, state_ns)
         
+        new_time_str = state.get("metadata", {}).get("valid_config_time", "")
+        new_time = string_to_datetime(new_time_str)
+
         # Ensure status_buffer exists if loaded during sync loop
         if not getattr(self, "status_buffer", None):
             self.status_buffer = asyncio.Queue(maxsize=2000)
 
-        # --- FIX: Prevent Amnesia / Memory Wipes ---
-        # Check if the config is actually different before destroying the state instance
+        # --- FIX: Prevent Amnesia / Memory Wipes & Time-Gating ---
         existing_entry = self.sampling_states["states"].get(composite_key)
         if existing_entry:
-            if existing_entry.get("config") == state:
-                return # Config hasn't changed, do not restart!
+            existing_config = existing_entry.get("config", {})
+            existing_time_str = existing_config.get("metadata", {}).get("valid_config_time", "")
+            existing_time = string_to_datetime(existing_time_str)
+
+            # --- TIME-GATING FIX: Reject stale configs from Datastore ---
+            if new_time and existing_time:
+                if new_time < existing_time:
+                    self.logger.warning(f"REJECTED STALE CONFIG: {state_name} ({new_time_str} is older than active {existing_time_str})")
+                    return
+                if new_time == existing_time:
+                    if existing_config == state:
+                        return # Config hasn't changed and timestamp is the same, do not restart!
+            # ------------------------------------------------------------
                 
             old_state = existing_entry.get("state")
             if old_state:
