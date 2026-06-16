@@ -1384,9 +1384,27 @@ class SamplingConditionsManager:
     async def variableset_data_update(self, ce: CloudEvent):
         try:
             self.logger.debug("variableset_data_update", extra={"ce": ce})
-            src_id = ce["source"].split(".")[-1]
+            
+            raw_source = ce.get("source", "UNKNOWN_SOURCE")
+            src_id = raw_source.split(".")[-1]
 
-            if src_id not in self.sampling_conditions["sources"]:
+            # --- ADDED DEBUGGING ---
+            available_sources = list(self.sampling_conditions["sources"].keys())
+            is_match = src_id in self.sampling_conditions["sources"]
+            
+            self.logger.info(
+                "DEBUG variableset_data_update routing", 
+                extra={
+                    "raw_ce_source": raw_source,
+                    "extracted_src_id": src_id,
+                    "available_configured_sources": available_sources,
+                    "will_it_process": is_match
+                }
+            )
+            # -----------------------
+
+            if not is_match:
+                self.logger.warning(f"DROPPING DATA: extracted src_id '{src_id}' not found in configured sources!")
                 return
 
             data_map = dict()
@@ -1416,7 +1434,7 @@ class SamplingConditionsManager:
                 await self.sampling_conditions["conditions"][cond_key]["condition"].update(payload)
 
         except Exception as e:
-            self.logger.error("variableset_data_update", extra={"reason": str(e)})    
+            self.logger.error("variableset_data_update", extra={"reason": str(e)})   
 
     async def handle_condition_request(self, ce: CloudEvent):
 

@@ -139,12 +139,18 @@ class LatLonRegionLocation(SamplingCriterion):
             self.logger.warning(f"Missing coordinate sources for {self.label}")
             return False
 
+        # --- FIX: Ensure floats and handle potential None/string values safely ---
+        try:
+            curr_lat = float(sources[lat_src])
+            curr_lon = float(sources[lon_src])
+        except (TypeError, ValueError):
+            self.logger.warning(f"Invalid coordinate values for {self.label}: lat={sources.get(lat_src)}, lon={sources.get(lon_src)}")
+            return False
+        # ------------------------------------------------------------------------
+
         if len(self.region) < 2:
             self.logger.warning(f"Region {self.label} must have at least 2 points defined.")
             return False
-
-        curr_lat = sources[lat_src]
-        curr_lon = sources[lon_src]
 
         # ---------------------------------------------------------
         # Case 1: Simple Bounding Box (2 Points)
