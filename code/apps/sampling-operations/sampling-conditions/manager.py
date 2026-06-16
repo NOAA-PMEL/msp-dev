@@ -369,7 +369,7 @@ class SamplingConditionsManager:
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
         self.sampling_conditions = {"conditions": dict(), "sources": {}}
         self.config = SamplingConditionsManagerConfig()

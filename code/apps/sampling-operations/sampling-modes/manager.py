@@ -210,7 +210,7 @@ class SamplingModesManager:
     def __init__(self):
         # ---> ADD THESE TWO LINES <---
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
         
         self.logger.debug("SamplingModesManager instantiated")
         self.config = SamplingModesConfig()
