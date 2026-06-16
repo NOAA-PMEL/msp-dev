@@ -267,6 +267,28 @@ class SamplingModesManager:
             # Create the compound tuple key
             composite_key = (name, ns)
             
+            new_time_str = cfg.get("metadata", {}).get("valid_config_time", "")
+            new_time = string_to_datetime(new_time_str)
+
+            existing_entry = self.modes.get(composite_key)
+            if existing_entry:
+                existing_config = existing_entry.config
+                existing_time_str = existing_config.get("metadata", {}).get("valid_config_time", "")
+                existing_time = string_to_datetime(existing_time_str)
+
+                # --- TIME-GATING FIX: Reject stale configs from Datastore ---
+                if new_time and existing_time:
+                    if new_time < existing_time:
+                        self.logger.warning(f"REJECTED STALE CONFIG: {name} ({new_time_str} is older than active {existing_time_str})")
+                        return
+                    if new_time == existing_time:
+                        if existing_config == cfg:
+                            return # Config hasn't changed and timestamp is the same
+                # ------------------------------------------------------------
+                
+                if hasattr(existing_entry, 'stop'):
+                    existing_entry.stop()
+            
             # Pass your correct buffers directly to the constructor
             self.modes[composite_key] = SamplingMode(cfg, self.status_buffer, self.actions_buffer)
             self.logger.info("mode_instance_created", extra={"res_name": name, "namespace": ns, "req_count": len(cfg.get("requirements", []))})
@@ -285,8 +307,25 @@ class SamplingModesManager:
             # Create the compound tuple key
             composite_key = (name, ns)
             
+            new_time_str = cfg.get("metadata", {}).get("valid_config_time", "")
+            new_time = string_to_datetime(new_time_str)
+
             if composite_key in self.actions:
                 old_action = self.actions[composite_key]
+                existing_config = old_action.config
+                existing_time_str = existing_config.get("metadata", {}).get("valid_config_time", "")
+                existing_time = string_to_datetime(existing_time_str)
+
+                # --- TIME-GATING FIX: Reject stale configs from Datastore ---
+                if new_time and existing_time:
+                    if new_time < existing_time:
+                        L.warning(f"REJECTED STALE CONFIG: {name} ({new_time_str} is older than active {existing_time_str})")
+                        return
+                    if new_time == existing_time:
+                        if existing_config == cfg:
+                            return # Config hasn't changed
+                # ------------------------------------------------------------
+
                 if hasattr(old_action, 'stop'):
                     old_action.stop()
 
