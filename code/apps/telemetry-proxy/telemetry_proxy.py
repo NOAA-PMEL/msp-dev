@@ -6,6 +6,7 @@ import paho.mqtt.client as mqtt
 from logfmter import Logfmter
 from pydantic import BaseSettings, Field
 from ulid import ULID
+import time
 from aiomqtt import Client, MqttError
 import paho.mqtt.client as mqtt
 import uvicorn
@@ -71,6 +72,10 @@ class TelemetryProxyClient:
         # Async worker queues for non-blocking I/O
         self.outbound_queue = asyncio.Queue(maxsize=2000)
         self.inbound_queue = asyncio.Queue(maxsize=2000)
+
+        self.start_time = time.time()
+        self.total_outbound_bytes = 0
+        self.total_raw_bytes = 0
 
     async def setup(self):
         """Starts background task orchestration."""
@@ -143,6 +148,21 @@ class TelemetryProxyClient:
             final_payload = nonce + ciphertext
             size_out = len(final_payload)
             
+            # ---> ADD METRICS CALCULATION HERE <---
+            self.total_outbound_bytes += size_out
+            self.total_raw_bytes += size_in
+            elapsed_hours = (time.time() - self.start_time) / 3600.0
+            
+            # Prevent divide-by-zero on the very first packet
+            if elapsed_hours > 0:
+                # Convert bytes to MB, then divide by hours
+                mb_per_hour = (self.total_outbound_bytes / (1024 * 1024)) / elapsed_hours
+                raw_mb_per_hour = (self.total_raw_bytes / (1024 * 1024)) / elapsed_hours
+            else:
+                mb_per_hour = 0.0
+                raw_mb_per_hour = 0.0
+            # --------------------------------------
+
             # 4. Metrics Logging (Only visible if PROXY_LOG_LEVEL=DEBUG)
             reduction = (1 - (size_out / size_in)) * 100
             L.debug("compression_stats", extra={
@@ -150,7 +170,9 @@ class TelemetryProxyClient:
                 "topic": original_topic,
                 "bytes_in": size_in, 
                 "bytes_out": size_out, 
-                "reduction_pct": round(reduction, 1)
+                "reduction_pct": round(reduction, 1),
+                "est_mb_per_hr": round(mb_per_hour, 4),
+                "est_raw_mb_per_hr": round(raw_mb_per_hour, 4)  # <--- NEW LOG OUTPUT
             })
 
             # 5. Build Binary CloudEvent MQTT v5 Headers
