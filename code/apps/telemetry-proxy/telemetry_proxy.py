@@ -1,5 +1,6 @@
 import os
 import asyncio
+import traceback
 import zlib
 import logging
 from logfmter import Logfmter
@@ -79,8 +80,13 @@ class TelemetryProxyClient:
         reconnect = 5
         while True:
             try:
-                # We enforce protocol V5 to guarantee CloudEvent headers are preserved
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=self.config.mqtt_client_id, protocol=5) as client:
+                # FIX 1: Use the explicit paho MQTTv5 constant instead of the integer 5
+                async with Client(
+                    self.config.mqtt_broker, 
+                    port=self.config.mqtt_port, 
+                    identifier=self.config.mqtt_client_id, 
+                    protocol=mqtt.MQTTv5
+                ) as client:
                     L.info("MQTT Connected. Starting Proxy pipelines.")
                     
                     # Start async workers
@@ -92,6 +98,10 @@ class TelemetryProxyClient:
                     
             except MqttError as e:
                 L.error(f"MQTT Error: {e}. Reconnecting in {reconnect}s...")
+                await asyncio.sleep(reconnect)
+            except Exception as e:
+                # FIX 2: Catch standard Python errors so the background task never dies silently!
+                L.error(f"FATAL ERROR in mqtt_loop: {e}\n{traceback.format_exc()}")
                 await asyncio.sleep(reconnect)
 
     async def subscriber_worker(self, client):
