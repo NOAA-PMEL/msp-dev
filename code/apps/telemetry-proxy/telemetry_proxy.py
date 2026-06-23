@@ -197,13 +197,19 @@ class TelemetryProxyClient:
         while True:
             msg = await self.inbound_queue.get()
             try:
-                # 1. Read Original Topic from MQTT v5 Headers
+                # 1. Read Headers from MQTT v5 User Properties
                 props = msg.properties
                 user_props = getattr(props, "UserProperty", [])
+                
                 original_topic = next((v for k, v in user_props if k == "ce-originaltopic"), None)
+                ce_type = next((v for k, v in user_props if k == "ce-type"), "unknown")
+                ce_source = next((v for k, v in user_props if k == "ce-source"), "unknown")
                 
                 if not original_topic:
-                    L.warning("Incoming compressed packet missing 'ce-originaltopic' header. Dropping.")
+                    L.warning("Incoming compressed packet missing 'ce-originaltopic' header. Dropping.", extra={
+                        "ce_type": ce_type,
+                        "ce_source": ce_source
+                    })
                     continue
 
                 # 2. Extract Nonce and Ciphertext
@@ -217,13 +223,22 @@ class TelemetryProxyClient:
                 original_json_bytes = zlib.decompress(compressed_bytes)
                 size_out = len(original_json_bytes)
                 
-                # 4. Metrics Logging
+                # 4. Metrics & Routing Debug Logging
                 reduction = (1 - (size_in / size_out)) * 100 if size_out > 0 else 0
+                
+                # Use L.info so it shows up even if you aren't in DEBUG mode
+                L.info("Routing inbound telemetry", extra={
+                    "original_topic": original_topic,
+                    "ce_type": ce_type,
+                    "ce_source": ce_source,
+                    "bytes_in": size_in,
+                    "bytes_out": size_out
+                })
+                
+                # If you want the full compression stats only on DEBUG:
                 L.debug("compression_stats", extra={
                     "direction": "inbound",
                     "topic": original_topic,
-                    "bytes_in": size_in, 
-                    "bytes_out": size_out, 
                     "original_reduction_pct": round(reduction, 1)
                 })
 
