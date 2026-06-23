@@ -11,6 +11,7 @@ class BaseEventType(object):
     TYPE_PING = "ping"
     TYPE_KEEPALIVE = "keepalive"
     TYPE_OPERATIONS = "operations"
+    TYPE_TRANSPORT = "transport"
 
     ACTION_REQUEST = "request"
     ACTION_UPDATE = "update"
@@ -88,6 +89,10 @@ class BaseEventType(object):
     def operations_log():
         return ".".join([BaseEventType.get_type(BaseEventType.TYPE_OPERATIONS), BaseEventType.ACTION_LOG])
 
+    @staticmethod
+    def transport_compressed():
+        return ".".join([BaseEventType.get_type(BaseEventType.TYPE_TRANSPORT), "compressed"])
+    
     @staticmethod
     def get_type(type: str):
         return ".".join([BaseEventType.TYPE_BASE, type])

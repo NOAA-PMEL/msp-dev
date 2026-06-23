@@ -146,6 +146,12 @@ class envdsEvent(object):
         )
     
     @staticmethod
+    def create_transport_compressed(source: str, data: dict = {}, extra_header: dict = None):
+        return envdsEvent.create(
+            type=et.transport_compressed(), source=source, data=data, extra_header=extra_header
+        )
+    
+    @staticmethod
     def create_ping(
         source: str, data: dict = {"data": "ping"}, extra_header: dict = None
     ):
