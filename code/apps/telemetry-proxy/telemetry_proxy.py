@@ -1,12 +1,13 @@
 import os
 import asyncio
-import traceback
 import zlib
 import logging
+import paho.mqtt.client as mqtt
 from logfmter import Logfmter
 from pydantic import BaseSettings, Field
 from ulid import ULID
 from aiomqtt import Client, MqttError
+import paho.mqtt.client as mqtt
 import uvicorn
 from fastapi import FastAPI, Request, Response, status
 
@@ -80,7 +81,7 @@ class TelemetryProxyClient:
         reconnect = 5
         while True:
             try:
-                # FIX 1: Use the explicit paho MQTTv5 constant instead of the integer 5
+                # Use explicit paho-mqtt constant for v5 protocol
                 async with Client(
                     self.config.mqtt_broker, 
                     port=self.config.mqtt_port, 
@@ -100,8 +101,7 @@ class TelemetryProxyClient:
                 L.error(f"MQTT Error: {e}. Reconnecting in {reconnect}s...")
                 await asyncio.sleep(reconnect)
             except Exception as e:
-                # FIX 2: Catch standard Python errors so the background task never dies silently!
-                L.error(f"FATAL ERROR in mqtt_loop: {e}\n{traceback.format_exc()}")
+                L.error(f"Fatal error in mqtt_loop: {e}")
                 await asyncio.sleep(reconnect)
 
     async def subscriber_worker(self, client):
