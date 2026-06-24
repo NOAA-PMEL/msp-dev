@@ -512,8 +512,10 @@ def create_sampling_routes(resource: str):
         return await datastore.sampling_definition_registry_get_ids(resource=resource)
 
     @app.get(f"/{resource}-definition/registry/get/")
-    async def get_def(name: str | None = None):
-        query = {"name": name}
+    # async def get_def(name: str | None = None):
+    async def get_def(request: Request):
+        # query = {"name": name}
+        query = dict(request.query_params)
         return await datastore.sampling_definition_registry_get(resource=resource, query=query)
 
     @app.post(f"/{resource}-definition/registry/update/")

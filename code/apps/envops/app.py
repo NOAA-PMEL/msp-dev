@@ -26,25 +26,42 @@ config = Settings()
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 
+# # --- HELPER: REST FETCH ---
+# def fetch_registry_data(resource_type: str):
+#     url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
+#     docs = []
+#     try:
+#         timeout = httpx.Timeout(5.0)
+#         id_response = httpx.get(url, timeout=timeout)
+#         if id_response.status_code == 200:
+#             ids = id_response.json().get("results", [])
+#             for doc_id in ids:
+#                 if doc_id:
+#                     doc_url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
+#                     doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
+#                     if doc_response.status_code == 200:
+#                         doc_results = doc_response.json().get("results", [])
+#                         if doc_results: docs.append(doc_results[0])
+#     except Exception as e:
+#         L.error(f"Sidebar fetch failed for {resource_type}: {e}")
+#     return docs
+
 # --- HELPER: REST FETCH ---
-def fetch_registry_data(resource_type: str):
-    url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
-    docs = []
+def fetch_registry_data(resource_type: str, query_params: dict = None):
+    """Fetches registry documents dynamically without N+1 looping."""
+    if query_params is None: 
+        query_params = {}
+        
+    url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
     try:
         timeout = httpx.Timeout(5.0)
-        id_response = httpx.get(url, timeout=timeout)
-        if id_response.status_code == 200:
-            ids = id_response.json().get("results", [])
-            for doc_id in ids:
-                if doc_id:
-                    doc_url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
-                    doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
-                    if doc_response.status_code == 200:
-                        doc_results = doc_response.json().get("results", [])
-                        if doc_results: docs.append(doc_results[0])
+        # RediSearch will return all matching documents directly!
+        response = httpx.get(url, params=query_params, timeout=timeout) 
+        if response.status_code == 200:
+            return response.json().get("results", [])
     except Exception as e:
-        L.error(f"Sidebar fetch failed for {resource_type}: {e}")
-    return docs
+        L.error(f"Registry fetch failed for {resource_type}: {e}")
+    return []
 
 # --- INITIALIZATION ---
 server = Flask(__name__, instance_relative_config=False)

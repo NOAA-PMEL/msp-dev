@@ -202,8 +202,25 @@ class RedisClient(DBClient):
                 definition = IndexDefinition(prefix=["registry:variableset-instance:"], index_type=IndexType.JSON)
                 await self.client.ft(self.registry_variableset_instance_index_name).create_index(schema, definition=definition)
 
+            # -------------------------------------------------------------
+            # NEW: Dedicated Deployment Graph Index 
+            # -------------------------------------------------------------
+            try:
+                await self.client.ft("idx:registry-deployment-definition").info()
+            except Exception:
+                schema = (
+                    TagField("$.registration.metadata.name", as_name="name"),
+                    TagField("$.registration.data.platform_ref", as_name="platform_ref"),
+                    TagField("$.registration.data.host_platform_ref", as_name="host_platform_ref"),
+                    TagField("$.registration.data.project_ref", as_name="project_ref"),
+                    TagField("$.registration.data.deployment_type", as_name="deployment_type"),
+                    TagField("$.registration.data.deployment_subtype", as_name="deployment_subtype")
+                )
+                definition = IndexDefinition(prefix=["registry:deployment-definition:"], index_type=IndexType.JSON)
+                await self.client.ft("idx:registry-deployment-definition").create_index(schema, definition=definition)
+
             # Sampling Generic Resource Indexes
-            for resource in ["platform", "project", "deployment", "contact", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
+            for resource in ["platform", "project", "contact", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
                 index_name = f"idx:registry-{resource}-definition"
                 prefix = f"registry:{resource}-definition:"
                 try:
@@ -833,6 +850,12 @@ class RedisClient(DBClient):
         if "name" in query and query["name"]: 
             query_args.append(f"@name:{{{self.escape_query(query['name'])}}}")
         
+        # Add support for hierarchical graph queries
+        if resource == "deployment":
+            for key in ["platform_ref", "host_platform_ref", "project_ref", "deployment_type", "deployment_subtype"]:
+                if key in query and query[key]:
+                    query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
+
         qstring = " ".join(query_args) if query_args else "*"
         q = Query(qstring).return_fields("$")
         

@@ -31,77 +31,156 @@ config = Settings()
 ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
-def fetch_registry_data(resource_type: str):
-    """Fetches definitions from the Datastore with extensive debugging logs."""
-    url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
-    docs = []
-    seen_uids = set()
+# def fetch_registry_data(resource_type: str):
+#     """Fetches definitions from the Datastore with extensive debugging logs."""
+#     url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
+#     docs = []
+#     seen_uids = set()
     
-    print(f"\n========== DEBUG: FETCHING {resource_type.upper()} ==========")
+#     print(f"\n========== DEBUG: FETCHING {resource_type.upper()} ==========")
     
+#     try:
+#         timeout = httpx.Timeout(10.0)
+#         id_response = httpx.get(url, timeout=timeout)
+        
+#         if id_response.status_code == 200:
+#             raw_ids = id_response.json().get("results", [])
+#             ids = set(raw_ids)
+            
+#             print(f"RAW IDs Returned ({len(raw_ids)} total, {len(ids)} unique): {raw_ids}")
+            
+#             for doc_id in ids:
+#                 if not doc_id: continue
+                
+#                 doc_url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
+#                 doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
+                
+#                 if doc_response.status_code == 200:
+#                     doc_results = doc_response.json().get("results", [])
+#                     print(f"  -> Fetching ID '{doc_id}': Found {len(doc_results)} document bodies.")
+                    
+#                     for i, d in enumerate(doc_results):
+#                         name = d.get("metadata", {}).get("name", "unknown")
+#                         ns = d.get("metadata", {}).get("sampling_namespace", "unknown")
+#                         uid = f"{name}::{ns}"
+                        
+#                         if uid not in seen_uids:
+#                             seen_uids.add(uid)
+#                             docs.append(d)
+#                             print(f"    [+] KEPT: {uid}")
+#                         else:
+#                             print(f"    [-] SKIPPED (Duplicate in memory): {uid}")
+#                 else:
+#                     print(f"  -> Failed to fetch body for '{doc_id}', status: {doc_response.status_code}")
+#         else:
+#             print(f"Failed to fetch IDs, status: {id_response.status_code}")
+            
+#     except Exception as e:
+#         print(f"EXCEPTION fetching {resource_type}: {e}")
+#         L.error(f"Failed to fetch {resource_type} definitions: {e}")
+        
+#     print(f"========== END DEBUG: {resource_type.upper()} (Total returned to UI: {len(docs)}) ==========\n")
+#     return docs
+
+# In pages/deployment.py
+# def fetch_registry_data(resource_type: str, query_params: dict = None):
+#     if query_params is None: query_params = {}
+#     url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
+#     try:
+#         timeout = httpx.Timeout(10.0)
+#         # We query the actual documents endpoint directly, bypassing the /ids/get step!
+#         response = httpx.get(url, params=query_params, timeout=timeout)
+#         if response.status_code == 200:
+#             return response.json().get("results", [])
+#     except Exception as e:
+#         L.error(f"Failed to fetch {resource_type} definitions: {e}")
+#     return []
+
+# def get_deployment_bundle(host_id):
+#     deployments = fetch_registry_data("deployment")
+    
+#     host_dep = None
+#     subs = []
+#     platforms = set()
+    
+#     for dep in deployments:
+#         if dep.get("metadata", {}).get("name") == host_id:
+#             host_dep = dep
+#             platforms.add(dep.get("data", {}).get("platform_ref"))
+#             break
+            
+#     if host_dep:
+#         host_platform_ref = host_dep.get("data", {}).get("platform_ref")
+#         for dep in deployments:
+#             if dep.get("data", {}).get("host_platform_ref") == host_platform_ref:
+#                 subs.append(dep)
+#                 platforms.add(dep.get("data", {}).get("platform_ref"))
+                
+#     url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
+#     try:
+#         timeout = httpx.Timeout(10.0)
+#         response = httpx.get(url, timeout=timeout)
+#         all_vs_ids = response.json().get("results", []) if response.status_code == 200 else []
+#     except Exception as e:
+#         L.error(f"Failed to fetch variableset IDs: {e}")
+#         all_vs_ids = []
+
+#     required_varsets = set()
+#     for full_id in all_vs_ids:
+#         if not full_id: continue
+#         parts = full_id.split("::")
+#         if len(parts) >= 4:
+#             vs_platform = parts[0]
+#             if vs_platform in platforms:
+#                 routing_key = f"{parts[1]}::{parts[3]}"
+#                 required_varsets.add(routing_key)
+
+#     return host_dep, subs, list(required_varsets)
+
+# --- HELPER: REST FETCH ---
+def fetch_registry_data(resource_type: str, query_params: dict = None):
+    """Fetches registry documents dynamically without N+1 looping."""
+    if query_params is None: 
+        query_params = {}
+        
+    url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
     try:
         timeout = httpx.Timeout(10.0)
-        id_response = httpx.get(url, timeout=timeout)
-        
-        if id_response.status_code == 200:
-            raw_ids = id_response.json().get("results", [])
-            ids = set(raw_ids)
-            
-            print(f"RAW IDs Returned ({len(raw_ids)} total, {len(ids)} unique): {raw_ids}")
-            
-            for doc_id in ids:
-                if not doc_id: continue
-                
-                doc_url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
-                doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
-                
-                if doc_response.status_code == 200:
-                    doc_results = doc_response.json().get("results", [])
-                    print(f"  -> Fetching ID '{doc_id}': Found {len(doc_results)} document bodies.")
-                    
-                    for i, d in enumerate(doc_results):
-                        name = d.get("metadata", {}).get("name", "unknown")
-                        ns = d.get("metadata", {}).get("sampling_namespace", "unknown")
-                        uid = f"{name}::{ns}"
-                        
-                        if uid not in seen_uids:
-                            seen_uids.add(uid)
-                            docs.append(d)
-                            print(f"    [+] KEPT: {uid}")
-                        else:
-                            print(f"    [-] SKIPPED (Duplicate in memory): {uid}")
-                else:
-                    print(f"  -> Failed to fetch body for '{doc_id}', status: {doc_response.status_code}")
-        else:
-            print(f"Failed to fetch IDs, status: {id_response.status_code}")
-            
+        # RediSearch will return all matching documents directly based on the query!
+        response = httpx.get(url, params=query_params, timeout=timeout) 
+        if response.status_code == 200:
+            return response.json().get("results", [])
     except Exception as e:
-        print(f"EXCEPTION fetching {resource_type}: {e}")
-        L.error(f"Failed to fetch {resource_type} definitions: {e}")
-        
-    print(f"========== END DEBUG: {resource_type.upper()} (Total returned to UI: {len(docs)}) ==========\n")
-    return docs
+        L.error(f"Registry fetch failed for {resource_type}: {e}")
+    return []
 
+# --- DEPLOYMENT BUNDLE FETCH ---
 def get_deployment_bundle(host_id):
-    deployments = fetch_registry_data("deployment")
+    """Fetches a host deployment and all its sub-deployments using the Datastore Graph Index."""
     
-    host_dep = None
+    # 1. Fetch ONLY the specific host deployment using its name
+    host_deps = fetch_registry_data("deployment", {"name": host_id})
+    host_dep = host_deps[0] if host_deps else None
+    
     subs = []
     platforms = set()
     
-    for dep in deployments:
-        if dep.get("metadata", {}).get("name") == host_id:
-            host_dep = dep
-            platforms.add(dep.get("data", {}).get("platform_ref"))
-            break
-            
     if host_dep:
         host_platform_ref = host_dep.get("data", {}).get("platform_ref")
-        for dep in deployments:
-            if dep.get("data", {}).get("host_platform_ref") == host_platform_ref:
-                subs.append(dep)
-                platforms.add(dep.get("data", {}).get("platform_ref"))
+        
+        if host_platform_ref:
+            platforms.add(host_platform_ref)
+            
+            # 2. Fetch ONLY the sub-deployments physically hosted by this platform
+            subs = fetch_registry_data("deployment", {"host_platform_ref": host_platform_ref})
+            
+            for sub in subs:
+                sub_pref = sub.get("data", {}).get("platform_ref")
+                if sub_pref:
+                    platforms.add(sub_pref)
                 
+    # 3. Fetch Variableset IDs mapped to these platforms
+    # (Since Variableset IDs start with the platform_ref, we can quickly filter them)
     url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
     try:
         timeout = httpx.Timeout(10.0)
@@ -140,16 +219,205 @@ def make_kpi_col(title, id_val, icon=None):
         ], className="bg-white border rounded shadow-sm p-2 h-100 d-flex flex-column justify-content-center align-items-center")
     ], style={"flex": "1 1 auto", "minWidth": "140px"})
 
+# def build_live_dependency_tree(health_store, host_id):
+#     """
+#     Traverses declarative JSON definitions and builds interactive tabs for ALL 
+#     available System Modes. Automatically cross-references deployment aliases, 
+#     strictly deduplicates tabs, and visually highlights blocking conditions.
+#     """
+#     systemmodes = fetch_registry_data("systemmode")
+#     samplingmodes = fetch_registry_data("samplingmode")
+#     samplingstates = fetch_registry_data("samplingstate")
+#     all_deployments = fetch_registry_data("deployment") 
+    
+#     if not health_store:
+#         return html.P("No telemetry available to build dependency tree.", className="text-danger text-center my-4")
+
+#     # Sort so the Host Node appears first, followed by the payloads
+#     sorted_deps = sorted(health_store.keys(), key=lambda x: 0 if x == host_id else 1)
+#     accordion_items = []
+    
+#     for dep_ref in sorted_deps:
+#         node_telemetry = health_store.get(dep_ref, {})
+        
+#         # --- 1. ALIAS CROSS-REFERENCING ---
+#         this_dep = next((d for d in all_deployments if d.get("metadata", {}).get("name") == dep_ref), {})
+#         platform_ref = this_dep.get("data", {}).get("platform_ref", "")
+        
+#         related_dep_names = [dep_ref]
+#         if platform_ref:
+#             for d in all_deployments:
+#                 if d.get("data", {}).get("platform_ref") == platform_ref:
+#                     n = d.get("metadata", {}).get("name")
+#                     if n and n not in related_dep_names:
+#                         related_dep_names.append(n)
+        
+#         # --- 2. STRICT DEDUPLICATION & SCOPING ---
+#         def build_scoped_dict(source_list):
+#             scoped = {}
+#             for item in source_list:
+#                 name = item.get("metadata", {}).get("name")
+#                 ns = item.get("metadata", {}).get("sampling_namespace", "")
+#                 if not name: continue
+                
+#                 is_match = any(alias in ns for alias in related_dep_names)
+#                 if is_match:
+#                     if dep_ref in ns or name not in scoped:
+#                         scoped[name] = item
+            
+#             if not scoped:
+#                 for item in source_list:
+#                     name = item.get("metadata", {}).get("name")
+#                     if name and name not in scoped:
+#                         scoped[name] = item
+#             return scoped
+            
+#         node_sys_modes_dict = build_scoped_dict(systemmodes)
+#         node_samp_modes_dict = build_scoped_dict(samplingmodes)
+#         node_samp_states_dict = build_scoped_dict(samplingstates)
+        
+#         node_sys_modes = list(node_sys_modes_dict.values())
+
+#         # --- 3. TELEMETRY CHECKER ---
+#         def check_if_uid_is_active(uid):
+#             status_record = node_telemetry.get(uid)
+#             if not status_record: return False
+#             state_block = status_record.get("state", {})
+#             for k, v in state_block.items():
+#                 actual = str(v.get("actual", "") if isinstance(v, dict) else v).lower()
+#                 if actual in ["true", "active", "1", "yes"]: return True
+#             return False
+
+#         active_system_mode = "unknown"
+#         for uid, status in node_telemetry.items():
+#             if status.get("id", {}).get("app_group", "") == "system":
+#                 if check_if_uid_is_active(uid):
+#                     active_system_mode = uid
+#                     break
+
+#         node_sys_modes.sort(key=lambda x: (0 if x.get("metadata", {}).get("name") == active_system_mode else 1, x.get("metadata", {}).get("name")))
+
+#         is_host = (dep_ref == host_id)
+#         node_label = "HOST NODE" if is_host else "SUB-NODE"
+#         icon_class = "bi-hdd-network text-primary" if is_host else "bi-hdd text-info"
+        
+#         # --- 4. BUILD TABS WITH BLOCKER HIGHLIGHTS ---
+#         mode_tabs = []
+#         for mode_config in node_sys_modes:
+#             sm_name_top = mode_config.get("metadata", {}).get("name", "unknown")
+#             is_active_mode = (sm_name_top == active_system_mode)
+            
+#             tab_label = f"🟢 {sm_name_top.upper()}" if is_active_mode else sm_name_top.upper()
+#             tree_components = []
+#             requirements = mode_config.get("requirements", [])
+            
+#             if not requirements:
+#                 tree_components.append(html.P(f"System Mode '{sm_name_top.upper()}' operates standalone with no active or required sampling logic.", className="text-muted text-center fst-italic my-4"))
+#             else:
+#                 for req in requirements:
+#                     if req.get("kind") == "SamplingMode":
+#                         sm_name = req.get("name")
+#                         sm_is_active = check_if_uid_is_active(sm_name)
+                        
+#                         # Mode UI Logic
+#                         sm_badge_color = "success" if sm_is_active else "danger"
+#                         sm_status_label = "RUNNING" if sm_is_active else "HALTED / PENDING"
+                        
+#                         nested_state_rows = []
+#                         sm_definition = node_samp_modes_dict.get(sm_name)
+                        
+#                         if sm_definition:
+#                             for sm_req in sm_definition.get("requirements", []):
+#                                 if sm_req.get("kind") == "SamplingState":
+#                                     ss_name = sm_req.get("name")
+#                                     ss_is_active = check_if_uid_is_active(ss_name)
+                                    
+#                                     # State UI Logic
+#                                     ss_badge_color = "success" if ss_is_active else "danger"
+#                                     ss_status_label = "STABILIZED" if ss_is_active else "NOT STABILIZED"
+                                    
+#                                     nested_condition_items = []
+#                                     ss_definition = node_samp_states_dict.get(ss_name)
+                                    
+#                                     if ss_definition:
+#                                         for cond_req in ss_definition.get("requirements", []):
+#                                             if cond_req.get("kind") == "SamplingCondition":
+#                                                 cond_name = cond_req.get("name")
+#                                                 cond_is_met = check_if_uid_is_active(cond_name)
+                                                
+#                                                 # --- CONDITION HIGHLIGHTING LOGIC ---
+#                                                 cond_icon = "bi-check-circle-fill text-success" if cond_is_met else "bi-x-circle-fill text-danger"
+#                                                 cond_badge = dbc.Badge("MET", color="success", className="ms-2") if cond_is_met else dbc.Badge("BLOCKING (UNMET)", color="danger", className="ms-2 shadow-sm")
+                                                
+#                                                 row_class = "list-group-item ps-5 border-0 py-2"
+#                                                 if not cond_is_met:
+#                                                     row_class += " bg-danger bg-opacity-10 rounded my-1" # Red highlight for blockers
+                                                
+#                                                 nested_condition_items.append(html.Li([
+#                                                     html.I(className=f"bi {cond_icon} me-2"),
+#                                                     html.Span("Condition: ", className="text-muted small"),
+#                                                     html.Span(f"{cond_name}", className="font-monospace fw-bold text-dark"),
+#                                                     cond_badge
+#                                                 ], className=row_class))
+
+#                                     # Add subtle red indicator stripe to failing states
+#                                     state_row_class = "list-group-item ps-4 border-0 pb-1"
+#                                     if not ss_is_active:
+#                                         state_row_class += " border-start border-danger border-3"
+                                        
+#                                     nested_state_rows.append(html.Div([
+#                                         html.Li([
+#                                             html.I(className="bi bi-arrow-return-right me-2 opacity-50 text-primary"),
+#                                             html.Span("Required State: ", className="text-muted small me-1"),
+#                                             html.Span(f"{ss_name}", className="fw-bold text-dark me-2 font-monospace"),
+#                                             dbc.Badge(ss_status_label, color=ss_badge_color, className="fw-bold", style={"fontSize": "0.65rem"})
+#                                         ], className=state_row_class),
+#                                         html.Ul(nested_condition_items, className="list-group list-group-flush mb-2") if nested_condition_items else ""
+#                                     ]))
+
+#                         # Highlight the parent card border red if the whole mode is halted
+#                         tree_components.append(dbc.Card([
+#                             dbc.CardHeader([
+#                                 html.I(className="bi bi-toggles me-2 text-primary"),
+#                                 html.Span("Required Mode: ", className="text-muted small me-1"),
+#                                 html.Span(sm_name, className="fw-bold text-dark font-monospace"),
+#                                 dbc.Badge(sm_status_label, color=sm_badge_color, className="float-end fw-bold mt-1 shadow-sm")
+#                             ], className="bg-white border-bottom-0 p-2"),
+#                             dbc.CardBody(
+#                                 html.Ul(nested_state_rows, className="list-group list-group-flush p-0 m-0"),
+#                                 className="p-1 bg-light border-top"
+#                             ) if nested_state_rows else ""
+#                         ], className="mb-3 shadow-sm border" + (" border-danger" if not sm_is_active else "")))
+
+#             mode_tabs.append(dbc.Tab(
+#                 html.Div(tree_components, className="pt-3"), 
+#                 label=tab_label, 
+#                 tab_id=sm_name_top
+#             ))
+
+#         accordion_items.append(dbc.AccordionItem(
+#             dbc.Tabs(mode_tabs, active_tab=active_system_mode if active_system_mode != "unknown" else None),
+#             title=html.Div([
+#                 html.I(className=f"bi {icon_class} me-2"),
+#                 html.Span(f"{node_label}: ", className="small fw-bold text-muted me-1"),
+#                 html.Span(dep_ref, className="font-monospace fw-bold text-dark me-3"),
+#                 dbc.Badge(f"MODE: {active_system_mode.upper()}", color="dark", className="shadow-sm")
+#             ]),
+#             item_id=dep_ref
+#         ))
+        
+#     return dbc.Accordion(accordion_items, start_collapsed=False, always_open=True, active_item=sorted_deps)
+
 def build_live_dependency_tree(health_store, host_id):
     """
     Traverses declarative JSON definitions and builds interactive tabs for ALL 
     available System Modes. Automatically cross-references deployment aliases, 
     strictly deduplicates tabs, and visually highlights blocking conditions.
     """
+    # Fetch definition schemas (These remain efficient as they are generally small sets)
     systemmodes = fetch_registry_data("systemmode")
     samplingmodes = fetch_registry_data("samplingmode")
     samplingstates = fetch_registry_data("samplingstate")
-    all_deployments = fetch_registry_data("deployment") 
     
     if not health_store:
         return html.P("No telemetry available to build dependency tree.", className="text-danger text-center my-4")
@@ -161,17 +429,20 @@ def build_live_dependency_tree(health_store, host_id):
     for dep_ref in sorted_deps:
         node_telemetry = health_store.get(dep_ref, {})
         
-        # --- 1. ALIAS CROSS-REFERENCING ---
-        this_dep = next((d for d in all_deployments if d.get("metadata", {}).get("name") == dep_ref), {})
+        # --- 1. ALIAS CROSS-REFERENCING (Refactored for Speed) ---
+        # Fetch ONLY the specific deployment from the Datastore Graph
+        this_dep_results = fetch_registry_data("deployment", {"name": dep_ref})
+        this_dep = this_dep_results[0] if this_dep_results else {}
         platform_ref = this_dep.get("data", {}).get("platform_ref", "")
         
         related_dep_names = [dep_ref]
         if platform_ref:
-            for d in all_deployments:
-                if d.get("data", {}).get("platform_ref") == platform_ref:
-                    n = d.get("metadata", {}).get("name")
-                    if n and n not in related_dep_names:
-                        related_dep_names.append(n)
+            # Leverage the Datastore to return all deployments sharing this hardware
+            related_deps = fetch_registry_data("deployment", {"platform_ref": platform_ref})
+            for d in related_deps:
+                n = d.get("metadata", {}).get("name")
+                if n and n not in related_dep_names:
+                    related_dep_names.append(n)
         
         # --- 2. STRICT DEDUPLICATION & SCOPING ---
         def build_scoped_dict(source_list):

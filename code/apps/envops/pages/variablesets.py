@@ -24,26 +24,42 @@ class Settings(BaseSettings):
 config = Settings()
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 
-def fetch_registry_data(resource_type: str):
-    url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
-    docs = []
+# def fetch_registry_data(resource_type: str):
+#     url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
+#     docs = []
+#     try:
+#         timeout = httpx.Timeout(10.0)
+#         id_response = httpx.get(url, timeout=timeout)
+#         if id_response.status_code == 200:
+#             ids = id_response.json().get("results", [])
+#             for doc_id in ids:
+#                 if doc_id:
+#                     doc_url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
+#                     doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
+#                     if doc_response.status_code == 200:
+#                         doc_results = doc_response.json().get("results", [])
+#                         if doc_results: 
+#                             # Safe for overlapping names across namespaces!
+#                             docs.extend(doc_results)
+#     except Exception as e:
+#         L.error(f"Failed to fetch {resource_type} definitions: {e}")
+#     return docs
+
+def fetch_registry_data(resource_type: str, query_params: dict = None):
+    """Fetches registry documents dynamically without N+1 looping."""
+    if query_params is None: 
+        query_params = {}
+        
+    url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
     try:
         timeout = httpx.Timeout(10.0)
-        id_response = httpx.get(url, timeout=timeout)
-        if id_response.status_code == 200:
-            ids = id_response.json().get("results", [])
-            for doc_id in ids:
-                if doc_id:
-                    doc_url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
-                    doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
-                    if doc_response.status_code == 200:
-                        doc_results = doc_response.json().get("results", [])
-                        if doc_results: 
-                            # Safe for overlapping names across namespaces!
-                            docs.extend(doc_results)
+        # RediSearch will return all matching documents directly based on the query!
+        response = httpx.get(url, params=query_params, timeout=timeout) 
+        if response.status_code == 200:
+            return response.json().get("results", [])
     except Exception as e:
-        L.error(f"Failed to fetch {resource_type} definitions: {e}")
-    return docs
+        L.error(f"Registry fetch failed for {resource_type}: {e}")
+    return []
 
 def get_bundle_varsets(host_id):
     deployments = fetch_registry_data("deployment")
