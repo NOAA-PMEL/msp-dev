@@ -494,29 +494,80 @@ class SamplingConditionsManager:
     #     except Exception as e:
     #         self.logger.error("configure error", extra={"reason": e})
 
+    def _load_json_dir(self, dir_path_str: str) -> list:
+        """Scans a directory for JSON files, injects env vars, and returns the parsed list."""
+        results = []
+        dir_path = Path(dir_path_str)
+        
+        if dir_path.exists() and dir_path.is_dir():
+            for file_path in dir_path.glob("*.json"):
+                try:
+                    with open(file_path, "r") as f:
+                        raw_content = f.read()
+                        
+                        # ---> INJECT VARIABLES BEFORE PARSING <---
+                        expanded_content = os.path.expandvars(raw_content)
+                        
+                        data = json.loads(expanded_content)
+                        if isinstance(data, list):
+                            results.extend(data)
+                        else:
+                            results.append(data)
+                            
+                    self.logger.info(f"Loaded and expanded file: {file_path.name}")
+                except Exception as e:
+                    self.logger.error(f"Failed to parse {file_path.name}", extra={"reason": str(e)})
+        else:
+            self.logger.info(f"{dir_path_str} not found or empty. Skipping local load.")
+            
+        return results
+    
+    # def configure(self):
+    #     self.logger.debug("configure", extra={"self.config": self.config})
+    #     try:
+    #         conditions_path = "/app/config/sampling_conditions.json"
+    #         if os.path.exists(conditions_path):
+    #             with open(conditions_path, "r") as f:
+    #                 conditions = json.load(f)
+                    
+    #                 # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+    #                 if conditions and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
+    #                     first_ns = conditions[0].get("metadata", {}).get("sampling_namespace", "")
+    #                     if "/" in first_ns:
+    #                         self.config.deployment_ref = first_ns.split("/")[-1]
+    #                         self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+    #                 # -------------------------------------
+                    
+    #                 for condition in conditions:
+    #                     self.load_condition(condition)
+    #             self.logger.debug("configure", extra={"sampling_conditions": self.sampling_conditions})
+    #         else:
+    #             self.logger.info(f"{conditions_path} not found. Skipping local load.")
+    #     except Exception as e:
+    #         self.logger.error("configure error", extra={"reason": e})
+
     def configure(self):
         self.logger.debug("configure", extra={"self.config": self.config})
         try:
-            conditions_path = "/app/config/sampling_conditions.json"
-            if os.path.exists(conditions_path):
-                with open(conditions_path, "r") as f:
-                    conditions = json.load(f)
+            # ---> LOAD FROM THE DIRECTORY <---
+            conditions = self._load_json_dir("/app/config/conditions")
+            
+            if conditions:
+                # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+                if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+                    first_ns = conditions[0].get("metadata", {}).get("sampling_namespace", "")
+                    if "/" in first_ns:
+                        self.config.deployment_ref = first_ns.split("/")[-1]
+                        self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+                # -------------------------------------
+                
+                for condition in conditions:
+                    self.load_condition(condition)
                     
-                    # --- IMMUTABLE IDENTITY BOOTSTRAP ---
-                    if conditions and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
-                        first_ns = conditions[0].get("metadata", {}).get("sampling_namespace", "")
-                        if "/" in first_ns:
-                            self.config.deployment_ref = first_ns.split("/")[-1]
-                            self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
-                    # -------------------------------------
-                    
-                    for condition in conditions:
-                        self.load_condition(condition)
-                self.logger.debug("configure", extra={"sampling_conditions": self.sampling_conditions})
-            else:
-                self.logger.info(f"{conditions_path} not found. Skipping local load.")
+            self.logger.debug("configure", extra={"sampling_conditions": self.sampling_conditions})
+            
         except Exception as e:
-            self.logger.error("configure error", extra={"reason": e})
+            self.logger.error("configure error", extra={"reason": str(e)})
 
     def load_condition(self, condition: dict):
         """Helper to process definitions from either local files or Datastore API using a composite key."""
