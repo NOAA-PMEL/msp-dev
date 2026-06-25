@@ -216,6 +216,117 @@ class SamplingSystem:
             await self.http_client.aclose()
             self.http_client = None
 
+    def _load_json_dir(self, dir_path_str: str) -> list:
+        """Scans a directory for JSON files, injects env vars, and returns the parsed list."""
+        results = []
+        dir_path = Path(dir_path_str)
+        
+        if dir_path.exists() and dir_path.is_dir():
+            for file_path in dir_path.glob("*.json"):
+                try:
+                    with open(file_path, "r") as f:
+                        raw_content = f.read()
+                        
+                        # ---> THE FIX: Inject Environment Variables before parsing! <---
+                        expanded_content = os.path.expandvars(raw_content)
+                        
+                        data = json.loads(expanded_content)
+                        if isinstance(data, list):
+                            results.extend(data)
+                        else:
+                            results.append(data)
+                            
+                    self.logger.info(f"Loaded and expanded file: {file_path.name}")
+                except Exception as e:
+                    self.logger.error(f"Failed to parse {file_path.name}", extra={"reason": str(e)})
+        else:
+            self.logger.info("configure", extra={"mesg": f"{dir_path_str} not found or empty. Skipping."})
+            
+        return results
+    
+    # def configure(self):
+    #     # set clients
+    #     self.logger.debug("configure", extra={"self.config": self.config})
+
+    #     # --- 1. JIT MISSION CONTEXT LOADING ---
+    #     self.active_deployment_ref = "unknown"
+    #     self.active_project_ref = "unknown"
+    #     self.local_deployments = [] # <--- FIXED: Isolated from Sync Loop
+
+    #     deployments_path = "/app/config/deployments.json"
+    #     if os.path.exists(deployments_path):
+    #         try:
+    #             with open(deployments_path, "r") as f:
+    #                 self.local_deployments = json.load(f) 
+                
+    #             # We only expect one deployment in the JIT GitOps file!
+    #             if self.local_deployments and len(self.local_deployments) > 0:
+    #                 active_dep = self.local_deployments[0]
+    #                 self.active_deployment_ref = active_dep.get("metadata", {}).get("name", "unknown")
+    #                 self.active_project_ref = active_dep.get("data", {}).get("project_ref", "unknown")
+                    
+    #                 self.logger.info("JIT Mission context loaded.", extra={
+    #                     "deployment": self.active_deployment_ref, 
+    #                     "project": self.active_project_ref
+    #                 })
+    #         except Exception as e:
+    #             self.logger.error("Failed to parse deployments.json", extra={"reason": str(e)})
+    #     else:
+    #         self.logger.info("configure", extra={"mesg": f"{deployments_path} not found. Operating without deployment context."})
+    #     # --------------------------------------
+
+    #     # --- NEW: UNIVERSAL METADATA LOADING ---
+    #     self.local_platforms = [] # <--- FIXED: Isolated from Sync Loop
+    #     platforms_path = "/app/config/platform_defs.json"
+    #     if os.path.exists(platforms_path):
+    #         try:
+    #             with open(platforms_path, "r") as f:
+    #                 self.local_platforms = json.load(f) 
+    #             self.logger.info(f"Loaded {len(self.local_platforms)} platform definitions.")
+    #         except Exception as e:
+    #             self.logger.error("Failed to parse platform_defs.json", extra={"reason": str(e)})
+
+    #     self.local_projects = [] # <--- FIXED: Isolated from Sync Loop
+    #     projects_path = "/app/config/projects.json"
+    #     if os.path.exists(projects_path):
+    #         try:
+    #             with open(projects_path, "r") as f:
+    #                 self.local_projects = json.load(f) 
+    #             self.logger.info(f"Loaded {len(self.local_projects)} project definitions.")
+    #         except Exception as e:
+    #             self.logger.error("Failed to parse projects.json", extra={"reason": str(e)})
+
+    #     self.local_contacts = [] # <--- FIXED: Isolated from Sync Loop
+    #     contacts_path = "/app/config/contacts.json"
+    #     if os.path.exists(contacts_path):
+    #         try:
+    #             with open(contacts_path, "r") as f:
+    #                 self.local_contacts = json.load(f) 
+    #             self.logger.info(f"Loaded {len(self.local_contacts)} contact definitions.")
+    #         except Exception as e:
+    #             self.logger.error("Failed to parse contacts.json", extra={"reason": str(e)})
+    #     # ---------------------------------------
+
+    #     try:
+    #         # load variablemap configmaps safely and allow for missing file 
+    #         variablemaps_path = "/app/config/platform_variablemaps.json"
+    #         variablemaps = []
+            
+    #         if os.path.exists(variablemaps_path):
+    #             with open(variablemaps_path, "r") as f:
+    #                 variablemaps = json.load(f)
+    #             self.logger.debug("configure", extra={"variablemaps": variablemaps})
+    #         else:
+    #             self.logger.info("configure", extra={"mesg": f"{variablemaps_path} not found. Skipping local variablemaps load."})
+
+    #         self.logger.debug("configure", extra={"variablemaps": variablemaps})
+            
+    #         for vm in variablemaps:
+    #             self.load_variablemap(vm)
+
+    #     except Exception as e:
+    #         self.logger.error("configure error", extra={"reason": str(e)})
+
     def configure(self):
         # set clients
         self.logger.debug("configure", extra={"self.config": self.config})
@@ -223,74 +334,26 @@ class SamplingSystem:
         # --- 1. JIT MISSION CONTEXT LOADING ---
         self.active_deployment_ref = "unknown"
         self.active_project_ref = "unknown"
-        self.local_deployments = [] # <--- FIXED: Isolated from Sync Loop
-
-        deployments_path = "/app/config/deployments.json"
-        if os.path.exists(deployments_path):
-            try:
-                with open(deployments_path, "r") as f:
-                    self.local_deployments = json.load(f) 
-                
-                # We only expect one deployment in the JIT GitOps file!
-                if self.local_deployments and len(self.local_deployments) > 0:
-                    active_dep = self.local_deployments[0]
-                    self.active_deployment_ref = active_dep.get("metadata", {}).get("name", "unknown")
-                    self.active_project_ref = active_dep.get("data", {}).get("project_ref", "unknown")
-                    
-                    self.logger.info("JIT Mission context loaded.", extra={
-                        "deployment": self.active_deployment_ref, 
-                        "project": self.active_project_ref
-                    })
-            except Exception as e:
-                self.logger.error("Failed to parse deployments.json", extra={"reason": str(e)})
-        else:
-            self.logger.info("configure", extra={"mesg": f"{deployments_path} not found. Operating without deployment context."})
-        # --------------------------------------
-
-        # --- NEW: UNIVERSAL METADATA LOADING ---
-        self.local_platforms = [] # <--- FIXED: Isolated from Sync Loop
-        platforms_path = "/app/config/platform_defs.json"
-        if os.path.exists(platforms_path):
-            try:
-                with open(platforms_path, "r") as f:
-                    self.local_platforms = json.load(f) 
-                self.logger.info(f"Loaded {len(self.local_platforms)} platform definitions.")
-            except Exception as e:
-                self.logger.error("Failed to parse platform_defs.json", extra={"reason": str(e)})
-
-        self.local_projects = [] # <--- FIXED: Isolated from Sync Loop
-        projects_path = "/app/config/projects.json"
-        if os.path.exists(projects_path):
-            try:
-                with open(projects_path, "r") as f:
-                    self.local_projects = json.load(f) 
-                self.logger.info(f"Loaded {len(self.local_projects)} project definitions.")
-            except Exception as e:
-                self.logger.error("Failed to parse projects.json", extra={"reason": str(e)})
-
-        self.local_contacts = [] # <--- FIXED: Isolated from Sync Loop
-        contacts_path = "/app/config/contacts.json"
-        if os.path.exists(contacts_path):
-            try:
-                with open(contacts_path, "r") as f:
-                    self.local_contacts = json.load(f) 
-                self.logger.info(f"Loaded {len(self.local_contacts)} contact definitions.")
-            except Exception as e:
-                self.logger.error("Failed to parse contacts.json", extra={"reason": str(e)})
-        # ---------------------------------------
-
-        try:
-            # load variablemap configmaps safely and allow for missing file 
-            variablemaps_path = "/app/config/platform_variablemaps.json"
-            variablemaps = []
+        
+        self.local_deployments = self._load_json_dir("/app/config/deployments")
+        if self.local_deployments and len(self.local_deployments) > 0:
+            active_dep = self.local_deployments[0]
+            self.active_deployment_ref = active_dep.get("metadata", {}).get("name", "unknown")
+            self.active_project_ref = active_dep.get("data", {}).get("project_ref", "unknown")
             
-            if os.path.exists(variablemaps_path):
-                with open(variablemaps_path, "r") as f:
-                    variablemaps = json.load(f)
-                self.logger.debug("configure", extra={"variablemaps": variablemaps})
-            else:
-                self.logger.info("configure", extra={"mesg": f"{variablemaps_path} not found. Skipping local variablemaps load."})
+            self.logger.info("JIT Mission context loaded.", extra={
+                "deployment": self.active_deployment_ref, 
+                "project": self.active_project_ref
+            })
 
+        # --- 2. UNIVERSAL GITOPS METADATA LOADING ---
+        self.local_platforms = self._load_json_dir("/app/config/platforms")
+        self.local_projects = self._load_json_dir("/app/config/projects")
+        self.local_contacts = self._load_json_dir("/app/config/contacts")
+
+        # --- 3. VARIABLEMAP LOADING ---
+        try:
+            variablemaps = self._load_json_dir("/app/config/varmaps")
             self.logger.debug("configure", extra={"variablemaps": variablemaps})
             
             for vm in variablemaps:
@@ -298,7 +361,6 @@ class SamplingSystem:
 
         except Exception as e:
             self.logger.error("configure error", extra={"reason": str(e)})
-
 
     def load_variablemap(self, vm: dict):
         if vm.get("kind") != "PlatformVariableMap":
