@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import logging
+from pathlib import Path
 import httpx
 import os
 import json
@@ -181,6 +182,57 @@ class SystemModesManager:
         
         # Load local definitions following consistent pattern
         self.configure()
+
+    # def _load_json_dir(self, dir_path_str: str) -> list:
+    #     """Scans a directory for JSON files, injects env vars, and returns the parsed list."""
+    #     results = []
+    #     dir_path = Path(dir_path_str)
+        
+    #     if dir_path.exists() and dir_path.is_dir():
+    #         for file_path in dir_path.glob("*.json"):
+    #             try:
+    #                 with open(file_path, "r") as f:
+    #                     raw_content = f.read()
+                        
+    #                     # ---> INJECT VARIABLES BEFORE PARSING <---
+    #                     expanded_content = os.path.expandvars(raw_content)
+                        
+    #                     data = json.loads(expanded_content)
+    #                     if isinstance(data, list):
+    #                         results.extend(data)
+    #                     else:
+    #                         results.append(data)
+                            
+    #                 self.logger.info(f"Loaded and expanded file: {file_path.name}")
+    #             except Exception as e:
+    #                 self.logger.error(f"Failed to parse {file_path.name}", extra={"reason": str(e)})
+    #     else:
+    #         self.logger.info(f"{dir_path_str} not found or empty. Skipping local load.")
+            
+    #     return results
+    
+    def configure(self):
+        """Loads system mode definitions from mounted files."""
+        try:
+            # ---> LOAD FROM THE DIRECTORY <---
+            modes = self._load_json_dir("/app/config/modes")
+            
+            if modes:
+                # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+                if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+                    first_ns = modes[0].get("metadata", {}).get("sampling_namespace", "")
+                    if "/" in first_ns:
+                        self.config.deployment_ref = first_ns.split("/")[-1]
+                        self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+                # -------------------------------------
+                
+                for cfg in modes:
+                    self.load_mode(cfg)
+            else:
+                self.logger.info("No local system modes found in /app/config/modes. Skipping.")
+                
+        except Exception as e:
+            self.logger.error("configure_failed", extra={"reason": str(e)})
 
     def configure(self):
         """Loads system mode definitions from mounted files."""
