@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import logging
+from pathlib import Path
 import httpx
 import os
 import json
@@ -224,36 +225,116 @@ class SamplingModesManager:
         # Consistent load pattern from sampling-states
         self.configure()
 
-    def configure(self):
-        """Loads definitions from local mounted files and boot-straps identity context."""
-        self.logger.debug("configure", extra={"self.config": self.config})
-        try:
-            # 1. Load sampling modes and extract the unique deployment reference
-            modes_path = "/app/config/sampling_modes_modes.json"
-            if os.path.exists(modes_path):
-                with open(modes_path, "r") as f:
-                    modes = json.load(f)
-                    
-                    # --- IMMUTABLE IDENTITY BOOTSTRAP ---
-                    if modes and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
-                        first_ns = modes[0].get("metadata", {}).get("sampling_namespace", "")
-                        if "/" in first_ns:
-                            self.config.deployment_ref = first_ns.split("/")[-1]
-                            self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
-                    # -------------------------------------
-                    
-                    for cfg in modes:
-                        self.load_mode(cfg)
-            
-            # 2. Load associated local sampling actions
-            actions_path = "/app/config/sampling_modes_actions.json"
-            if os.path.exists(actions_path):
-                with open(actions_path, "r") as f:
-                    for cfg in json.load(f):
-                        self.load_action(cfg)
+    def _load_json_dir(self, dir_path_str: str) -> list:
+        """Scans a directory for JSON files, injects env vars, and returns the parsed list."""
+        results = []
+        dir_path = Path(dir_path_str)
+        
+        if dir_path.exists() and dir_path.is_dir():
+            for file_path in dir_path.glob("*.json"):
+                try:
+                    with open(file_path, "r") as f:
+                        raw_content = f.read()
                         
+                        # ---> INJECT VARIABLES BEFORE PARSING <---
+                        expanded_content = os.path.expandvars(raw_content)
+                        
+                        data = json.loads(expanded_content)
+                        if isinstance(data, list):
+                            results.extend(data)
+                        else:
+                            results.append(data)
+                            
+                    self.logger.info(f"Loaded and expanded file: {file_path.name}")
+                except Exception as e:
+                    self.logger.error(f"Failed to parse {file_path.name}", extra={"reason": str(e)})
+        else:
+            self.logger.info(f"{dir_path_str} not found or empty. Skipping local load.")
+            
+        return results
+    
+    # def configure(self):
+    #     """Loads definitions from local mounted files and boot-straps identity context."""
+    #     self.logger.debug("configure", extra={"self.config": self.config})
+    #     try:
+    #         # 1. Load sampling modes and extract the unique deployment reference
+    #         modes_path = "/app/config/sampling_modes_modes.json"
+    #         if os.path.exists(modes_path):
+    #             with open(modes_path, "r") as f:
+    #                 modes = json.load(f)
+                    
+    #                 # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+    #                 if modes and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
+    #                     first_ns = modes[0].get("metadata", {}).get("sampling_namespace", "")
+    #                     if "/" in first_ns:
+    #                         self.config.deployment_ref = first_ns.split("/")[-1]
+    #                         self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+    #                 # -------------------------------------
+                    
+    #                 for cfg in modes:
+    #                     self.load_mode(cfg)
+            
+    #         # 2. Load associated local sampling actions
+    #         actions_path = "/app/config/sampling_modes_actions.json"
+    #         if os.path.exists(actions_path):
+    #             with open(actions_path, "r") as f:
+    #                 for cfg in json.load(f):
+    #                     self.load_action(cfg)
+                        
+    #     except Exception as e:
+    #         self.logger.error("configure error", extra={"reason": str(e)})
+
+    def configure(self):
+        try:
+            # 1. LOAD ACTIONS FROM DIRECTORY
+            actions = self._load_json_dir("/app/config/actions")
+            for action in actions:
+                kind = action["kind"]
+                name = action["metadata"]["name"]
+                if kind not in self.sampling_actions:
+                    self.sampling_actions[kind] = dict()
+                self.sampling_actions[kind][name] = {
+                    "config": action,
+                    "action": SamplingAction(action, self.actions_target_buffer),
+                }
+
+                if "sources" in action:
+                    for src_name, src in action["sources"].items():
+                        vm_name = src["variablemap_name"]
+                        vs_name = src["variableset_name"]
+                        src_id = f"{vm_name}::{vs_name}"
+                        if src_id not in self.actions_source_map:
+                            self.actions_source_map[src_id] = []
+                        self.actions_source_map[src_id].append({"kind": kind, "name": name})
+            
+            # 2. LOAD MODES FROM DIRECTORY
+            modes = self._load_json_dir("/app/config/modes")
+            for mode in modes:
+                kind = mode["kind"]
+                name = mode["metadata"]["name"]
+                if kind not in self.sampling_modes:
+                    self.sampling_modes[kind] = dict()
+                self.sampling_modes[kind][name] = {
+                    "config": mode,
+                    "mode": SamplingMode(mode, self.status_buffer, self.actions_buffer, self.transitions_buffer),
+                }
+
+                if "requirements" in mode:
+                    for req_mode in mode["requirements"]:
+                        try:
+                            req_kind = req_mode["kind"]
+                            req_name = req_mode["name"]
+                            if req_kind not in self.mode_requirements_map:
+                                self.mode_requirements_map[req_kind] = dict()
+                            if req_name not in self.mode_requirements_map[req_kind]:
+                                self.mode_requirements_map[req_kind][req_name] = []
+                            self.mode_requirements_map[req_kind][req_name].append(
+                                {"kind": kind, "name": name, "active": False}
+                            )
+                        except KeyError:
+                            continue
         except Exception as e:
-            self.logger.error("configure error", extra={"reason": str(e)})
+            self.logger.error("configure-manager", extra={"reason": e})
 
     def load_mode(self, cfg):
         """Processes a definition and instantiates a SamplingMode object using a composite key."""
