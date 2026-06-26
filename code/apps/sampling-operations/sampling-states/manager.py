@@ -744,29 +744,80 @@ class SamplingStatesManager:
     #     except Exception as e:
     #         self.logger.error("configure error", extra={"reason": e})
 
+    def _load_json_dir(self, dir_path_str: str) -> list:
+        """Scans a directory for JSON files, injects env vars, and returns the parsed list."""
+        results = []
+        dir_path = Path(dir_path_str)
+        
+        if dir_path.exists() and dir_path.is_dir():
+            for file_path in dir_path.glob("*.json"):
+                try:
+                    with open(file_path, "r") as f:
+                        raw_content = f.read()
+                        
+                        # ---> INJECT VARIABLES BEFORE PARSING <---
+                        expanded_content = os.path.expandvars(raw_content)
+                        
+                        data = json.loads(expanded_content)
+                        if isinstance(data, list):
+                            results.extend(data)
+                        else:
+                            results.append(data)
+                            
+                    self.logger.info(f"Loaded and expanded file: {file_path.name}")
+                except Exception as e:
+                    self.logger.error(f"Failed to parse {file_path.name}", extra={"reason": str(e)})
+        else:
+            self.logger.info(f"{dir_path_str} not found or empty. Skipping local load.")
+            
+        return results
+    
+    # def configure(self):
+    #     self.logger.debug("configure", extra={"self.config": self.config})
+    #     try:
+    #         states_path = "/app/config/sampling_states.json"
+    #         if os.path.exists(states_path):
+    #             with open(states_path, "r") as f:
+    #                 states = json.load(f)
+                    
+    #                 # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+    #                 if states and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
+    #                     first_ns = states[0].get("metadata", {}).get("sampling_namespace", "")
+    #                     if "/" in first_ns:
+    #                         self.config.deployment_ref = first_ns.split("/")[-1]
+    #                         self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+    #                 # -------------------------------------
+                    
+    #                 for state in states:
+    #                     self.load_state(state)
+    #         else:
+    #             self.logger.info(f"{states_path} not found. Skipping local load.")
+    #     except Exception as e:
+    #         self.logger.error("configure error", extra={"reason": e})
+    
     def configure(self):
         self.logger.debug("configure", extra={"self.config": self.config})
         try:
-            states_path = "/app/config/sampling_states.json"
-            if os.path.exists(states_path):
-                with open(states_path, "r") as f:
-                    states = json.load(f)
-                    
-                    # --- IMMUTABLE IDENTITY BOOTSTRAP ---
-                    if states and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
-                        first_ns = states[0].get("metadata", {}).get("sampling_namespace", "")
-                        if "/" in first_ns:
-                            self.config.deployment_ref = first_ns.split("/")[-1]
-                            self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
-                    # -------------------------------------
-                    
-                    for state in states:
-                        self.load_state(state)
+            # ---> LOAD FROM THE STATES DIRECTORY <---
+            states = self._load_json_dir("/app/config/states")
+            
+            if states:
+                # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+                if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+                    first_ns = states[0].get("metadata", {}).get("sampling_namespace", "")
+                    if "/" in first_ns:
+                        self.config.deployment_ref = first_ns.split("/")[-1]
+                        self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+                # -------------------------------------
+                
+                for state in states:
+                    self.load_state(state)
             else:
-                self.logger.info(f"{states_path} not found. Skipping local load.")
+                self.logger.info("No local states found in /app/config/states. Skipping.")
+                
         except Exception as e:
-            self.logger.error("configure error", extra={"reason": e})
-    
+            self.logger.error("configure error", extra={"reason": str(e)})
+
     async def submit_get(self, path: str):
         """Standard helper to fetch from local datastore with logging."""
         try:
