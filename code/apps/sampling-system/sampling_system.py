@@ -1339,51 +1339,77 @@ class SamplingSystem:
             self.logger.error("device_data_update", extra={"reason": e})
         pass
 
+    # def get_variablemap_id(self, vm:dict):
+    #     try:
+    #         print(f"get_variablemap_id: {vm}")
+    #         # variablemap_type = vm["data"]["attributes"]["variablemap_index_type"]
+    #         # if variablemap_type == "Platform":
+    #         #     variablemap_type_id = vm["data"]["attributes"]["platform"]
+    #         # else:
+    #         #     return ""
+            
+    #         # variable_map_type_id = vm["data"]["attributes"]["variablemap_index_type_id"]
+    #         # variablemap_name = vm["metadata"]["name"]
+    #         # valid_config_time = vm["data"]["attributes"]["valid_config_time"]
+
+    #         vm_type = vm["variablemap"]["data"]["attributes"]["variablemap_type"]
+    #         vm_name = vm["variablemap"]["metadata"]["name"]
+    #         vm_ns = vm["variablemap"]["data"]["attributes"]["sampling_namespace"]
+    #         vm_valid_config_time = vm["variablemap"]["data"]["attributes"]["valid_config_time"]
+
+    #         # return "::".join([f"{vm_name}.{vm_ns}", vm_valid_config_time])
+    #         return "::".join([vm_name, vm_valid_config_time])
+
+    #         # return "::".join([variablemap_type_id, variablemap_name, valid_config_time])
+    #     except Exception as e:
+    #         self.logger.error("get_variablemap_id", extra={"reason": e})
+    #         return ""
     def get_variablemap_id(self, vm:dict):
         try:
-            print(f"get_variablemap_id: {vm}")
-            # variablemap_type = vm["data"]["attributes"]["variablemap_index_type"]
-            # if variablemap_type == "Platform":
-            #     variablemap_type_id = vm["data"]["attributes"]["platform"]
-            # else:
-            #     return ""
+            attrs = vm.get("variablemap", {}).get("data", {}).get("attributes", {})
+            meta = vm.get("variablemap", {}).get("metadata", {})
             
-            # variable_map_type_id = vm["data"]["attributes"]["variablemap_index_type_id"]
-            # variablemap_name = vm["metadata"]["name"]
-            # valid_config_time = vm["data"]["attributes"]["valid_config_time"]
+            vm_name = meta.get("name", "unknown")
+            vm_valid_config_time = attrs.get("valid_config_time") or meta.get("valid_config_time", "unknown")
 
-            vm_type = vm["variablemap"]["data"]["attributes"]["variablemap_type"]
-            vm_name = vm["variablemap"]["metadata"]["name"]
-            vm_ns = vm["variablemap"]["data"]["attributes"]["sampling_namespace"]
-            vm_valid_config_time = vm["variablemap"]["data"]["attributes"]["valid_config_time"]
-
-            # return "::".join([f"{vm_name}.{vm_ns}", vm_valid_config_time])
             return "::".join([vm_name, vm_valid_config_time])
-
-            # return "::".join([variablemap_type_id, variablemap_name, valid_config_time])
         except Exception as e:
-            self.logger.error("get_variablemap_id", extra={"reason": e})
+            self.logger.error("get_variablemap_id", extra={"reason": str(e)})
             return ""
+
+    # def get_variableset_full_id(self, variablemap:dict, variableset_name:str, variableset:dict):
+    #     try:
+    #         # variablemap_id = self.get_variablemap_id(vm=variablemap)
+
+    #         #variableset_id should not be bound to a valid_config
+    #         vm_platform = variablemap["variablemap"]["data"]["attributes"]["platform"]
+    #         vm_name = variablemap["variablemap"]["metadata"]["name"]
+    #         vm_valid_config_time = variablemap["variablemap"]["data"]["attributes"]["valid_config_time"]
+    #         # variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
+            
+    #         # variableset_name = variableset["metadata"]["name"]
+    #         # self.logger.debug("get_variableset_id", extra={"vm_name": vm_name, "variableset_name": variableset_name})
+
+    #         return "::".join([vm_platform,vm_name, vm_valid_config_time, variableset_name])
+        
+    #     except Exception as e:
+    #         self.logger.error("get_variableset_id", extra={"reason": e})
+    #         return ""
 
     def get_variableset_full_id(self, variablemap:dict, variableset_name:str, variableset:dict):
         try:
-            # variablemap_id = self.get_variablemap_id(vm=variablemap)
-
-            #variableset_id should not be bound to a valid_config
-            vm_platform = variablemap["variablemap"]["data"]["attributes"]["platform"]
-            vm_name = variablemap["variablemap"]["metadata"]["name"]
-            vm_valid_config_time = variablemap["variablemap"]["data"]["attributes"]["valid_config_time"]
-            # variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
+            attrs = variablemap.get("variablemap", {}).get("data", {}).get("attributes", {})
+            meta = variablemap.get("variablemap", {}).get("metadata", {})
             
-            # variableset_name = variableset["metadata"]["name"]
-            # self.logger.debug("get_variableset_id", extra={"vm_name": vm_name, "variableset_name": variableset_name})
-
-            return "::".join([vm_platform,vm_name, vm_valid_config_time, variableset_name])
-        
+            vm_platform = attrs.get("platform") or meta.get("platform", "unknown")
+            vm_name = meta.get("name", "unknown")
+            vm_valid_config_time = attrs.get("valid_config_time") or meta.get("valid_config_time", "unknown")
+            
+            return "::".join([vm_platform, vm_name, vm_valid_config_time, variableset_name])
         except Exception as e:
-            self.logger.error("get_variableset_id", extra={"reason": e})
+            self.logger.error("get_variableset_full_id", extra={"reason": str(e)})
             return ""
-
+        
     def get_variableset_id(self, variablemap:dict, variableset_name:str, variableset:dict):
         try:
             # variablemap_id = self.get_variablemap_id(vm=variablemap)
@@ -3421,6 +3447,8 @@ class SamplingSystem:
                 variableset["attributes"]["deployment_ref"] = {"type": "string", "data": dep_ref}
                 
                 varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
+                # ---> THE FIX: Inject the namespace so the CloudEvent builder doesn't crash! <---
+                variableset["attributes"]["sampling_namespace"] = {"type": "string", "data": varmap_ns}
                 varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
                 varset_full_id = self.get_variableset_full_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
                 source_id = f"envds.{self.config.daq_id}.variableset.{varset_id}"
