@@ -1010,12 +1010,18 @@ class SamplingSystem:
                             
                             # Hydrate ALL direct mappings (sensors and settings)
                             if m_type == "direct":
-                                attrs = v_def.get("attributes", {})
-                                
+                                # attrs = v_def.get("attributes", {})
+                                # ---> FIX 1: Pull active attributes from memory to prevent wiping routing keys! <---
+                                active_var = vm_obj["variablesets"].get(vs_name, {}).get("variables", {}).get(v_name, {})
+                                attrs = active_var.get("attributes", v_def.get("attributes", {})).copy()
+
                                 # Idempotency check
                                 if "hydrated" not in attrs:
-                                    direct_var = v_def.get("direct_value", {}).get("source_variable", v_name)
-                                    src_info = v_def.get("source", {}).get(direct_var, {})
+                                    # direct_var = v_def.get("direct_value", {}).get("source_variable", v_name)
+                                    # src_info = v_def.get("source", {}).get(direct_var, {})
+                                    # ---> FIX 2: Modern source extraction (no direct_value needed) <---
+                                    sources = v_def.get("source", {})
+                                    src_info = next(iter(sources.values())) if sources else {}
                                     
                                     src_type = src_info.get("source_type", "device") # 'device' or 'controller'
                                     src_id = src_info.get("source_id", "")
