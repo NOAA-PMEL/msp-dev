@@ -473,20 +473,36 @@ class SamplingSystem:
                     current_v["attributes"]["map_type"] = {"type": "string", "data": v.get("map_type", "")}
                     
                     # Map sources to the internal cache to drive local MQTT evaluation triggers
-                    if v.get("map_type") == "direct":
-                        direct_var = v.get("direct_value", {}).get("source_variable")
-                        if direct_var and "source" in v and direct_var in v["source"]:
-                            current_v["attributes"]["source_type"] = {"type": "string", "data": v["source"][direct_var]["source_type"]}
-                            current_v["attributes"]["source_id"] = {"type": "string", "data": v["source"][direct_var]["source_id"]}
-                            current_v["attributes"]["source_variable"] = {"type": "string", "data": v["source"][direct_var]["source_variable"]}
+                    # if v.get("map_type") == "direct":
+                    #     direct_var = v.get("direct_value", {}).get("source_variable")
+                    #     if direct_var and "source" in v and direct_var in v["source"]:
+                    #         current_v["attributes"]["source_type"] = {"type": "string", "data": v["source"][direct_var]["source_type"]}
+                    #         current_v["attributes"]["source_id"] = {"type": "string", "data": v["source"][direct_var]["source_id"]}
+                    #         current_v["attributes"]["source_variable"] = {"type": "string", "data": v["source"][direct_var]["source_variable"]}
                             
-                            source_id_val = v["source"][direct_var]["source_id"]
-                            if source_id_val not in current_vm["sources"]:
-                                current_vm["sources"][source_id_val] = []
+                    #         source_id_val = v["source"][direct_var]["source_id"]
+                    #         if source_id_val not in current_vm["sources"]:
+                    #             current_vm["sources"][source_id_val] = []
                                 
-                            source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
-                            if source_entry not in current_vm["sources"][source_id_val]:
-                                current_vm["sources"][source_id_val].append(source_entry)
+                    #         source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
+                    #         if source_entry not in current_vm["sources"][source_id_val]:
+                    #             current_vm["sources"][source_id_val].append(source_entry)
+                    if v.get("map_type") == "direct":
+                        sources = v.get("source", {})
+                        for src_alias, src_info in sources.items():
+                            source_id_val = src_info.get("source_id")
+                            
+                            if source_id_val:
+                                current_v["attributes"]["source_type"] = {"type": "string", "data": src_info.get("source_type", "device")}
+                                current_v["attributes"]["source_id"] = {"type": "string", "data": source_id_val}
+                                current_v["attributes"]["source_variable"] = {"type": "string", "data": src_info.get("source_variable")}
+                                
+                                if source_id_val not in current_vm["sources"]:
+                                    current_vm["sources"][source_id_val] = []
+                                    
+                                source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
+                                if source_entry not in current_vm["sources"][source_id_val]:
+                                    current_vm["sources"][source_id_val].append(source_entry)
 
             # Indexed xrefs and task creation
             index_type = vs_def["index"]["index_type"]
@@ -1380,8 +1396,12 @@ class SamplingSystem:
             return ""
 
     def get_variablemap_namespace(self, variablemap:dict):
-        return variablemap["variablemap"]["data"]["attributes"]["sampling_namespace"]
-
+        # return variablemap["variablemap"]["data"]["attributes"]["sampling_namespace"]
+        attrs = variablemap.get("variablemap", {}).get("data", {}).get("attributes", {})
+        meta = variablemap.get("variablemap", {}).get("metadata", {})
+        
+        return attrs.get("sampling_namespace") or meta.get("sampling_namespace", "unknown")
+    
     def get_id_components(self, vm_id:str=None, vs_id:str=None) -> dict:
         try:
             if vs_id:
