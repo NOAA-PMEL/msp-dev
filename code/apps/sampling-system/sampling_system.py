@@ -3719,15 +3719,20 @@ class SamplingSystem:
             sources = raw_var_def.get("source", {})
 
             for param_name, param_mapping in parameters.items():
-                src_var_alias = param_mapping.get("source-variable")
+                # FIX 1: Support BOTH underscore and dash immediately to prevent None
+                src_var_alias = param_mapping.get("source_variable") or param_mapping.get("source-variable")
                 val = None
 
-                if src_var_alias and src_var_alias in sources:
-                    src_def = sources[src_var_alias]
-                    
-                    # real_src_var = src_def.get("source_variable", src_var_alias)
-                    real_src_var = param_mapping.get("source_variable") or param_mapping.get("source-variable")
-                    target_vset_name = src_def.get("variableset", variableset_name)
+                if src_var_alias:
+                    real_src_var = src_var_alias
+                    target_vset_name = variableset_name
+
+                    # FIX 2: Only dive into the sources dictionary if it actually exists! 
+                    # If it doesn't, we still proceed to look up `real_src_var` locally.
+                    if src_var_alias in sources:
+                        src_def = sources[src_var_alias]
+                        real_src_var = src_def.get("source_variable", src_var_alias)
+                        target_vset_name = src_def.get("variableset", variableset_name)
 
                     if evaluated_vsets and target_vset_name in evaluated_vsets:
                         target_vset = evaluated_vsets[target_vset_name]
