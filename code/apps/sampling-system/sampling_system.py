@@ -1022,7 +1022,7 @@ class SamplingSystem:
                                     # ---> FIX 2: Modern source extraction (no direct_value needed) <---
                                     sources = v_def.get("source", {})
                                     src_info = next(iter(sources.values())) if sources else {}
-                                    
+
                                     src_type = src_info.get("source_type", "device") # 'device' or 'controller'
                                     src_id = src_info.get("source_id", "")
                                     src_var = src_info.get("source_variable", "")
@@ -2501,7 +2501,16 @@ class SamplingSystem:
         if not unit_str or not isinstance(unit_str, str):
             return unit_str
         import re
-        return re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
+        # return re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
+    
+        s = re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
+        
+        # ---> THE FIX: Map common string abbreviations that the strict Pint parser rejects <---
+        s = s.replace("km/hr", "km/h")
+        s = s.replace("m/sec", "m/s")
+        s = s.replace("knots", "knot")
+        
+        return s
     
     async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict, data_buffer: dict = None):
         map_type = "direct"
@@ -3688,7 +3697,8 @@ class SamplingSystem:
                 if src_var_alias and src_var_alias in sources:
                     src_def = sources[src_var_alias]
                     
-                    real_src_var = src_def.get("source_variable", src_var_alias)
+                    # real_src_var = src_def.get("source_variable", src_var_alias)
+                    real_src_var = param_mapping.get("source_variable") or param_mapping.get("source-variable")
                     target_vset_name = src_def.get("variableset", variableset_name)
 
                     if evaluated_vsets and target_vset_name in evaluated_vsets:
