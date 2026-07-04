@@ -409,6 +409,10 @@ def update_live_locations(message, current_locations):
         lat = variables.get("latitude", {}).get("data") or variables.get("lat", {}).get("data")
         lon = variables.get("longitude", {}).get("data") or variables.get("lon", {}).get("data")
         
+        # ---> ADD THESE TWO LINES TO HANDLE ARRAYS <---
+        if isinstance(lat, list): lat = lat[-1] if len(lat) > 0 else None
+        if isinstance(lon, list): lon = lon[-1] if len(lon) > 0 else None
+        
         if lat is not None and lon is not None and target_id:
             if current_locations is None: 
                 current_locations = {}
