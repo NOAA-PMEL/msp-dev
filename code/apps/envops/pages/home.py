@@ -230,14 +230,25 @@ def render_fleet_grid(projects, deployments, health_store):
         dep_name = dep.get("metadata", {}).get("name", "Unknown")
         hosts_by_project.setdefault(proj_ref, {})[dep_name] = {"host": dep, "subs": []}
 
+    # for dep in sub_deployments:
+    #     proj_ref = dep.get("data", {}).get("project_ref", "unknown")
+    #     host_pref = dep.get("data", {}).get("host_platform_ref")
+    #     parent_dep = platform_to_dep.get(host_pref)
+    #     if parent_dep:
+    #         parent_name = parent_dep.get("metadata", {}).get("name")
+    #         if parent_name and proj_ref in hosts_by_project and parent_name in hosts_by_project[proj_ref]:
+    #             hosts_by_project[proj_ref][parent_name]["subs"].append(dep)
     for dep in sub_deployments:
-        proj_ref = dep.get("data", {}).get("project_ref", "unknown")
         host_pref = dep.get("data", {}).get("host_platform_ref")
         parent_dep = platform_to_dep.get(host_pref)
         if parent_dep:
             parent_name = parent_dep.get("metadata", {}).get("name")
-            if parent_name and proj_ref in hosts_by_project and parent_name in hosts_by_project[proj_ref]:
-                hosts_by_project[proj_ref][parent_name]["subs"].append(dep)
+            
+            # ---> THE FIX: Inherit the project_ref from the Parent Host <---
+            parent_proj_ref = parent_dep.get("data", {}).get("project_ref", "unknown")
+            
+            if parent_name and parent_proj_ref in hosts_by_project and parent_name in hosts_by_project[parent_proj_ref]:
+                hosts_by_project[parent_proj_ref][parent_name]["subs"].append(dep)
 
     project_blocks = []
     
@@ -412,7 +423,7 @@ def update_live_locations(message, current_locations):
         # ---> ADD THESE TWO LINES TO HANDLE ARRAYS <---
         if isinstance(lat, list): lat = lat[-1] if len(lat) > 0 else None
         if isinstance(lon, list): lon = lon[-1] if len(lon) > 0 else None
-        
+
         if lat is not None and lon is not None and target_id:
             if current_locations is None: 
                 current_locations = {}
