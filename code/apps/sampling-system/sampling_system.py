@@ -333,17 +333,17 @@ class SamplingSystem:
 
         # --- 1. JIT MISSION CONTEXT LOADING ---
         self.active_deployment_ref = "unknown"
-        self.active_project_ref = "unknown"
+        # self.active_project_ref = "unknown"
         
         self.local_deployments = self._load_json_dir("/app/config/deployments")
         if self.local_deployments and len(self.local_deployments) > 0:
             active_dep = self.local_deployments[0]
             self.active_deployment_ref = active_dep.get("metadata", {}).get("name", "unknown")
-            self.active_project_ref = active_dep.get("data", {}).get("project_ref", "unknown")
+            # self.active_project_ref = active_dep.get("data", {}).get("project_ref", "unknown")
             
             self.logger.info("JIT Mission context loaded.", extra={
-                "deployment": self.active_deployment_ref, 
-                "project": self.active_project_ref
+                "deployment": self.active_deployment_ref
+                # "project": self.active_project_ref
             })
 
         # --- 2. UNIVERSAL GITOPS METADATA LOADING ---
@@ -1185,36 +1185,26 @@ class SamplingSystem:
             # Sleep for 60 seconds before announcing the definitions again
             await asyncio.sleep(60)
     
-    def resolve_context_for_varmap(self, variablemap: dict, target_time: str) -> tuple:
-        """Returns (deployment_ref, project_ref) for a given VariableMap and time."""
-        
-        # 1. Extract the platform this data is coming from
+    def resolve_context_for_varmap(self, variablemap: dict, target_time: str) -> str:
+        """Returns deployment_ref for a given VariableMap and time."""
         platform_ref = variablemap.get("variablemap", {}).get("data", {}).get("attributes", {}).get("platform")
-        
         if not platform_ref:
-            return "unknown", "unknown"
+            return "unknown"
             
-        # 2. Universal Lookup: Scan all loaded deployments (Edge or Server)
         for dep in getattr(self, "deployments", []):
             dep_data = dep.get("data", {})
             if dep_data.get("platform_ref") == platform_ref:
-                
-                # Check if this deployment covers the target_time
                 start = dep_data.get("planned_start_time", "0000-00-00")
                 end = dep_data.get("planned_end_time", "9999-99-99")
                 actual_end = dep_data.get("actual_end_time", end)
                 
                 if start <= target_time <= actual_end:
-                    dep_ref = dep.get("metadata", {}).get("name", "unknown")
-                    proj_ref = dep_data.get("project_ref", "unknown")
-                    return dep_ref, proj_ref
+                    return dep.get("metadata", {}).get("name", "unknown")
                     
-        # 3. Graceful Fallback: If no time bounds matched but we have an active deployment, use it.
-        # This protects against edge cases where the clock is wrong, or the user forgot to set dates.
         if getattr(self, "active_deployment_ref", "unknown") != "unknown":
-            return self.active_deployment_ref, getattr(self, "active_project_ref", "unknown")
+            return self.active_deployment_ref
             
-        return "unknown", "unknown"
+        return "unknown"
 
     async def get_from_mqtt_loop(self):
         reconnect = 10
@@ -3439,11 +3429,12 @@ class SamplingSystem:
                     continue  
                 # -------------------------------------------------
                 
-                dep_ref, proj_ref = self.resolve_context_for_varmap(variablemap, target_time)
+                dep_ref = self.resolve_context_for_varmap(variablemap, target_time)
                 
                 if "attributes" not in variableset:
                     variableset["attributes"] = {}
-                variableset["attributes"]["project_ref"] = {"type": "string", "data": proj_ref}
+                # DELETE THIS LINE:
+                # variableset["attributes"]["project_ref"] = {"type": "string", "data": proj_ref}
                 variableset["attributes"]["deployment_ref"] = {"type": "string", "data": dep_ref}
                 
                 varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
@@ -3459,7 +3450,7 @@ class SamplingSystem:
                 event["samplingnamespace"] = varmap_ns
                 event["variablesetid"] = varset_id
                 event["variablesetfullid"] = varset_full_id
-                event["projectref"] = getattr(self, "active_project_ref", "unknown")
+                # event["projectref"] = getattr(self, "active_project_ref", "unknown")
                 event["deploymentref"] = getattr(self, "active_deployment_ref", "unknown")
 
                 await self.send_to_mqtt(event["destpath"], event)
@@ -3791,13 +3782,13 @@ class SamplingSystem:
         try:
             # 1. Resolve context (Edge fast-path or default to unknown if no specific varmap)
             dep_ref = getattr(self, "active_deployment_ref", "unknown")
-            proj_ref = getattr(self, "active_project_ref", "unknown")
+            # proj_ref = getattr(self, "active_project_ref", "unknown")
 
             payload = {
                 "event_type": event_type,
                 "description": description,
                 "deployment_ref": dep_ref,
-                "project_ref": proj_ref
+                # "project_ref": proj_ref
             }
 
             # 2. FIXED: Use the correct SamplingEvent factory wrapper class instead of its type registry
@@ -3813,7 +3804,7 @@ class SamplingSystem:
             
             # Inject extensions for Knative routing
             event["deploymentref"] = dep_ref
-            event["projectref"] = proj_ref
+            # event["projectref"] = proj_ref
 
             # 3. Publish to the MQTT broker
             await self.send_to_mqtt(event["destpath"], event)
