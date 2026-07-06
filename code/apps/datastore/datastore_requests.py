@@ -173,7 +173,6 @@ class VariableSetDataRequest(BaseModel):
     variableset_id: str | None = None
     variablemap_id: str | None = None
     variableset: str | None = None
-    project_ref: str | None = None
     deployment_ref: str | None = None
     start_time: str | None = None
     end_time: str | None = None

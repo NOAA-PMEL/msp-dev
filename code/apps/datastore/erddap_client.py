@@ -249,6 +249,47 @@ class ErddapClient:
     # ---------------------------------------------------------
     # OPERATIONS REGISTRY (Read-Through Cache)
     # ---------------------------------------------------------
+    # async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
+    #     """Fetches historical operational definitions (conditions, modes) from ERDDAP."""
+    #     dataset_id = "envds_ops_registry"
+        
+    #     kind_map = {
+    #         "samplingcondition": "SamplingCondition",
+    #         "samplingmode": "SamplingMode",
+    #         "samplingstate": "SamplingState",
+    #         "systemmode": "SystemMode"
+    #     }
+    #     kind = kind_map.get(resource, resource)
+        
+    #     query_args = [f'kind="{kind}"']
+        
+    #     if "name" in query and query["name"]:
+    #         parts = query["name"].split("::")
+            
+    #         # Extract both namespace and name to guarantee strict node isolation
+    #         if len(parts) >= 3:
+    #             namespace_part = parts[0]
+    #             name_part = parts[1]
+    #             query_args.append(f'namespace="{namespace_part}"')
+    #         else:
+    #             name_part = parts[0] # Just in case a legacy call slips through
+                
+    #         query_args.append(f'name="{name_part}"')
+            
+    #     # FIX: Group by namespace and name, returning the row with the max time
+    #     query_args.append("orderByMax(%22namespace,name,time%22)")
+    #     result = await self._fetch_tabledap(dataset_id, query_args)
+        
+    #     parsed_results = []
+    #     for row in result.get("results", []):
+    #         try:
+    #             payload = json.loads(row.get("payload", "{}"))
+    #             parsed_results.append(payload)
+    #         except Exception:
+    #             continue
+                
+    #     return {"results": parsed_results}
+    
     async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
         """Fetches historical operational definitions (conditions, modes) from ERDDAP."""
         dataset_id = "envds_ops_registry"
@@ -265,19 +306,11 @@ class ErddapClient:
         
         if "name" in query and query["name"]:
             parts = query["name"].split("::")
-            
-            # Extract both namespace and name to guarantee strict node isolation
-            if len(parts) >= 3:
-                namespace_part = parts[0]
-                name_part = parts[1]
-                query_args.append(f'namespace="{namespace_part}"')
-            else:
-                name_part = parts[0] # Just in case a legacy call slips through
-                
+            name_part = parts[0] 
             query_args.append(f'name="{name_part}"')
             
-        # FIX: Group by namespace and name, returning the row with the max time
-        query_args.append("orderByMax(%22namespace,name,time%22)")
+        # FIX: Group by name, returning the row with the max time
+        query_args.append("orderByMax(%22name,time%22)")
         result = await self._fetch_tabledap(dataset_id, query_args)
         
         parsed_results = []

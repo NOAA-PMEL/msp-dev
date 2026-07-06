@@ -183,7 +183,6 @@ class RedisClient(DBClient):
                     TagField("$.record.variableset_id", as_name="variableset_id"),
                     TagField("$.record.variablemap_id", as_name="variablemap_id"),
                     TagField("$.record.variableset", as_name="variableset"),
-                    TagField("$.record.attributes.project_ref.data", as_name="project_ref"),
                     TagField("$.record.attributes.deployment_ref.data", as_name="deployment_ref"),
                     NumericField("$.record.timestamp", as_name="timestamp"),
                 )
@@ -212,7 +211,6 @@ class RedisClient(DBClient):
                     TagField("$.registration.metadata.name", as_name="name"),
                     TagField("$.registration.data.platform_ref", as_name="platform_ref"),
                     TagField("$.registration.data.host_platform_ref", as_name="host_platform_ref"),
-                    TagField("$.registration.data.project_ref", as_name="project_ref"),
                     TagField("$.registration.data.deployment_type", as_name="deployment_type"),
                     TagField("$.registration.data.deployment_subtype", as_name="deployment_subtype")
                 )
@@ -713,7 +711,6 @@ class RedisClient(DBClient):
         if request.variableset_id: query_args.append(f"@variableset_id:{{{self.escape_query(request.variableset_id)}}}")
         if request.variablemap_id: query_args.append(f"@variablemap_id:{{{self.escape_query(request.variablemap_id)}}}")
         if request.variableset: query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
-        if request.project_ref: query_args.append(f"@project_ref:{{{self.escape_query(request.project_ref)}}}")
         if request.deployment_ref: query_args.append(f"@deployment_ref:{{{self.escape_query(request.deployment_ref)}}}")
         # if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
         # if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
@@ -803,20 +800,36 @@ class RedisClient(DBClient):
     async def sampling_definition_registry_get_ids(self, resource: str) -> dict:
         return await self._get_ids_safely(f"registry:{resource}-definition:")
 
+    # async def sampling_definition_registry_update(self, resource: str, database: str, collection: str, request: dict, ttl: int = 0) -> bool:
+    #     try:
+    #         self.connect()
+    #         name = request.get("metadata", {}).get("name", "unknown")
+    #         # valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z").replace(":", "")
+    #         valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z")
+            
+    #         # id = f"{name}::{valid_time}"
+    #         # key = f"{database}:{collection}:{id}"
+
+    #         ns = request.get("metadata", {}).get("sampling_namespace", "unknown")
+            
+    #         # ---> The new 3-part ID: namespace::name::time <---
+    #         id = f"{ns}::{name}::{valid_time}"
+    #         key = f"{database}:{collection}:{id}"
+
+    #         result = await self.client.json().set(key, "$", {"registration": request})
+    #         if result and ttl > 0:
+    #             await self.client.expire(key, ttl)
+    #         return True if result else False
+    #     except Exception as e:
+    #         self.logger.error(f"redis_client:{resource}_definition_registry_update", extra={"reason": str(e)})
+    #         return False
     async def sampling_definition_registry_update(self, resource: str, database: str, collection: str, request: dict, ttl: int = 0) -> bool:
         try:
             self.connect()
             name = request.get("metadata", {}).get("name", "unknown")
-            # valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z").replace(":", "")
-            valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z")
+            valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z").replace(":", "")
             
-            # id = f"{name}::{valid_time}"
-            # key = f"{database}:{collection}:{id}"
-
-            ns = request.get("metadata", {}).get("sampling_namespace", "unknown")
-            
-            # ---> The new 3-part ID: namespace::name::time <---
-            id = f"{ns}::{name}::{valid_time}"
+            id = f"{name}::{valid_time}"
             key = f"{database}:{collection}:{id}"
 
             result = await self.client.json().set(key, "$", {"registration": request})
@@ -826,6 +839,50 @@ class RedisClient(DBClient):
         except Exception as e:
             self.logger.error(f"redis_client:{resource}_definition_registry_update", extra={"reason": str(e)})
             return False
+        
+    # async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
+    #     # ---------------------------------------------------------
+    #     # FAST PATH: Exact ID Lookup for Registrar Syncs
+    #     # ---------------------------------------------------------
+    #     self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"q": query})
+    #     if query.get("name") and "::" in query["name"]:
+    #         key = f"registry:{resource}-definition:{query['name']}"
+    #         try:
+    #             self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"qkey": key})
+    #             doc = await self.client.json().get(key)
+    #             if doc:
+    #                 return {"results": [doc.get("registration", doc)]}
+    #         except Exception:
+    #             pass
+    #         return {"results": []}
+
+    #     # ---------------------------------------------------------
+    #     # SLOW PATH: RediSearch Dashboard Lookups
+    #     # ---------------------------------------------------------
+    #     query_args = []
+    #     if "name" in query and query["name"]: 
+    #         query_args.append(f"@name:{{{self.escape_query(query['name'])}}}")
+        
+    #     # Add support for hierarchical graph queries
+    #     if resource == "deployment":
+    #         for key in ["platform_ref", "host_platform_ref", "project_ref", "deployment_type", "deployment_subtype"]:
+    #             if key in query and query[key]:
+    #                 query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
+
+    #     qstring = " ".join(query_args) if query_args else "*"
+    #     q = Query(qstring).return_fields("$")
+        
+    #     docs = (await self.client.ft(f"idx:registry-{resource}-definition").search(q)).docs
+        
+    #     results = []
+    #     for doc in docs:
+    #         try:
+    #             if doc.json:
+    #                 reg = json.loads(doc.json)
+    #                 results.append(reg.get("registration", reg))
+    #         except Exception:
+    #             continue
+    #     return {"results": results}
     
     async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
         # ---------------------------------------------------------
@@ -833,7 +890,12 @@ class RedisClient(DBClient):
         # ---------------------------------------------------------
         self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"q": query})
         if query.get("name") and "::" in query["name"]:
-            key = f"registry:{resource}-definition:{query['name']}"
+            # Re-strip the colons from the timestamp (the last part) to match the Redis key
+            parts = query["name"].split("::")
+            parts[-1] = parts[-1].replace(":", "")
+            redis_id = "::".join(parts)
+            
+            key = f"registry:{resource}-definition:{redis_id}"
             try:
                 self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"qkey": key})
                 doc = await self.client.json().get(key)
@@ -852,7 +914,7 @@ class RedisClient(DBClient):
         
         # Add support for hierarchical graph queries
         if resource == "deployment":
-            for key in ["platform_ref", "host_platform_ref", "project_ref", "deployment_type", "deployment_subtype"]:
+            for key in ["platform_ref", "host_platform_ref", "deployment_type", "deployment_subtype"]:
                 if key in query and query[key]:
                     query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
 
