@@ -503,7 +503,7 @@ async def variableset_instance_registry_get(
 #     "platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"
 # ]
 SAMPLING_RESOURCE_TYPES = [
-    "platform", "project", "deployment", "contact", 
+    "platform", "project", "deployment", "contact", "projectallocation", 
     "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"
 ]
 def create_sampling_routes(resource: str):

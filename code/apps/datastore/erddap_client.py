@@ -298,7 +298,8 @@ class ErddapClient:
             "samplingcondition": "SamplingCondition",
             "samplingmode": "SamplingMode",
             "samplingstate": "SamplingState",
-            "systemmode": "SystemMode"
+            "systemmode": "SystemMode",
+            "projectallocation": "ProjectAllocation"
         }
         kind = kind_map.get(resource, resource)
         

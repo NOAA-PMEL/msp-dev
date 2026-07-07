@@ -218,7 +218,7 @@ class RedisClient(DBClient):
                 await self.client.ft("idx:registry-deployment-definition").create_index(schema, definition=definition)
 
             # Sampling Generic Resource Indexes
-            for resource in ["platform", "project", "contact", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
+            for resource in ["platform", "project", "contact", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action", "projectallocation"]:
                 index_name = f"idx:registry-{resource}-definition"
                 prefix = f"registry:{resource}-definition:"
                 try:
@@ -918,6 +918,12 @@ class RedisClient(DBClient):
                 if key in query and query[key]:
                     query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
 
+        # NEW: ProjectAllocation queries
+        elif resource == "projectallocation":
+            for key in ["project_ref", "host_platform_ref"]:
+                if key in query and query[key]:
+                    query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
+                    
         qstring = " ".join(query_args) if query_args else "*"
         q = Query(qstring).return_fields("$")
         
