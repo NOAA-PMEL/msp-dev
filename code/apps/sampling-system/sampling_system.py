@@ -348,8 +348,8 @@ class SamplingSystem:
 
         # --- 2. UNIVERSAL GITOPS METADATA LOADING ---
         self.local_platforms = self._load_json_dir("/app/config/platforms")
-        self.local_projects = self._load_json_dir("/app/config/projects")
-        self.local_contacts = self._load_json_dir("/app/config/contacts")
+        # self.local_projects = self._load_json_dir("/app/config/projects")
+        # self.local_contacts = self._load_json_dir("/app/config/contacts")
 
         # --- 3. VARIABLEMAP LOADING ---
         try:
@@ -905,7 +905,8 @@ class SamplingSystem:
                 # ---------------------------------------------------------
                 # 1. FETCH ALL FLEET GITOPS METADATA
                 # ---------------------------------------------------------
-                gitops_resources = ["deployment", "project", "platform", "contact"]
+                # gitops_resources = ["deployment", "project", "platform", "contact"]
+                gitops_resources = ["deployment", "platform"]
                 
                 for resource in gitops_resources:
                     try:
@@ -1118,23 +1119,23 @@ class SamplingSystem:
                     plat_event["destpath"] = f"envds/{self.config.daq_id}/platform-definition/registry/update"
                     await self.send_event(plat_event)
 
-                for proj in getattr(self, "local_projects", []):
-                    proj_event = SamplingEvent.create_definition_registry_update(
-                        resource="project",
-                        source=f"envds.{self.config.daq_id}.sampling-system",
-                        data={"project-definition": proj}
-                    )
-                    proj_event["destpath"] = f"envds/{self.config.daq_id}/project-definition/registry/update"
-                    await self.send_event(proj_event)
+                # for proj in getattr(self, "local_projects", []):
+                #     proj_event = SamplingEvent.create_definition_registry_update(
+                #         resource="project",
+                #         source=f"envds.{self.config.daq_id}.sampling-system",
+                #         data={"project-definition": proj}
+                #     )
+                #     proj_event["destpath"] = f"envds/{self.config.daq_id}/project-definition/registry/update"
+                #     await self.send_event(proj_event)
 
-                for contact in getattr(self, "local_contacts", []):
-                    contact_event = SamplingEvent.create_definition_registry_update(
-                        resource="contact",
-                        source=f"envds.{self.config.daq_id}.sampling-system",
-                        data={"contact-definition": contact}
-                    )
-                    contact_event["destpath"] = f"envds/{self.config.daq_id}/contact-definition/registry/update"
-                    await self.send_event(contact_event)
+                # for contact in getattr(self, "local_contacts", []):
+                #     contact_event = SamplingEvent.create_definition_registry_update(
+                #         resource="contact",
+                #         source=f"envds.{self.config.daq_id}.sampling-system",
+                #         data={"contact-definition": contact}
+                #     )
+                #     contact_event["destpath"] = f"envds/{self.config.daq_id}/contact-definition/registry/update"
+                #     await self.send_event(contact_event)
                 # ---------------------------------------
 
                 for platform, vm_dict in self.variablemaps.get("platform", {}).items():
@@ -3451,8 +3452,9 @@ class SamplingSystem:
                 event["variablesetid"] = varset_id
                 event["variablesetfullid"] = varset_full_id
                 # event["projectref"] = getattr(self, "active_project_ref", "unknown")
-                event["deploymentref"] = getattr(self, "active_deployment_ref", "unknown")
-
+                # event["deploymentref"] = getattr(self, "active_deployment_ref", "unknown")
+                event["deploymentref"] = dep_ref
+                
                 await self.send_to_mqtt(event["destpath"], event)
 
         except Exception as e:
