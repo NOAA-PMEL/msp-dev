@@ -1,7 +1,7 @@
 import os
 import json
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask
 import dash
 import httpx
@@ -338,6 +338,7 @@ def update_sidebar_missions(n):
     """Fetches deployments and builds a nested navigation accordion."""
     deployments = fetch_registry_data("deployment")
     projects = fetch_registry_data("project")
+    allocations = fetch_registry_data("projectallocation") # NEW: Fetch allocations
     
     if not deployments:
         return html.P("No active missions.", className="text-muted small px-2 fst-italic")
@@ -351,10 +352,32 @@ def update_sidebar_missions(n):
         if not host_pref or host_pref not in platform_to_dep:
             host_deployments.append(dep)
             
-    # Group Hosts by Project
+    # Group Hosts by Project via Time-Bound Allocations
     hosts_by_project = {}
+    now = datetime.now(timezone.utc)
+    
     for dep in host_deployments:
-        proj_ref = dep.get("data", {}).get("project_ref", "Unknown Project")
+        platform_ref = dep.get("data", {}).get("platform_ref")
+        proj_ref = "Unallocated Deployments"
+        
+        for alloc in allocations:
+            data = alloc.get("data", {})
+            # Look for the allocation linking this physical platform
+            if data.get("host_platform_ref") == platform_ref:
+                start_str = data.get("start_time", "1970-01-01T00:00:00Z")
+                end_str = data.get("end_time", "9999-12-31T23:59:59Z")
+                try:
+                    start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                    end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                    # Only map it if the current time falls within the allocation window
+                    if start_dt <= now <= end_dt:
+                        proj_ref = data.get("project_ref")
+                        break
+                except Exception:
+                    # Fallback if time parsing fails
+                    proj_ref = data.get("project_ref")
+                    break
+                    
         if proj_ref not in hosts_by_project:
             hosts_by_project[proj_ref] = []
         hosts_by_project[proj_ref].append(dep)

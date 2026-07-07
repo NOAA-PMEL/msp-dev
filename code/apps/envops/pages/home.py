@@ -7,6 +7,7 @@ import httpx
 import logging
 from pydantic import BaseSettings
 from dash_extensions import WebSocket
+from datetime import datetime, timezone
 
 L = logging.getLogger(__name__)
 
@@ -100,6 +101,7 @@ def layout():
         dcc.Store(id="store-projects", data=[]),
         dcc.Store(id="store-deployments", data=[]),
         dcc.Store(id="store-platforms", data=[]),
+        dcc.Store(id="store-allocations", data=[]), # <-- NEW
         dcc.Store(id="live-fleet-locations", data={}),
         dcc.Store(id="live-health-store", data={}), 
         
@@ -132,6 +134,7 @@ def layout():
     Output("store-projects", "data"),
     Output("store-deployments", "data"),
     Output("store-platforms", "data"),
+    Output("store-allocations", "data"), # <-- NEW
     Input("home-sync-interval", "n_intervals"),
     Input("home-refresh-btn", "n_clicks"),
     prevent_initial_call=False
@@ -140,7 +143,8 @@ def sync_fleet_state(n_intervals, n_clicks):
     projects = fetch_registry_data("project")
     deployments = fetch_registry_data("deployment")
     platforms = fetch_registry_data("platform")
-    return projects, deployments, platforms
+    allocations = fetch_registry_data("projectallocation") # <-- NEW
+    return projects, deployments, platforms, allocations
 
 @callback(
     Output("live-health-store", "data"),
@@ -213,10 +217,11 @@ def update_live_health(message, current_health):
     Output("projects-grid-container", "children"),
     Input("store-projects", "data"),
     Input("store-deployments", "data"),
+    Input("store-allocations", "data"), # <-- NEW
     Input("live-health-store", "data"), 
     prevent_initial_call=True
 )
-def render_fleet_grid(projects, deployments, health_store):
+def render_fleet_grid(projects, deployments, allocations, health_store):
     if health_store is None: health_store = {}
     if not projects and not deployments: return html.P("No active projects found.", className="text-muted fst-italic px-2")
 
@@ -225,28 +230,56 @@ def render_fleet_grid(projects, deployments, health_store):
     sub_deployments = [d for d in deployments if d.get("data", {}).get("host_platform_ref") in platform_to_dep]
 
     hosts_by_project = {}
+    now = datetime.now(timezone.utc)
+    
     for dep in host_deployments:
-        proj_ref = dep.get("data", {}).get("project_ref", "unknown")
+        platform_ref = dep.get("data", {}).get("platform_ref")
+        proj_ref = "Unallocated Deployments"
+        
+        if allocations:
+            for alloc in allocations:
+                data = alloc.get("data", {})
+                if data.get("host_platform_ref") == platform_ref:
+                    start_str = data.get("start_time", "1970-01-01T00:00:00Z")
+                    end_str = data.get("end_time", "9999-12-31T23:59:59Z")
+                    try:
+                        start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                        end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                        if start_dt <= now <= end_dt:
+                            proj_ref = data.get("project_ref")
+                            break
+                    except Exception:
+                        proj_ref = data.get("project_ref")
+                        break
+                        
         dep_name = dep.get("metadata", {}).get("name", "Unknown")
         hosts_by_project.setdefault(proj_ref, {})[dep_name] = {"host": dep, "subs": []}
 
-    # for dep in sub_deployments:
-    #     proj_ref = dep.get("data", {}).get("project_ref", "unknown")
-    #     host_pref = dep.get("data", {}).get("host_platform_ref")
-    #     parent_dep = platform_to_dep.get(host_pref)
-    #     if parent_dep:
-    #         parent_name = parent_dep.get("metadata", {}).get("name")
-    #         if parent_name and proj_ref in hosts_by_project and parent_name in hosts_by_project[proj_ref]:
-    #             hosts_by_project[proj_ref][parent_name]["subs"].append(dep)
     for dep in sub_deployments:
         host_pref = dep.get("data", {}).get("host_platform_ref")
         parent_dep = platform_to_dep.get(host_pref)
         if parent_dep:
             parent_name = parent_dep.get("metadata", {}).get("name")
             
-            # ---> THE FIX: Inherit the project_ref from the Parent Host <---
-            parent_proj_ref = parent_dep.get("data", {}).get("project_ref", "unknown")
-            
+            # Sub-deployments inherit their project from their parent host
+            parent_platform_ref = parent_dep.get("data", {}).get("platform_ref")
+            parent_proj_ref = "Unallocated Deployments"
+            if allocations:
+                for alloc in allocations:
+                    data = alloc.get("data", {})
+                    if data.get("host_platform_ref") == parent_platform_ref:
+                        start_str = data.get("start_time", "1970-01-01T00:00:00Z")
+                        end_str = data.get("end_time", "9999-12-31T23:59:59Z")
+                        try:
+                            start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                            end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                            if start_dt <= now <= end_dt:
+                                parent_proj_ref = data.get("project_ref")
+                                break
+                        except Exception:
+                            parent_proj_ref = data.get("project_ref")
+                            break
+                            
             if parent_name and parent_proj_ref in hosts_by_project and parent_name in hosts_by_project[parent_proj_ref]:
                 hosts_by_project[parent_proj_ref][parent_name]["subs"].append(dep)
 
@@ -328,15 +361,15 @@ def render_fleet_grid(projects, deployments, health_store):
         project_blocks.append(project_block)
 
     return html.Div(project_blocks)
-
 # --- 2. MAP CALLBACK ---
 @callback(
     Output("fleet-map", "figure"),
     Input("live-fleet-locations", "data"),
     State("store-deployments", "data"),
+    State("store-allocations", "data"), # <-- NEW
     prevent_initial_call=True
 )
-def patch_fleet_map(live_locations, deployments):
+def patch_fleet_map(live_locations, deployments, allocations):
     if live_locations is None: live_locations = {}
     if not deployments: return dash.no_update
 
@@ -345,19 +378,57 @@ def patch_fleet_map(live_locations, deployments):
     sub_deployments = [d for d in deployments if d.get("data", {}).get("host_platform_ref") in platform_to_dep]
 
     hosts_by_project = {}
+    now = datetime.now(timezone.utc)
+    
     for dep in host_deployments:
-        proj_ref = dep.get("data", {}).get("project_ref", "unknown")
+        platform_ref = dep.get("data", {}).get("platform_ref")
+        proj_ref = "Unallocated Deployments"
+        
+        if allocations:
+            for alloc in allocations:
+                data = alloc.get("data", {})
+                if data.get("host_platform_ref") == platform_ref:
+                    start_str = data.get("start_time", "1970-01-01T00:00:00Z")
+                    end_str = data.get("end_time", "9999-12-31T23:59:59Z")
+                    try:
+                        start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                        end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                        if start_dt <= now <= end_dt:
+                            proj_ref = data.get("project_ref")
+                            break
+                    except Exception:
+                        proj_ref = data.get("project_ref")
+                        break
+                        
         dep_name = dep.get("metadata", {}).get("name", "Unknown")
         hosts_by_project.setdefault(proj_ref, {})[dep_name] = {"host": dep, "subs": []}
 
     for dep in sub_deployments:
-        proj_ref = dep.get("data", {}).get("project_ref", "unknown")
         host_pref = dep.get("data", {}).get("host_platform_ref")
         parent_dep = platform_to_dep.get(host_pref)
         if parent_dep:
             parent_name = parent_dep.get("metadata", {}).get("name")
-            if parent_name and proj_ref in hosts_by_project and parent_name in hosts_by_project[proj_ref]:
-                hosts_by_project[proj_ref][parent_name]["subs"].append(dep)
+            
+            parent_platform_ref = parent_dep.get("data", {}).get("platform_ref")
+            parent_proj_ref = "Unallocated Deployments"
+            if allocations:
+                for alloc in allocations:
+                    data = alloc.get("data", {})
+                    if data.get("host_platform_ref") == parent_platform_ref:
+                        start_str = data.get("start_time", "1970-01-01T00:00:00Z")
+                        end_str = data.get("end_time", "9999-12-31T23:59:59Z")
+                        try:
+                            start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                            end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                            if start_dt <= now <= end_dt:
+                                parent_proj_ref = data.get("project_ref")
+                                break
+                        except Exception:
+                            parent_proj_ref = data.get("project_ref")
+                            break
+                            
+            if parent_name and parent_proj_ref in hosts_by_project and parent_name in hosts_by_project[parent_proj_ref]:
+                hosts_by_project[parent_proj_ref][parent_name]["subs"].append(dep)
 
     planned_lats, planned_lons, planned_text = [], [], []
     live_lats, live_lons, live_text = [], [], []
