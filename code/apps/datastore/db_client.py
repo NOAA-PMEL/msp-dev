@@ -255,10 +255,18 @@ class CompositeDBClient(DBClient):
             result = await self.erddap.device_definition_registry_get(request)
             if result.get("results"):
                 for definition in result["results"]:
+                    # ---> THE FIX: Safely parse ERDDAP dict into structured Pydantic model <---
+                    if isinstance(definition, dict):
+                        data_dict = definition.get("registration", definition)
+                        request_model = DeviceDefinitionUpdate(**data_dict)
+                    else:
+                        request_model = definition
+                    # --------------------------------------------------------------------------
+
                     await self.redis.device_definition_registry_update(
                         database="registry", 
                         collection="device-definition", 
-                        request=definition, 
+                        request=request_model, 
                         ttl=3600
                     )
         return result
