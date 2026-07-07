@@ -1,5 +1,5 @@
-fastapi>=0.79.0,<0.80.0
-pydantic
+fastapi>=0.100.0
+pydantic>=2.0
 pydantic-settings
 uvicorn>=0.18.0,<0.19.0       
 cloudevents >=1.6.0,<2.0.0
