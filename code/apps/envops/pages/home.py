@@ -217,7 +217,7 @@ def update_live_health(message, current_health):
     Output("projects-grid-container", "children"),
     Input("store-projects", "data"),
     Input("store-deployments", "data"),
-    Input("store-allocations", "data"), # <-- NEW
+    Input("store-allocations", "data"), 
     Input("live-health-store", "data"), 
     prevent_initial_call=True
 )
@@ -239,7 +239,8 @@ def render_fleet_grid(projects, deployments, allocations, health_store):
         if allocations:
             for alloc in allocations:
                 data = alloc.get("data", {})
-                if data.get("host_platform_ref") == platform_ref:
+                # THE FIX: Check the allocation's platform_ref!
+                if data.get("platform_ref") == platform_ref:
                     start_str = data.get("start_time", "1970-01-01T00:00:00Z")
                     end_str = data.get("end_time", "9999-12-31T23:59:59Z")
                     try:
@@ -261,13 +262,13 @@ def render_fleet_grid(projects, deployments, allocations, health_store):
         if parent_dep:
             parent_name = parent_dep.get("metadata", {}).get("name")
             
-            # Sub-deployments inherit their project from their parent host
             parent_platform_ref = parent_dep.get("data", {}).get("platform_ref")
             parent_proj_ref = "Unallocated Deployments"
             if allocations:
                 for alloc in allocations:
                     data = alloc.get("data", {})
-                    if data.get("host_platform_ref") == parent_platform_ref:
+                    # THE FIX: Check the allocation's platform_ref against the parent's platform_ref!
+                    if data.get("platform_ref") == parent_platform_ref:
                         start_str = data.get("start_time", "1970-01-01T00:00:00Z")
                         end_str = data.get("end_time", "9999-12-31T23:59:59Z")
                         try:
@@ -289,7 +290,6 @@ def render_fleet_grid(projects, deployments, allocations, health_store):
         h_data = health_store.get(uid, {"health": "secondary", "text": "UNKNOWN"})
         color = "success" if h_data["health"] == "ok" else h_data["health"]
         icon = "bi-hdd-network" if is_host else "bi-hdd"
-        # Style as a clean pill badge
         return dbc.Badge([html.I(className=f"bi {icon} me-1"), uid], color=color, className="me-2 mb-2 p-2 shadow-sm rounded-pill font-monospace", style={"fontSize": "0.75rem"})
 
     for proj in projects:
@@ -305,8 +305,6 @@ def render_fleet_grid(projects, deployments, allocations, health_store):
             subs = group["subs"]
             h_display = host_data.get("data", {}).get("display_name", host_name)
             
-            # ---> THE FIX: UI-SIDE HEALTH ROLLUP <---
-            # If the host has no active state machine, aggregate from its children
             if host_name not in health_store and subs:
                 sub_healths = [health_store.get(s.get("metadata", {}).get("name"), {}).get("health", "secondary") for s in subs]
                 
@@ -315,9 +313,7 @@ def render_fleet_grid(projects, deployments, allocations, health_store):
                 elif "ok" in sub_healths: agg_health = "ok"
                 else: agg_health = "secondary"
                 
-                # Inject the computed health so the badge generator finds it
                 health_store[host_name] = {"health": agg_health, "text": "AGGREGATED"}
-            # ----------------------------------------
             
             host_state = health_store.get(host_name, {}).get("health", "ok")
             if host_state == "danger": proj_health_status = "danger"
@@ -349,7 +345,6 @@ def render_fleet_grid(projects, deployments, allocations, health_store):
         if not host_cols: 
             host_cols = [dbc.Col(html.P("No active deployments mapped to this project.", className="text-muted small fst-italic"))]
 
-        # Use title text color to reflect overall project health
         title_color = "text-dark"
         if proj_health_status == "danger": title_color = "text-danger"
         elif proj_health_status == "warning": title_color = "text-warning"
@@ -361,12 +356,13 @@ def render_fleet_grid(projects, deployments, allocations, health_store):
         project_blocks.append(project_block)
 
     return html.Div(project_blocks)
+
 # --- 2. MAP CALLBACK ---
 @callback(
     Output("fleet-map", "figure"),
     Input("live-fleet-locations", "data"),
     State("store-deployments", "data"),
-    State("store-allocations", "data"), # <-- NEW
+    State("store-allocations", "data"),
     prevent_initial_call=True
 )
 def patch_fleet_map(live_locations, deployments, allocations):
@@ -387,7 +383,8 @@ def patch_fleet_map(live_locations, deployments, allocations):
         if allocations:
             for alloc in allocations:
                 data = alloc.get("data", {})
-                if data.get("host_platform_ref") == platform_ref:
+                # THE FIX: Check the allocation's platform_ref!
+                if data.get("platform_ref") == platform_ref:
                     start_str = data.get("start_time", "1970-01-01T00:00:00Z")
                     end_str = data.get("end_time", "9999-12-31T23:59:59Z")
                     try:
@@ -414,7 +411,8 @@ def patch_fleet_map(live_locations, deployments, allocations):
             if allocations:
                 for alloc in allocations:
                     data = alloc.get("data", {})
-                    if data.get("host_platform_ref") == parent_platform_ref:
+                    # THE FIX: Check the allocation's platform_ref against the parent's platform_ref!
+                    if data.get("platform_ref") == parent_platform_ref:
                         start_str = data.get("start_time", "1970-01-01T00:00:00Z")
                         end_str = data.get("end_time", "9999-12-31T23:59:59Z")
                         try:

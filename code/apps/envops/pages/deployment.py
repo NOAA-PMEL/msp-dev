@@ -324,7 +324,8 @@ def layout(deployment_id=None):
     if allocations and platform_ref:
         for alloc in allocations:
             alloc_data = alloc.get("data", {})
-            if alloc_data.get("host_platform_ref") == platform_ref:
+            # THE FIX: Check the allocation's platform_ref instead of host_platform_ref!
+            if alloc_data.get("platform_ref") == platform_ref:
                 start_str = alloc_data.get("start_time", "1970-01-01T00:00:00Z")
                 end_str = alloc_data.get("end_time", "9999-12-31T23:59:59Z")
                 try:
@@ -354,7 +355,6 @@ def layout(deployment_id=None):
         dbc.Row([
             dbc.Col([
                 html.H2([html.I(className="bi bi-rocket-takeoff me-2 text-primary"), f"C2: {display_name}"], className="text-dark fw-bold mb-0"),
-                # ---> THE FIX: Cleanly inject the Project Name into the header! <---
                 html.P([
                     html.Strong("Project: "), proj_name, html.Br(),
                     html.Strong("Deployment ID: "), html.Span(deployment_id, className="font-monospace")

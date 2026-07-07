@@ -363,7 +363,7 @@ def update_sidebar_missions(n):
         for alloc in allocations:
             data = alloc.get("data", {})
             # Look for the allocation linking this physical platform
-            if data.get("host_platform_ref") == platform_ref:
+            if data.get("platform_ref") == platform_ref:
                 start_str = data.get("start_time", "1970-01-01T00:00:00Z")
                 end_str = data.get("end_time", "9999-12-31T23:59:59Z")
                 try:
