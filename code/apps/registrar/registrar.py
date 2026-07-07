@@ -98,7 +98,8 @@ class Registrar:
         for resource in [
             "platform", "project", "deployment", "contact", 
             "systemmode", "samplingmode", "samplingstate", 
-            "samplingcondition", "action"
+            "samplingcondition", "action",
+            "projectallocation"
         ]:
             self.task_list.append(self.create_sampling_sync_loop(resource))
         for task in self.task_list:

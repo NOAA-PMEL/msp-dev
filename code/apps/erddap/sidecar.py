@@ -854,7 +854,8 @@ async def sync_definitions_loop():
         "platform", "project", "deployment", "contact", 
         "systemmode", "samplingmode", "samplingstate", 
         "samplingcondition", "action",
-        "variablemap", "variableset"
+        "variablemap", "variableset", 
+        "projectallocation"
     ]
     
     all_resources = HARDWARE_RESOURCES + OPS_RESOURCES
