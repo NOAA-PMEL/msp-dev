@@ -55,6 +55,182 @@ class RedisClient(DBClient):
                 self.logger.error("redis connect", extra={"reason": str(e)})
                 self.client = None
 
+    # async def build_indexes(self):
+    #     self.connect()
+    #     if self.config.get("clear_db"):
+    #         await self.client.flushall()
+
+    #     try:
+    #         # Device Data Index
+    #         try:
+    #             await self.client.ft(self.data_device_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.record.device_id", as_name="device_id"),
+    #                 TagField("$.record.make", as_name="make"),
+    #                 TagField("$.record.model", as_name="model"),
+    #                 TagField("$.record.serial_number", as_name="serial_number"),
+    #                 TagField("$.record.version", as_name="version"),
+    #                 NumericField("$.record.timestamp", as_name="timestamp")
+    #             )
+    #             definition = IndexDefinition(prefix=["data:device:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
+
+    #         # Device Definition Index
+    #         try:
+    #             await self.client.ft(self.registry_device_definition_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.device_definition_id", as_name="device_definition_id"),
+    #                 TagField("$.registration.make", as_name="make"),
+    #                 TagField("$.registration.model", as_name="model"),
+    #                 TagField("$.registration.version", as_name="version"),
+    #                 TagField("$.registration.device_type", as_name="device_type"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:device-definition:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
+
+    #         # Device Instance Index (Active Sensors)
+    #         try:
+    #             await self.client.ft(self.registry_device_instance_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.device_id", as_name="device_id"),
+    #                 TagField("$.registration.make", as_name="make"),
+    #                 TagField("$.registration.model", as_name="model"),
+    #                 TagField("$.registration.serial_number", as_name="serial_number"),
+    #                 TagField("$.registration.version", as_name="version"),
+    #                 TagField("$.registration.device_type", as_name="device_type"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:device-instance:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
+
+    #         # Controller Data Index
+    #         try:
+    #             await self.client.ft(self.data_controller_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.record.controller_id", as_name="controller_id"),
+    #                 TagField("$.record.make", as_name="make"),
+    #                 TagField("$.record.model", as_name="model"),
+    #                 TagField("$.record.serial_number", as_name="serial_number"),
+    #                 TagField("$.record.version", as_name="version"),
+    #                 NumericField("$.record.timestamp", as_name="timestamp")
+    #             )
+    #             definition = IndexDefinition(prefix=["data:controller:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.data_controller_index_name).create_index(schema, definition=definition)
+
+    #         # Controller Definition Index
+    #         try:
+    #             await self.client.ft(self.registry_controller_definition_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.controller_definition_id", as_name="controller_definition_id"),
+    #                 TagField("$.registration.make", as_name="make"),
+    #                 TagField("$.registration.model", as_name="model"),
+    #                 TagField("$.registration.version", as_name="version"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:controller-definition:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_controller_definition_index_name).create_index(schema, definition=definition)
+
+    #         # Controller Instance Index
+    #         try:
+    #             await self.client.ft(self.registry_controller_instance_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.controller_id", as_name="controller_id"),
+    #                 TagField("$.registration.make", as_name="make"),
+    #                 TagField("$.registration.model", as_name="model"),
+    #                 TagField("$.registration.serial_number", as_name="serial_number"),
+    #                 TagField("$.registration.version", as_name="version"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:controller-instance:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_controller_instance_index_name).create_index(schema, definition=definition)
+
+    #         # Variable Map Definition Index
+    #         try:
+    #             await self.client.ft(self.registry_variablemap_definition_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
+    #                 TagField("$.registration.variablemap_type", as_name="variablemap_type"),
+    #                 TagField("$.registration.variablemap_type_id", as_name="variablemap_type_id"),
+    #                 TagField("$.registration.variablemap", as_name="variablemap"),
+    #                 TagField("$.registration.valid_config_time", as_name="valid_config_time"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:variablemap-definition:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_variablemap_definition_index_name).create_index(schema, definition=definition)
+
+    #         # Variable Set Definition Index
+    #         try:
+    #             await self.client.ft(self.registry_variableset_definition_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.variableset_definition_id", as_name="variableset_definition_id"),
+    #                 TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
+    #                 TagField("$.registration.variableset", as_name="variableset"),
+    #                 TagField("$.registration.index_type", as_name="index_type"),
+    #                 TagField("$.registration.index_value", as_name="index_value"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:variableset-definition:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_variableset_definition_index_name).create_index(schema, definition=definition)
+
+    #         # Variable Set Telemetry Data Index
+    #         try:
+    #             await self.client.ft("idx:data-variableset").info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.record.variableset_id", as_name="variableset_id"),
+    #                 TagField("$.record.variablemap_id", as_name="variablemap_id"),
+    #                 TagField("$.record.variableset", as_name="variableset"),
+    #                 TagField("$.record.attributes.deployment_ref.data", as_name="deployment_ref"),
+    #                 NumericField("$.record.timestamp", as_name="timestamp"),
+    #             )
+    #             definition = IndexDefinition(prefix=["data:variableset:"], index_type=IndexType.JSON)
+    #             await self.client.ft("idx:data-variableset").create_index(schema, definition=definition)
+
+    #         # Variable Set Instance Index
+    #         try:
+    #             await self.client.ft(self.registry_variableset_instance_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.variableset_id", as_name="variableset_id"),
+    #                 TagField("$.registration.variablemap_id", as_name="variablemap_id"),
+    #                 TagField("$.registration.variableset", as_name="variableset"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:variableset-instance:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_variableset_instance_index_name).create_index(schema, definition=definition)
+
+    #         # -------------------------------------------------------------
+    #         # NEW: Dedicated Deployment Graph Index 
+    #         # -------------------------------------------------------------
+    #         try:
+    #             await self.client.ft("idx:registry-deployment-definition").info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.metadata.name", as_name="name"),
+    #                 TagField("$.registration.data.platform_ref", as_name="platform_ref"),
+    #                 TagField("$.registration.data.host_platform_ref", as_name="host_platform_ref"),
+    #                 TagField("$.registration.data.deployment_type", as_name="deployment_type"),
+    #                 TagField("$.registration.data.deployment_subtype", as_name="deployment_subtype")
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:deployment-definition:"], index_type=IndexType.JSON)
+    #             await self.client.ft("idx:registry-deployment-definition").create_index(schema, definition=definition)
+
+    #         # Sampling Generic Resource Indexes
+    #         for resource in ["platform", "project", "contact", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action", "projectallocation"]:
+    #             index_name = f"idx:registry-{resource}-definition"
+    #             prefix = f"registry:{resource}-definition:"
+    #             try:
+    #                 await self.client.ft(index_name).info()
+    #             except Exception:
+    #                 schema = (TagField("$.registration.metadata.name", as_name="name"),)
+    #                 definition = IndexDefinition(prefix=[prefix], index_type=IndexType.JSON)
+    #                 await self.client.ft(index_name).create_index(schema, definition=definition)
+
+    #     except Exception as e:
+    #         self.logger.error("build_indexes", extra={"reason": str(e)})
+
     async def build_indexes(self):
         self.connect()
         if self.config.get("clear_db"):
@@ -202,7 +378,7 @@ class RedisClient(DBClient):
                 await self.client.ft(self.registry_variableset_instance_index_name).create_index(schema, definition=definition)
 
             # -------------------------------------------------------------
-            # NEW: Dedicated Deployment Graph Index 
+            # Dedicated Deployment Graph Index 
             # -------------------------------------------------------------
             try:
                 await self.client.ft("idx:registry-deployment-definition").info()
@@ -210,15 +386,27 @@ class RedisClient(DBClient):
                 schema = (
                     TagField("$.registration.metadata.name", as_name="name"),
                     TagField("$.registration.data.platform_ref", as_name="platform_ref"),
-                    TagField("$.registration.data.host_platform_ref", as_name="host_platform_ref"),
                     TagField("$.registration.data.deployment_type", as_name="deployment_type"),
                     TagField("$.registration.data.deployment_subtype", as_name="deployment_subtype")
                 )
                 definition = IndexDefinition(prefix=["registry:deployment-definition:"], index_type=IndexType.JSON)
                 await self.client.ft("idx:registry-deployment-definition").create_index(schema, definition=definition)
 
-            # Sampling Generic Resource Indexes
-            for resource in ["platform", "project", "contact", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action", "projectallocation"]:
+            # -------------------------------------------------------------
+            # Dedicated ProjectAllocation Graph Index
+            # -------------------------------------------------------------
+            try:
+                await self.client.ft("idx:registry-projectallocation-definition").info()
+            except Exception:
+                schema = (
+                    TagField("$.registration.metadata.name", as_name="name"),
+                    TagField("$.registration.data.project_ref", as_name="project_ref")
+                )
+                definition = IndexDefinition(prefix=["registry:projectallocation-definition:"], index_type=IndexType.JSON)
+                await self.client.ft("idx:registry-projectallocation-definition").create_index(schema, definition=definition)
+
+            # Sampling Generic Resource Indexes (projectallocation removed!)
+            for resource in ["platform", "project", "contact", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
                 index_name = f"idx:registry-{resource}-definition"
                 prefix = f"registry:{resource}-definition:"
                 try:
@@ -914,13 +1102,13 @@ class RedisClient(DBClient):
         
         # Add support for hierarchical graph queries
         if resource == "deployment":
-            for key in ["platform_ref", "host_platform_ref", "deployment_type", "deployment_subtype"]:
+            for key in ["platform_ref", "deployment_type", "deployment_subtype"]:
                 if key in query and query[key]:
                     query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
 
         # NEW: ProjectAllocation queries
         elif resource == "projectallocation":
-            for key in ["project_ref", "host_platform_ref"]:
+            for key in ["project_ref"]:
                 if key in query and query[key]:
                     query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
                     
@@ -938,3 +1126,58 @@ class RedisClient(DBClient):
             except Exception:
                 continue
         return {"results": results}
+
+    # async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
+    #     # ---------------------------------------------------------
+    #     # FAST PATH: Exact ID Lookup for Registrar Syncs
+    #     # ---------------------------------------------------------
+    #     self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"q": query})
+    #     if query.get("name") and "::" in query["name"]:
+    #         # Re-strip the colons from the timestamp (the last part) to match the Redis key
+    #         parts = query["name"].split("::")
+    #         parts[-1] = parts[-1].replace(":", "")
+    #         redis_id = "::".join(parts)
+            
+    #         key = f"registry:{resource}-definition:{redis_id}"
+    #         try:
+    #             self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"qkey": key})
+    #             doc = await self.client.json().get(key)
+    #             if doc:
+    #                 return {"results": [doc.get("registration", doc)]}
+    #         except Exception:
+    #             pass
+    #         return {"results": []}
+
+    #     # ---------------------------------------------------------
+    #     # SLOW PATH: RediSearch Dashboard Lookups
+    #     # ---------------------------------------------------------
+    #     query_args = []
+    #     if "name" in query and query["name"]: 
+    #         query_args.append(f"@name:{{{self.escape_query(query['name'])}}}")
+        
+    #     # Add support for hierarchical graph queries
+    #     if resource == "deployment":
+    #         for key in ["platform_ref", "host_platform_ref", "deployment_type", "deployment_subtype"]:
+    #             if key in query and query[key]:
+    #                 query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
+
+    #     # NEW: ProjectAllocation queries
+    #     elif resource == "projectallocation":
+    #         for key in ["project_ref", "host_platform_ref"]:
+    #             if key in query and query[key]:
+    #                 query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
+                    
+    #     qstring = " ".join(query_args) if query_args else "*"
+    #     q = Query(qstring).return_fields("$")
+        
+    #     docs = (await self.client.ft(f"idx:registry-{resource}-definition").search(q)).docs
+        
+    #     results = []
+    #     for doc in docs:
+    #         try:
+    #             if doc.json:
+    #                 reg = json.loads(doc.json)
+    #                 results.append(reg.get("registration", reg))
+    #         except Exception:
+    #             continue
+    #     return {"results": results}
