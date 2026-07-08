@@ -2,7 +2,7 @@ import os
 import asyncio
 import zlib
 import logging
-import paho.mqtt.client as mqtt
+import concurrent.futures
 from logfmter import Logfmter
 from pydantic import BaseSettings, Field
 from ulid import ULID
@@ -26,7 +26,7 @@ class ProxySettings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8081
     daq_id: str = "default"
-    log_level: str = "INFO"  # Use "DEBUG" to see compression metrics!
+    log_level: str = "INFO"  # Configured to INFO for max performance on CM4
     
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
@@ -69,7 +69,7 @@ class TelemetryProxyClient:
         key_bytes = self.config.aes_encryption_key.encode('utf-8')[:32].ljust(32, b'\0')
         self.cipher = ChaCha20Poly1305(key_bytes)
         
-        # Async worker queues for non-blocking I/O
+        # Bounded async worker queues for non-blocking I/O load shedding
         self.outbound_queue = asyncio.Queue(maxsize=100)
         self.inbound_queue = asyncio.Queue(maxsize=100)
 
@@ -79,6 +79,14 @@ class TelemetryProxyClient:
 
     async def setup(self):
         """Starts background task orchestration."""
+        
+        # --- THE FIX: Constrain the default thread pool for the CM4 ---
+        # 3 workers leaves 1 core entirely free for the asyncio network loop
+        loop = asyncio.get_running_loop()
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+        loop.set_default_executor(executor)
+        # --------------------------------------------------------------
+        
         asyncio.create_task(self.mqtt_loop())
 
     async def mqtt_loop(self):
@@ -127,94 +135,47 @@ class TelemetryProxyClient:
             
             # Route to respective pipelines
             if topic == self.config.bridge_topic_in:
-                await self.inbound_queue.put(msg)
+                try:
+                    # Non-blocking injection
+                    self.inbound_queue.put_nowait(msg)
+                except asyncio.QueueFull:
+                    # Drop oldest inbound message to prevent lag build-up
+                    try:
+                        self.inbound_queue.get_nowait()
+                        self.inbound_queue.task_done()
+                    except asyncio.QueueEmpty:
+                        pass
+                    await self.inbound_queue.put(msg)
             else:
-                await self.process_outbound(original_topic=topic, raw_payload=msg.payload)
+                # --- THE ARCHITECTURE FIX: Task-offload the outbound processor ---
+                # Do NOT 'await' this inside the loop; fire it as a concurrent background task
+                # so the MQTT reader loop never stops pulling packets off the network.
+                asyncio.create_task(self.process_outbound(original_topic=topic, raw_payload=msg.payload))
 
-    # async def process_outbound(self, original_topic: str, raw_payload: bytes):
-    #     """Compresses, encrypts, and wraps outgoing telemetry into a Binary CE."""
-    #     try:
-    #         size_in = len(raw_payload)
-    #         if size_in == 0: return
-
-    #         # 1. Compress
-    #         compressed_bytes = zlib.compress(raw_payload, level=9)
-            
-    #         # 2. Encrypt (ChaCha20 requires a 12-byte Nonce per message)
-    #         nonce = os.urandom(12)
-    #         ciphertext = self.cipher.encrypt(nonce, compressed_bytes, associated_data=None)
-            
-    #         # 3. Prepend the nonce to the ciphertext for the receiving proxy
-    #         final_payload = nonce + ciphertext
-    #         size_out = len(final_payload)
-            
-    #         # ---> ADD METRICS CALCULATION HERE <---
-    #         self.total_outbound_bytes += size_out
-    #         self.total_raw_bytes += size_in
-    #         elapsed_hours = (time.time() - self.start_time) / 3600.0
-            
-    #         # Prevent divide-by-zero on the very first packet
-    #         if elapsed_hours > 0:
-    #             # Convert bytes to MB, then divide by hours
-    #             mb_per_hour = (self.total_outbound_bytes / (1024 * 1024)) / elapsed_hours
-    #             raw_mb_per_hour = (self.total_raw_bytes / (1024 * 1024)) / elapsed_hours
-    #         else:
-    #             mb_per_hour = 0.0
-    #             raw_mb_per_hour = 0.0
-    #         # --------------------------------------
-
-    #         # 4. Metrics Logging (Only visible if PROXY_LOG_LEVEL=DEBUG)
-    #         reduction = (1 - (size_out / size_in)) * 100
-    #         L.debug("compression_stats", extra={
-    #             "direction": "outbound",
-    #             "topic": original_topic,
-    #             "bytes_in": size_in, 
-    #             "bytes_out": size_out, 
-    #             "reduction_pct": round(reduction, 1),
-    #             "est_mb_per_hr": round(mb_per_hour, 4),
-    #             "est_raw_mb_per_hr": round(raw_mb_per_hour, 4)  # <--- NEW LOG OUTPUT
-    #         })
-
-    #         # 5. Build Binary CloudEvent MQTT v5 Headers
-    #         props = Properties(PacketTypes.PUBLISH)
-    #         props.UserProperty = [
-    #             ("ce-specversion", "1.0"),
-    #             ("ce-id", str(ULID())),
-    #             ("ce-type", "envds.transport.compressed"),
-    #             ("ce-source", f"envds.{self.config.daq_id}.proxy"),
-    #             ("ce-originaltopic", original_topic)
-    #         ]
-    #         props.ContentType = "application/octet-stream"
-
-    #         # 6. Queue for the publisher worker
-    #         await self.outbound_queue.put((self.config.bridge_topic_out, final_payload, props))
-
-    #     except Exception as e:
-    #         L.error(f"Outbound proxy error: {e}")
+    def synchronous_compress_and_encrypt(self, raw_payload: bytes):
+        """Helper to run CPU-heavy compression/crypto inside a thread pool."""
+        # Level 6 provides maximum efficiency without the Level 9 CPU penalty
+        compressed_bytes = zlib.compress(raw_payload, level=6)
+        nonce = os.urandom(12)
+        ciphertext = self.cipher.encrypt(nonce, compressed_bytes, associated_data=None)
+        return nonce + ciphertext
 
     async def process_outbound(self, original_topic: str, raw_payload: bytes):
-        """Compresses, encrypts, and wraps outgoing telemetry into a Binary CE."""
+        """Processes and queues outgoing telemetry concurrently."""
         try:
             size_in = len(raw_payload)
             if size_in == 0: return
 
-            # ---> DEBUG TIMER START <---
             t_start = time.perf_counter()
 
-            # 1. Compress
-            compressed_bytes = zlib.compress(raw_payload, level=9)
+            # --- THE ARCHITECTURE FIX: Offload CPU-heavy work to an isolated thread pool ---
+            final_payload = await asyncio.to_thread(self.synchronous_compress_and_encrypt, raw_payload)
             
-            # 2. Encrypt 
-            nonce = os.urandom(12)
-            ciphertext = self.cipher.encrypt(nonce, compressed_bytes, associated_data=None)
-            final_payload = nonce + ciphertext
-            
-            # ---> DEBUG TIMER END <---
             t_elapsed_ms = (time.perf_counter() - t_start) * 1000.0
             
-            print(f"[PROXY DEBUG] Compressed topic '{original_topic}'. Time blocked: {t_elapsed_ms:.2f}ms. In: {size_in}B -> Out: {len(final_payload)}B")
+            # Useful warning if the CM4 is under severe thermal throttling or load
             if t_elapsed_ms > 50.0:
-                print(f"  🚨 WARNING: Event loop was frozen for {t_elapsed_ms:.2f}ms! No other messages could be processed during this window.")
+                L.warning(f"Heavy compression task took {t_elapsed_ms:.2f}ms for '{original_topic}'. (Safely offloaded from main loop)")
 
             size_out = len(final_payload)
             self.total_outbound_bytes += size_out
@@ -228,7 +189,9 @@ class TelemetryProxyClient:
                 mb_per_hour = 0.0
                 raw_mb_per_hour = 0.0
 
-            reduction = (1 - (size_out / size_in)) * 100
+            reduction = (1 - (size_out / size_in)) * 100 if size_in > 0 else 0
+            
+            # This is perfectly safe: Python bypasses string formatting entirely when LogLevel is INFO
             L.debug("compression_stats", extra={
                 "direction": "outbound", "topic": original_topic,
                 "bytes_in": size_in, "bytes_out": size_out, "reduction_pct": round(reduction, 1),
@@ -243,7 +206,19 @@ class TelemetryProxyClient:
             ]
             props.ContentType = "application/octet-stream"
 
-            await self.outbound_queue.put((self.config.bridge_topic_out, final_payload, props))
+            # --- THE ARCHITECTURE FIX: Non-Blocking Load Shedding ---
+            try:
+                self.outbound_queue.put_nowait((self.config.bridge_topic_out, final_payload, props))
+            except asyncio.QueueFull:
+                # Shed load: Discard the oldest stale item in the queue to write the newest real-time location
+                try:
+                    self.outbound_queue.get_nowait()
+                    self.outbound_queue.task_done()
+                    L.warning("Outbound queue full. Shedding oldest telemetry packet to avoid network lag.")
+                except asyncio.QueueEmpty:
+                    pass
+                # Inject the fresh frame
+                self.outbound_queue.put_nowait((self.config.bridge_topic_out, final_payload, props))
 
         except Exception as e:
             L.error(f"Outbound proxy error: {e}")
