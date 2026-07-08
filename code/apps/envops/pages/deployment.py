@@ -700,6 +700,10 @@ dash.clientside_callback(
                         }
                     }
 
+                    if (val === null || val === "" || val === undefined) {
+                        continue;
+                    }
+
                     let unit = "";
                     if (varObj.attributes && varObj.attributes.units && varObj.attributes.units.data) {
                         unit = varObj.attributes.units.data;
@@ -755,11 +759,17 @@ def update_quick_looks(n_intervals, telemetry_store):
                 raw_unit = item.get("unit", "")
                 ts = item.get("ts", now) 
                 
-                if val is None:
+                # Protect against empty strings
+                if val is None or val == "":
                     continue
                 
                 if is_binary:
-                    if int(val) > 0:
+                    try:
+                        is_on = int(val) > 0
+                    except (ValueError, TypeError):
+                        is_on = str(val).lower() in ["true", "on", "1"]
+                        
+                    if is_on:
                         badge = html.Span("ON", className="badge bg-success px-2 py-1 shadow-sm")
                     else:
                         badge = html.Span("OFF", className="badge bg-secondary px-2 py-1 shadow-sm opacity-75")
@@ -770,7 +780,7 @@ def update_quick_looks(n_intervals, telemetry_store):
                 
                 if isinstance(val, list):
                     val = val[-1] if len(val) > 0 else None
-                    if val is None: continue
+                    if val is None or val == "": continue
 
                 unit_str = ""
                 if raw_unit:
@@ -784,9 +794,10 @@ def update_quick_looks(n_intervals, telemetry_store):
                     elif ru == "cm-3": unit_str = " cm⁻³"
                     else: unit_str = f" {ru}"
                     
-                if isinstance(val, float):
-                    fmt_val = f"{val:.2f}{unit_str}"
-                else:
+                # Protect against string parsing crashes
+                try:
+                    fmt_val = f"{float(val):.2f}{unit_str}"
+                except (ValueError, TypeError):
                     fmt_val = f"{val}{unit_str}"
                 
                 if now - ts > 120:
