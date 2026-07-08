@@ -70,8 +70,8 @@ class TelemetryProxyClient:
         self.cipher = ChaCha20Poly1305(key_bytes)
         
         # Async worker queues for non-blocking I/O
-        self.outbound_queue = asyncio.Queue(maxsize=2000)
-        self.inbound_queue = asyncio.Queue(maxsize=2000)
+        self.outbound_queue = asyncio.Queue(maxsize=100)
+        self.inbound_queue = asyncio.Queue(maxsize=100)
 
         self.start_time = time.time()
         self.total_outbound_bytes = 0
@@ -131,62 +131,118 @@ class TelemetryProxyClient:
             else:
                 await self.process_outbound(original_topic=topic, raw_payload=msg.payload)
 
+    # async def process_outbound(self, original_topic: str, raw_payload: bytes):
+    #     """Compresses, encrypts, and wraps outgoing telemetry into a Binary CE."""
+    #     try:
+    #         size_in = len(raw_payload)
+    #         if size_in == 0: return
+
+    #         # 1. Compress
+    #         compressed_bytes = zlib.compress(raw_payload, level=9)
+            
+    #         # 2. Encrypt (ChaCha20 requires a 12-byte Nonce per message)
+    #         nonce = os.urandom(12)
+    #         ciphertext = self.cipher.encrypt(nonce, compressed_bytes, associated_data=None)
+            
+    #         # 3. Prepend the nonce to the ciphertext for the receiving proxy
+    #         final_payload = nonce + ciphertext
+    #         size_out = len(final_payload)
+            
+    #         # ---> ADD METRICS CALCULATION HERE <---
+    #         self.total_outbound_bytes += size_out
+    #         self.total_raw_bytes += size_in
+    #         elapsed_hours = (time.time() - self.start_time) / 3600.0
+            
+    #         # Prevent divide-by-zero on the very first packet
+    #         if elapsed_hours > 0:
+    #             # Convert bytes to MB, then divide by hours
+    #             mb_per_hour = (self.total_outbound_bytes / (1024 * 1024)) / elapsed_hours
+    #             raw_mb_per_hour = (self.total_raw_bytes / (1024 * 1024)) / elapsed_hours
+    #         else:
+    #             mb_per_hour = 0.0
+    #             raw_mb_per_hour = 0.0
+    #         # --------------------------------------
+
+    #         # 4. Metrics Logging (Only visible if PROXY_LOG_LEVEL=DEBUG)
+    #         reduction = (1 - (size_out / size_in)) * 100
+    #         L.debug("compression_stats", extra={
+    #             "direction": "outbound",
+    #             "topic": original_topic,
+    #             "bytes_in": size_in, 
+    #             "bytes_out": size_out, 
+    #             "reduction_pct": round(reduction, 1),
+    #             "est_mb_per_hr": round(mb_per_hour, 4),
+    #             "est_raw_mb_per_hr": round(raw_mb_per_hour, 4)  # <--- NEW LOG OUTPUT
+    #         })
+
+    #         # 5. Build Binary CloudEvent MQTT v5 Headers
+    #         props = Properties(PacketTypes.PUBLISH)
+    #         props.UserProperty = [
+    #             ("ce-specversion", "1.0"),
+    #             ("ce-id", str(ULID())),
+    #             ("ce-type", "envds.transport.compressed"),
+    #             ("ce-source", f"envds.{self.config.daq_id}.proxy"),
+    #             ("ce-originaltopic", original_topic)
+    #         ]
+    #         props.ContentType = "application/octet-stream"
+
+    #         # 6. Queue for the publisher worker
+    #         await self.outbound_queue.put((self.config.bridge_topic_out, final_payload, props))
+
+    #     except Exception as e:
+    #         L.error(f"Outbound proxy error: {e}")
+
     async def process_outbound(self, original_topic: str, raw_payload: bytes):
         """Compresses, encrypts, and wraps outgoing telemetry into a Binary CE."""
         try:
             size_in = len(raw_payload)
             if size_in == 0: return
 
+            # ---> DEBUG TIMER START <---
+            t_start = time.perf_counter()
+
             # 1. Compress
             compressed_bytes = zlib.compress(raw_payload, level=9)
             
-            # 2. Encrypt (ChaCha20 requires a 12-byte Nonce per message)
+            # 2. Encrypt 
             nonce = os.urandom(12)
             ciphertext = self.cipher.encrypt(nonce, compressed_bytes, associated_data=None)
-            
-            # 3. Prepend the nonce to the ciphertext for the receiving proxy
             final_payload = nonce + ciphertext
-            size_out = len(final_payload)
             
-            # ---> ADD METRICS CALCULATION HERE <---
+            # ---> DEBUG TIMER END <---
+            t_elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+            
+            print(f"[PROXY DEBUG] Compressed topic '{original_topic}'. Time blocked: {t_elapsed_ms:.2f}ms. In: {size_in}B -> Out: {len(final_payload)}B")
+            if t_elapsed_ms > 50.0:
+                print(f"  🚨 WARNING: Event loop was frozen for {t_elapsed_ms:.2f}ms! No other messages could be processed during this window.")
+
+            size_out = len(final_payload)
             self.total_outbound_bytes += size_out
             self.total_raw_bytes += size_in
             elapsed_hours = (time.time() - self.start_time) / 3600.0
             
-            # Prevent divide-by-zero on the very first packet
             if elapsed_hours > 0:
-                # Convert bytes to MB, then divide by hours
                 mb_per_hour = (self.total_outbound_bytes / (1024 * 1024)) / elapsed_hours
                 raw_mb_per_hour = (self.total_raw_bytes / (1024 * 1024)) / elapsed_hours
             else:
                 mb_per_hour = 0.0
                 raw_mb_per_hour = 0.0
-            # --------------------------------------
 
-            # 4. Metrics Logging (Only visible if PROXY_LOG_LEVEL=DEBUG)
             reduction = (1 - (size_out / size_in)) * 100
             L.debug("compression_stats", extra={
-                "direction": "outbound",
-                "topic": original_topic,
-                "bytes_in": size_in, 
-                "bytes_out": size_out, 
-                "reduction_pct": round(reduction, 1),
-                "est_mb_per_hr": round(mb_per_hour, 4),
-                "est_raw_mb_per_hr": round(raw_mb_per_hour, 4)  # <--- NEW LOG OUTPUT
+                "direction": "outbound", "topic": original_topic,
+                "bytes_in": size_in, "bytes_out": size_out, "reduction_pct": round(reduction, 1),
+                "est_mb_per_hr": round(mb_per_hour, 4), "est_raw_mb_per_hr": round(raw_mb_per_hour, 4)
             })
 
-            # 5. Build Binary CloudEvent MQTT v5 Headers
             props = Properties(PacketTypes.PUBLISH)
             props.UserProperty = [
-                ("ce-specversion", "1.0"),
-                ("ce-id", str(ULID())),
-                ("ce-type", "envds.transport.compressed"),
-                ("ce-source", f"envds.{self.config.daq_id}.proxy"),
+                ("ce-specversion", "1.0"), ("ce-id", str(ULID())),
+                ("ce-type", "envds.transport.compressed"), ("ce-source", f"envds.{self.config.daq_id}.proxy"),
                 ("ce-originaltopic", original_topic)
             ]
             props.ContentType = "application/octet-stream"
 
-            # 6. Queue for the publisher worker
             await self.outbound_queue.put((self.config.bridge_topic_out, final_payload, props))
 
         except Exception as e:
