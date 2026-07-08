@@ -153,7 +153,8 @@ async def mqtt_listen_task():
                                 try:
                                     target_id = None
                                     try:
-                                        target_id = ce["deploymentref"]
+                                        # target_id = ce["deploymentref"]
+                                        target_id = ce.get("deploymentref")
                                     except Exception:
                                         target_id = ce.data.get("attributes", {}).get("deployment_ref", {}).get("data", "unknown")
                                     
