@@ -146,8 +146,9 @@ async def mqtt_listen_task():
                         # 2. Route Variableset Telemetry to Variableset WebSockets
                         elif ce_type in ["envds.variableset.data.update"]:
                             vs_id = source.split(".")[-1] 
-                            await manager.broadcast(payload_str, "variableset", vs_id)
-                            
+                            # await manager.broadcast(payload_str, "variableset", vs_id)
+                            await manager.broadcast(json.dumps(ce.data), "variableset", vs_id)
+
                             variables = ce.data.get("variables", {})
                             if "latitude" in variables and "longitude" in variables:
                                 try:
