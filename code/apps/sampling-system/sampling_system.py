@@ -1186,22 +1186,62 @@ class SamplingSystem:
             # Sleep for 60 seconds before announcing the definitions again
             await asyncio.sleep(60)
     
+    # def resolve_context_for_varmap(self, variablemap: dict, target_time: str) -> str:
+    #     """Returns deployment_ref for a given VariableMap and time."""
+    #     platform_ref = variablemap.get("variablemap", {}).get("data", {}).get("attributes", {}).get("platform")
+    #     if not platform_ref:
+    #         return "unknown"
+            
+    #     for dep in getattr(self, "deployments", []):
+    #         dep_data = dep.get("data", {})
+    #         if dep_data.get("platform_ref") == platform_ref:
+    #             start = dep_data.get("planned_start_time", "0000-00-00")
+    #             end = dep_data.get("planned_end_time", "9999-99-99")
+    #             actual_end = dep_data.get("actual_end_time", end)
+                
+    #             if start <= target_time <= actual_end:
+    #                 return dep.get("metadata", {}).get("name", "unknown")
+                    
+    #     if getattr(self, "active_deployment_ref", "unknown") != "unknown":
+    #         return self.active_deployment_ref
+            
+    #     return "unknown"
+
     def resolve_context_for_varmap(self, variablemap: dict, target_time: str) -> str:
         """Returns deployment_ref for a given VariableMap and time."""
-        platform_ref = variablemap.get("variablemap", {}).get("data", {}).get("attributes", {}).get("platform")
+        vm = variablemap.get("variablemap", {})
+        
+        # THE FIX: Platform is stored in the metadata of the parsed mock_vm, 
+        # not inside data.attributes!
+        platform_ref = vm.get("metadata", {}).get("platform")
+        
+        # Fallbacks just in case it's a native variablemap format
         if not platform_ref:
+            platform_ref = vm.get("data", {}).get("variablemap_type_id")
+        if not platform_ref:
+            platform_ref = vm.get("data", {}).get("attributes", {}).get("platform")
+
+        if not platform_ref:
+            self.logger.debug("resolve_context: no platform_ref found in variablemap")
             return "unknown"
             
+        # Evaluate against the GitOps graph synced from the Datastore
         for dep in getattr(self, "deployments", []):
             dep_data = dep.get("data", {})
+            
+            # Check if this deployment references our target platform
             if dep_data.get("platform_ref") == platform_ref:
-                start = dep_data.get("planned_start_time", "0000-00-00")
-                end = dep_data.get("planned_end_time", "9999-99-99")
+                start = dep_data.get("planned_start_time", "1970-01-01T00:00:00Z")
+                end = dep_data.get("planned_end_time", "9999-12-31T23:59:59Z")
                 actual_end = dep_data.get("actual_end_time", end)
                 
+                # ISO-8601 string comparison safely bounds the time window
                 if start <= target_time <= actual_end:
-                    return dep.get("metadata", {}).get("name", "unknown")
+                    resolved_dep = dep.get("metadata", {}).get("name", "unknown")
+                    self.logger.debug(f"resolve_context: mapped {platform_ref} -> {resolved_dep}")
+                    return resolved_dep
                     
+        # Fallback to JIT edge deployment if present (for Edge Nodes, not Digital Twins)
         if getattr(self, "active_deployment_ref", "unknown") != "unknown":
             return self.active_deployment_ref
             
