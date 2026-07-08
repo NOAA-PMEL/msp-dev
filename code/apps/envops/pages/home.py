@@ -366,8 +366,16 @@ def render_fleet_grid(projects, deployments, allocations, health_store):
     prevent_initial_call=True
 )
 def patch_fleet_map(live_locations, deployments, allocations):
+    print("\n================ [DEBUG: MAP PATCH START] ================")
+    print(f"Live Locations Store: {json.dumps(live_locations, indent=2)}")
+    print(f"Total Deployments Loaded: {len(deployments) if deployments else 0}")
+    print(f"Total Allocations Loaded: {len(allocations) if allocations else 0}")
+
     if live_locations is None: live_locations = {}
-    if not deployments: return dash.no_update
+    if not deployments: 
+        print("Map Patch Aborted: No deployment data available in store.")
+        print("==========================================================")
+        return dash.no_update
 
     platform_to_dep = {d.get("data", {}).get("platform_ref"): d for d in deployments if d.get("data", {}).get("platform_ref")}
     host_deployments = [d for d in deployments if not d.get("data", {}).get("host_platform_ref") or d.get("data", {}).get("host_platform_ref") not in platform_to_dep]
@@ -383,7 +391,6 @@ def patch_fleet_map(live_locations, deployments, allocations):
         if allocations:
             for alloc in allocations:
                 data = alloc.get("data", {})
-                # THE FIX: Check the allocation's platform_ref!
                 if data.get("platform_ref") == platform_ref:
                     start_str = data.get("start_time", "1970-01-01T00:00:00Z")
                     end_str = data.get("end_time", "9999-12-31T23:59:59Z")
@@ -405,13 +412,11 @@ def patch_fleet_map(live_locations, deployments, allocations):
         parent_dep = platform_to_dep.get(host_pref)
         if parent_dep:
             parent_name = parent_dep.get("metadata", {}).get("name")
-            
             parent_platform_ref = parent_dep.get("data", {}).get("platform_ref")
             parent_proj_ref = "Unallocated Deployments"
             if allocations:
                 for alloc in allocations:
                     data = alloc.get("data", {})
-                    # THE FIX: Check the allocation's platform_ref against the parent's platform_ref!
                     if data.get("platform_ref") == parent_platform_ref:
                         start_str = data.get("start_time", "1970-01-01T00:00:00Z")
                         end_str = data.get("end_time", "9999-12-31T23:59:59Z")
@@ -431,33 +436,45 @@ def patch_fleet_map(live_locations, deployments, allocations):
     planned_lats, planned_lons, planned_text = [], [], []
     live_lats, live_lons, live_text = [], [], []
 
-    for proj_hosts in hosts_by_project.values():
+    print("\n--- Processing Map Markers Per Group ---")
+    for proj_ref, proj_hosts in hosts_by_project.items():
         for host_name, group in proj_hosts.items():
             host_dep = group["host"]
             dep_data = host_dep.get("data", {})
             h_display = dep_data.get('display_name', host_name)
             platform_ref = dep_data.get('platform_ref', '')
 
+            # Check for live position under deployment name or platform identifier
             live_loc = live_locations.get(host_name) or live_locations.get(platform_ref)
 
+            # If the host map is missing a coordinate, look down into its sub-deployments
             if not live_loc:
                 for sub in group["subs"]:
                     sub_name = sub.get("metadata", {}).get("name")
                     sub_pref = sub.get("data", {}).get("platform_ref")
                     live_loc = live_locations.get(sub_name) or live_locations.get(sub_pref)
-                    if live_loc: break
+                    if live_loc: 
+                        print(f"Found live coords in sub-deployment '{sub_name}' for host '{host_name}'")
+                        break
 
             if live_loc:
+                print(f"-> Adding LIVE Marker for {host_name}: Lat={live_loc['lat']}, Lon={live_loc['lon']}")
                 live_lats.append(live_loc["lat"])
                 live_lons.append(live_loc["lon"])
                 live_text.append(f"{h_display}<br><b>(Live)</b>")
             else:
                 lat_min = dep_data.get("planned_geospatial_lat_min")
                 lon_min = dep_data.get("planned_geospatial_lon_min")
+                print(f"-> No Live Location. Checking Planned fields for '{host_name}': Lat={lat_min}, Lon={lon_min}")
                 if lat_min is not None and lon_min is not None:
                     planned_lats.append(lat_min)
                     planned_lons.append(lon_min)
                     planned_text.append(f"{h_display}<br><i>(Estimated)</i>")
+
+    print(f"\nFinal Compiled Arrays for Plotly:")
+    print(f"  Planned Lat List: {planned_lats} | Lon List: {planned_lons}")
+    print(f"  Live Lat List: {live_lats} | Lon List: {live_lons}")
+    print("==========================================================")
 
     map_patch = Patch()
     map_patch["data"][0]["lat"] = planned_lats
@@ -486,10 +503,14 @@ def update_live_locations(message, current_locations):
         data = payload.get("data", {})
         variables = data.get("variables", {})
         
+        print(f"\n--- [DEBUG: TELEMETRY RECEIVED] ---")
+        print(f"Target ID (Routing Key): {target_id}")
+        
         lat = variables.get("latitude", {}).get("data") or variables.get("lat", {}).get("data")
         lon = variables.get("longitude", {}).get("data") or variables.get("lon", {}).get("data")
         
-        # ---> ADD THESE TWO LINES TO HANDLE ARRAYS <---
+        print(f"Extracted Raw Coords -> Lat: {lat} | Lon: {lon}")
+
         if isinstance(lat, list): lat = lat[-1] if len(lat) > 0 else None
         if isinstance(lon, list): lon = lon[-1] if len(lon) > 0 else None
 
@@ -501,11 +522,18 @@ def update_live_locations(message, current_locations):
             
             curr_lat = current_locations.get(target_id, {}).get("lat")
             curr_lon = current_locations.get(target_id, {}).get("lon")
+            
+            print(f"Rounded Coords: ({lat_val}, {lon_val}) | Existing Store Coords: ({curr_lat}, {curr_lon})")
                 
             if curr_lat != lat_val or curr_lon != lon_val:
                 new_locations = current_locations.copy() if current_locations else {}
                 new_locations[target_id] = {"lat": lat_val, "lon": lon_val}
+                print(f"!!! Store Updated Successfully for {target_id} !!!")
                 return new_locations
+            else:
+                print("Coordinates haven't shifted; skipping redundant update.")
+        else:
+            print("Skipping telemetry block: Coordinates or Target ID evaluated to None.")
             
     except Exception as e:
         L.error(f"Live Location Parse Error: {e}")
