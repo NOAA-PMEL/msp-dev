@@ -208,21 +208,38 @@ class CompositeDBClient(DBClient):
     # DEFINITIONS (Read-Through Cache)
     # ---------------------------------------------------------
     async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
-        result = await self.redis.sampling_definition_registry_get(resource, query)
-        if not result.get("results"):
+        redis_result = await self.redis.sampling_definition_registry_get(resource, query)
+        
+        is_specific_query = "name" in query and bool(query["name"])
+        
+        # THE FIX: Always check ERDDAP for generic queries to ensure no definitions dropped off, 
+        # OR if a specific query missed in Redis.
+        if not redis_result.get("results") or not is_specific_query:
             if self.erddap:
-                self.logger.info(f"Cache miss for {resource} '{query.get('name')}'. Fetching from ERDDAP...")
-                result = await self.erddap.sampling_definition_registry_get(resource, query)
-                if result.get("results"):
-                    for definition in result["results"]:
-                        await self.redis.sampling_definition_registry_update(
-                            resource=resource,
-                            database="registry",
-                            collection=f"{resource}-definition",
-                            request=definition,
-                            ttl=3600
-                        )
-        return result
+                self.logger.info(f"Cache miss/Sync for {resource} (Specific={is_specific_query}). Fetching from ERDDAP...")
+                erddap_result = await self.erddap.sampling_definition_registry_get(resource, query)
+                
+                if erddap_result.get("results"):
+                    merged_dict = {}
+                    
+                    # 1. Load ERDDAP baseline and re-hydrate Redis
+                    for definition in erddap_result["results"]:
+                        name = definition.get("metadata", {}).get("name")
+                        if name:
+                            merged_dict[name] = definition
+                            await self.redis.sampling_definition_registry_update(
+                                resource=resource, database="registry",
+                                collection=f"{resource}-definition", request=definition, ttl=3600
+                            )
+                            
+                    # 2. Overwrite with live Redis results (Redis is always fresher)
+                    for definition in redis_result.get("results", []):
+                        name = definition.get("metadata", {}).get("name")
+                        if name: merged_dict[name] = definition
+                            
+                    return {"results": list(merged_dict.values())}
+                    
+        return redis_result
 
     # ---------------------------------------------------------
     # WRITE PASS-THROUGHS 
