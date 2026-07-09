@@ -212,8 +212,7 @@ class CompositeDBClient(DBClient):
         
         is_specific_query = "name" in query and bool(query["name"])
         
-        # THE FIX: Always check ERDDAP for generic queries to ensure no definitions dropped off, 
-        # OR if a specific query missed in Redis.
+        # Trigger ERDDAP on a specific cache miss OR a generic list-all query
         if not redis_result.get("results") or not is_specific_query:
             if self.erddap:
                 self.logger.info(f"Cache miss/Sync for {resource} (Specific={is_specific_query}). Fetching from ERDDAP...")
@@ -222,20 +221,30 @@ class CompositeDBClient(DBClient):
                 if erddap_result.get("results"):
                     merged_dict = {}
                     
+                    # Make physical hierarchy and GitOps definitions permanent (TTL=0)
+                    ttl = 3600
+                    if resource in ["deployment", "project", "platform", "projectallocation", "contact"]:
+                        ttl = 0
+                        
                     # 1. Load ERDDAP baseline and re-hydrate Redis
                     for definition in erddap_result["results"]:
                         name = definition.get("metadata", {}).get("name")
                         if name:
                             merged_dict[name] = definition
+                            # Re-hydrate the cache so the next query is instant
                             await self.redis.sampling_definition_registry_update(
-                                resource=resource, database="registry",
-                                collection=f"{resource}-definition", request=definition, ttl=3600
+                                resource=resource,
+                                database="registry",
+                                collection=f"{resource}-definition",
+                                request=definition,
+                                ttl=ttl
                             )
                             
-                    # 2. Overwrite with live Redis results (Redis is always fresher)
+                    # 2. Overwrite with live Redis results (Redis is always fresher if it exists)
                     for definition in redis_result.get("results", []):
                         name = definition.get("metadata", {}).get("name")
-                        if name: merged_dict[name] = definition
+                        if name:
+                            merged_dict[name] = definition
                             
                     return {"results": list(merged_dict.values())}
                     

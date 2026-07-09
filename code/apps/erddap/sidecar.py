@@ -62,6 +62,18 @@ definition_cache = {}
 definition_registry_cache = {}
 
 # ---------------------------------------------------------
+# EXPLICIT GITOPS WRAPPER CONTRACT
+# ---------------------------------------------------------
+VALID_DEFINITION_KEYS = {
+    "device-definition", "controller-definition",
+    "platform-definition", "project-definition", "deployment-definition",
+    "contact-definition", "projectallocation-definition",
+    "variablemap-definition", "variableset-definition",
+    "systemmode-definition", "samplingmode-definition", 
+    "samplingstate-definition", "samplingcondition-definition", "action-definition"
+}
+
+# ---------------------------------------------------------
 # TYPE MAPPING HELPER
 # ---------------------------------------------------------
 def map_erddap_type(raw_type: str) -> str:
@@ -252,7 +264,8 @@ class ERDDAPConfigCompiler:
         """Parses sensor definitions, groups by shape, caches metadata, and builds XML."""
         data = ce.data if hasattr(ce, "data") else ce.get("data", {})
         
-        def_key = next((k for k in data.keys() if "definition" in k), None)
+        # STRICT MATCHING
+        def_key = next((k for k in data.keys() if k in VALID_DEFINITION_KEYS), None)
         if not def_key: 
             return
             
@@ -280,8 +293,6 @@ class ERDDAPConfigCompiler:
         
         shape_groups = {}
         for var_name, var_data in variables.items():
-            
-            # Do not create standalone datasets for static coordinate arrays
             if var_data.get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                 continue
             
@@ -304,15 +315,11 @@ class ERDDAPConfigCompiler:
             shape_joined = "_".join(shape)
             dataset_id = f"telemetry_{make}_{model}_{version}_{shape_joined}".replace("-", "_")
             
-            # -------------------------------------------------------------
-            # FIX: Dynamically build the ERDDAP Primary Key (Required Vars)
-            # -------------------------------------------------------------
             req_vars_list = ["make", "model", "format_version", "serial_number", "time"]
             for dim in shape:
                 if dim != "time":
                     req_vars_list.append(dim)
             req_vars_str = ",".join(req_vars_list)
-            # -------------------------------------------------------------
             
             coord_idx = 0
             for dim in shape:
@@ -341,18 +348,11 @@ class ERDDAPConfigCompiler:
                             })
                             coord_idx += 1
 
-            # Pass req_vars into the Jinja template rendering context
             xml_content = self.telemetry_template.render(
-                dataset_id=dataset_id,
-                make=escape(make),
-                model=escape(model),
-                sn=escape(sn),
-                version=version,
-                format_version=str(version_raw),
-                shape_joined=shape_joined,
-                columns=cols,
-                author=escape(config.author_name),        
-                password=escape(config.insert_password),
+                dataset_id=dataset_id, make=escape(make), model=escape(model),
+                sn=escape(sn), version=version, format_version=str(version_raw),
+                shape_joined=shape_joined, columns=cols,
+                author=escape(config.author_name), password=escape(config.insert_password),
                 req_vars=req_vars_str
             )
             
@@ -366,7 +366,6 @@ class ERDDAPConfigCompiler:
             if dir_match:
                 dataset_dir = Path(dir_match.group(1))
                 dataset_dir.mkdir(parents=True, exist_ok=True)
-                
                 seed_file = dataset_dir / "seed.jsonl"
                 
                 base_cols = ["make", "model", "format_version", "serial_number", "time"]
@@ -374,7 +373,6 @@ class ERDDAPConfigCompiler:
                 tail_cols = ["timestamp", "author", "command"]
                 
                 col_names = base_cols + dyn_cols + tail_cols
-                
                 dummy_vals = []
                 for name in col_names:
                     if name in ["make", "model", "format_version", "serial_number", "author"]:
@@ -387,16 +385,12 @@ class ERDDAPConfigCompiler:
                         dummy_vals.append(0) 
                     else:
                         c = next((c for c in cols if c["name"] == name), None)
-                        if c and c["type"] == "String":
-                            dummy_vals.append("seed")
-                        elif c and c["type"] in ["int", "long"]:
-                            dummy_vals.append(0)
-                        else:
-                            dummy_vals.append(0.0)
+                        if c and c["type"] == "String": dummy_vals.append("seed")
+                        elif c and c["type"] in ["int", "long"]: dummy_vals.append(0)
+                        else: dummy_vals.append(0.0)
                             
                 seed_content = f"{json.dumps(col_names, separators=(',', ':'))}\n{json.dumps(dummy_vals, separators=(',', ':'))}\n"
                 seed_file.write_text(seed_content)
-                L.info(f"Dropped complete 2-line seed.jsonl into {dataset_dir}")
                 
             (self.flags_dir / dataset_id).touch()
 
@@ -670,7 +664,8 @@ async def handle_ops_registry_insert(ce: dict):
     data = ce.data if hasattr(ce, "data") else ce.get("data", {})
     if not data: return
 
-    def_key = next((k for k in data.keys() if "definition" in k), None)
+    # STRICT MATCHING
+    def_key = next((k for k in data.keys() if k in VALID_DEFINITION_KEYS), None)
     if not def_key: return
     
     def_block = data.get(def_key, {})
@@ -787,7 +782,8 @@ async def handle_hardware_registry_insert(ce: dict):
     data = ce.data if hasattr(ce, "data") else ce.get("data", {})
     if not data: return
 
-    def_key = next((k for k in data.keys() if "definition" in k), None)
+    # STRICT MATCHING
+    def_key = next((k for k in data.keys() if k in VALID_DEFINITION_KEYS), None)
     if not def_key: return
     
     def_block = data.get(def_key, {})

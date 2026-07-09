@@ -294,15 +294,8 @@ class ErddapClient:
         """Fetches historical operational definitions (conditions, modes) from ERDDAP."""
         dataset_id = "envds_ops_registry"
         
-        kind_map = {
-            "samplingcondition": "SamplingCondition",
-            "samplingmode": "SamplingMode",
-            "samplingstate": "SamplingState",
-            "systemmode": "SystemMode",
-            "projectallocation": "ProjectAllocation"
-        }
-        kind = kind_map.get(resource, resource)
-        
+        # Enforce the strict *-definition suffix
+        kind = f"{resource}-definition"
         query_args = [f'kind="{kind}"']
         
         if "name" in query and query["name"]:
@@ -310,7 +303,7 @@ class ErddapClient:
             name_part = parts[0] 
             query_args.append(f'name="{name_part}"')
             
-        # FIX: Group by name, returning the row with the max time
+        # Group by name, returning the row with the max time
         query_args.append("orderByMax(%22name,time%22)")
         result = await self._fetch_tabledap(dataset_id, query_args)
         
@@ -318,6 +311,15 @@ class ErddapClient:
         for row in result.get("results", []):
             try:
                 payload = json.loads(row.get("payload", "{}"))
+                
+                # STRICT ENVELOPE STRIPPER
+                if isinstance(payload, dict):
+                    expected_keys = {resource, f"{resource}-definition"}
+                    for w_key in expected_keys:
+                        if w_key in payload:
+                            payload = payload[w_key]
+                            break
+                            
                 parsed_results.append(payload)
             except Exception:
                 continue

@@ -829,12 +829,17 @@ class Datastore:
                 resource_def["metadata"]["valid_config_time"] = valid_time
 
                 if self.db_client:
+                    # Make Structural Definitions Permanent (TTL = 0)
+                    ttl = self.config.db_reg_sampling_definition_ttl
+                    if resource in ["deployment", "project", "platform", "projectallocation", "contact"]:
+                        ttl = 0 
+
                     await self.db_client.sampling_definition_registry_update(
                         resource=resource,
                         database="registry",
                         collection=f"{resource}-definition",
                         request=resource_def,
-                        ttl=self.config.db_reg_sampling_definition_ttl
+                        ttl=ttl
                     )
         except Exception as e:
             self.logger.error(f"sampling_definition_registry_update:{resource}", extra={"reason": str(e)})
