@@ -1649,15 +1649,8 @@ class SamplingSystem:
                             
                         source_v = variablemap["variablesets"][vs_name]["variables"][v_name]["attributes"]["source_variable"]["data"]
                         
-                        # --- Safely check if the variable is in the live payload ---
                         if source_v in source_data.data["variables"]:
                             val = source_data.data["variables"][source_v]["data"]
-
-                            # Grab the native unit (e.g., knots) straight from the Furuno packet!
-                            src_attrs = source_data.data["variables"][source_v].get("attributes", {})
-                            if "units" in src_attrs:
-                                variablemap["variablesets"][vs_name]["variables"][v_name]["attributes"]["native_units"] = src_attrs["units"].copy()
-
                             direct_map[v_name].append(val)
                             self.logger.debug(f"MAPPED [LIVE]: Clock={get_datetime_string()} PacketTime={source_time} BucketTime={indexed_time} InnerVar='{source_v}' -> VarmapVar='{v_name}' = {val}")
                         else:
@@ -1665,25 +1658,6 @@ class SamplingSystem:
 
         except Exception as e:
             self.logger.error("update_variableset_by_source", extra={"reason": e})
-
-
-    # async def update_variableset_by_source(
-    #     self, source_id: str, source_data: CloudEvent
-    # ):
-    #     pass
-    #     if source_id not in self.variablesets["sources"]:
-    #         return
-    #     # for vs_id in self.variablesets["sources"][source_id]:
-    #     #     self.update_variable_by_id(
-    #     #         vs_id=vs_id, source_id=source_id, source_data=source_data
-    #     #     )
-    #     self.update_variable_by_id(vs_map=self.variablesets["sources"][source_id], source_id=source_id, source_data=source_data)
-    #     # loop through mapped vars in source_id
-    #     #
-    #     for vs_id, var_map in self.variablesets["sources"]["direct"].items():
-    #         source_time = source_data.data["variables"]["time"]["data"]
-    #         if self.is_valid_variable_set(vs_id=vs_id, time=source_time):
-    #             self.update_variable_by_id(vs_id=vs_id, vs_variable=var_map["variable"], source_data=source_data)
 
     async def update_variable_by_id(
         # self, vs_map: dict, source_id: str, source_data: CloudEvent
@@ -3309,12 +3283,6 @@ class SamplingSystem:
                             target_time_data_buffer[m_type][vs_name][v_name].extend(val_list)
             # -----------------------------
             
-            # vs_names = val_dict.get("variablesets", [])
-
-            # if not vs_names:
-            #     self.logger.debug(f"Tick bypassed: No {index_value}s variablesets found in this map.")
-            #     return
-
             vs_names = []
             for vs_name, vs_def in variablemap.get("variablesets", {}).items():
                 vs_idx_type = str(vs_def.get("attributes", {}).get("index_type", {}).get("data", "")).lower()
@@ -3353,7 +3321,8 @@ class SamplingSystem:
                 
                 evaluated_vsets[vs_name] = variableset
 
-            # --- PHASE 2: Evaluate Calculations and Publish based on Tier ---
+            # --- TIER FILTERING: Determine which variablesets publish this tick ---
+            active_vsets_this_tick = {}
             for vs_name, variableset in evaluated_vsets.items():
                 
                 # Locate calculated variables safely
@@ -3377,16 +3346,33 @@ class SamplingSystem:
                     continue 
                 # -------------------------------------------------
                 
-                # Process Calculations
-                for v_name in calc_vars:
-                    self.logger.debug(f"ROUTING: Sending {v_name} to calculation method")
-                    try:
-                        await self.update_calculated_variable_by_time_index(
-                            variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
-                            variable_name=v_name, time_index=time_index, evaluated_vsets=evaluated_vsets
-                        )
-                    except Exception as var_e:
-                        self.logger.error("calculated variable update error", extra={"reason": str(var_e)})
+                active_vsets_this_tick[vs_name] = {
+                    "variableset": variableset,
+                    "calc_vars": calc_vars
+                }
+
+            # --- PHASE 2: CALCULATIONS (2-PASS SOLVER) ---
+            # Run twice to resolve cross-variableset dependencies (e.g., True Wind relies on Relative Wind)
+            if update_type == "calculated":
+                for pass_num in range(2):
+                    for vs_name, data in active_vsets_this_tick.items():
+                        variableset = data["variableset"]
+                        calc_vars = data["calc_vars"]
+                        
+                        for v_name in calc_vars:
+                            if pass_num == 0:
+                                self.logger.debug(f"ROUTING: Sending {v_name} to calculation method")
+                            try:
+                                await self.update_calculated_variable_by_time_index(
+                                    variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
+                                    variable_name=v_name, time_index=time_index, evaluated_vsets=evaluated_vsets
+                                )
+                            except Exception as var_e:
+                                self.logger.error("calculated variable update error", extra={"reason": str(var_e)})
+
+            # --- PHASE 3: PUBLISHING ---
+            for vs_name, data in active_vsets_this_tick.items():
+                variableset = data["variableset"]
 
                 if "time" not in variableset["variables"]:
                     variableset["variables"]["time"] = {"shape": ["time"], "type": "string", "data": ""}
@@ -3412,8 +3398,6 @@ class SamplingSystem:
                 
                 if "attributes" not in variableset:
                     variableset["attributes"] = {}
-                # DELETE THIS LINE:
-                # variableset["attributes"]["project_ref"] = {"type": "string", "data": proj_ref}
                 variableset["attributes"]["deployment_ref"] = {"type": "string", "data": dep_ref}
                 
                 varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
@@ -3429,8 +3413,6 @@ class SamplingSystem:
                 event["samplingnamespace"] = varmap_ns
                 event["variablesetid"] = varset_id
                 event["variablesetfullid"] = varset_full_id
-                # event["projectref"] = getattr(self, "active_project_ref", "unknown")
-                # event["deploymentref"] = getattr(self, "active_deployment_ref", "unknown")
                 event["deploymentref"] = dep_ref
                 
                 await self.send_to_mqtt(event["destpath"], event)
