@@ -45,7 +45,7 @@ async def start_system():
     generator = DatasetGenerator(daq_id=config.daq_id)
     L.info("Dataset Generator initialized and starting up.")
 
-    # --- FIX 1: Pre-populate registry from the mounted GitOps folder on boot ---
+    # --- FIX 1: Pre-populate registry with Envelope Stripping ---
     definitions_dir = "/app/config/definitions"
     if os.path.exists(definitions_dir):
         for fname in os.listdir(definitions_dir):
@@ -54,6 +54,10 @@ async def start_system():
                 try:
                     with open(path, "r") as f:
                         def_data = json.load(f)
+                        # Strip envelope if it exists
+                        if "dataset-definition" in def_data:
+                            def_data = def_data["dataset-definition"]
+                            
                         d_id = def_data.get("id")
                         if d_id:
                             dataset_definitions[d_id] = def_data
@@ -80,6 +84,11 @@ async def dataset_definition_update(request: Request):
         L.debug("dataset_definition_update: RECEIVED", extra={"ce_type": ce.get("type")})
         
         data = ce.data
+        
+        # --- FIX 2: Strip the GitOps envelope from the incoming CloudEvent ---
+        if "dataset-definition" in data:
+            data = data["dataset-definition"]
+            
         dataset_id = data.get("id")
         
         L.info("Registering DatasetDefinition", extra={"dataset_id": dataset_id})

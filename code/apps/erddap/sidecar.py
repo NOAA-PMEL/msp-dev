@@ -68,7 +68,7 @@ VALID_DEFINITION_KEYS = {
     "device-definition", "controller-definition",
     "platform-definition", "project-definition", "deployment-definition",
     "contact-definition", "projectallocation-definition",
-    "variablemap-definition", "variableset-definition",
+    "variablemap-definition", "variableset-definition", "dataset-definition",
     "systemmode-definition", "samplingmode-definition", 
     "samplingstate-definition", "samplingcondition-definition", "action-definition"
 }

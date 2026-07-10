@@ -21,57 +21,50 @@ class DatasetGenerator:
         self.output_dir = "/app/data/output"
         os.makedirs(self.output_dir, exist_ok=True)
 
+    def normalize_unit_string(self, unit_str: str) -> str:
+        """Translates strict UDUNITS into Pint-compatible formats and maps edge cases."""
+        if not unit_str or not isinstance(unit_str, str):
+            return unit_str
+        import re
+        s = re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
+        s = s.replace("km/hr", "km/h")
+        s = s.replace("m/sec", "m/s")
+        s = s.replace("knots", "knot")
+        return s
+
     async def fetch_variableset_def(self, variableset_id: str, data_time: datetime = None, exact_vmap_id: str = None):
         """Fetch the VariableSet definition from the datastore registry."""
         try:
             vs_name = variableset_id.split("::")[-1]
 
             if exact_vmap_id:
+                # ---> THE FIX: Use the strict "name" parameter to hit the DB cache fast-path! <---
+                target_name = f"{exact_vmap_id}::{vs_name}"
                 resp = await self.client.get(
                     "/variableset-definition/registry/get/", 
-                    params={"variablemap_definition_id": exact_vmap_id, "variableset": vs_name}
+                    params={"name": target_name}
                 )
                 resp.raise_for_status()
                 defs = resp.json().get("results", [])
                 if defs:
                     return defs[0]
 
+            # Generic fallback (if no exact vmap is provided)
             resp = await self.client.get(
                 "/variableset-definition/registry/get/", 
-                params={"variableset": vs_name}
+                params={"name": variableset_id}
             )
             resp.raise_for_status()
             defs = resp.json().get("results", [])
             
-            valid_defs = []
-            vmap_prefix = variableset_id.split("::")[-2] if "::" in variableset_id else None
-
-            for d in defs:
-                vmap_id = d.get("variablemap_definition_id", "")
-                if vmap_prefix and vmap_prefix not in vmap_id:
-                    continue
+            if not defs:
+                return None
                 
-                vmap_parts = vmap_id.split("::")
-                if len(vmap_parts) >= 3:
-                    config_time_str = vmap_parts[-1]
-                else:
-                    config_time_str = d.get("attributes", {}).get("valid_config_time", {}).get("data", "2020-01-01T00:00:00Z")
-                
-                try:
-                    config_time = datetime.fromisoformat(config_time_str.replace("Z", "+00:00"))
-                    if data_time and config_time <= data_time:
-                        valid_defs.append((config_time, d))
-                except ValueError:
-                    continue
+            return defs[0]
             
-            if valid_defs:
-                valid_defs.sort(key=lambda x: x[0], reverse=True)
-                return valid_defs[0][1]
-            
-            return {}
         except Exception as e:
-            L.error(f"Failed to fetch variableset definition for {variableset_id}: {e}")
-            return {}
+            L.error(f"Failed to fetch VariableSet definition {variableset_id}: {e}")
+            return None
 
     async def execute_calculation(self, action_module: str, action_def: str, params: dict):
         """Dynamically load calculation scripts."""
@@ -152,7 +145,6 @@ class DatasetGenerator:
                     if active_vmap and vs_var in active_vmap.get("variables", {}):
                         target_var_def = active_vmap["variables"][vs_var]
                         
-                        # --- THE FIX: Tag Coordinate Arrays and skip telemetry queries ---
                         var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
                         if var_type == "coordinate":
                             variable_tracing_registry[(vs_id, vs_var)] = {
@@ -162,7 +154,6 @@ class DatasetGenerator:
                                 "is_coordinate": True
                             }
                             continue
-                        # -----------------------------------------------------------------
                         
                         direct_var = target_var_def.get("direct_value", {}).get("source_variable", vs_var)
                         src_info = target_var_def.get("source", {}).get(direct_var, {})
@@ -199,14 +190,6 @@ class DatasetGenerator:
                 resp.raise_for_status()
                 records = resp.json().get("results", [])
                 bulk_telemetry_cache[s_id] = records
-                
-                sample_hardware_keys = list(records[0].get("variables", {}).keys()) if records else []
-                L.debug("Datastore telemetry payload structural check", extra={
-                    "source_id": s_id,
-                    "records_downloaded": len(records),
-                    "expected_fields_for_nc": list(source_meta["fields"]),
-                    "actual_keys_in_payload": sample_hardware_keys
-                })
 
             # -----------------------------------------------------------------
             # PASS 3: Fetch and Cache VariableSet Schema Definitions ONCE
@@ -240,12 +223,10 @@ class DatasetGenerator:
                 is_calculated = "calculate_method" in source_def
                 fetch_list = source_def.get("inputs", {}) if is_calculated else {"primary": source_def}
                 
-                # Identify primary VS info right away
                 primary_source = fetch_list.get("primary", next(iter(fetch_list.values()), {}))
                 primary_vs_id = primary_source.get("variableset_id")
                 primary_vs_var = primary_source.get("variable_name")
 
-                # --- THE FIX: Coordinate Fast-Path Short Circuit with Unit Conversion ---
                 trace_key = (primary_vs_id, primary_vs_var)
                 trace = variable_tracing_registry.get(trace_key, {})
                 
@@ -256,15 +237,12 @@ class DatasetGenerator:
                     static_data = native_vars.get(primary_vs_var, {}).get("data", [])
                     dims = native_vars.get(primary_vs_var, {}).get("shape", [out_name])
                     
-                    # Create the 1D static coordinate array (no time dimension!)
                     coords = {dims[0]: static_data} if len(dims) == 1 else {}
                     da = xr.DataArray(data=static_data, coords=coords, dims=dims, name=out_name)
                     
-                    # Global mappings and attributes
                     native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
                     for attr_key, attr_val in native_attrs.items(): da.attrs[attr_key] = attr_val
                     
-                    # Safely extract native units for coordinates
                     native_units_raw = da.attrs.get("units")
                     native_units = native_units_raw.get("data") if isinstance(native_units_raw, dict) else native_units_raw
                     
@@ -273,20 +251,21 @@ class DatasetGenerator:
                     
                     for attr_key, attr_val in var.get("attributes", {}).items(): da.attrs[attr_key] = attr_val
                     
-                    # --- APPLY UNIT CONVERSION TO COORDINATES ---
                     if native_units and target_units and (native_units != target_units):
                         try:
-                            data_quantity = ureg.Quantity(da.values, native_units)
-                            da.values = data_quantity.to(target_units).magnitude
+                            # --- THE FIX: Normalize strings before feeding to pint ---
+                            norm_native = self.normalize_unit_string(native_units)
+                            norm_target = self.normalize_unit_string(target_units)
+                            
+                            data_quantity = ureg.Quantity(da.values, norm_native)
+                            da.values = data_quantity.to(norm_target).magnitude
                             da.attrs["units"] = target_units
                         except Exception as e:
-                            L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
+                            L.error(f"Unit conversion failed for {out_name}: {e}")
                             da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
-                    # --------------------------------------------
                             
                     data_arrays.append(da)
-                    continue # Drops out to the next variable in the config without trying to unpack telemetry!
-                # -------------------------------------------------------------------------
+                    continue
 
                 input_arrays = {}
                 unique_sources = set()
@@ -312,13 +291,6 @@ class DatasetGenerator:
                             
                             hw_source = r_vars[raw_key].get("attributes", {}).get("source_id", {}).get("data")
                             if hw_source: unique_sources.add(hw_source)
-                    
-                    L.debug("Variable extraction timeline metrics", extra={
-                        "target_nc_field": out_name,
-                        "extracted_from_key": raw_key,
-                        "data_points_parsed": len(times),
-                        "first_sample_values": values[:3] if values else []
-                    })
                     
                     if times:
                         input_arrays[param_name] = {"values": values, "times": times}
@@ -368,13 +340,17 @@ class DatasetGenerator:
                     da.attrs[attr_key] = attr_val
                     
                 if native_units and target_units and (native_units != target_units):
-                    try:
-                        data_quantity = ureg.Quantity(da.values, native_units)
-                        da.values = data_quantity.to(target_units).magnitude
-                        da.attrs["units"] = target_units
-                    except Exception as e:
-                        L.error(f"Unit conversion failed for {out_name}: {e}")
-                        da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
+                        try:
+                            # --- THE FIX: Normalize strings before feeding to pint ---
+                            norm_native = self.normalize_unit_string(native_units)
+                            norm_target = self.normalize_unit_string(target_units)
+                            
+                            data_quantity = ureg.Quantity(da.values, norm_native)
+                            da.values = data_quantity.to(norm_target).magnitude
+                            da.attrs["units"] = target_units
+                        except Exception as e:
+                            L.error(f"Unit conversion failed for {out_name}: {e}")
+                            da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
 
                 if unique_sources: da.attrs["sources"] = ", ".join(sorted(list(unique_sources)))
                 data_arrays.append(da)
@@ -436,8 +412,60 @@ class DatasetGenerator:
                     for attr_key, attr_val in var.get("attributes", {}).items(): da.attrs[attr_key] = attr_val
                     aligned_ds[out_name] = da
 
+            # -----------------------------------------------------------------
+            # PASS 5: RESOLVE TIME-BOUND PROJECT ALLOCATIONS
+            # -----------------------------------------------------------------
+            primary_platform = None
+            for vmap in vs_to_hardware_map.values():
+                p_ref = vmap.get("attributes", {}).get("platform")
+                if isinstance(p_ref, dict): p_ref = p_ref.get("data")
+                if not p_ref:
+                    p_ref = vmap.get("variablemap_type_id")
+                if p_ref:
+                    primary_platform = p_ref
+                    break
+                    
+            resolved_project_name = "Unknown Project"
+            resolved_project_ref = "Unallocated"
+            
+            if primary_platform:
+                try:
+                    alloc_resp = await self.client.get("/projectallocation-definition/registry/get/")
+                    if alloc_resp.status_code == 200:
+                        allocations = alloc_resp.json().get("results", [])
+                        target_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                        
+                        for alloc in allocations:
+                            data = alloc.get("data", {})
+                            if data.get("host_platform_ref") == primary_platform:
+                                a_start_str = data.get("start_time", "1970-01-01T00:00:00Z")
+                                a_end_str = data.get("end_time", "9999-12-31T23:59:59Z")
+                                
+                                try:
+                                    a_start_dt = datetime.fromisoformat(a_start_str.replace("Z", "+00:00"))
+                                    a_end_dt = datetime.fromisoformat(a_end_str.replace("Z", "+00:00"))
+                                    
+                                    if a_start_dt <= target_dt <= a_end_dt:
+                                        resolved_project_ref = data.get("project_ref")
+                                        break
+                                except ValueError:
+                                    continue
+                                    
+                    if resolved_project_ref != "Unallocated":
+                        proj_resp = await self.client.get("/project-definition/registry/get/", params={"name": resolved_project_ref})
+                        if proj_resp.status_code == 200:
+                            projs = proj_resp.json().get("results", [])
+                            if projs:
+                                resolved_project_name = projs[0].get("data", {}).get("display_name", resolved_project_ref)
+                except Exception as e:
+                    L.error("Failed to resolve ProjectAllocation", extra={"reason": str(e)})
+
+            # Inject the resolved project context into the global attributes
             aligned_ds.attrs["title"] = f"Dataset: {dataset_id}"
+            aligned_ds.attrs["project"] = resolved_project_name
+            aligned_ds.attrs["project_ref"] = resolved_project_ref
             aligned_ds.attrs["history"] = f"Generated {datetime.utcnow().isoformat()}Z"
+            
             if "conventions" in config:
                 aligned_ds.attrs["Conventions"] = config["conventions"].get("name", "CF-1.8")
                 aligned_ds.attrs["featureType"] = config["conventions"].get("featureType", "timeSeries")
@@ -447,7 +475,6 @@ class DatasetGenerator:
             filepath = os.path.join(self.output_dir, filename)
             aligned_ds.to_netcdf(filepath, engine="netcdf4", format="NETCDF4")
 
-            # storage_url = f"http://dataset-storage.{self.daq_id}-system.svc.cluster.local:80/upload/"
             # Force the output to go to the 'raw' stage so QC picks it up!
             storage_url = f"http://dataset-storage.{self.daq_id}-system.svc.cluster.local:80/upload/raw"
             
