@@ -59,7 +59,6 @@ L.setLevel(getattr(logging, config.log_level.upper(), logging.INFO))
 # --- FASTAPI SETUP ---
 app = FastAPI()
 
-
 # --- PROXY SERVICE ---
 class TelemetryProxyClient:
     def __init__(self, cfg: ProxySettings):

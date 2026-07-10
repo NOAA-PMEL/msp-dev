@@ -2462,6 +2462,7 @@ class SamplingSystem:
         s = re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
         
         # ---> THE FIX: Map common string abbreviations that the strict Pint parser rejects <---
+        s = s.replace("kilometers/hour", "km/h")  # <-- Added Furuno exact match
         s = s.replace("km/hr", "km/h")
         s = s.replace("m/sec", "m/s")
         s = s.replace("knots", "knot")

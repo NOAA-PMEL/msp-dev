@@ -27,6 +27,7 @@ class DatasetGenerator:
             return unit_str
         import re
         s = re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
+        s = s.replace("kilometers/hour", "km/h")  # <-- Added Furuno exact match
         s = s.replace("km/hr", "km/h")
         s = s.replace("m/sec", "m/s")
         s = s.replace("knots", "knot")
@@ -240,20 +241,23 @@ class DatasetGenerator:
                     coords = {dims[0]: static_data} if len(dims) == 1 else {}
                     da = xr.DataArray(data=static_data, coords=coords, dims=dims, name=out_name)
                     
+                    # 1. Unpack Native Attributes safely
                     native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
-                    for attr_key, attr_val in native_attrs.items(): da.attrs[attr_key] = attr_val
+                    for attr_key, attr_val in native_attrs.items(): 
+                        da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                     
-                    native_units_raw = da.attrs.get("units")
-                    native_units = native_units_raw.get("data") if isinstance(native_units_raw, dict) else native_units_raw
+                    # 2. Extract native_units first, fallback to units
+                    native_units = da.attrs.get("native_units") or da.attrs.get("units")
                     
+                    # 3. Unpack Target Attributes safely
                     target_units_raw = var.get("attributes", {}).get("units")
                     target_units = target_units_raw.get("data") if isinstance(target_units_raw, dict) else target_units_raw
                     
-                    for attr_key, attr_val in var.get("attributes", {}).items(): da.attrs[attr_key] = attr_val
+                    for attr_key, attr_val in var.get("attributes", {}).items(): 
+                        da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                     
                     if native_units and target_units and (native_units != target_units):
                         try:
-                            # --- THE FIX: Normalize strings before feeding to pint ---
                             norm_native = self.normalize_unit_string(native_units)
                             norm_target = self.normalize_unit_string(target_units)
                             
@@ -261,7 +265,7 @@ class DatasetGenerator:
                             da.values = data_quantity.to(norm_target).magnitude
                             da.attrs["units"] = target_units
                         except Exception as e:
-                            L.error(f"Unit conversion failed for {out_name}: {e}")
+                            L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
                             da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
                             
                     data_arrays.append(da)
@@ -330,27 +334,33 @@ class DatasetGenerator:
                                 kwargs={"fill_value": np.nan}
                             )
 
+                # 1. Unpack Native Attributes safely
                 native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
-                for attr_key, attr_val in native_attrs.items(): da.attrs[attr_key] = attr_val
+                for attr_key, attr_val in native_attrs.items(): 
+                    da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                 
-                native_units = da.attrs.get("units")
+                # 2. Extract native_units first, fallback to units
+                native_units = da.attrs.get("native_units") or da.attrs.get("units")
+                
+                # 3. Unpack Target Attributes safely
                 target_units = None
                 for attr_key, attr_val in var.get("attributes", {}).items():
-                    if attr_key == "units": target_units = attr_val
-                    da.attrs[attr_key] = attr_val
+                    unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                    if attr_key == "units": 
+                        target_units = unpacked_val
+                    da.attrs[attr_key] = unpacked_val
                     
                 if native_units and target_units and (native_units != target_units):
-                        try:
-                            # --- THE FIX: Normalize strings before feeding to pint ---
-                            norm_native = self.normalize_unit_string(native_units)
-                            norm_target = self.normalize_unit_string(target_units)
-                            
-                            data_quantity = ureg.Quantity(da.values, norm_native)
-                            da.values = data_quantity.to(norm_target).magnitude
-                            da.attrs["units"] = target_units
-                        except Exception as e:
-                            L.error(f"Unit conversion failed for {out_name}: {e}")
-                            da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
+                    try:
+                        norm_native = self.normalize_unit_string(native_units)
+                        norm_target = self.normalize_unit_string(target_units)
+                        
+                        data_quantity = ureg.Quantity(da.values, norm_native)
+                        da.values = data_quantity.to(norm_target).magnitude
+                        da.attrs["units"] = target_units
+                    except Exception as e:
+                        L.error(f"Unit conversion failed for {out_name}: {e}")
+                        da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
 
                 if unique_sources: da.attrs["sources"] = ", ".join(sorted(list(unique_sources)))
                 data_arrays.append(da)
