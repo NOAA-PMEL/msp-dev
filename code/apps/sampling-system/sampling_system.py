@@ -1652,6 +1652,12 @@ class SamplingSystem:
                         # --- Safely check if the variable is in the live payload ---
                         if source_v in source_data.data["variables"]:
                             val = source_data.data["variables"][source_v]["data"]
+
+                            # Grab the native unit (e.g., knots) straight from the Furuno packet!
+                            src_attrs = source_data.data["variables"][source_v].get("attributes", {})
+                            if "units" in src_attrs:
+                                variablemap["variablesets"][vs_name]["variables"][v_name]["attributes"]["native_units"] = src_attrs["units"].copy()
+
                             direct_map[v_name].append(val)
                             self.logger.debug(f"MAPPED [LIVE]: Clock={get_datetime_string()} PacketTime={source_time} BucketTime={indexed_time} InnerVar='{source_v}' -> VarmapVar='{v_name}' = {val}")
                         else:
@@ -3303,12 +3309,25 @@ class SamplingSystem:
                             target_time_data_buffer[m_type][vs_name][v_name].extend(val_list)
             # -----------------------------
             
-            vs_names = val_dict.get("variablesets", [])
+            # vs_names = val_dict.get("variablesets", [])
+
+            # if not vs_names:
+            #     self.logger.debug(f"Tick bypassed: No {index_value}s variablesets found in this map.")
+            #     return
+
+            vs_names = []
+            for vs_name, vs_def in variablemap.get("variablesets", {}).items():
+                vs_idx_type = str(vs_def.get("attributes", {}).get("index_type", {}).get("data", "")).lower()
+                vs_idx_val = str(vs_def.get("attributes", {}).get("index_value", {}).get("data", ""))
+                
+                # Match the timebase bucket
+                if vs_idx_type == str(index_type).lower() and vs_idx_val == str(index_value):
+                    vs_names.append(vs_name)
 
             if not vs_names:
                 self.logger.debug(f"Tick bypassed: No {index_value}s variablesets found in this map.")
                 return
-
+            
             # --- PHASE 1: Build evaluated state for ALL variablesets ---
             evaluated_vsets = {}
             for vs_name in vs_names:
