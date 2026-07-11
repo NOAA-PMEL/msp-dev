@@ -2582,27 +2582,44 @@ class SamplingSystem:
                                 val = round(sum(indexed_data) / len(indexed_data), 3)
 
                     # --- UNIT CONVERSION LOGIC ---
-                    if val is not None and isinstance(val, (int, float, list)):
+                    if val is not None:
                         target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
                         native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
                         
-                        if target_unit and native_unit and target_unit != native_unit:
+                        # DEBUG: Print exactly what the conversion engine sees before doing anything
+                        self.logger.info(
+                            f"CONVERSION CHECK [{variable_name}]: "
+                            f"val={val} (type={type(val).__name__}), "
+                            f"native={native_unit}, target={target_unit}"
+                        )
+
+                        # Coerce string representations of numbers (e.g. "14.2") into actual floats
+                        if isinstance(val, str) and v_type not in ["string", "str", "char"]:
                             try:
-                                norm_native = self.normalize_unit_string(native_unit)
-                                norm_target = self.normalize_unit_string(target_unit)
+                                val = float(val)
+                            except (ValueError, TypeError):
+                                pass
                                 
-                                data_quantity = ureg.Quantity(val, norm_native)
-                                converted = data_quantity.to(norm_target).magnitude
-                                
-                                if isinstance(val, list):
-                                    if hasattr(converted, "tolist"):
-                                        val = [round(float(v), 3) for v in converted.tolist()]
+                        if isinstance(val, (int, float, list)):
+                            if target_unit and native_unit and target_unit != native_unit:
+                                try:
+                                    norm_native = self.normalize_unit_string(native_unit)
+                                    norm_target = self.normalize_unit_string(target_unit)
+                                    
+                                    data_quantity = ureg.Quantity(val, norm_native)
+                                    converted = data_quantity.to(norm_target).magnitude
+                                    
+                                    if isinstance(val, list):
+                                        if hasattr(converted, "tolist"):
+                                            val = [round(float(v), 3) for v in converted.tolist()]
+                                        else:
+                                            val = [round(float(v), 3) for v in converted]
                                     else:
-                                        val = [round(float(v), 3) for v in converted]
-                                else:
-                                    val = round(float(converted), 3)
-                            except Exception as e:
-                                self.logger.error("Unit conversion failed", extra={"variable": variable_name, "native": native_unit, "target": target_unit, "reason": str(e)})
+                                        val = round(float(converted), 3)
+                                        
+                                    self.logger.info(f"CONVERSION SUCCESS [{variable_name}]: {data_quantity.magnitude} {norm_native} -> {val} {norm_target}")
+                                except Exception as e:
+                                    self.logger.error("Unit conversion failed", extra={"variable": variable_name, "native": native_unit, "target": target_unit, "reason": str(e)})
 
                     # --- UPDATE CACHE ---
                     self.forward_fill_cache[cache_key] = {
