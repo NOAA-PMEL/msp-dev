@@ -1496,9 +1496,15 @@ class SamplingSystem:
             if not hasattr(self, "foreign_vsets"):
                 self.foreign_vsets = {}
                 
-            vset_name = ce.data.get("metadata", {}).get("name", "")
-            if vset_name:
-                self.foreign_vsets[vset_name] = ce.data
+            # Key by full unique ID to prevent namespace collisions!
+            vset_id = ce.get("variablesetid")
+            if vset_id:
+                self.foreign_vsets[vset_id] = ce.data
+            else:
+                # Fallback for old payloads
+                vset_name = ce.data.get("metadata", {}).get("name", "")
+                if vset_name:
+                    self.foreign_vsets[vset_name] = ce.data
                 
         except Exception as e:
             self.logger.error("handle_foreign_variableset", extra={"reason": str(e)})
@@ -2581,45 +2587,57 @@ class SamplingSystem:
                             else:
                                 val = round(sum(indexed_data) / len(indexed_data), 3)
 
-                    # --- UNIT CONVERSION LOGIC ---
-                    if val is not None:
-                        target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
-                        native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
-                        
-                        # DEBUG: Print exactly what the conversion engine sees before doing anything
-                        self.logger.info(
-                            f"CONVERSION CHECK [{variable_name}]: "
-                            f"val={val} (type={type(val).__name__}), "
-                            f"native={native_unit}, target={target_unit}"
-                        )
+            # --- UNIT CONVERSION LOGIC ---
+            if val is not None and val != "":
+                # 1. Enforce the data type defined in the hydrated schema
+                if v_type in ["float", "double"] and not isinstance(val, float):
+                    try:
+                        val = float(val)
+                    except (ValueError, TypeError):
+                        pass
+                elif v_type in ["int", "integer"] and not isinstance(val, int):
+                    try:
+                        val = int(float(val))
+                    except (ValueError, TypeError):
+                        pass
+                
+                target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+                native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                
+                # DEBUG: Print exactly what the conversion engine sees before doing anything
+                self.logger.info(
+                    f"CONVERSION CHECK [{variable_name}]: "
+                    f"val={val} (type={type(val).__name__}), "
+                    f"native={native_unit}, target={target_unit}"
+                )
 
-                        # Coerce string representations of numbers (e.g. "14.2") into actual floats
-                        if isinstance(val, str) and v_type not in ["string", "str", "char"]:
-                            try:
-                                val = float(val)
-                            except (ValueError, TypeError):
-                                pass
+                # Coerce string representations of numbers (e.g. "14.2") into actual floats
+                if isinstance(val, str) and v_type not in ["string", "str", "char"]:
+                    try:
+                        val = float(val)
+                    except (ValueError, TypeError):
+                        pass
+                        
+                if isinstance(val, (int, float, list)):
+                    if target_unit and native_unit and target_unit != native_unit:
+                        try:
+                            norm_native = self.normalize_unit_string(native_unit)
+                            norm_target = self.normalize_unit_string(target_unit)
+                            
+                            data_quantity = ureg.Quantity(val, norm_native)
+                            converted = data_quantity.to(norm_target).magnitude
+                            
+                            if isinstance(val, list):
+                                if hasattr(converted, "tolist"):
+                                    val = [round(float(v), 3) for v in converted.tolist()]
+                                else:
+                                    val = [round(float(v), 3) for v in converted]
+                            else:
+                                val = round(float(converted), 3)
                                 
-                        if isinstance(val, (int, float, list)):
-                            if target_unit and native_unit and target_unit != native_unit:
-                                try:
-                                    norm_native = self.normalize_unit_string(native_unit)
-                                    norm_target = self.normalize_unit_string(target_unit)
-                                    
-                                    data_quantity = ureg.Quantity(val, norm_native)
-                                    converted = data_quantity.to(norm_target).magnitude
-                                    
-                                    if isinstance(val, list):
-                                        if hasattr(converted, "tolist"):
-                                            val = [round(float(v), 3) for v in converted.tolist()]
-                                        else:
-                                            val = [round(float(v), 3) for v in converted]
-                                    else:
-                                        val = round(float(converted), 3)
-                                        
-                                    self.logger.info(f"CONVERSION SUCCESS [{variable_name}]: {data_quantity.magnitude} {norm_native} -> {val} {norm_target}")
-                                except Exception as e:
-                                    self.logger.error("Unit conversion failed", extra={"variable": variable_name, "native": native_unit, "target": target_unit, "reason": str(e)})
+                            self.logger.info(f"CONVERSION SUCCESS [{variable_name}]: {data_quantity.magnitude} {norm_native} -> {val} {norm_target}")
+                        except Exception as e:
+                            self.logger.error("Unit conversion failed", extra={"variable": variable_name, "native": native_unit, "target": target_unit, "reason": str(e)})
 
                     # --- UPDATE CACHE ---
                     self.forward_fill_cache[cache_key] = {
@@ -3662,6 +3680,101 @@ class SamplingSystem:
     #     except Exception as e:
     #         self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
 
+    # async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
+    #     import importlib
+    #     try:
+    #         raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
+            
+    #         calc_method = raw_var_def.get("calculate_method") or raw_var_def.get("calculation_method") or raw_var_def.get("action") or {}
+            
+    #         if not calc_method:
+    #             return
+
+    #         module_name = calc_method.get("action_module", calc_method.get("service", "calculations.default"))
+    #         def_name = calc_method.get("action_def", calc_method.get("path", "").strip("/"))
+
+    #         if not def_name:
+    #             return
+
+    #         try:
+    #             mod = importlib.import_module(module_name)
+    #             calc_func = getattr(mod, def_name)
+    #         except Exception as mod_err:
+    #             self.logger.error(f"ABORT: Failed to load module '{module_name}' or def '{def_name}'", extra={"reason": str(mod_err)})
+    #             return
+
+    #         kwargs = {}
+    #         parameters = calc_method.get("parameters", {})
+    #         sources = raw_var_def.get("source", {})
+
+    #         for param_name, param_mapping in parameters.items():
+    #             # FIX 1: Support BOTH underscore and dash immediately to prevent None
+    #             src_var_alias = param_mapping.get("source_variable") or param_mapping.get("source-variable")
+    #             val = None
+
+    #             if src_var_alias:
+    #                 real_src_var = src_var_alias
+    #                 target_vset_name = variableset_name
+
+    #                 # FIX 2: Only dive into the sources dictionary if it actually exists! 
+    #                 # If it doesn't, we still proceed to look up `real_src_var` locally.
+    #                 if src_var_alias in sources:
+    #                     src_def = sources[src_var_alias]
+    #                     real_src_var = src_def.get("source_variable", src_var_alias)
+    #                     target_vset_name = src_def.get("variableset", variableset_name)
+
+    #                 if evaluated_vsets and target_vset_name in evaluated_vsets:
+    #                     target_vset = evaluated_vsets[target_vset_name]
+    #                     if real_src_var in target_vset["variables"]:
+    #                         target_var_def = target_vset["variables"][real_src_var]
+                            
+    #                         var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+    #                         if var_type == "coordinate":
+    #                             val = target_var_def.get("attributes", {}).get("data", {}).get("data")
+    #                         else:
+    #                             val = target_var_def.get("data")
+                    
+    #                 elif hasattr(self, "foreign_vsets") and target_vset_name in self.foreign_vsets:
+    #                     target_vset = self.foreign_vsets[target_vset_name]
+    #                     if real_src_var in target_vset["variables"]:
+    #                         target_var_def = target_vset["variables"][real_src_var]
+    #                         var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+    #                         if var_type == "coordinate":
+    #                             val = target_var_def.get("attributes", {}).get("data", {}).get("data")
+    #                         else:
+    #                             val = target_var_def.get("data")
+
+    #                 elif real_src_var in variableset_record["variables"]:
+    #                     target_var_def = variableset_record["variables"][real_src_var]
+                        
+    #                     var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+    #                     if var_type == "coordinate":
+    #                         val = target_var_def.get("attributes", {}).get("data", {}).get("data")
+    #                     else:
+    #                         val = target_var_def.get("data")
+
+    #             kwargs[param_name] = val
+            
+    #         try:
+    #             if asyncio.iscoroutinefunction(calc_func):
+    #                 result = await calc_func(self, **kwargs)
+    #             else:
+    #                 result = calc_func(self, **kwargs)
+    #         except Exception as user_func_err:
+    #             self.logger.debug(f"USER FUNCTION CRASH: {def_name} failed.", extra={"reason": str(user_func_err)})
+    #             return
+ 
+    #         if isinstance(result, dict) and variable_name in result:
+    #             final_val = result[variable_name]
+    #         else:
+    #             final_val = result
+
+    #         variableset_record["variables"][variable_name]["data"] = final_val
+    #         self.logger.debug(f"EVALUATED [CALCULATED]: Clock={get_datetime_string()} BinTime={time_index['index_ready']} Var='{variableset_name}::{variable_name}' = {final_val}")
+
+    #     except Exception as e:
+    #         self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
+
     async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
         import importlib
         try:
@@ -3690,7 +3803,6 @@ class SamplingSystem:
             sources = raw_var_def.get("source", {})
 
             for param_name, param_mapping in parameters.items():
-                # FIX 1: Support BOTH underscore and dash immediately to prevent None
                 src_var_alias = param_mapping.get("source_variable") or param_mapping.get("source-variable")
                 val = None
 
@@ -3698,8 +3810,6 @@ class SamplingSystem:
                     real_src_var = src_var_alias
                     target_vset_name = variableset_name
 
-                    # FIX 2: Only dive into the sources dictionary if it actually exists! 
-                    # If it doesn't, we still proceed to look up `real_src_var` locally.
                     if src_var_alias in sources:
                         src_def = sources[src_var_alias]
                         real_src_var = src_def.get("source_variable", src_var_alias)
@@ -3709,7 +3819,6 @@ class SamplingSystem:
                         target_vset = evaluated_vsets[target_vset_name]
                         if real_src_var in target_vset["variables"]:
                             target_var_def = target_vset["variables"][real_src_var]
-                            
                             var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
                             if var_type == "coordinate":
                                 val = target_var_def.get("attributes", {}).get("data", {}).get("data")
@@ -3721,21 +3830,20 @@ class SamplingSystem:
                         if real_src_var in target_vset["variables"]:
                             target_var_def = target_vset["variables"][real_src_var]
                             var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
-                            if var_type == "coordinate":
-                                val = target_var_def.get("attributes", {}).get("data", {}).get("data")
-                            else:
-                                val = target_var_def.get("data")
+                            val = target_var_def.get("attributes", {}).get("data", {}).get("data") if var_type == "coordinate" else target_var_def.get("data")
 
                     elif real_src_var in variableset_record["variables"]:
                         target_var_def = variableset_record["variables"][real_src_var]
-                        
                         var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
-                        if var_type == "coordinate":
-                            val = target_var_def.get("attributes", {}).get("data", {}).get("data")
-                        else:
-                            val = target_var_def.get("data")
+                        val = target_var_def.get("attributes", {}).get("data", {}).get("data") if var_type == "coordinate" else target_var_def.get("data")
 
                 kwargs[param_name] = val
+            
+            # ---> FIX 1: Prevent math crashes by safely aborting if required sensors drop a tick <---
+            if any(v is None or v == "" for v in kwargs.values()):
+                self.logger.debug(f"Skipping calculation for {variable_name}: Missing inputs {kwargs}")
+                variableset_record["variables"][variable_name]["data"] = None
+                return
             
             try:
                 if asyncio.iscoroutinefunction(calc_func):
@@ -3743,7 +3851,7 @@ class SamplingSystem:
                 else:
                     result = calc_func(self, **kwargs)
             except Exception as user_func_err:
-                self.logger.debug(f"USER FUNCTION CRASH: {def_name} failed.", extra={"reason": str(user_func_err)})
+                self.logger.error(f"USER FUNCTION CRASH: {def_name} failed.", extra={"reason": str(user_func_err)})
                 return
  
             if isinstance(result, dict) and variable_name in result:
@@ -3751,8 +3859,33 @@ class SamplingSystem:
             else:
                 final_val = result
 
+            # ---> FIX 2: Apply Unit Conversion to Calculated Outputs! <---
+            if final_val is not None and isinstance(final_val, (int, float, list)):
+                var_record = variableset_record["variables"][variable_name]
+                target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+                native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                
+                if target_unit and native_unit and target_unit != native_unit:
+                    try:
+                        norm_native = self.normalize_unit_string(native_unit)
+                        norm_target = self.normalize_unit_string(target_unit)
+                        data_quantity = ureg.Quantity(final_val, norm_native)
+                        converted = data_quantity.to(norm_target).magnitude
+                        
+                        if isinstance(final_val, list):
+                            if hasattr(converted, "tolist"):
+                                final_val = [round(float(v), 3) for v in converted.tolist()]
+                            else:
+                                final_val = [round(float(v), 3) for v in converted]
+                        else:
+                            final_val = round(float(converted), 3)
+                    except Exception as e:
+                        self.logger.error("Unit conversion failed for calculated var", extra={"variable": variable_name, "reason": str(e)})
+
             variableset_record["variables"][variable_name]["data"] = final_val
-            self.logger.debug(f"EVALUATED [CALCULATED]: Clock={get_datetime_string()} BinTime={time_index['index_ready']} Var='{variableset_name}::{variable_name}' = {final_val}")
+            
+            # ---> ELEVATED TO INFO: Prints success visibly in terminal <---
+            self.logger.info(f"EVALUATED [CALCULATED]: Clock={get_datetime_string()} BinTime={time_index.get('index_ready')} Var='{variableset_name}::{variable_name}' = {final_val}")
 
         except Exception as e:
             self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
