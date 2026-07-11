@@ -15,6 +15,7 @@ from fastapi import FastAPI, Request, Response, status
 # High-performance software cipher for ARM/Raspberry Pi (RFC 8439)
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
+
 # CloudEvents
 from cloudevents.http import from_http, from_json
 from cloudevents.conversion import to_json
