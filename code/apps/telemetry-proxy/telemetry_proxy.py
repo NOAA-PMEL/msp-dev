@@ -29,6 +29,9 @@ class ProxySettings(BaseSettings):
     daq_id: str = "default"
     log_level: str = "INFO"  
     
+    # ---> THE NEW SETTING (Defaults to 2Hz) <---
+    transmission_rate_hz: float = 5.0
+
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
     mqtt_client_id: str = Field(default_factory=lambda: f"proxy-{str(ULID())}")
@@ -145,35 +148,39 @@ class TelemetryProxyClient:
         current_size = 0
         
         MAX_BATCH_BYTES = 128 * 1024 
-        FLUSH_INTERVAL = 1.0  
+        # ---> DYNAMIC FLUSH INTERVAL <---
+        FLUSH_INTERVAL = 1.0 / self.config.transmission_rate_hz 
+        last_flush_time = time.time()
         
         while True:
             try:
-                topic, raw_payload = await asyncio.wait_for(self.local_batch_queue.get(), timeout=FLUSH_INTERVAL)
+                time_remaining = FLUSH_INTERVAL - (time.time() - last_flush_time)
                 
-                # Zero-overhead JSON wrapping
+                if time_remaining <= 0:
+                    raise asyncio.TimeoutError()
+
+                topic, raw_payload = await asyncio.wait_for(self.local_batch_queue.get(), timeout=time_remaining)
+                
                 item_str = f'{{"t":"{topic}","d":{raw_payload.decode("utf-8")}}}'
                 item_size = len(item_str)
                 
-                # ---> THE DEFENSIVE FIX: Check-Then-Append Look-ahead <---
-                # If adding this message exceeds the AWS IoT Limit, flush the CURRENT 
-                # car immediately, then put this message in a new, empty car.
                 if batch_items and (current_size + item_size >= MAX_BATCH_BYTES):
                     asyncio.create_task(self.flush_batch(batch_items))
                     batch_items = []
                     current_size = 0
+                    last_flush_time = time.time()
                 
                 batch_items.append(item_str)
                 current_size += item_size
-                
                 self.local_batch_queue.task_done()
                     
             except asyncio.TimeoutError:
-                # Timer expired. Dispatch the train car even if it's mostly empty.
                 if batch_items:
                     asyncio.create_task(self.flush_batch(batch_items))
                     batch_items = []
                     current_size = 0
+                
+                last_flush_time = time.time()
 
     def synchronous_compress_and_encrypt(self, raw_payload: bytes):
         """Helper to run CPU-heavy compression/crypto inside a thread pool."""
@@ -214,7 +221,10 @@ class TelemetryProxyClient:
             props = Properties(PacketTypes.PUBLISH)
             props.UserProperty = [
                 ("ce-specversion", "1.0"), ("ce-id", str(ULID())),
-                ("ce-type", "envds.transport.batch"), ("ce-source", f"envds.{self.config.daq_id}.proxy")
+                ("ce-type", "envds.transport.batch"), ("ce-source", f"envds.{self.config.daq_id}.proxy"),
+                
+                # ---> SAFE KEY: txratehz <---
+                ("txratehz", str(self.config.transmission_rate_hz))
             ]
             props.ContentType = "application/octet-stream"
 
@@ -234,7 +244,7 @@ class TelemetryProxyClient:
             L.error(f"Outbound proxy error: {e}")
 
     async def inbound_processor_worker(self, client):
-        """Unpacks and decrypts incoming bridge messages and routes them locally."""
+        """Unpacks and decrypts incoming bridge messages and routes them locally with a De-Jitter buffer."""
         while True:
             msg = await self.inbound_queue.get()
             try:
@@ -243,6 +253,14 @@ class TelemetryProxyClient:
                 user_props = getattr(props, "UserProperty", [])
                 
                 original_topic = next((v for k, v in user_props if k == "ce-originaltopic"), None)
+                
+                # ---> SAFE KEY: txratehz <---
+                tx_rate_str = next((v for k, v in user_props if k == "txratehz"), None)
+                try:
+                    # Use the sender's exact rate, fallback to local config if missing
+                    actual_tx_rate = float(tx_rate_str) if tx_rate_str else self.config.transmission_rate_hz
+                except (ValueError, TypeError):
+                    actual_tx_rate = self.config.transmission_rate_hz
 
                 # 2. Extract Nonce and Ciphertext
                 incoming_payload = msg.payload
@@ -260,13 +278,18 @@ class TelemetryProxyClient:
                 # 4. Route local 
                 batch = json.loads(original_json_bytes)
                 
-                # Handle the batched array format
                 if isinstance(batch, list):
-                    L.info(f"Routing inbound batch of {len(batch)} items.", extra={"reduction_pct": round(reduction, 1)})
+                    batch_size = len(batch)
+                    L.info(f"Routing inbound batch of {batch_size} items.", extra={"reduction_pct": round(reduction, 1)})
+                    
+                    # Calculate safe window using the SENDER'S declared rate
+                    trickle_window = (1.0 / actual_tx_rate) * 0.90
+                    trickle_delay = trickle_window / batch_size if batch_size > 0 else 0
+                    
                     for item in batch:
                         await client.publish(item["t"], payload=json.dumps(item["d"]).encode('utf-8'), qos=0)
+                        await asyncio.sleep(trickle_delay)
                 else:
-                    # Fallback for legacy single-packet envelopes
                     if original_topic:
                         await client.publish(original_topic, payload=original_json_bytes, qos=0)
 
