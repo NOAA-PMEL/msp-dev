@@ -156,9 +156,12 @@ class DatasetGenerator:
                             }
                             continue
                         
-                        direct_var = target_var_def.get("direct_value", {}).get("source_variable", vs_var)
-                        src_info = target_var_def.get("source", {}).get(direct_var, {})
-                        
+                        # direct_var = target_var_def.get("direct_value", {}).get("source_variable", vs_var)
+                        # src_info = target_var_def.get("source", {}).get(direct_var, {})
+                        # --- PARITY FIX: Deprecated direct_value ---
+                        sources = target_var_def.get("source", {})
+                        src_info = next(iter(sources.values())) if sources else {}
+
                         s_id = src_info.get("source_id")
                         s_type = src_info.get("source_type", "device")
                         raw_var_name = src_info.get("source_variable", vs_var)
@@ -286,16 +289,48 @@ class DatasetGenerator:
                     times, values = [], []
                     raw_key = trace["raw_variable_name"]
                     
+                    # for r in records:
+                    #     r_vars = r.get("variables", {})
+                    #     if "time" in r_vars and raw_key in r_vars:
+                    #         rounded_dt = pd.to_datetime(r_vars["time"]["data"].replace("Z", "")).round("1s")
+                    #         times.append(rounded_dt.to_datetime64())
+                    #         values.append(r_vars[raw_key]["data"])
+                            
+                    #         hw_source = r_vars[raw_key].get("attributes", {}).get("source_id", {}).get("data")
+                    #         if hw_source: unique_sources.add(hw_source)
+                    
+                    # # Get the target schema type for coercion
+                    # v_type = var.get("type", "float")
+
                     for r in records:
                         r_vars = r.get("variables", {})
                         if "time" in r_vars and raw_key in r_vars:
+                            val = r_vars[raw_key].get("data")
+
+                            # --- SAMPLING_SYSTEM PARITY: COERCION & MISSING DATA ---
+                            if val is None or val == "":
+                                val = np.nan
+                            else:
+                                # 1. Enforce the data type defined in the hydrated schema
+                                if v_type in ["float", "double"] and not isinstance(val, float):
+                                    try:
+                                        val = float(val)
+                                    except (ValueError, TypeError):
+                                        val = np.nan
+                                elif v_type in ["int", "integer"] and not isinstance(val, int):
+                                    try:
+                                        val = int(float(val))
+                                    except (ValueError, TypeError):
+                                        val = np.nan
+                            # -------------------------------------------------------
+
                             rounded_dt = pd.to_datetime(r_vars["time"]["data"].replace("Z", "")).round("1s")
                             times.append(rounded_dt.to_datetime64())
-                            values.append(r_vars[raw_key]["data"])
+                            values.append(val)
                             
                             hw_source = r_vars[raw_key].get("attributes", {}).get("source_id", {}).get("data")
                             if hw_source: unique_sources.add(hw_source)
-                    
+
                     if times:
                         input_arrays[param_name] = {"values": values, "times": times}
 
