@@ -651,7 +651,7 @@ def unroll_multidimensional_data(base_row, shape_dims, coords_dict, var_dict):
 #                 L.error("ERDDAP Connection Failed", extra={"url": url, "reason": str(e)})
 #                 return
 
-async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5):
+async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5):
     async with http_semaphore:
         
         # Enforce exact ERDDAP parameter alignment based on the XML schema order
@@ -668,7 +668,7 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
         for k in payload.keys():
             if k not in base_keys and k not in tail_keys and k != "author":
                 v = payload[k]
-                # ERDDAP requires arrays to be bracketed strings, NOT repeated URL keys
+                # ERDDAP requires arrays to be bracketed strings
                 ordered_payload[k] = json.dumps(v, separators=(',', ':')) if isinstance(v, (list, dict)) else v
                 
         # 3. Trailing system fields
@@ -683,22 +683,22 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
 
         headers = {
             "X-Forwarded-Proto": "https",
-            "X-Forwarded-For": "127.0.0.1"
+            "X-Forwarded-For": "127.0.0.1",
+            # We must use standard form encoding so Tomcat parses the body, NOT the URL
+            "Content-Type": "application/x-www-form-urlencoded"
         }
 
         for attempt in range(retries):
             try:
-                # Use params= to securely let httpx handle the percent-encoding and URL generation
-                # This guarantees Tomcat won't eat the POST body, and ERDDAP natively parses the URL
-                resp = await http_client.post(url, params=ordered_payload, headers=headers)
+                # Use data= to force httpx to put the payload strictly in the POST body, bypassing Tomcat's 8KB URL limit
+                resp = await http_client.post(url, data=ordered_payload, headers=headers)
                 resp.raise_for_status()
                 return 
                 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 404 and attempt < retries - 1:
                     L.debug(f"ERDDAP 404 on insert (reloading?). Retrying in {delay}s...", extra={"url": url})
-                    if retries > 1:
-                        await asyncio.sleep(delay)
+                    await asyncio.sleep(delay)
                     continue
                 
                 # Capture the actual ERDDAP response body to see the exact validation error
