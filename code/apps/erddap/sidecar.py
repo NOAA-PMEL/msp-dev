@@ -606,15 +606,22 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
                 ordered_payload[k] = payload[k]
                 
         # 2. Dynamic data columns (Coordinates, lengths, and variables)
-        tail_keys = ["timestamp", "author", "command"]
+        tail_keys = ["timestamp", "command"]
         for k in payload.keys():
-            if k not in base_keys and k not in tail_keys:
-                ordered_payload[k] = payload[k]
+            if k not in base_keys and k not in tail_keys and k != "author":
+                v = payload[k]
+                # ERDDAP requires arrays to be bracketed strings, NOT repeated URL keys
+                ordered_payload[k] = json.dumps(v, separators=(',', ':')) if isinstance(v, (list, dict)) else v
                 
-        # 3. Trailing system fields (Matches the bottom of telemetry_dataset.xml.j2)
+        # 3. Trailing system fields
         for k in tail_keys:
             if k in payload:
-                ordered_payload[k] = payload[k]
+                v = payload[k]
+                ordered_payload[k] = json.dumps(v, separators=(',', ':')) if isinstance(v, (list, dict)) else v
+
+        # 4. ERDDAP strictly requires the author parameter to be the absolute LAST parameter
+        if "author" in payload:
+            ordered_payload["author"] = payload["author"]
 
         headers = {
             "X-Forwarded-Proto": "https",
@@ -623,7 +630,7 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
 
         for attempt in range(retries):
             try:
-                # Dispatch using the strictly ordered payload
+                # Dispatch using URL query parameters (params=)
                 resp = await http_client.post(url, params=ordered_payload, headers=headers)
                 resp.raise_for_status()
                 return 
@@ -635,7 +642,9 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
                         await asyncio.sleep(delay)
                     continue
                 
-                L.error("ERDDAP Insert Failed", extra={"url": url, "reason": str(e)})
+                # Capture the actual ERDDAP response body to see the exact validation error
+                error_details = e.response.text if e.response else str(e)
+                L.error("ERDDAP Insert Failed", extra={"url": url, "status": e.response.status_code, "erddap_message": error_details})
                 return
                 
             except Exception as e:
