@@ -347,6 +347,26 @@ class ERDDAPConfigCompiler:
                                 "long_name": f"{dim} Dimension Length"
                             })
                             coord_idx += 1
+                    else:
+                        cols.insert(coord_idx, {
+                            "name": dim,
+                            "type": "int",
+                            "original_type": "int",
+                            "units": "count",
+                            "long_name": f"{dim} Index"
+                        })
+                        coord_idx += 1
+                        
+                        dim_len_name = f"{dim}_dim"
+                        if not any(c["name"] == dim_len_name for c in cols):
+                            cols.insert(coord_idx, {
+                                "name": dim_len_name,
+                                "type": "int",
+                                "original_type": "int",
+                                "units": "count",
+                                "long_name": f"{dim} Dimension Length"
+                            })
+                            coord_idx += 1
 
             xml_content = self.telemetry_template.render(
                 dataset_id=dataset_id, make=escape(make), model=escape(model),
@@ -499,6 +519,11 @@ def unroll_multidimensional_data(base_row, shape_dims, coords_dict, var_dict):
         row = base_row.copy()
         
         dim_data = coords_dict.get(dim_name, [])
+        if not dim_data and var_dict:
+            first_var = next(iter(var_dict.values()))
+            if isinstance(first_var, list):
+                dim_data = list(range(len(first_var)))
+
         row[dim_name] = format_erddap_array(dim_data)
         
         # Save the explicit length of the dimension array
@@ -519,6 +544,17 @@ def unroll_multidimensional_data(base_row, shape_dims, coords_dict, var_dict):
             row = current_row.copy()
             
             dim_data = coords_dict.get(last_dim, [])
+            if not dim_data and var_dict:
+                first_var = next(iter(var_dict.values()))
+                val = first_var
+                try:
+                    for idx in current_indices:
+                        val = val[idx]
+                    if isinstance(val, list):
+                        dim_data = list(range(len(val)))
+                except (IndexError, TypeError):
+                    pass
+
             row[last_dim] = format_erddap_array(dim_data)
             
             # Save the explicit length of the dimension array
@@ -539,6 +575,17 @@ def unroll_multidimensional_data(base_row, shape_dims, coords_dict, var_dict):
         dim_name = unroll_dims[dim_index]
         dim_coords = coords_dict.get(dim_name, [])
         
+        if not dim_coords and var_dict:
+            first_var = next(iter(var_dict.values()))
+            val = first_var
+            try:
+                for idx in current_indices:
+                    val = val[idx]
+                if isinstance(val, list):
+                    dim_coords = list(range(len(val)))
+            except (IndexError, TypeError):
+                pass
+                
         for i, coord_val in enumerate(dim_coords):
             next_row = current_row.copy()
             next_row[dim_name] = coord_val 
