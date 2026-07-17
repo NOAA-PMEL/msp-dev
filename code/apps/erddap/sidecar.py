@@ -618,15 +618,17 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
 
         headers = {
             "X-Forwarded-Proto": "https",
-            "X-Forwarded-For": "127.0.0.1"
+            "X-Forwarded-For": "127.0.0.1",
+            "Content-Type": "text/plain" # Prevent Tomcat from automatically eating the input stream
         }
+        
+        # Manually URL-encode so ERDDAP can read the raw name=value string from the body
+        encoded_payload = urllib.parse.urlencode(ordered_payload)
 
         for attempt in range(retries):
             try:
-                # Dispatch using the strictly ordered payload
-                # Use 'data=' instead of 'params=' to send as form-encoded POST body, 
-                # bypassing Tomcat's 8KB Request Line / Header limit for large arrays
-                resp = await http_client.post(url, data=ordered_payload, headers=headers)
+                # Dispatch using the raw string payload
+                resp = await http_client.post(url, content=encoded_payload, headers=headers)
                 resp.raise_for_status()
                 return 
                 
@@ -637,7 +639,9 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
                         await asyncio.sleep(delay)
                     continue
                 
-                L.error("ERDDAP Insert Failed", extra={"url": url, "reason": str(e)})
+                # Capture the actual ERDDAP response body to see the exact validation error
+                error_details = e.response.text if e.response else str(e)
+                L.error("ERDDAP Insert Failed", extra={"url": url, "status": e.response.status_code, "erddap_message": error_details})
                 return
                 
             except Exception as e:
@@ -1214,7 +1218,8 @@ async def get_ncojson_data(request: Request, dataset_id: str):
 @app.get("/api/definition/{registry_type}/{kind}")
 async def get_ncojson_definition(request: Request, registry_type: str, kind: str):
     """Retrieves original NCO-JSON definitions from the ERDDAP payload columns."""
-    dataset_id = f"envds_{registry_type}_registry"
+    actual_registry_type = "system" if registry_type == "ops" else registry_type
+    dataset_id = f"envds_{actual_registry_type}_registry"
     erddap_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.json"
     
     query_parts = []
