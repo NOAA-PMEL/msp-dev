@@ -599,44 +599,32 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
         # Enforce exact ERDDAP parameter alignment based on the XML schema order
         ordered_payload = {}
         
+        # 1. Base metadata fields (Matches the top of telemetry_dataset.xml.j2)
         base_keys = ["make", "model", "format_version", "serial_number", "time"]
         for k in base_keys:
             if k in payload:
                 ordered_payload[k] = payload[k]
                 
-        # Exclude 'author' from the middle of the payload so we can force it to the end
-        tail_keys = ["timestamp", "command"]
+        # 2. Dynamic data columns (Coordinates, lengths, and variables)
+        tail_keys = ["timestamp", "author", "command"]
         for k in payload.keys():
-            if k not in base_keys and k not in tail_keys and k != "author":
+            if k not in base_keys and k not in tail_keys:
                 ordered_payload[k] = payload[k]
                 
+        # 3. Trailing system fields (Matches the bottom of telemetry_dataset.xml.j2)
         for k in tail_keys:
             if k in payload:
                 ordered_payload[k] = payload[k]
 
-        query_parts = []
-        for k, v in ordered_payload.items():
-            # ERDDAP natively expects JSON array strings for multidimensional coordinate columns
-            # Using separators=(',', ':') removes spaces to keep the payload tight
-            val_str = json.dumps(v, separators=(',', ':')) if isinstance(v, (list, dict)) else str(v)
-            query_parts.append(f"{urllib.parse.quote_plus(str(k))}={urllib.parse.quote_plus(val_str)}")
-            
-        # ERDDAP strictly requires the author parameter to be the absolute LAST parameter
-        author_val = f"{config.author_name}_{config.insert_password}"
-        query_parts.append(f"author={urllib.parse.quote_plus(author_val)}")
-            
-        raw_body = "&".join(query_parts)
-
         headers = {
             "X-Forwarded-Proto": "https",
-            "X-Forwarded-For": "127.0.0.1",
-            "Content-Type": "application/x-www-form-urlencoded" 
+            "X-Forwarded-For": "127.0.0.1"
         }
 
         for attempt in range(retries):
             try:
-                # Dispatch using the raw string body
-                resp = await http_client.post(url, content=raw_body, headers=headers)
+                # Dispatch using the strictly ordered payload
+                resp = await http_client.post(url, params=ordered_payload, headers=headers)
                 resp.raise_for_status()
                 return 
                 
@@ -647,15 +635,13 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
                         await asyncio.sleep(delay)
                     continue
                 
-                # Capture the actual ERDDAP response body to see the exact validation error
-                error_details = e.response.text if e.response else str(e)
-                L.error("ERDDAP Insert Failed", extra={"url": url, "status": e.response.status_code, "erddap_message": error_details})
+                L.error("ERDDAP Insert Failed", extra={"url": url, "reason": str(e)})
                 return
                 
             except Exception as e:
                 L.error("ERDDAP Connection Failed", extra={"url": url, "reason": str(e)})
                 return
-            
+
 async def insert_telemetry_to_erddap(ce: dict):
     data = ce.data if hasattr(ce, "data") else ce.get("data", {})
     attributes = data.get("attributes", {})
