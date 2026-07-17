@@ -710,6 +710,70 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
                 L.error("ERDDAP Connection Failed", extra={"url": url, "reason": str(e)})
                 return
             
+# async def insert_telemetry_to_erddap(ce: dict):
+#     data = ce.data if hasattr(ce, "data") else ce.get("data", {})
+#     attributes = data.get("attributes", {})
+#     variables = data.get("variables", {})
+    
+#     make = _extract_val(attributes, "make", "unknown")
+#     model = _extract_val(attributes, "model", "unknown")
+#     sn = _extract_val(attributes, "serial_number", "unknown")
+#     version_raw = _extract_val(attributes, "format_version", "1.0.0")
+#     version = f"v{str(version_raw).split('.')[0]}"
+    
+#     time_data = _extract_val(variables, "time")
+#     if not time_data: return
+
+#     time_array = time_data if isinstance(time_data, list) else [time_data]
+
+#     def_key = f"{make}_{model}_{version}"
+#     cached_def = definition_cache.get(def_key, {"shapes": {}, "coords": {}})
+    
+#     insert_tasks = []
+    
+#     for i, current_time in enumerate(time_array):
+#         base_params = {
+#             "make": make,
+#             "model": model,
+#             "format_version": str(version_raw),
+#             "serial_number": sn,
+#             "time": current_time,
+#             "author": f"{config.author_name}_{config.insert_password}"
+#         }
+        
+#         slice_vars = {}
+#         for v_name, v_data in variables.items():
+#             if v_name == "time": continue
+#             v_val = _extract_val(variables, v_name)
+            
+#             if isinstance(v_val, list) and len(v_val) == len(time_array):
+#                 slice_vars[v_name] = v_val[i]
+#             else:
+#                 slice_vars[v_name] = v_val
+
+#         shape_groups = {}
+#         for v_name, v_val in slice_vars.items():
+#             shape = tuple(cached_def["shapes"].get(v_name, ["time"]))
+#             if shape not in shape_groups: shape_groups[shape] = {}
+#             shape_groups[shape][v_name] = v_val
+            
+#         for shape, var_dict in shape_groups.items():
+#             shape_joined = "_join" if isinstance(shape, str) else "_".join(shape)
+#             dataset_id = f"telemetry_{make}_{model}_{version}_{shape_joined}".replace("-", "_")
+#             extra_dims = [dim for dim in shape if dim != "time"]
+            
+#             coords_dict = cached_def["coords"].copy()
+#             for dim in extra_dims:
+#                 payload_coord = slice_vars.get(dim)
+#                 if payload_coord: coords_dict[dim] = payload_coord
+                    
+#             for flat_row in unroll_multidimensional_data(base_params, extra_dims, coords_dict, var_dict):
+#                 insert_url = f"{config.erddap_internal_url}/tabledap/{dataset_id}.insert"
+#                 insert_tasks.append(_send_insert(insert_url, payload=flat_row))
+
+#     if insert_tasks:
+#         await asyncio.gather(*insert_tasks, return_exceptions=True)
+
 async def insert_telemetry_to_erddap(ce: dict):
     data = ce.data if hasattr(ce, "data") else ce.get("data", {})
     attributes = data.get("attributes", {})
@@ -753,7 +817,13 @@ async def insert_telemetry_to_erddap(ce: dict):
 
         shape_groups = {}
         for v_name, v_val in slice_vars.items():
-            shape = tuple(cached_def["shapes"].get(v_name, ["time"]))
+            # Defensive fallback: if shape is explicitly present in the data message, trust it over an empty cache
+            var_payload = variables.get(v_name, {})
+            if isinstance(var_payload, dict) and "shape" in var_payload:
+                shape = tuple(var_payload["shape"])
+            else:
+                shape = tuple(cached_def["shapes"].get(v_name, ["time"]))
+                
             if shape not in shape_groups: shape_groups[shape] = {}
             shape_groups[shape][v_name] = v_val
             
@@ -952,10 +1022,155 @@ async def handle_hardware_registry_insert(ce: dict):
 # ---------------------------------------------------------
 # 3. BACKGROUND TASKS & API ROUTING
 # ---------------------------------------------------------
+# async def sync_definitions_loop():
+#     """Periodically fetches active definitions from the Datastore to ensure ERDDAP is in sync."""
+#     await asyncio.sleep(10) 
+    
+#     datastore_host = f"datastore.{config.daq_id}-system.svc.cluster.local"
+#     datastore_url = f"http://{datastore_host}" 
+    
+#     HARDWARE_RESOURCES = ["device", "controller"]
+    
+#     OPS_RESOURCES = [
+#         "platform", "project", "deployment", "contact", 
+#         "systemmode", "samplingmode", "samplingstate", 
+#         "samplingcondition", "action",
+#         "variablemap", "variableset", 
+#         "projectallocation"
+#     ]
+    
+#     all_resources = HARDWARE_RESOURCES + OPS_RESOURCES
+#     known_ids = {f"{res}-definition": set() for res in all_resources}
+    
+#     L.info("Sync Loop starting pre-flight storage discovery...")
+#     base_data_path = Path(config.data_dir) / "registry"
+    
+#     hw_path = base_data_path / "hardware"
+#     if hw_path.exists():
+#         for jsonl_file in hw_path.glob("*/*_registry.jsonl"):
+#             try:
+#                 with open(jsonl_file, "r") as f:
+#                     for line in f:
+#                         if line.startswith("["): 
+#                             row = json.loads(line)
+#                             if len(row) > 4 and row[0] not in ["time", "double"]: 
+#                                 make, model, version = row[2], row[3], row[4]
+#                                 endpoint_key = jsonl_file.parent.name 
+#                                 known_ids[endpoint_key].add(f"{make}::{model}::{version}")
+#             except Exception as e:
+#                 L.error(f"Discovery failed to parse hardware file {jsonl_file.name}", extra={"reason": str(e)})
+
+#     # sys_path = base_data_path / "system"
+#     # if sys_path.exists():
+#     #     for jsonl_file in sys_path.glob("*/*_registry.jsonl"):
+#     #         try:
+#     #             with open(jsonl_file, "r") as f:
+#     #                 for line in f:
+#     #                     if line.startswith("["):
+#     #                         row = json.loads(line)
+#     #                         if len(row) > 3 and row[0] not in ["time", "double"]: 
+#     #                             namespace, name = row[2], row[3]
+#     #                             endpoint_key = jsonl_file.parent.name 
+                                
+#     #                             if endpoint_key in ["variablemap-definition", "variableset-definition"]:
+#     #                                 payload = json.loads(row[6])
+#     #                                 def_id = payload.get(f"{endpoint_key.replace('-', '_')}_id")
+#     #                                 if def_id:
+#     #                                     known_ids[endpoint_key].add(def_id)
+#     #                             else:
+#     #                                 known_ids[endpoint_key].add(name)
+#     sys_path = base_data_path / "system"
+#     if sys_path.exists():
+#         for jsonl_file in sys_path.glob("*/*_registry.jsonl"):
+#             try:
+#                 with open(jsonl_file, "r") as f:
+#                     for line in f:
+#                         if line.startswith("["):
+#                             row = json.loads(line)
+#                             # FIX: Check for len > 4 to extract valid_time safely
+#                             if len(row) > 4 and row[0] not in ["time", "double"]: 
+#                                 namespace, name, valid_time = row[2], row[3], row[4]
+#                                 endpoint_key = jsonl_file.parent.name 
+                                
+#                                 if endpoint_key in ["variablemap-definition", "variableset-definition"]:
+#                                     payload = json.loads(row[6])
+#                                     def_id = payload.get(f"{endpoint_key.replace('-', '_')}_id")
+#                                     if def_id:
+#                                         known_ids[endpoint_key].add(def_id)
+#                                 else:
+#                                     # ---> NEW ID FORMAT: namespace::name::time <---
+#                                     known_ids[endpoint_key].add(f"{namespace}::{name}::{valid_time}")
+#             except Exception as e:
+#                 L.error(f"Discovery failed to parse system file {jsonl_file.name}", extra={"reason": str(e)})
+
+#     L.info("Pre-flight discovery complete.", extra={k: len(v) for k, v in known_ids.items()})
+
+#     while True:
+#         try:
+#             for resource in HARDWARE_RESOURCES:
+#                 endpoint = f"{resource}-definition"
+#                 ids_url = f"{datastore_url}/{endpoint}/registry/ids/get/"
+#                 ids_resp = await http_client.get(ids_url)
+                
+#                 if ids_resp.status_code == 200:
+#                     remote_ids = ids_resp.json().get("results", [])
+#                     missing_ids = [rid for rid in remote_ids if rid not in known_ids[endpoint]]
+                    
+#                     if missing_ids:
+#                         L.info(f"Sync Loop found {len(missing_ids)} missing {endpoint}s. Fetching payloads...")
+#                         for missing_id in missing_ids:
+#                             param_name = f"{endpoint.replace('-', '_')}_id"
+#                             get_url = f"{datastore_url}/{endpoint}/registry/get/"
+                            
+#                             def_resp = await http_client.get(get_url, params={param_name: missing_id})
+#                             if def_resp.status_code == 200:
+#                                 definitions = def_resp.json().get("results", [])
+                                
+#                                 for def_payload in definitions:
+#                                     ce_mock = {"data": {endpoint: def_payload}}
+#                                     compiler.handle_definition(ce_mock)
+#                                     await handle_hardware_registry_insert(ce_mock)
+                                    
+#                                 known_ids[endpoint].add(missing_id)
+
+#             for resource in OPS_RESOURCES:
+#                 endpoint = f"{resource}-definition"
+#                 ids_url = f"{datastore_url}/{endpoint}/registry/ids/get/"
+#                 ids_resp = await http_client.get(ids_url)
+                
+#                 if ids_resp.status_code == 200:
+#                     remote_ids = ids_resp.json().get("results", [])
+#                     missing_ids = [rid for rid in remote_ids if rid not in known_ids[endpoint]]
+                    
+#                     if missing_ids:
+#                         L.info(f"Sync Loop found {len(missing_ids)} missing {endpoint}s. Fetching payloads...")
+#                         for missing_id in missing_ids:
+#                             if resource == "variablemap":
+#                                 params = {"variablemap_definition_id": missing_id}
+#                             elif resource == "variableset":
+#                                 params = {"variableset_definition_id": missing_id}
+#                             else:
+#                                 params = {"name": missing_id}
+                            
+#                             get_url = f"{datastore_url}/{endpoint}/registry/get/"
+                            
+#                             def_resp = await http_client.get(get_url, params=params)
+#                             if def_resp.status_code == 200:
+#                                 definitions = def_resp.json().get("results", [])
+                                
+#                                 for def_payload in definitions:
+#                                     ce_mock = {"data": {endpoint: def_payload}}
+#                                     await handle_ops_registry_insert(ce_mock)
+                                    
+#                                 known_ids[endpoint].add(missing_id)
+
+#         except Exception as e:
+#             L.error("Failed to sync definitions from Datastore", extra={"reason": str(e)})
+        
+#         await asyncio.sleep(60)
+
 async def sync_definitions_loop():
     """Periodically fetches active definitions from the Datastore to ensure ERDDAP is in sync."""
-    await asyncio.sleep(10) 
-    
     datastore_host = f"datastore.{config.daq_id}-system.svc.cluster.local"
     datastore_url = f"http://{datastore_host}" 
     
@@ -983,32 +1198,20 @@ async def sync_definitions_loop():
                     for line in f:
                         if line.startswith("["): 
                             row = json.loads(line)
-                            if len(row) > 4 and row[0] not in ["time", "double"]: 
+                            if len(row) > 6 and row[0] not in ["time", "double"]: 
                                 make, model, version = row[2], row[3], row[4]
                                 endpoint_key = jsonl_file.parent.name 
                                 known_ids[endpoint_key].add(f"{make}::{model}::{version}")
+                                
+                                # Populate definition cache on startup from disk
+                                try:
+                                    payload = json.loads(row[6])
+                                    compiler.handle_definition({"data": payload})
+                                except Exception as e:
+                                    L.error(f"Failed to cache definition from {jsonl_file.name}", extra={"reason": str(e)})
             except Exception as e:
                 L.error(f"Discovery failed to parse hardware file {jsonl_file.name}", extra={"reason": str(e)})
 
-    # sys_path = base_data_path / "system"
-    # if sys_path.exists():
-    #     for jsonl_file in sys_path.glob("*/*_registry.jsonl"):
-    #         try:
-    #             with open(jsonl_file, "r") as f:
-    #                 for line in f:
-    #                     if line.startswith("["):
-    #                         row = json.loads(line)
-    #                         if len(row) > 3 and row[0] not in ["time", "double"]: 
-    #                             namespace, name = row[2], row[3]
-    #                             endpoint_key = jsonl_file.parent.name 
-                                
-    #                             if endpoint_key in ["variablemap-definition", "variableset-definition"]:
-    #                                 payload = json.loads(row[6])
-    #                                 def_id = payload.get(f"{endpoint_key.replace('-', '_')}_id")
-    #                                 if def_id:
-    #                                     known_ids[endpoint_key].add(def_id)
-    #                             else:
-    #                                 known_ids[endpoint_key].add(name)
     sys_path = base_data_path / "system"
     if sys_path.exists():
         for jsonl_file in sys_path.glob("*/*_registry.jsonl"):
@@ -1017,23 +1220,28 @@ async def sync_definitions_loop():
                     for line in f:
                         if line.startswith("["):
                             row = json.loads(line)
-                            # FIX: Check for len > 4 to extract valid_time safely
                             if len(row) > 4 and row[0] not in ["time", "double"]: 
                                 namespace, name, valid_time = row[2], row[3], row[4]
                                 endpoint_key = jsonl_file.parent.name 
                                 
                                 if endpoint_key in ["variablemap-definition", "variableset-definition"]:
-                                    payload = json.loads(row[6])
-                                    def_id = payload.get(f"{endpoint_key.replace('-', '_')}_id")
-                                    if def_id:
-                                        known_ids[endpoint_key].add(def_id)
+                                    if len(row) > 6:
+                                        try:
+                                            payload = json.loads(row[6])
+                                            def_id = payload.get(f"{endpoint_key.replace('-', '_')}_id")
+                                            if def_id:
+                                                known_ids[endpoint_key].add(def_id)
+                                        except Exception:
+                                            pass
                                 else:
-                                    # ---> NEW ID FORMAT: namespace::name::time <---
                                     known_ids[endpoint_key].add(f"{namespace}::{name}::{valid_time}")
             except Exception as e:
                 L.error(f"Discovery failed to parse system file {jsonl_file.name}", extra={"reason": str(e)})
 
     L.info("Pre-flight discovery complete.", extra={k: len(v) for k, v in known_ids.items()})
+
+    # Moved sleep after discovery to prevent cache misses while MQTT is processing live data
+    await asyncio.sleep(10) 
 
     while True:
         try:
