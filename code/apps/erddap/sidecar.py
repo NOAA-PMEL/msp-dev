@@ -677,32 +677,19 @@ async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5
                 v = payload[k]
                 ordered_payload[k] = json.dumps(v, separators=(',', ':')) if isinstance(v, (list, dict)) else v
 
-        # Manually build the query string to go into the POST body
-        query_parts = []
-        for k, v in ordered_payload.items():
-            if v is None or v == "":
-                query_parts.append(f"{urllib.parse.quote_plus(str(k))}=")
-            else:
-                query_parts.append(f"{urllib.parse.quote_plus(str(k))}={urllib.parse.quote_plus(str(v))}")
-            
         # 4. ERDDAP strictly requires the author parameter to be the absolute LAST parameter
         if "author" in payload:
-            author_val = payload["author"]
-            query_parts.append(f"author={urllib.parse.quote_plus(str(author_val))}")
-            
-        raw_body = "&".join(query_parts)
+            ordered_payload["author"] = payload["author"]
 
         headers = {
             "X-Forwarded-Proto": "https",
-            "X-Forwarded-For": "127.0.0.1",
-            # text/plain forces Tomcat to ignore the body, allowing ERDDAP to parse the raw InputStream
-            "Content-Type": "text/plain" 
+            "X-Forwarded-For": "127.0.0.1"
         }
 
         for attempt in range(retries):
             try:
-                # Dispatch using the raw string body (content=) to bypass Tomcat's 8KB URL length limit
-                resp = await http_client.post(url, content=raw_body, headers=headers)
+                # We MUST use params=ordered_payload. EDDTableFromHttpGet exclusively reads the URL query string.
+                resp = await http_client.post(url, params=ordered_payload, headers=headers)
                 resp.raise_for_status()
                 return 
                 
