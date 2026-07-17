@@ -668,7 +668,7 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
         for k in payload.keys():
             if k not in base_keys and k not in tail_keys and k != "author":
                 v = payload[k]
-                # ERDDAP requires arrays to be bracketed strings
+                # ERDDAP requires arrays to be bracketed strings, NOT repeated URL keys
                 ordered_payload[k] = json.dumps(v, separators=(',', ':')) if isinstance(v, (list, dict)) else v
                 
         # 3. Trailing system fields
@@ -677,28 +677,20 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
                 v = payload[k]
                 ordered_payload[k] = json.dumps(v, separators=(',', ':')) if isinstance(v, (list, dict)) else v
 
-        query_parts = []
-        for k, v in ordered_payload.items():
-            query_parts.append(f"{urllib.parse.quote_plus(str(k))}={urllib.parse.quote_plus(str(v))}")
-            
         # 4. ERDDAP strictly requires the author parameter to be the absolute LAST parameter
         if "author" in payload:
-            author_val = payload["author"]
-            query_parts.append(f"author={urllib.parse.quote_plus(str(author_val))}")
-            
-        raw_body = "&".join(query_parts)
+            ordered_payload["author"] = payload["author"]
 
         headers = {
             "X-Forwarded-Proto": "https",
-            "X-Forwarded-For": "127.0.0.1",
-            # Use text/plain so Tomcat does not consume the InputStream, leaving it for ERDDAP
-            "Content-Type": "text/plain"
+            "X-Forwarded-For": "127.0.0.1"
         }
 
         for attempt in range(retries):
             try:
-                # Dispatch using the raw string body (content=) to bypass Tomcat's URL length limit
-                resp = await http_client.post(url, content=raw_body, headers=headers)
+                # Use params= to securely let httpx handle the percent-encoding and URL generation
+                # This guarantees Tomcat won't eat the POST body, and ERDDAP natively parses the URL
+                resp = await http_client.post(url, params=ordered_payload, headers=headers)
                 resp.raise_for_status()
                 return 
                 
