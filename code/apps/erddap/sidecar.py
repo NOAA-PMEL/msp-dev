@@ -691,7 +691,8 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
         headers = {
             "X-Forwarded-Proto": "https",
             "X-Forwarded-For": "127.0.0.1",
-            "Content-Type": "application/x-www-form-urlencoded"
+            # Use text/plain so Tomcat does not consume the InputStream, leaving it for ERDDAP
+            "Content-Type": "text/plain"
         }
 
         for attempt in range(retries):
@@ -1364,9 +1365,45 @@ async def get_ncojson_log(request: Request, dataset_id: str = "envds_ops_log"):
 # ---------------------------------------------------------
 # STANDARD ERDDAP PROXY
 # ---------------------------------------------------------
+# @app.api_route("/erddap/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
+# async def proxy_erddap(request: Request, path_name: str):
+#     target_path = path_name if path_name else "index.html"
+#     url = f"{config.erddap_internal_url}/{target_path}"
+    
+#     if request.url.query:
+#         url = f"{url}?{request.url.query}"
+    
+#     req_headers = dict(request.headers)
+#     req_headers["host"] = request.headers.get("x-forwarded-host", request.headers.get("host"))
+#     req_headers["X-Forwarded-Prefix"] = "/envds/data" 
+    
+#     rp_req = http_client.build_request(
+#         request.method,
+#         url,
+#         headers=req_headers,
+#         content=await request.body()
+#     )
+    
+#     try:
+#         rp_resp = await http_client.send(rp_req, stream=True)
+#     except httpx.ConnectError:
+#         return Response("ERDDAP container is not ready or reachable.", status_code=503)
+
+#     return StreamingResponse(
+#         rp_resp.aiter_raw(),
+#         status_code=rp_resp.status_code,
+#         headers=rp_resp.headers,
+#         background=BackgroundTask(rp_resp.aclose),
+#     )
+
 @app.api_route("/erddap/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_erddap(request: Request, path_name: str):
     target_path = path_name if path_name else "index.html"
+    
+    # Transparently route legacy ops_registry requests to the actual system_registry dataset
+    if "envds_ops_registry" in target_path:
+        target_path = target_path.replace("envds_ops_registry", "envds_system_registry")
+        
     url = f"{config.erddap_internal_url}/{target_path}"
     
     if request.url.query:
