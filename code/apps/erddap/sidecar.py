@@ -677,21 +677,32 @@ async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5
                 v = payload[k]
                 ordered_payload[k] = json.dumps(v, separators=(',', ':')) if isinstance(v, (list, dict)) else v
 
+        # Manually build the query string to go into the POST body
+        query_parts = []
+        for k, v in ordered_payload.items():
+            if v is None or v == "":
+                query_parts.append(f"{urllib.parse.quote_plus(str(k))}=")
+            else:
+                query_parts.append(f"{urllib.parse.quote_plus(str(k))}={urllib.parse.quote_plus(str(v))}")
+            
         # 4. ERDDAP strictly requires the author parameter to be the absolute LAST parameter
         if "author" in payload:
-            ordered_payload["author"] = payload["author"]
+            author_val = payload["author"]
+            query_parts.append(f"author={urllib.parse.quote_plus(str(author_val))}")
+            
+        raw_body = "&".join(query_parts)
 
         headers = {
             "X-Forwarded-Proto": "https",
             "X-Forwarded-For": "127.0.0.1",
-            # We must use standard form encoding so Tomcat parses the body, NOT the URL
-            "Content-Type": "application/x-www-form-urlencoded"
+            # text/plain forces Tomcat to ignore the body, allowing ERDDAP to parse the raw InputStream
+            "Content-Type": "text/plain" 
         }
 
         for attempt in range(retries):
             try:
-                # Use data= to force httpx to put the payload strictly in the POST body, bypassing Tomcat's 8KB URL limit
-                resp = await http_client.post(url, data=ordered_payload, headers=headers)
+                # Dispatch using the raw string body (content=) to bypass Tomcat's 8KB URL length limit
+                resp = await http_client.post(url, content=raw_body, headers=headers)
                 resp.raise_for_status()
                 return 
                 
