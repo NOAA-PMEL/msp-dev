@@ -624,7 +624,9 @@ async def _send_insert(url: str, payload: dict, retries: int = 1, delay: int = 5
         for attempt in range(retries):
             try:
                 # Dispatch using the strictly ordered payload
-                resp = await http_client.post(url, params=ordered_payload, headers=headers)
+                # Use 'data=' instead of 'params=' to send as form-encoded POST body, 
+                # bypassing Tomcat's 8KB Request Line / Header limit for large arrays
+                resp = await http_client.post(url, data=ordered_payload, headers=headers)
                 resp.raise_for_status()
                 return 
                 
