@@ -688,7 +688,7 @@ async def _send_insert(url: str, payload: dict, retries: int = 6, delay: int = 5
 
         for attempt in range(retries):
             try:
-                # We MUST use params=ordered_payload. EDDTableFromHttpGet exclusively reads the URL query string.
+                # We MUST use params=ordered_payload. EDDTableFromHttpGet physically cannot parse POST bodies due to the trailing '&' bug.
                 resp = await http_client.post(url, params=ordered_payload, headers=headers)
                 resp.raise_for_status()
                 return 
