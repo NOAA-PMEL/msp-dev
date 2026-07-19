@@ -336,11 +336,17 @@ class SpiderMagic810(Sensor):
                 parts = parts[1:3] + parts[4:25]
                 parts = [item.replace('V', '').strip() for item in parts]
                 # Explicit variable mapping
+                # self.extra_var_names += [
+                #     'vp_rd', 'spidermagic_timestamp', 'dew_point', 'input_T', 'input_rh', 
+                #     'cond_T', 'init_T', 'mod_T', 'opt_T', 'heatsink_T', 'case_T', 'wick_sensor', 
+                #     'mod_T_sp', 'humid_exit_dew_point', 'wadc', 'DMA_V', 'Qsh', 'abs_pressure', 
+                #     'flow', 'pHt2.%', 'status_hex', 'status_ascii', 'spidermagic_serial_number'
+                # ]
                 self.extra_var_names += [
                     'vp_rd', 'spidermagic_timestamp', 'dew_point', 'input_T', 'input_rh', 
                     'cond_T', 'init_T', 'mod_T', 'opt_T', 'heatsink_T', 'case_T', 'wick_sensor', 
                     'mod_T_sp', 'humid_exit_dew_point', 'wadc', 'DMA_V', 'Qsh', 'abs_pressure', 
-                    'flow', 'pHt2.%', 'status_hex', 'status_ascii', 'spidermagic_serial_number'
+                    'flow', 'pHt2_pct', 'status_hex', 'status_ascii', 'spidermagic_serial_number'
                 ]
                 self.extra_vars += parts
                 self.logger.debug("parse_state_STARTING", extra={"parsed_parts": parts})
