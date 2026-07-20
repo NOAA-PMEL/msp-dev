@@ -432,7 +432,8 @@ def layout(deployment_id=None):
                     dbc.CardBody(dbc.Row([
                         make_kpi_col("Wind (Rel)", "kpi-ops-relwind", "bi bi-flag"), 
                         make_kpi_col("Inlet Flow", "kpi-ops-flow", "bi bi-fan"), 
-                        make_kpi_col("Inlet SP", "kpi-ops-flowsp", "bi bi-sliders")
+                        make_kpi_col("Inlet SP", "kpi-ops-flowsp", "bi bi-sliders"),
+                        make_kpi_col("Size Cut", "kpi-ops-sizecut", "bi bi-funnel")
                     ], className="g-2"), className="p-2 bg-light")
                 ], className="mb-3 shadow-sm border-0"),
 
@@ -738,7 +739,7 @@ dash.clientside_callback(
     Output("kpi-met-wind", "children"), Output("kpi-met-temprh", "children"), Output("kpi-met-press", "children"), Output("kpi-met-rain", "children"), Output("kpi-met-irrad", "children"),
     Output("kpi-aero-cn", "children"), Output("kpi-aero-scat", "children"), Output("kpi-aero-abs", "children"),
     Output("kpi-gas-o3", "children"), Output("kpi-gas-co", "children"), Output("kpi-gas-nox", "children"),
-    Output("kpi-ops-relwind", "children"), Output("kpi-ops-flow", "children"), Output("kpi-ops-flowsp", "children"),
+    Output("kpi-ops-relwind", "children"), Output("kpi-ops-flow", "children"), Output("kpi-ops-flowsp", "children"), Output("kpi-ops-sizecut", "children"),
     Output("kpi-power-opcsmps", "children"), Output("kpi-power-cpcaps", "children"),
     
     Input("kpi-staleness-interval", "n_intervals"),  
@@ -824,6 +825,7 @@ def update_quick_looks(n_intervals, telemetry_store):
         [get_val(["relative_wind_speed", "rel_wind_speed", "rws"]), " / ", get_val(["relative_wind_direction", "rel_wind_dir", "rwdir"])],
         get_val(["inlet_flow", "flow", "inlet_fan_speed"]),
         get_val(["inlet_flow_sp", "flow_setpoint", "inlet_fan_speed_sp"]),
+        get_val(["size_cut_valve_state", "valve_state"], is_binary=True),
         [get_val(["power_opc"], is_binary=True), get_val(["power_smps"], is_binary=True)],
         [get_val(["power_cpc"], is_binary=True), get_val(["power_aps"], is_binary=True)]
     )
