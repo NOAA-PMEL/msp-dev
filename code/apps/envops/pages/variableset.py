@@ -319,7 +319,15 @@ def update_table_1d(buffer_data, col_defs):
         data = {}
         for col in col_defs:
             name = col["field"]
-            data[name] = variables.get(name, {}).get("data", "")
+            raw_val = variables.get(name, {}).get("data", "")
+            
+            # THE FIX: If the value is a list (2D data), convert it to a string 
+            # so the datatable can render it without crashing
+            if isinstance(raw_val, list):
+                data[name] = json.dumps(raw_val)
+            else:
+                data[name] = raw_val
+                
         return {"add": [data], "addIndex": 0}
     except Exception:
         raise PreventUpdate
@@ -408,29 +416,40 @@ def update_graph_1d(buffer_data, selected_values):
 )
 def select_graph_2d(z_axis, vs_meta, varset_def, graph_id):
     if not z_axis: raise PreventUpdate
-
     try:
-        y_axis = graph_id["index"]
+        dim_y = graph_id["index"]
+        real_y_axis = dim_y
+        y_is_coord = False
+        y_static = []
+        
+        if varset_def:
+            for v_name, v_def in varset_def.get("variables", {}).items():
+                if v_def.get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+                    if dim_y in v_def.get("shape", []) or v_name == dim_y:
+                        real_y_axis = v_name
+                        y_is_coord = True
+                        y_static = v_def.get("data", [])
+                        break
+
+        use_log = ("diameter" in real_y_axis.lower() or "dp" in real_y_axis.lower())
         x, y, orig_z = [], [], []
         
-        y_is_coord = False
-        if y_axis in varset_def.get("variables", {}) and varset_def["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-            y_is_coord = True
-            y = varset_def["variables"][y_axis].get("data", [])
-
         results = get_variableset_data(vs_meta["variableset_id"])
         if not results: raise PreventUpdate
-
+        
         for doc in results:
             try:
                 x.append(doc["variables"]["time"]["data"])
                 if not y_is_coord:
-                    y.append(doc["variables"][y_axis]["data"])
+                    y.append(doc["variables"][real_y_axis]["data"])
                 orig_z.append(doc["variables"][z_axis]["data"])
             except KeyError: continue
-
-        if len(y) > 0 and isinstance(y[-1], list): y = y[-1]
-
+            
+        if y_is_coord:
+            y = y_static
+        elif len(y) > 0 and isinstance(y[-1], list): 
+            y = y[-1]
+            
         z = []
         for yi in range(len(y)):
             new_z = []
@@ -438,15 +457,17 @@ def select_graph_2d(z_axis, vs_meta, varset_def, graph_id):
                 try: new_z.append(orig_z[xi][yi])
                 except IndexError: new_z.append(None)
             z.append(new_z)
-
-        y_units = varset_def.get("variables", {}).get(y_axis, {}).get("attributes", {}).get("units", {}).get("data", "")
+            
+        y_units = varset_def.get("variables", {}).get(real_y_axis, {}).get("attributes", {}).get("units", {}).get("data", "")
         if y_units: y_units = f"({y_units})"
-
+        
         heatmap = go.Figure(
             data=go.Heatmap(x=x, y=y, z=z, type="heatmap", colorscale="Rainbow"),
-            layout={"xaxis": {"title": "Time"}, "yaxis": {"title": f"{y_axis} {y_units}".strip()}},
+            layout={"xaxis": {"title": "Time"}, "yaxis": {"title": f"{real_y_axis} {y_units}".strip()}},
         )
-        if y_axis == "diameter": heatmap.update_yaxes(type="log")
+        if use_log: 
+            heatmap.update_yaxes(type="log")
+            heatmap.update_layout(coloraxis=dict(cmax=None, cmin=None))
         return heatmap
     except Exception as e:
         L.error(f"select_graph_2d error: {e}")
@@ -465,48 +486,56 @@ def select_graph_2d(z_axis, vs_meta, varset_def, graph_id):
 )
 def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, graph_ids):
     if not buffer_data: raise PreventUpdate
-
     heatmaps = []
     for z_axis, graph_id, current_fig in zip(z_axis_list, graph_ids, current_figs):
         if not current_fig or not z_axis:
             heatmaps.append(dash.no_update)
             continue
-
-        y_axis = graph_id["index"]
-        variables = buffer_data.get("variables", {})
+            
+        dim_y = graph_id["index"]
+        real_y_axis = dim_y
+        y_is_coord = False
+        y_static = []
         
+        if varset_def:
+            for v_name, v_def in varset_def.get("variables", {}).items():
+                if v_def.get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
+                    if dim_y in v_def.get("shape", []) or v_name == dim_y:
+                        real_y_axis = v_name
+                        y_is_coord = True
+                        y_static = v_def.get("data", [])
+                        break
+                        
+        variables = buffer_data.get("variables", {})
+                 
         if "time" not in variables or z_axis not in variables:
             heatmaps.append(dash.no_update)
             continue
-
+            
         x = variables["time"]["data"]
         if not isinstance(x, list): x = [x]
-
+        
         if len(current_fig["data"]) > 0 and x[0] in current_fig["data"][0].get("x", []):
             heatmaps.append(dash.no_update)
             continue
-
+            
         heatmap_patch = Patch()
         for nx in x: heatmap_patch["data"][0]["x"].append(nx)
-
-        y_is_coord = False
-        if y_axis in varset_def.get("variables", {}) and varset_def["variables"][y_axis].get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
-            y_is_coord = True
-
+        
         y = current_fig["data"][0].get("y", [])
         if len(y) == 0:
-            if y_is_coord: y = varset_def["variables"][y_axis].get("data", [])
-            else: y = variables[y_axis]["data"]
-
-        orig_z = variables[z_axis]["data"]
-        if not isinstance(orig_z, list): orig_z = [orig_z] 
-
+            if y_is_coord: y = y_static
+            else: y = variables.get(real_y_axis, {}).get("data", [])
+            
+        orig_z = variables.get(z_axis, {}).get("data", [])
+        if not isinstance(orig_z, list): orig_z = [orig_z]
+        
         for yi, yval in enumerate(y):
             try: heatmap_patch["data"][0]["z"][yi].append(orig_z[yi])
             except IndexError: pass
-
+            
         heatmaps.append(heatmap_patch)
-
+        
     if all(h == dash.no_update for h in heatmaps): raise PreventUpdate
     return heatmaps
 
