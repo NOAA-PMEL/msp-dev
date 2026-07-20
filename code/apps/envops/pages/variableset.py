@@ -419,16 +419,13 @@ def select_graph_2d(z_axis, vs_meta, varset_def, graph_id):
     try:
         dim_y = graph_id["index"]
         real_y_axis = dim_y
-        y_is_coord = False
-        y_static = []
         
+        # Resolve the true alias for the coordinate axis (e.g. diameter -> smps_diameter)
         if varset_def:
             for v_name, v_def in varset_def.get("variables", {}).items():
                 if v_def.get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                     if dim_y in v_def.get("shape", []) or v_name == dim_y:
                         real_y_axis = v_name
-                        y_is_coord = True
-                        y_static = v_def.get("data", [])
                         break
 
         use_log = ("diameter" in real_y_axis.lower() or "dp" in real_y_axis.lower())
@@ -440,14 +437,11 @@ def select_graph_2d(z_axis, vs_meta, varset_def, graph_id):
         for doc in results:
             try:
                 x.append(doc["variables"]["time"]["data"])
-                if not y_is_coord:
-                    y.append(doc["variables"][real_y_axis]["data"])
+                y.append(doc["variables"][real_y_axis]["data"])
                 orig_z.append(doc["variables"][z_axis]["data"])
             except KeyError: continue
             
-        if y_is_coord:
-            y = y_static
-        elif len(y) > 0 and isinstance(y[-1], list): 
+        if len(y) > 0 and isinstance(y[-1], list): 
             y = y[-1]
             
         z = []
@@ -494,16 +488,13 @@ def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, 
             
         dim_y = graph_id["index"]
         real_y_axis = dim_y
-        y_is_coord = False
-        y_static = []
         
+        # Resolve the true alias for the coordinate axis
         if varset_def:
             for v_name, v_def in varset_def.get("variables", {}).items():
                 if v_def.get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                     if dim_y in v_def.get("shape", []) or v_name == dim_y:
                         real_y_axis = v_name
-                        y_is_coord = True
-                        y_static = v_def.get("data", [])
                         break
                         
         variables = buffer_data.get("variables", {})
@@ -524,8 +515,7 @@ def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, 
         
         y = current_fig["data"][0].get("y", [])
         if len(y) == 0:
-            if y_is_coord: y = y_static
-            else: y = variables.get(real_y_axis, {}).get("data", [])
+            y = variables.get(real_y_axis, {}).get("data", [])
             
         orig_z = variables.get(z_axis, {}).get("data", [])
         if not isinstance(orig_z, list): orig_z = [orig_z]
