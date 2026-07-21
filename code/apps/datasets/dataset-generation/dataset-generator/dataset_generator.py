@@ -997,6 +997,7 @@ class DatasetGenerator:
         """
         import asyncio
         import json
+        from datetime import timedelta
         dataset_id = config.get("id", "unknown_dataset")
         freq_sec = config.get("timebase", {}).get("record_frequency_sec", 60)
         
@@ -1124,28 +1125,45 @@ class DatasetGenerator:
             bulk_telemetry_cache = {}
             for s_id, source_meta in telemetry_sources_to_fetch.items():
                 endpoint = f"/{source_meta['source_type']}/data/get/"
-                params = {
-                    f"{source_meta['source_type']}_id": s_id, 
-                    "start_time": start_time, 
-                    "end_time": end_time,
-                    "force_archive": True 
-                }
                 
                 L.info(f"Bulk-retrieving historical telemetry stream from: {s_id}", extra={"endpoint": endpoint})
                 
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        resp = await self.client.get(endpoint, params=params, headers={"Connection": "close"}, timeout=180.0)
-                        resp.raise_for_status()
-                        records = resp.json().get("results", [])
-                        bulk_telemetry_cache[s_id] = records
-                        break
-                    except Exception as e:
-                        if attempt == max_retries - 1:
-                            raise e
-                        L.warning(f"Fetch failed for {s_id} on attempt {attempt+1}. Retrying...", extra={"error": str(e)})
-                        await asyncio.sleep(2)
+                start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+                chunk_duration = timedelta(hours=4)
+                
+                all_records = []
+                current_start = start_dt
+                
+                while current_start < end_dt:
+                    current_end = current_start + chunk_duration
+                    if current_end > end_dt:
+                        current_end = end_dt
+                        
+                    params = {
+                        f"{source_meta['source_type']}_id": s_id, 
+                        "start_time": current_start.isoformat().replace("+00:00", "Z"), 
+                        "end_time": current_end.isoformat().replace("+00:00", "Z"),
+                        "force_archive": True 
+                    }
+                    
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            resp = await self.client.get(endpoint, params=params, headers={"Connection": "close"}, timeout=180.0)
+                            resp.raise_for_status()
+                            records = resp.json().get("results", [])
+                            all_records.extend(records)
+                            break
+                        except Exception as e:
+                            if attempt == max_retries - 1:
+                                raise e
+                            L.warning(f"Fetch failed for {s_id} chunk {current_start} on attempt {attempt+1}. Retrying...", extra={"error": str(e)})
+                            await asyncio.sleep(2)
+                            
+                    current_start = current_end
+
+                bulk_telemetry_cache[s_id] = all_records
 
             # -----------------------------------------------------------------
             # PASS 3: Fetch and Cache VariableSet Schema Definitions ONCE
@@ -1496,14 +1514,16 @@ class DatasetGenerator:
                     aligned_ds[out_name] = da
 
             # -----------------------------------------------------------------
-            # PASS 5: RESOLVE TIME-BOUND PROJECT ALLOCATIONS
+            # PASS 5: RESOLVE TIME-BOUND PROJECT ALLOCATIONS & GLOBAL ATTRIBUTES
             # -----------------------------------------------------------------
             primary_platform = None
             for vmap in vs_to_hardware_map.values():
-                p_ref = vmap.get("attributes", {}).get("platform")
-                if isinstance(p_ref, dict): p_ref = p_ref.get("data")
+                # Extract safely from the standard datastore structure
+                p_ref = vmap.get("variablemap_type_id")
                 if not p_ref:
-                    p_ref = vmap.get("variablemap_type_id")
+                    p_ref = vmap.get("data", {}).get("attributes", {}).get("platform")
+                if isinstance(p_ref, dict): 
+                    p_ref = p_ref.get("data")
                 if p_ref:
                     primary_platform = p_ref
                     break
@@ -1543,7 +1563,11 @@ class DatasetGenerator:
                 except Exception as e:
                     L.error("Failed to resolve ProjectAllocation", extra={"reason": str(e)})
 
-            # Inject the resolved project context into the global attributes
+            # 1. Inject custom extended global attributes from the dataset configuration
+            for attr_key, attr_val in config.get("attributes", {}).items():
+                aligned_ds.attrs[attr_key] = attr_val
+
+            # 2. Inject standard dynamically resolved context
             aligned_ds.attrs["title"] = f"Dataset: {dataset_id}"
             aligned_ds.attrs["project"] = resolved_project_name
             aligned_ds.attrs["project_ref"] = resolved_project_ref
