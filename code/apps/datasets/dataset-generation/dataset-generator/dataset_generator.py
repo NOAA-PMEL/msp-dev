@@ -1094,9 +1094,10 @@ class DatasetGenerator:
                                     hw_defs_cache[hw_cache_key] = {}
                                     
                             hw_def = hw_defs_cache[hw_cache_key]
-                            hw_vars = hw_def.get("variables", {})
+                            hw_vars = hw_def.get("data", {}).get("variables", {})
+                            if not hw_vars:
+                                hw_vars = hw_def.get("variables", {})
                             
-                            # Bind Varmap string to the exact Hardware Definition case (e.g., intn -> intN)
                             if true_raw_var_name not in hw_vars:
                                 for k in hw_vars.keys():
                                     if k.lower() == true_raw_var_name.lower():
@@ -1109,6 +1110,7 @@ class DatasetGenerator:
                             if hw_var_type == "coordinate":
                                 is_coordinate = True
                                 static_data = hw_var.get("data", [])
+                                L.debug(f"DEBUG PASS 2: Discovered coordinate '{true_raw_var_name}' from hardware. Data length: {len(static_data)}")
                                 
                         var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
                         
@@ -1257,45 +1259,50 @@ class DatasetGenerator:
                     raw_dims = native_vars.get(primary_vs_var, {}).get("shape", [out_name])
                     dims = [out_name if d == "diameter" else d for d in raw_dims]
                     
-                    da_coord = xr.DataArray(data=static_data, dims=dims)
+                    L.debug(f"DEBUG PASS 4 [COORD]: Compiling Coordinate '{out_name}'. Dims={dims}. static_data length={len(static_data)}")
                     
-                    if "time" in da_coord.dims and not pd.Index(da_coord.time.values).is_unique:
-                        da_attrs = da_coord.attrs
-                        da_coord = da_coord.groupby("time").mean(dim="time")
-                        da_coord.attrs = da_attrs
+                    try:
+                        da_coord = xr.DataArray(data=static_data, dims=dims)
+                        
+                        if "time" in da_coord.dims and not pd.Index(da_coord.time.values).is_unique:
+                            da_attrs = da_coord.attrs
+                            da_coord = da_coord.groupby("time").mean(dim="time")
+                            da_coord.attrs = da_attrs
 
-                    for attr_key, attr_val in vs_attrs.items():
-                        da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                        for attr_key, attr_val in vs_attrs.items():
+                            da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
 
-                    native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
-                    for attr_key, attr_val in native_attrs.items(): 
-                        da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-                    
-                    native_units = da_coord.attrs.get("native_units") or da_coord.attrs.get("units")
-                    target_units_raw = var.get("attributes", {}).get("units")
-                    target_units = target_units_raw.get("data") if isinstance(target_units_raw, dict) else target_units_raw
-                    
-                    for attr_key, attr_val in var.get("attributes", {}).items(): 
-                        da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-                    
-                    if native_units and target_units and (native_units != target_units):
-                        try:
-                            norm_native = self.normalize_unit_string(native_units)
-                            norm_target = self.normalize_unit_string(target_units)
-                            data_quantity = ureg.Quantity(da_coord.values, norm_native)
-                            da_coord.values = data_quantity.to(norm_target).magnitude
-                            da_coord.attrs["units"] = target_units
-                        except Exception as e:
-                            L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
-                            da_coord.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
+                        native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
+                        for attr_key, attr_val in native_attrs.items(): 
+                            da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                        
+                        native_units = da_coord.attrs.get("native_units") or da_coord.attrs.get("units")
+                        target_units_raw = var.get("attributes", {}).get("units")
+                        target_units = target_units_raw.get("data") if isinstance(target_units_raw, dict) else target_units_raw
+                        
+                        for attr_key, attr_val in var.get("attributes", {}).items(): 
+                            da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                        
+                        if native_units and target_units and (native_units != target_units):
+                            try:
+                                norm_native = self.normalize_unit_string(native_units)
+                                norm_target = self.normalize_unit_string(target_units)
+                                data_quantity = ureg.Quantity(da_coord.values, norm_native)
+                                da_coord.values = data_quantity.to(norm_target).magnitude
+                                da_coord.attrs["units"] = target_units
+                            except Exception as e:
+                                L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
+                                da_coord.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
 
-                    # Drilldown Lineage Mapping
-                    da_coord.attrs["instrument_source"] = trace.get("source_id", "Unknown")
-                    da_coord.attrs["variablemap_source"] = trace.get("vmap_def_id", "Unknown")
-                    da_coord.attrs["raw_variable_name"] = trace.get("raw_variable_name", "Unknown")
-                    
-                    ds_coord = xr.Dataset(coords={out_name: da_coord})
-                    data_arrays.append(ds_coord)
+                        da_coord.attrs["instrument_source"] = trace.get("source_id", "Unknown")
+                        da_coord.attrs["variablemap_source"] = trace.get("vmap_def_id", "Unknown")
+                        da_coord.attrs["raw_variable_name"] = trace.get("raw_variable_name", "Unknown")
+                        
+                        ds_coord = xr.Dataset(coords={out_name: da_coord})
+                        data_arrays.append(ds_coord)
+                    except Exception as coord_err:
+                        L.error(f"DEBUG PASS 4 [COORD ERROR]: Failed to construct DataArray for {out_name}. Error: {coord_err}")
+
                     continue
 
                 input_arrays = {}
@@ -1430,60 +1437,66 @@ class DatasetGenerator:
                         
                         if static_data and len(static_data) > 0:
                             coords[dim] = static_data
+                            
+                L.debug(f"DEBUG PASS 4 [VAR]: Compiling DataArray '{out_name}'. Dims expected: {dims}. final_values shape: {getattr(final_values, 'shape', len(final_values))}.")
+                L.debug(f"DEBUG PASS 4 [VAR]: Extracted Coords keys: {list(coords.keys())}. Values lengths: {[len(c) for c in coords.values()]}")
                 
-                da = xr.DataArray(data=final_values, coords=coords, dims=dims, name=out_name)
-                
-                if "time" in da.dims and not pd.Index(da.time.values).is_unique:
-                    da_name = da.name
-                    da_attrs = da.attrs
-                    da = da.groupby("time").mean(dim="time")
-                    da.name = da_name
-                    da.attrs = da_attrs
-                
-                if "coordinates" in var:
-                    for custom_dim, custom_grid in var["coordinates"].items():
-                        if custom_dim in da.dims:
-                            L.info(f"Rebinning {out_name} along {custom_dim}")
-                            da = da.interp(
-                                {custom_dim: custom_grid}, 
-                                method="linear", 
-                                kwargs={"fill_value": np.nan}
-                            )
-
-                for attr_key, attr_val in vs_attrs.items():
-                    da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-
-                native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
-                for attr_key, attr_val in native_attrs.items(): 
-                    da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-                
-                native_units = da.attrs.get("native_units") or da.attrs.get("units")
-                
-                target_units = None
-                for attr_key, attr_val in var.get("attributes", {}).items():
-                    unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-                    if attr_key == "units": 
-                        target_units = unpacked_val
-                    da.attrs[attr_key] = unpacked_val
+                try:
+                    da = xr.DataArray(data=final_values, coords=coords, dims=dims, name=out_name)
                     
-                if native_units and target_units and (native_units != target_units):
-                    try:
-                        norm_native = self.normalize_unit_string(native_units)
-                        norm_target = self.normalize_unit_string(target_units)
+                    if "time" in da.dims and not pd.Index(da.time.values).is_unique:
+                        da_name = da.name
+                        da_attrs = da.attrs
+                        da = da.groupby("time").mean(dim="time")
+                        da.name = da_name
+                        da.attrs = da_attrs
+                    
+                    if "coordinates" in var:
+                        for custom_dim, custom_grid in var["coordinates"].items():
+                            if custom_dim in da.dims:
+                                L.info(f"Rebinning {out_name} along {custom_dim}")
+                                da = da.interp(
+                                    {custom_dim: custom_grid}, 
+                                    method="linear", 
+                                    kwargs={"fill_value": np.nan}
+                                )
+
+                    for attr_key, attr_val in vs_attrs.items():
+                        da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+
+                    native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
+                    for attr_key, attr_val in native_attrs.items(): 
+                        da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                    
+                    native_units = da.attrs.get("native_units") or da.attrs.get("units")
+                    
+                    target_units = None
+                    for attr_key, attr_val in var.get("attributes", {}).items():
+                        unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                        if attr_key == "units": 
+                            target_units = unpacked_val
+                        da.attrs[attr_key] = unpacked_val
                         
-                        data_quantity = ureg.Quantity(da.values, norm_native)
-                        da.values = data_quantity.to(norm_target).magnitude
-                        da.attrs["units"] = target_units
-                    except Exception as e:
-                        L.error(f"Unit conversion failed for {out_name}: {e}")
-                        da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
+                    if native_units and target_units and (native_units != target_units):
+                        try:
+                            norm_native = self.normalize_unit_string(native_units)
+                            norm_target = self.normalize_unit_string(target_units)
+                            
+                            data_quantity = ureg.Quantity(da.values, norm_native)
+                            da.values = data_quantity.to(norm_target).magnitude
+                            da.attrs["units"] = target_units
+                        except Exception as e:
+                            L.error(f"Unit conversion failed for {out_name}: {e}")
+                            da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
 
-                if unique_sources: da.attrs["sources"] = ", ".join(sorted(list(unique_sources)))
-                da.attrs["instrument_source"] = trace.get("source_id", "Unknown")
-                da.attrs["variablemap_source"] = trace.get("vmap_def_id", "Unknown")
-                da.attrs["raw_variable_name"] = trace.get("raw_variable_name", "Unknown")
+                    if unique_sources: da.attrs["sources"] = ", ".join(sorted(list(unique_sources)))
+                    da.attrs["instrument_source"] = trace.get("source_id", "Unknown")
+                    da.attrs["variablemap_source"] = trace.get("vmap_def_id", "Unknown")
+                    da.attrs["raw_variable_name"] = trace.get("raw_variable_name", "Unknown")
 
-                data_arrays.append(da)
+                    data_arrays.append(da)
+                except Exception as array_err:
+                    L.error(f"DEBUG PASS 4 [VAR ERROR]: Failed to construct DataArray for {out_name}. Mismatch between coords and final_values shape. Error: {array_err}")
 
             if not data_arrays:
                 L.warning("No data extracted for any target variables. Building blank schema.", extra={"dataset_id": dataset_id})
@@ -1618,6 +1631,17 @@ class DatasetGenerator:
             for attr_key, attr_val in config.get("attributes", {}).items():
                 unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                 aligned_ds.attrs[attr_key] = unpacked_val
+
+            primary_platform = None
+            for vmap in vs_to_hardware_map.values():
+                p_ref = vmap.get("variablemap_type_id")
+                if not p_ref:
+                    p_ref = vmap.get("data", {}).get("attributes", {}).get("platform")
+                if isinstance(p_ref, dict): 
+                    p_ref = p_ref.get("data")
+                if p_ref:
+                    primary_platform = p_ref
+                    break
 
             resolved_project = "Unknown Project"
             resolved_project_ref = "Unallocated"
