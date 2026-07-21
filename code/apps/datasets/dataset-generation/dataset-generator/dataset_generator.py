@@ -1145,7 +1145,7 @@ class DatasetGenerator:
                 
                 start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
                 end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-                chunk_duration = timedelta(hours=4)
+                chunk_duration = timedelta(hours=1)
                 
                 all_records = []
                 current_start = start_dt
@@ -1308,8 +1308,6 @@ class DatasetGenerator:
                 input_arrays = {}
                 unique_sources = set()
                 for param_name, input_source in fetch_list.items():
-                    if records and len(records) > 0:
-                        L.warning(f"DEBUG PASS 4 RECS [{out_name}]: raw_key='{raw_key}', sample_record_keys={list(records[0].get('variables', {}).keys())}")
                     vs_id = input_source.get("variableset_id")
                     vs_var = input_source.get("variable_name")
                     
@@ -1322,6 +1320,9 @@ class DatasetGenerator:
                     raw_key = trace["raw_variable_name"]
                     v_type = var.get("type", "float")
                     
+                    if records and len(records) > 0:
+                        L.warning(f"DEBUG PASS 4 RECS [{out_name}]: raw_key='{raw_key}', sample_record_keys={list(records[0].get('variables', {}).keys())}")
+
                     for r in records:
                         r_vars = r.get("variables", {})
                         
