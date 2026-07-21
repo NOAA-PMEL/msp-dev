@@ -74,7 +74,7 @@ class ErddapClient:
     # ---------------------------------------------------------
 
     async def device_data_get(self, request: DataRequest, definition: dict = None) -> dict:
-        """Fetches historical device telemetry natively from ERDDAP using definition schemas for dimensions."""
+        """Fetches historical device telemetry natively from ERDDAP strictly using device definitions."""
         make = request.make
         model = request.model
         sn = request.serial_number
@@ -124,17 +124,17 @@ class ErddapClient:
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
 
-            # Derive shape_dims strictly from definition schema
+            # Derive shape_dims strictly from device definition schema (no prefix guessing)
             shape_dims = ["time"]
             if "variables" in definition:
                 for v_info in definition["variables"].values():
                     if isinstance(v_info, dict) and "shape" in v_info:
                         for dim in v_info["shape"]:
-                            if dim in all_cols and dim not in shape_dims:
+                            if dim != "time" and dim in all_cols and dim not in shape_dims:
                                 shape_dims.append(dim)
             elif "dimensions" in definition:
                 for dim in definition["dimensions"].keys():
-                    if dim in all_cols and dim not in shape_dims:
+                    if dim != "time" and dim in all_cols and dim not in shape_dims:
                         shape_dims.append(dim)
 
             var_cols = [c for c in all_cols if c not in sys_cols and c not in shape_dims and not c.endswith("_dim")]
@@ -215,7 +215,7 @@ class ErddapClient:
         return {"results": formatted_results}
 
     async def controller_data_get(self, request: ControllerDataRequest, definition: dict = None) -> dict:
-        """Fetches historical controller telemetry natively from ERDDAP using definition schemas for dimensions."""
+        """Fetches historical controller telemetry natively from ERDDAP strictly using controller definitions."""
         make = request.make
         model = request.model
         sn = request.serial_number
@@ -261,17 +261,18 @@ class ErddapClient:
             
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
-            
+
+            # Derive shape_dims strictly from definition schema (no prefix guessing)
             shape_dims = ["time"]
             if "variables" in definition:
                 for v_info in definition["variables"].values():
                     if isinstance(v_info, dict) and "shape" in v_info:
                         for dim in v_info["shape"]:
-                            if dim in all_cols and dim not in shape_dims:
+                            if dim != "time" and dim in all_cols and dim not in shape_dims:
                                 shape_dims.append(dim)
             elif "dimensions" in definition:
                 for dim in definition["dimensions"].keys():
-                    if dim in all_cols and dim not in shape_dims:
+                    if dim != "time" and dim in all_cols and dim not in shape_dims:
                         shape_dims.append(dim)
 
             var_cols = [c for c in all_cols if c not in sys_cols and c not in shape_dims and not c.endswith("_dim")]

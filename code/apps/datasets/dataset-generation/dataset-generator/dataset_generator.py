@@ -1022,7 +1022,7 @@ class DatasetGenerator:
             return {}
 
         def _find_var_def(vars_dict, target_name):
-            """Flexible alias finder matching exact names, lowercase, or stripped prefixes."""
+            """Strict finder matching exact names or lowercase directly against definitions."""
             if not vars_dict or not isinstance(vars_dict, dict):
                 return None, None
             if target_name in vars_dict:
@@ -1031,13 +1031,6 @@ class DatasetGenerator:
             for k, v in vars_dict.items():
                 if k.lower() == target_lower:
                     return k, v
-            for k, v in vars_dict.items():
-                k_lower = k.lower()
-                for prefix in ["opc_", "smps_", "aps_", "nav_", "cpc_"]:
-                    if k_lower.startswith(prefix) and k_lower[len(prefix):] == target_lower:
-                        return k, v
-                    if target_lower.startswith(prefix) and target_lower[len(prefix):] == k_lower:
-                        return k, v
             return None, None
 
         try:
@@ -1264,6 +1257,7 @@ class DatasetGenerator:
             # -----------------------------------------------------------------
             vs_dim_map = {}
             compiled_coords = {}
+            saved_var_attrs = {}  # Registry to guarantee zero-loss variable attribute retention
             
             for var in config.get("variables", []):
                 if "static_value" in var: continue
@@ -1274,6 +1268,8 @@ class DatasetGenerator:
                 vs_id = primary_source.get("variableset_id")
                 vs_var = primary_source.get("variable_name")
                 trace = variable_tracing_registry.get((vs_id, vs_var), {})
+                
+                # Maps natively discovered hardware dimensions to defined dataset coordinates
                 if trace.get("is_coordinate"):
                     raw_name = trace.get("raw_variable_name", vs_var)
                     vs_dim_map[(vs_id, raw_name)] = out_name
@@ -1319,9 +1315,7 @@ class DatasetGenerator:
                         da_coord = xr.DataArray(data=static_data, dims=dims)
                         
                         if "time" in da_coord.dims and not pd.Index(da_coord.time.values).is_unique:
-                            da_attrs = da_coord.attrs
-                            da_coord = da_coord.groupby("time").mean(dim="time")
-                            da_coord.attrs = da_attrs
+                            da_coord = da_coord.groupby("time").mean(dim="time", keep_attrs=True)
 
                         for attr_key, attr_val in vs_attrs.items():
                             da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
@@ -1353,6 +1347,7 @@ class DatasetGenerator:
                         da_coord.attrs["variablemap_source"] = trace.get("vmap_def_id", "Unknown")
                         da_coord.attrs["raw_variable_name"] = trace.get("raw_variable_name", "Unknown")
                         
+                        saved_var_attrs[out_name] = da_coord.attrs.copy()
                         ds_coord = xr.Dataset(coords={out_name: da_coord})
                         data_arrays.append(ds_coord)
                     except Exception as coord_err:
@@ -1384,20 +1379,15 @@ class DatasetGenerator:
                                 if k.lower() == raw_key.lower():
                                     target_key = k
                                     break
-                            if target_key not in r_vars:
-                                raw_lower = raw_key.lower()
-                                for prefix in ["opc_", "smps_", "aps_", "nav_", "cpc_"]:
-                                    if raw_lower.startswith(prefix):
-                                        stripped = raw_lower[len(prefix):]
-                                        for k in r_vars.keys():
-                                            if k.lower() == stripped:
-                                                target_key = k
-                                                break
-                                    if target_key in r_vars:
-                                        break
 
                         if "time" in r_vars and target_key in r_vars:
                             val = r_vars[target_key].get("data")
+                            
+                            # CHECKPOINT 1: Log raw incoming telemetry structure on first record
+                            if len(values) == 0:
+                                val_preview = str(val)[:200] if val is not None else "None"
+                                L.info(f"CHECKPOINT 1 [RAW TELEMETRY INGEST] {out_name} -> target_key='{target_key}': type={type(val).__name__}, preview={val_preview}")
+
                             if val is None or val == "":
                                 val = np.nan
                             else:
@@ -1517,21 +1507,30 @@ class DatasetGenerator:
                     except ValueError:
                         pass
 
-                L.info(f"DEBUG DATA {out_name} PRE-DA: dtype={getattr(final_values, 'dtype', 'unknown')}, shape={getattr(final_values, 'shape', len(final_values))}")
-                if len(final_values) > 0:
-                    L.info(f"DEBUG DATA {out_name} PRE-DA SAMPLE: {final_values[0][:5] if isinstance(final_values[0], (list, np.ndarray)) else final_values[:5]}")
-                L.debug(f"DEBUG PASS 4 [VAR]: Extracted Coords keys: {list(coords.keys())}. Values lengths: {[len(c) for c in coords.values()]}")
-                
+                # CHECKPOINT 2: Comprehensive matrix content inspection before DataArray construction
+                if isinstance(final_values, np.ndarray):
+                    v_size = final_values.size
+                    v_non_nan = np.count_nonzero(~np.isnan(final_values))
+                    v_non_zero = np.count_nonzero((~np.isnan(final_values)) & (final_values != 0))
+                    
+                    active_slice = []
+                    if final_values.ndim > 1:
+                        valid_row_idxs = np.where(~np.isnan(final_values).all(axis=1))[0]
+                        if len(valid_row_idxs) > 0:
+                            target_row = final_values[valid_row_idxs[0]]
+                            nz = target_row[(~np.isnan(target_row)) & (target_row != 0)]
+                            active_slice = nz[:10].tolist() if len(nz) > 0 else target_row[:10].tolist()
+                    else:
+                        nz = final_values[(~np.isnan(final_values)) & (final_values != 0)]
+                        active_slice = nz[:10].tolist() if len(nz) > 0 else final_values[:10].tolist()
+
+                    L.info(f"CHECKPOINT 2 [PRE-XARRAY MATRIX] {out_name}: shape={final_values.shape}, non_nan={v_non_nan}/{v_size}, non_zero={v_non_zero}, active_sample={active_slice}")
+
                 try:
                     da = xr.DataArray(data=final_values, coords=coords, dims=dims, name=out_name)
-                    L.info(f"DEBUG DATA {out_name} XARRAY CREATED:\n{da}")
                     
                     if "time" in da.dims and not pd.Index(da.time.values).is_unique:
-                        da_name = da.name
-                        da_attrs = da.attrs
-                        da = da.groupby("time").mean(dim="time")
-                        da.name = da_name
-                        da.attrs = da_attrs
+                        da = da.groupby("time").mean(dim="time", keep_attrs=True)
                     
                     if "coordinates" in var:
                         for custom_dim, custom_grid in var["coordinates"].items():
@@ -1577,6 +1576,7 @@ class DatasetGenerator:
                     da.attrs["variablemap_source"] = trace.get("vmap_def_id", "Unknown")
                     da.attrs["raw_variable_name"] = trace.get("raw_variable_name", "Unknown")
 
+                    saved_var_attrs[out_name] = da.attrs.copy()
                     data_arrays.append(da)
                 except Exception as array_err:
                     L.error(f"DEBUG PASS 4 [VAR ERROR]: Failed to construct DataArray for {out_name}. Mismatch between coords and final_values shape. Error: {array_err}")
@@ -1586,19 +1586,17 @@ class DatasetGenerator:
                 ds = xr.Dataset()
             else:
                 ds = xr.merge(data_arrays, join='outer', combine_attrs='drop')
-                L.info(f"DEBUG DATA MERGED DATASET:\n{ds}")
             
             static_vars = {k: v for k, v in ds.variables.items() if "time" not in v.dims}
             
             if "time" in ds.dims:
-                ds = ds.groupby("time").mean(dim="time")
+                ds = ds.groupby("time").mean(dim="time", keep_attrs=True)
             
             half_base = freq_sec / 2.0
             if "time" in ds.dims and len(ds.time) > 0:
-                aligned_ds = ds.resample(time=f"{freq_sec}s", closed="left", label="right", offset=f"{half_base}s").mean(dim="time")
+                aligned_ds = ds.resample(time=f"{freq_sec}s", closed="left", label="right", offset=f"{half_base}s").mean(dim="time", keep_attrs=True)
                 if len(aligned_ds.time) > 0:
                     aligned_ds.coords["time"] = aligned_ds.time - pd.Timedelta(seconds=half_base)
-                L.info(f"DEBUG DATA RESAMPLED DATASET:\n{aligned_ds}")
             else:
                 aligned_ds = ds
 
@@ -1680,6 +1678,7 @@ class DatasetGenerator:
                         unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                         empty_da.attrs[attr_key] = unpacked_val
                         
+                    saved_var_attrs[out_name] = empty_da.attrs.copy()
                     aligned_ds[out_name] = empty_da
 
             for var_name in list(aligned_ds.data_vars.keys()):
@@ -1691,6 +1690,7 @@ class DatasetGenerator:
                 qc_da.attrs["standard_name"] = "quality_flag"
                 qc_da.attrs["flag_masks"] = [1, 2, 4, 8]
                 qc_da.attrs["flag_meanings"] = "value_less_than_valid_min value_greater_than_valid_max sensor_offline flatline_detected"
+                saved_var_attrs[f"qc_{var_name}"] = qc_da.attrs.copy()
                 aligned_ds[f"qc_{var_name}"] = qc_da
 
             for var in config.get("variables", []):
@@ -1698,7 +1698,13 @@ class DatasetGenerator:
                     out_name = var["name"]
                     da = xr.DataArray(data=np.full(len(master_time), var["static_value"]), coords={"time": master_time}, dims=["time"])
                     for attr_key, attr_val in var.get("attributes", {}).items(): da.attrs[attr_key] = attr_val
+                    saved_var_attrs[out_name] = da.attrs.copy()
                     aligned_ds[out_name] = da
+
+            # STRICT ATTRIBUTE RESTORATION: Re-inject saved variable attributes back into aligned_ds
+            for var_name in aligned_ds.variables:
+                if var_name in saved_var_attrs:
+                    aligned_ds[var_name].attrs.update(saved_var_attrs[var_name])
 
             # -----------------------------------------------------------------
             # PASS 5: Resolve GitOps Context & Global Metadata
@@ -1826,6 +1832,15 @@ class DatasetGenerator:
                 if attr_key not in excluded_global_attrs:
                     unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                     aligned_ds.attrs[attr_key] = unpacked_val
+
+            # CHECKPOINT 3: Validate all variables on final Dataset right before NetCDF serialization
+            for vname in aligned_ds.data_vars:
+                arr_val = aligned_ds[vname].values
+                if isinstance(arr_val, np.ndarray):
+                    v_size = arr_val.size
+                    v_non_nan = np.count_nonzero(~np.isnan(arr_val))
+                    v_non_zero = np.count_nonzero((~np.isnan(arr_val)) & (arr_val != 0))
+                    L.info(f"CHECKPOINT 3 [FINAL NETCDF VARIABLE] {vname}: shape={arr_val.shape}, non_nan={v_non_nan}/{v_size}, non_zero={v_non_zero}")
 
             safe_start = start_time.replace(":", "").replace("-", "")
             filename = f"{dataset_id}.{safe_start}.nc"
