@@ -993,7 +993,7 @@ class DatasetGenerator:
     async def generate_dataset(self, config: dict, start_time: str, end_time: str):
         """
         Highly optimized pipeline that resolves mappings, fetches telemetry, 
-        and extracts schemas exactly once per unique resource.
+        and extracts schemas, gracefully populating available streams and injecting NaN placeholders for missing sources.
         """
         import asyncio
         import json
@@ -1060,9 +1060,13 @@ class DatasetGenerator:
                 vmap_name = vs_id.split("::")[0]
                 L.debug(f"Fetching variablemap mapping definition for: {vmap_name}")
 
-                vmap_resp = await self.client.get("/variablemap-definition/registry/get/", params={"variablemap": vmap_name})
-                vmap_resp.raise_for_status()
-                vmaps = vmap_resp.json().get("results", [])
+                try:
+                    vmap_resp = await self.client.get("/variablemap-definition/registry/get/", params={"variablemap": vmap_name})
+                    vmap_resp.raise_for_status()
+                    vmaps = vmap_resp.json().get("results", [])
+                except Exception as e:
+                    L.error(f"Failed to fetch variablemap mapping for {vmap_name}: {e}")
+                    vmaps = []
                 
                 query_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
                 active_vmap = None
@@ -1211,7 +1215,8 @@ class DatasetGenerator:
                             break
                         except Exception as e:
                             if attempt == max_retries - 1:
-                                raise e
+                                L.error(f"Failed to fetch telemetry stream for {s_id} chunk {current_start} after {max_retries} attempts. Proceeding with available data...", extra={"error": str(e)})
+                                break
                             L.warning(f"Fetch failed for {s_id} chunk {current_start} on attempt {attempt+1}. Retrying...", extra={"error": str(e)})
                             await asyncio.sleep(2)
                             
@@ -1407,7 +1412,6 @@ class DatasetGenerator:
                                                 clean_val.append(np.nan)
                                     val = clean_val
                                     
-                                # FIX: Skip aggressive scalar type casting if the value is an array/list
                                 elif not isinstance(val, (list, np.ndarray)):
                                     if v_type in ["float", "double"] and not isinstance(val, float):
                                         try:
