@@ -74,7 +74,8 @@ class ErddapClient:
     # ---------------------------------------------------------
 
     async def device_data_get(self, request: DataRequest, definition: dict = None) -> dict:
-        """Fetches historical device telemetry natively from ERDDAP strictly using device definitions."""
+        """Fetches historical device telemetry natively from ERDDAP strictly using definition schemas."""
+        import urllib.parse
         import json
         make = request.make
         model = request.model
@@ -86,7 +87,6 @@ class ErddapClient:
             if not model and len(parts) > 1: model = parts[1]
             if not sn and len(parts) > 2: sn = parts[2]
 
-        # Fetch definition schema if not explicitly provided
         if not definition and make and model:
             def_resp = await self.device_definition_registry_get(DeviceDefinitionRequest(make=make, model=model))
             results = def_resp.get("results", [])
@@ -94,18 +94,9 @@ class ErddapClient:
                 raw_def = results[0]
                 definition = raw_def.get("device-definition", raw_def)
 
-        # DEBUG CHECKPOINT 1: Exact definition schema structure
-        try:
-            self.logger.info(f"DEBUG SCHEMA [DEVICE]: {json.dumps(definition, default=str)}")
-        except Exception:
-            self.logger.info(f"DEBUG SCHEMA [DEVICE]: {definition}")
-
-        # FAIL FAST: Definition is mandatory for schema enforcement
         if not definition:
             self.logger.error(f"FAIL-FAST: Missing device definition schema for make='{make}', model='{model}'")
             raise ValueError(f"Missing device definition schema for make='{make}', model='{model}'")
-
-        self.logger.warning(f"BUILDING DATASET ID: make={make}, model={model}, sn={sn}, raw_device_id={request.device_id}")
 
         query_args = []
         if sn:
@@ -125,20 +116,15 @@ class ErddapClient:
 
         def _extract_schema_node(schema_doc, target_key):
             """Polymorphic helper to find a dictionary schema node anywhere in nested responses."""
-            if not schema_doc or not isinstance(schema_doc, dict):
-                return {}
-            if target_key in schema_doc and isinstance(schema_doc[target_key], dict):
-                return schema_doc[target_key]
+            if not schema_doc or not isinstance(schema_doc, dict): return {}
+            if target_key in schema_doc and isinstance(schema_doc[target_key], dict): return schema_doc[target_key]
             if "data" in schema_doc and isinstance(schema_doc["data"], dict):
                 d = schema_doc["data"]
-                if target_key in d and isinstance(d[target_key], dict):
-                    return d[target_key]
+                if target_key in d and isinstance(d[target_key], dict): return d[target_key]
             for k, v in schema_doc.items():
                 if isinstance(v, dict) and "data" in v and isinstance(v["data"], dict):
-                    if target_key in v["data"] and isinstance(v["data"][target_key], dict):
-                        return v["data"][target_key]
-                if isinstance(v, dict) and target_key in v and isinstance(v[target_key], dict):
-                    return v[target_key]
+                    if target_key in v["data"] and isinstance(v["data"][target_key], dict): return v["data"][target_key]
+                if isinstance(v, dict) and target_key in v and isinstance(v[target_key], dict): return v[target_key]
             return {}
 
         merged_records = {}
@@ -146,39 +132,18 @@ class ErddapClient:
             rows = ds_data.get("results", [])
             if not rows: continue
             
-            # DEBUG CHECKPOINT 2: Exact raw ERDDAP row structure
-            try:
-                self.logger.info(f"DEBUG ERDDAP ROW [DEVICE]: {json.dumps(rows[0], default=str)}")
-            except Exception:
-                self.logger.info(f"DEBUG ERDDAP ROW [DEVICE]: {rows[0]}")
-            
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
 
-            def_vars = _extract_schema_node(definition, "variables")
+            # Natively extract active dimensions strictly from the GitOps definition schema
             def_dims = _extract_schema_node(definition, "dimensions")
-
-            # Derive shape_dims strictly from device definition schema
             shape_dims = ["time"]
-            for v_info in def_vars.values():
-                if isinstance(v_info, dict) and "shape" in v_info:
-                    for dim in v_info["shape"]:
-                        if dim != "time":
-                            if dim in all_cols and dim not in shape_dims:
-                                shape_dims.append(dim)
-                            elif f"{dim}_dim" in all_cols and f"{dim}_dim" not in shape_dims:
-                                shape_dims.append(f"{dim}_dim")
-
             for dim in def_dims.keys():
-                if dim != "time":
-                    if dim in all_cols and dim not in shape_dims:
-                        shape_dims.append(dim)
-                    elif f"{dim}_dim" in all_cols and f"{dim}_dim" not in shape_dims:
-                        shape_dims.append(f"{dim}_dim")
+                if dim != "time" and dim in all_cols:
+                    shape_dims.append(dim)
 
             var_cols = [c for c in all_cols if c not in sys_cols and c not in shape_dims and not c.endswith("_dim")]
             
-            # Group rows using definition-backed shape dimensions
             grouped = {}
             for row in rows:
                 time_key = row.get("time")
@@ -227,10 +192,8 @@ class ErddapClient:
                     return val
                 
                 def sort_key(k):
-                    try:
-                        return float(k)
-                    except (ValueError, TypeError):
-                        return k
+                    try: return float(k)
+                    except (ValueError, TypeError): return k
                         
                 return [extract_array(node[k], var_name, dims_left[1:]) for k in sorted(node.keys(), key=sort_key)]
 
@@ -242,10 +205,15 @@ class ErddapClient:
                 
                 for v_name in var_cols:
                     if len(shape_dims) == 1:
+                        # Prevent scalar datasets from overwriting successfully built arrays
+                        if v_name in rec_vars and isinstance(rec_vars[v_name].get("data"), list):
+                            continue
+                            
                         val = time_node.get(v_name)
                         if val is None or str(val).strip().lower() in ["nan", "null", "none", ""]: val = None
                         rec_vars[v_name] = {"data": val}
                     else:
+                        # If building an array, it takes precedence and overwrites any scalar defaults
                         rec_vars[v_name] = {"data": extract_array(time_node, v_name, remaining_dims)}
 
         formatted_results = list(merged_records.values())
@@ -254,7 +222,8 @@ class ErddapClient:
         return {"results": formatted_results}
 
     async def controller_data_get(self, request: ControllerDataRequest, definition: dict = None) -> dict:
-        """Fetches historical controller telemetry natively from ERDDAP strictly using controller definitions."""
+        """Fetches historical controller telemetry natively from ERDDAP strictly using definition schemas."""
+        import urllib.parse
         import json
         make = request.make
         model = request.model
@@ -273,13 +242,6 @@ class ErddapClient:
                 raw_def = results[0]
                 definition = raw_def.get("controller-definition", raw_def)
 
-        # DEBUG CHECKPOINT 1: Exact definition schema structure
-        try:
-            self.logger.info(f"DEBUG SCHEMA [CONTROLLER]: {json.dumps(definition, default=str)}")
-        except Exception:
-            self.logger.info(f"DEBUG SCHEMA [CONTROLLER]: {definition}")
-
-        # FAIL FAST: Definition is mandatory for schema enforcement
         if not definition:
             self.logger.error(f"FAIL-FAST: Missing controller definition schema for make='{make}', model='{model}'")
             raise ValueError(f"Missing controller definition schema for make='{make}', model='{model}'")
@@ -302,20 +264,15 @@ class ErddapClient:
 
         def _extract_schema_node(schema_doc, target_key):
             """Polymorphic helper to find a dictionary schema node anywhere in nested responses."""
-            if not schema_doc or not isinstance(schema_doc, dict):
-                return {}
-            if target_key in schema_doc and isinstance(schema_doc[target_key], dict):
-                return schema_doc[target_key]
+            if not schema_doc or not isinstance(schema_doc, dict): return {}
+            if target_key in schema_doc and isinstance(schema_doc[target_key], dict): return schema_doc[target_key]
             if "data" in schema_doc and isinstance(schema_doc["data"], dict):
                 d = schema_doc["data"]
-                if target_key in d and isinstance(d[target_key], dict):
-                    return d[target_key]
+                if target_key in d and isinstance(d[target_key], dict): return d[target_key]
             for k, v in schema_doc.items():
                 if isinstance(v, dict) and "data" in v and isinstance(v["data"], dict):
-                    if target_key in v["data"] and isinstance(v["data"][target_key], dict):
-                        return v["data"][target_key]
-                if isinstance(v, dict) and target_key in v and isinstance(v[target_key], dict):
-                    return v[target_key]
+                    if target_key in v["data"] and isinstance(v["data"][target_key], dict): return v["data"][target_key]
+                if isinstance(v, dict) and target_key in v and isinstance(v[target_key], dict): return v[target_key]
             return {}
 
         merged_records = {}
@@ -323,35 +280,15 @@ class ErddapClient:
             rows = ds_data.get("results", [])
             if not rows: continue
             
-            # DEBUG CHECKPOINT 2: Exact raw ERDDAP row structure
-            try:
-                self.logger.info(f"DEBUG ERDDAP ROW [CONTROLLER]: {json.dumps(rows[0], default=str)}")
-            except Exception:
-                self.logger.info(f"DEBUG ERDDAP ROW [CONTROLLER]: {rows[0]}")
-
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
 
-            def_vars = _extract_schema_node(definition, "variables")
+            # Natively extract active dimensions strictly from the GitOps definition schema
             def_dims = _extract_schema_node(definition, "dimensions")
-
-            # Derive shape_dims strictly from definition schema
             shape_dims = ["time"]
-            for v_info in def_vars.values():
-                if isinstance(v_info, dict) and "shape" in v_info:
-                    for dim in v_info["shape"]:
-                        if dim != "time":
-                            if dim in all_cols and dim not in shape_dims:
-                                shape_dims.append(dim)
-                            elif f"{dim}_dim" in all_cols and f"{dim}_dim" not in shape_dims:
-                                shape_dims.append(f"{dim}_dim")
-
             for dim in def_dims.keys():
-                if dim != "time":
-                    if dim in all_cols and dim not in shape_dims:
-                        shape_dims.append(dim)
-                    elif f"{dim}_dim" in all_cols and f"{dim}_dim" not in shape_dims:
-                        shape_dims.append(f"{dim}_dim")
+                if dim != "time" and dim in all_cols:
+                    shape_dims.append(dim)
 
             var_cols = [c for c in all_cols if c not in sys_cols and c not in shape_dims and not c.endswith("_dim")]
             
@@ -403,10 +340,8 @@ class ErddapClient:
                     return val
                 
                 def sort_key(k):
-                    try:
-                        return float(k)
-                    except (ValueError, TypeError):
-                        return k
+                    try: return float(k)
+                    except (ValueError, TypeError): return k
                         
                 return [extract_array(node[k], var_name, dims_left[1:]) for k in sorted(node.keys(), key=sort_key)]
 
@@ -418,10 +353,15 @@ class ErddapClient:
                 
                 for v_name in var_cols:
                     if len(shape_dims) == 1:
+                        # Prevent scalar datasets from overwriting successfully built arrays
+                        if v_name in rec_vars and isinstance(rec_vars[v_name].get("data"), list):
+                            continue
+                            
                         val = time_node.get(v_name)
                         if val is None or str(val).strip().lower() in ["nan", "null", "none", ""]: val = None
                         rec_vars[v_name] = {"data": val}
                     else:
+                        # If building an array, it takes precedence and overwrites any scalar defaults
                         rec_vars[v_name] = {"data": extract_array(time_node, v_name, remaining_dims)}
 
         formatted_results = list(merged_records.values())
