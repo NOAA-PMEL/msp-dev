@@ -1063,9 +1063,17 @@ class DatasetGenerator:
                     active_vmap = vs_to_hardware_map.get(vs_id)
                     vmap_vars = active_vmap.get("variables") or active_vmap.get("data", {}).get("variables", {}) if active_vmap else {}
                     
-                    if active_vmap and vs_var in vmap_vars:
-                        target_var_def = vmap_vars[vs_var]
-                        
+                    target_var_def = None
+                    if active_vmap:
+                        if vs_var in vmap_vars:
+                            target_var_def = vmap_vars[vs_var]
+                        else:
+                            for k, v in vmap_vars.items():
+                                if k.lower() == vs_var.lower():
+                                    target_var_def = v
+                                    break
+                    
+                    if target_var_def:
                         sources = target_var_def.get("source", {})
                         src_info = next(iter(sources.values())) if sources else {}
                             
@@ -1249,7 +1257,7 @@ class DatasetGenerator:
                 if trace.get("is_coordinate") and not is_calculated:
                     vs_def = vs_defs_cache.get(primary_vs_id, {})
                     vs_data = vs_def.get("data", {})
-                    native_vars = vs_data.get("variables", {})
+                    native_vars = vs_data.get("variables", {}) if "variables" in vs_data else vs_def.get("variables", {})
                     vs_attrs = vs_data.get("attributes", {})
                     
                     static_data = trace.get("static_data", [])
@@ -1395,19 +1403,20 @@ class DatasetGenerator:
                     final_values = input_arrays["primary"]["values"]
                     final_times = input_arrays["primary"]["times"]
                 
-                if isinstance(final_values, list):
-                    if len(final_values) > 0 and isinstance(final_values[0], list):
+                if isinstance(final_values, list) and len(final_values) > 0:
+                    first_list_item = next((v for v in final_values if isinstance(v, list)), None)
+                    if first_list_item is not None:
                         try:
-                            max_len = max(len(v) if isinstance(v, list) else 1 for v in final_values)
+                            max_len = max(len(v) if isinstance(v, list) else 1 for v in final_values if isinstance(v, list))
                             padded = []
                             for v in final_values:
                                 if isinstance(v, list):
                                     padded.append(v + [np.nan] * (max_len - len(v)))
                                 else:
-                                    padded.append([v] + [np.nan] * (max_len - 1))
+                                    padded.append([np.nan] * max_len)
                             final_values = np.array(padded, dtype=np.float32)
-                        except Exception:
-                            pass
+                        except Exception as pad_err:
+                            L.warning(f"Padding failed for {out_name}", extra={"error": str(pad_err)})
                     else:
                         try:
                             final_values = np.array(final_values, dtype=np.float32)
@@ -1416,7 +1425,7 @@ class DatasetGenerator:
 
                 vs_def = vs_defs_cache.get(primary_vs_id, {})
                 vs_data = vs_def.get("data", {})
-                native_vars = vs_data.get("variables", {})
+                native_vars = vs_data.get("variables", {}) if "variables" in vs_data else vs_def.get("variables", {})
                 vs_attrs = vs_data.get("attributes", {})
                 
                 raw_dims = native_vars.get(primary_vs_var, {}).get("shape", ["time"])
@@ -1543,7 +1552,7 @@ class DatasetGenerator:
                     
                     vs_def = vs_defs_cache.get(primary_vs_id, {})
                     vs_data = vs_def.get("data", {})
-                    native_vars = vs_data.get("variables", {})
+                    native_vars = vs_data.get("variables", {}) if "variables" in vs_data else vs_def.get("variables", {})
                     vs_attrs = vs_data.get("attributes", {})
                     
                     raw_dims = native_vars.get(primary_vs_var, {}).get("shape", ["time"])
