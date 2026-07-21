@@ -75,6 +75,7 @@ class ErddapClient:
 
     async def device_data_get(self, request: DataRequest, definition: dict = None) -> dict:
         """Fetches historical device telemetry natively from ERDDAP strictly using device definitions."""
+        import json
         make = request.make
         model = request.model
         sn = request.serial_number
@@ -92,6 +93,12 @@ class ErddapClient:
             if results:
                 raw_def = results[0]
                 definition = raw_def.get("device-definition", raw_def)
+
+        # DEBUG CHECKPOINT 1: Exact definition schema structure
+        try:
+            self.logger.info(f"DEBUG SCHEMA [DEVICE]: {json.dumps(definition, default=str)}")
+        except Exception:
+            self.logger.info(f"DEBUG SCHEMA [DEVICE]: {definition}")
 
         # FAIL FAST: Definition is mandatory for schema enforcement
         if not definition:
@@ -116,26 +123,58 @@ class ErddapClient:
 
         datasets_data = await self._discover_and_fetch_all_versions(make, model, query_args)
 
+        def _extract_schema_node(schema_doc, target_key):
+            """Polymorphic helper to find a dictionary schema node anywhere in nested responses."""
+            if not schema_doc or not isinstance(schema_doc, dict):
+                return {}
+            if target_key in schema_doc and isinstance(schema_doc[target_key], dict):
+                return schema_doc[target_key]
+            if "data" in schema_doc and isinstance(schema_doc["data"], dict):
+                d = schema_doc["data"]
+                if target_key in d and isinstance(d[target_key], dict):
+                    return d[target_key]
+            for k, v in schema_doc.items():
+                if isinstance(v, dict) and "data" in v and isinstance(v["data"], dict):
+                    if target_key in v["data"] and isinstance(v["data"][target_key], dict):
+                        return v["data"][target_key]
+                if isinstance(v, dict) and target_key in v and isinstance(v[target_key], dict):
+                    return v[target_key]
+            return {}
+
         merged_records = {}
         for ds_data in datasets_data:
             rows = ds_data.get("results", [])
             if not rows: continue
             
+            # DEBUG CHECKPOINT 2: Exact raw ERDDAP row structure
+            try:
+                self.logger.info(f"DEBUG ERDDAP ROW [DEVICE]: {json.dumps(rows[0], default=str)}")
+            except Exception:
+                self.logger.info(f"DEBUG ERDDAP ROW [DEVICE]: {rows[0]}")
+            
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
 
-            # Derive shape_dims strictly from device definition schema (no prefix guessing)
+            def_vars = _extract_schema_node(definition, "variables")
+            def_dims = _extract_schema_node(definition, "dimensions")
+
+            # Derive shape_dims strictly from device definition schema
             shape_dims = ["time"]
-            if "variables" in definition:
-                for v_info in definition["variables"].values():
-                    if isinstance(v_info, dict) and "shape" in v_info:
-                        for dim in v_info["shape"]:
-                            if dim != "time" and dim in all_cols and dim not in shape_dims:
+            for v_info in def_vars.values():
+                if isinstance(v_info, dict) and "shape" in v_info:
+                    for dim in v_info["shape"]:
+                        if dim != "time":
+                            if dim in all_cols and dim not in shape_dims:
                                 shape_dims.append(dim)
-            elif "dimensions" in definition:
-                for dim in definition["dimensions"].keys():
-                    if dim != "time" and dim in all_cols and dim not in shape_dims:
+                            elif f"{dim}_dim" in all_cols and f"{dim}_dim" not in shape_dims:
+                                shape_dims.append(f"{dim}_dim")
+
+            for dim in def_dims.keys():
+                if dim != "time":
+                    if dim in all_cols and dim not in shape_dims:
                         shape_dims.append(dim)
+                    elif f"{dim}_dim" in all_cols and f"{dim}_dim" not in shape_dims:
+                        shape_dims.append(f"{dim}_dim")
 
             var_cols = [c for c in all_cols if c not in sys_cols and c not in shape_dims and not c.endswith("_dim")]
             
@@ -216,6 +255,7 @@ class ErddapClient:
 
     async def controller_data_get(self, request: ControllerDataRequest, definition: dict = None) -> dict:
         """Fetches historical controller telemetry natively from ERDDAP strictly using controller definitions."""
+        import json
         make = request.make
         model = request.model
         sn = request.serial_number
@@ -232,6 +272,12 @@ class ErddapClient:
             if results:
                 raw_def = results[0]
                 definition = raw_def.get("controller-definition", raw_def)
+
+        # DEBUG CHECKPOINT 1: Exact definition schema structure
+        try:
+            self.logger.info(f"DEBUG SCHEMA [CONTROLLER]: {json.dumps(definition, default=str)}")
+        except Exception:
+            self.logger.info(f"DEBUG SCHEMA [CONTROLLER]: {definition}")
 
         # FAIL FAST: Definition is mandatory for schema enforcement
         if not definition:
@@ -254,26 +300,58 @@ class ErddapClient:
 
         datasets_data = await self._discover_and_fetch_all_versions(make, model, query_args)
 
+        def _extract_schema_node(schema_doc, target_key):
+            """Polymorphic helper to find a dictionary schema node anywhere in nested responses."""
+            if not schema_doc or not isinstance(schema_doc, dict):
+                return {}
+            if target_key in schema_doc and isinstance(schema_doc[target_key], dict):
+                return schema_doc[target_key]
+            if "data" in schema_doc and isinstance(schema_doc["data"], dict):
+                d = schema_doc["data"]
+                if target_key in d and isinstance(d[target_key], dict):
+                    return d[target_key]
+            for k, v in schema_doc.items():
+                if isinstance(v, dict) and "data" in v and isinstance(v["data"], dict):
+                    if target_key in v["data"] and isinstance(v["data"][target_key], dict):
+                        return v["data"][target_key]
+                if isinstance(v, dict) and target_key in v and isinstance(v[target_key], dict):
+                    return v[target_key]
+            return {}
+
         merged_records = {}
         for ds_data in datasets_data:
             rows = ds_data.get("results", [])
             if not rows: continue
             
+            # DEBUG CHECKPOINT 2: Exact raw ERDDAP row structure
+            try:
+                self.logger.info(f"DEBUG ERDDAP ROW [CONTROLLER]: {json.dumps(rows[0], default=str)}")
+            except Exception:
+                self.logger.info(f"DEBUG ERDDAP ROW [CONTROLLER]: {rows[0]}")
+
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
 
-            # Derive shape_dims strictly from definition schema (no prefix guessing)
+            def_vars = _extract_schema_node(definition, "variables")
+            def_dims = _extract_schema_node(definition, "dimensions")
+
+            # Derive shape_dims strictly from definition schema
             shape_dims = ["time"]
-            if "variables" in definition:
-                for v_info in definition["variables"].values():
-                    if isinstance(v_info, dict) and "shape" in v_info:
-                        for dim in v_info["shape"]:
-                            if dim != "time" and dim in all_cols and dim not in shape_dims:
+            for v_info in def_vars.values():
+                if isinstance(v_info, dict) and "shape" in v_info:
+                    for dim in v_info["shape"]:
+                        if dim != "time":
+                            if dim in all_cols and dim not in shape_dims:
                                 shape_dims.append(dim)
-            elif "dimensions" in definition:
-                for dim in definition["dimensions"].keys():
-                    if dim != "time" and dim in all_cols and dim not in shape_dims:
+                            elif f"{dim}_dim" in all_cols and f"{dim}_dim" not in shape_dims:
+                                shape_dims.append(f"{dim}_dim")
+
+            for dim in def_dims.keys():
+                if dim != "time":
+                    if dim in all_cols and dim not in shape_dims:
                         shape_dims.append(dim)
+                    elif f"{dim}_dim" in all_cols and f"{dim}_dim" not in shape_dims:
+                        shape_dims.append(f"{dim}_dim")
 
             var_cols = [c for c in all_cols if c not in sys_cols and c not in shape_dims and not c.endswith("_dim")]
             
