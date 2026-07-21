@@ -49,36 +49,33 @@ class ErddapClient:
             return {"results": []}
 
     async def _discover_and_fetch_all_versions(self, make: str, model: str, query_args: List[str]) -> List[dict]:
-        """Dynamically discovers all versioned datasets for a device and fetches them concurrently."""
-        search_url = f"{self.base_url}/tabledap/allDatasets.json?datasetID&datasetID=~%22telemetry_{make}_{model}_v.*_time%22"
+        """Dynamically discovers all versioned and shape-split datasets for a device and fetches them concurrently."""
+        search_url = f"{self.base_url}/tabledap/allDatasets.json?datasetID&datasetID=~%22telemetry_{make}_{model}_v.*%22"
         dataset_ids = []
         
         try:
-            # 1. Ask ERDDAP which versions exist (v1, v2, v3, etc.)
+            # 1. Ask ERDDAP which shape datasets exist (v1_time, v1_time_diameter, etc.)
             resp = await self.http.get(search_url)
             if resp.status_code == 200:
                 rows = resp.json().get("table", {}).get("rows", [])
                 dataset_ids = [row[0] for row in rows]
         except Exception as e:
-            self.logger.warning(f"Dataset discovery failed for {make} {model}, falling back to hardcoded versions. Reason: {e}")
+            self.logger.warning(f"Dataset discovery failed for {make} {model}. Reason: {e}")
             
-        # Fallback just in case the allDatasets query fails
         if not dataset_ids:
-            dataset_ids = [f"telemetry_{make}_{model}_v1_time", f"telemetry_{make}_{model}_v2_time"]
+            dataset_ids = [f"telemetry_{make}_{model}_v1_time"]
 
-        # 2. Fetch all discovered versions concurrently to prevent pipeline slowdowns
+        # 2. Fetch all discovered shape datasets concurrently
         tasks = [self._fetch_tabledap(ds_id, query_args) for ds_id in dataset_ids]
         results = await asyncio.gather(*tasks)
         
-        # 3. Combine the flat data from all versions
+        # 3. Combine flat rows across datasets
         combined_flat_data = []
         for res in results:
             combined_flat_data.extend(res.get("results", []))
             
-        # 4. Sort strictly by time to perfectly stitch the v1->v2 transitions together
-        combined_flat_data.sort(key=lambda x: x.get("time", ""))
         return combined_flat_data
-
+    
     # ---------------------------------------------------------
     # TELEMETRY QUERIES
     # ---------------------------------------------------------
@@ -152,14 +149,21 @@ class ErddapClient:
             
         query_args.append("orderBy(%22time%22)")
 
-        # Fetch and stitch all timeline versions automatically
+        # Fetch all shape dataset slices
         combined_flat_data = await self._discover_and_fetch_all_versions(make, model, query_args)
 
-        # Repackage ERDDAP's flat data into the nested Datastore JSON format
-        formatted_results = []
+        # Merge rows by time timestamp so 1D and 2D variables unify into single records
+        merged_records = {}
         for row in combined_flat_data:
-            formatted_record = {"variables": {}}
+            time_key = row.get("time")
+            if not time_key: continue
+            
+            if time_key not in merged_records:
+                merged_records[time_key] = {"variables": {}}
+                
+            rec_vars = merged_records[time_key]["variables"]
             for key, val in row.items():
+                if val is None or val == "": continue
                 if isinstance(val, str):
                     val_s = val.strip()
                     if val_s.startswith("[") and val_s.endswith("]"):
@@ -172,8 +176,10 @@ class ErddapClient:
                             val = [float(x) for x in val_s.split(",")]
                         except ValueError:
                             pass
-                formatted_record["variables"][key] = {"data": val}
-            formatted_results.append(formatted_record)
+                rec_vars[key] = {"data": val}
+            
+        formatted_results = list(merged_records.values())
+        formatted_results.sort(key=lambda x: x.get("variables", {}).get("time", {}).get("data", ""))
             
         return {"results": formatted_results}
     
