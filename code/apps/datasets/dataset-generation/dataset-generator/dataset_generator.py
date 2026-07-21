@@ -1169,7 +1169,11 @@ class DatasetGenerator:
                     da = xr.DataArray(data=static_data, coords=coords, dims=dims, name=out_name)
                     
                     if "time" in da.dims and not pd.Index(da.time.values).is_unique:
+                        da_name = da.name
+                        da_attrs = da.attrs
                         da = da.groupby("time").mean(dim="time")
+                        da.name = da_name
+                        da.attrs = da_attrs
 
                     # 1. Unpack Native Attributes safely
                     native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
@@ -1273,7 +1277,11 @@ class DatasetGenerator:
                 da = xr.DataArray(data=final_values, coords=coords, dims=dims, name=out_name)
                 
                 if "time" in da.dims and not pd.Index(da.time.values).is_unique:
+                    da_name = da.name
+                    da_attrs = da.attrs
                     da = da.groupby("time").mean(dim="time")
+                    da.name = da_name
+                    da.attrs = da_attrs
                 
                 if "coordinates" in var:
                     for custom_dim, custom_grid in var["coordinates"].items():
@@ -1339,20 +1347,63 @@ class DatasetGenerator:
             for var in config.get("variables", []):
                 if "static_value" in var: continue
                 out_name = var["name"]
-                if out_name not in aligned_ds.data_vars:
+                
+                # Check .variables instead of .data_vars to prevent overwriting coordinates
+                if out_name not in aligned_ds.variables:
                     L.warning(f"Variable '{out_name}' missing from telemetry. Injecting NaN placeholder array.", extra={"dataset_id": dataset_id})
-                    dims = ["time"]
-                    coords = {"time": master_time}
-                    shape = [len(master_time)]
                     
+                    source_def = var.get("source", {})
+                    is_calc = "calculate_method" in source_def
+                    fetch_list = source_def.get("inputs", {}) if is_calc else {"primary": source_def}
+                    primary_source = fetch_list.get("primary", next(iter(fetch_list.values()), {}))
+                    primary_vs_id = primary_source.get("variableset_id")
+                    primary_vs_var = primary_source.get("variable_name")
+                    
+                    vs_def = vs_defs_cache.get(primary_vs_id, {})
+                    native_vars = vs_def.get("variables", {})
+                    raw_dims = native_vars.get(primary_vs_var, {}).get("shape", ["time"])
+                    target_coord_dim = vs_dim_map.get(primary_vs_id, out_name)
+                    dims = [target_coord_dim if d == "diameter" else d for d in raw_dims]
+                    
+                    coords = {}
+                    shape = []
+                    for dim in dims:
+                        if dim == "time":
+                            coords["time"] = master_time
+                            shape.append(len(master_time))
+                        elif dim in native_vars:
+                            static_data = native_vars[dim].get("data", [])
+                            coords[dim] = static_data
+                            shape.append(len(static_data))
+                        elif dim in aligned_ds.variables:
+                            static_data = aligned_ds[dim].values
+                            coords[dim] = static_data
+                            shape.append(len(static_data))
+                        else:
+                            coords[dim] = [0]
+                            shape.append(1)
+                            
                     if "coordinates" in var:
                         for custom_dim, custom_grid in var["coordinates"].items():
-                            dims.append(custom_dim)
-                            coords[custom_dim] = custom_grid
-                            shape.append(len(custom_grid))
+                            if custom_dim not in dims:
+                                dims.append(custom_dim)
+                                coords[custom_dim] = custom_grid
+                                shape.append(len(custom_grid))
+                            else:
+                                idx = dims.index(custom_dim)
+                                coords[custom_dim] = custom_grid
+                                shape[idx] = len(custom_grid)
                             
                     empty_da = xr.DataArray(data=np.full(shape, np.nan, dtype=np.float32), coords=coords, dims=dims, name=out_name)
-                    for attr_key, attr_val in var.get("attributes", {}).items(): empty_da.attrs[attr_key] = attr_val
+                    
+                    native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
+                    for attr_key, attr_val in native_attrs.items(): 
+                        empty_da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                        
+                    for attr_key, attr_val in var.get("attributes", {}).items(): 
+                        unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                        empty_da.attrs[attr_key] = unpacked_val
+                        
                     aligned_ds[out_name] = empty_da
 
             for var_name in list(aligned_ds.data_vars.keys()):
