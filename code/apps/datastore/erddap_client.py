@@ -74,7 +74,7 @@ class ErddapClient:
     # ---------------------------------------------------------
 
     async def device_data_get(self, request: DataRequest, definition: dict = None) -> dict:
-        """Fetches historical device telemetry natively from ERDDAP and explicitly un-flattens dimensions."""
+        """Fetches historical device telemetry natively from ERDDAP using definition schemas for dimensions."""
         make = request.make
         model = request.model
         sn = request.serial_number
@@ -84,6 +84,19 @@ class ErddapClient:
             if not make and len(parts) > 0: make = parts[0]
             if not model and len(parts) > 1: model = parts[1]
             if not sn and len(parts) > 2: sn = parts[2]
+
+        # Fetch definition schema if not explicitly provided
+        if not definition and make and model:
+            def_resp = await self.device_definition_registry_get(DeviceDefinitionRequest(make=make, model=model))
+            results = def_resp.get("results", [])
+            if results:
+                raw_def = results[0]
+                definition = raw_def.get("device-definition", raw_def)
+
+        # FAIL FAST: Definition is mandatory for schema enforcement
+        if not definition:
+            self.logger.error(f"FAIL-FAST: Missing device definition schema for make='{make}', model='{model}'")
+            raise ValueError(f"Missing device definition schema for make='{make}', model='{model}'")
 
         self.logger.warning(f"BUILDING DATASET ID: make={make}, model={model}, sn={sn}, raw_device_id={request.device_id}")
 
@@ -101,7 +114,6 @@ class ErddapClient:
             
         query_args.append("orderBy(%22time%22)")
 
-        # Fetch all shape dataset slices. Returns a list of dicts: {"dataset_id": str, "results": list}
         datasets_data = await self._discover_and_fetch_all_versions(make, model, query_args)
 
         merged_records = {}
@@ -111,23 +123,30 @@ class ErddapClient:
             
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
-            
-            # Dynamically infer dimensions: "time" is always base, plus any column that has a corresponding "_dim" count
+
+            # Derive shape_dims strictly from definition schema
             shape_dims = ["time"]
-            for col in all_cols:
-                if f"{col}_dim" in all_cols and col not in shape_dims:
-                    shape_dims.append(col)
-                    
+            if "variables" in definition:
+                for v_info in definition["variables"].values():
+                    if isinstance(v_info, dict) and "shape" in v_info:
+                        for dim in v_info["shape"]:
+                            if dim in all_cols and dim not in shape_dims:
+                                shape_dims.append(dim)
+            elif "dimensions" in definition:
+                for dim in definition["dimensions"].keys():
+                    if dim in all_cols and dim not in shape_dims:
+                        shape_dims.append(dim)
+
             var_cols = [c for c in all_cols if c not in sys_cols and c not in shape_dims and not c.endswith("_dim")]
             
-            # 1. Group rows perfectly using the known shape dimensions
+            # Group rows using definition-backed shape dimensions
             grouped = {}
             for row in rows:
                 time_key = row.get("time")
                 if not time_key: continue
                 
                 if time_key not in merged_records:
-                    merged_records[time_key] = {"variables": {}}
+                    merged_records[time_key] = {"variables": {"time": {"data": time_key}}}
                     for sc in sys_cols:
                         if sc in row:
                             merged_records[time_key]["variables"][sc] = {"data": row[sc]}
@@ -142,7 +161,6 @@ class ErddapClient:
                             current_level[dim_val] = {}
                         current_level = current_level[dim_val]
             
-            # 2. Extract perfectly unflattened N-dimensional arrays
             def extract_array(node, var_name, dims_left):
                 if not dims_left:
                     val = node.get(var_name)
@@ -169,7 +187,6 @@ class ErddapClient:
                             return v_str
                     return val
                 
-                # Enforce numerical sort for dimension coordinates (e.g., diameter 9.0 vs 10.0)
                 def sort_key(k):
                     try:
                         return float(k)
@@ -182,7 +199,7 @@ class ErddapClient:
                 if time_val not in merged_records: continue
                 rec_vars = merged_records[time_val]["variables"]
                 
-                remaining_dims = shape_dims[1:] # Strip 'time' which is our base level
+                remaining_dims = shape_dims[1:]
                 
                 for v_name in var_cols:
                     if len(shape_dims) == 1:
@@ -198,7 +215,7 @@ class ErddapClient:
         return {"results": formatted_results}
 
     async def controller_data_get(self, request: ControllerDataRequest, definition: dict = None) -> dict:
-        """Fetches historical controller telemetry natively from ERDDAP and explicitly un-flattens dimensions."""
+        """Fetches historical controller telemetry natively from ERDDAP using definition schemas for dimensions."""
         make = request.make
         model = request.model
         sn = request.serial_number
@@ -208,6 +225,18 @@ class ErddapClient:
             if not make and len(parts) > 0: make = parts[0]
             if not model and len(parts) > 1: model = parts[1]
             if not sn and len(parts) > 2: sn = parts[2]
+
+        if not definition and make and model:
+            def_resp = await self.controller_definition_registry_get(ControllerDefinitionRequest(make=make, model=model))
+            results = def_resp.get("results", [])
+            if results:
+                raw_def = results[0]
+                definition = raw_def.get("controller-definition", raw_def)
+
+        # FAIL FAST: Definition is mandatory for schema enforcement
+        if not definition:
+            self.logger.error(f"FAIL-FAST: Missing controller definition schema for make='{make}', model='{model}'")
+            raise ValueError(f"Missing controller definition schema for make='{make}', model='{model}'")
 
         query_args = []
         if sn:
@@ -223,7 +252,6 @@ class ErddapClient:
             
         query_args.append("orderBy(%22time%22)")
 
-        # Fetch all shape dataset slices. Returns a list of dicts: {"dataset_id": str, "results": list}
         datasets_data = await self._discover_and_fetch_all_versions(make, model, query_args)
 
         merged_records = {}
@@ -234,22 +262,27 @@ class ErddapClient:
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
             
-            # Dynamically infer dimensions: "time" is always base, plus any column that has a corresponding "_dim" count
             shape_dims = ["time"]
-            for col in all_cols:
-                if f"{col}_dim" in all_cols and col not in shape_dims:
-                    shape_dims.append(col)
-                    
+            if "variables" in definition:
+                for v_info in definition["variables"].values():
+                    if isinstance(v_info, dict) and "shape" in v_info:
+                        for dim in v_info["shape"]:
+                            if dim in all_cols and dim not in shape_dims:
+                                shape_dims.append(dim)
+            elif "dimensions" in definition:
+                for dim in definition["dimensions"].keys():
+                    if dim in all_cols and dim not in shape_dims:
+                        shape_dims.append(dim)
+
             var_cols = [c for c in all_cols if c not in sys_cols and c not in shape_dims and not c.endswith("_dim")]
             
-            # 1. Group rows perfectly using the known shape dimensions
             grouped = {}
             for row in rows:
                 time_key = row.get("time")
                 if not time_key: continue
                 
                 if time_key not in merged_records:
-                    merged_records[time_key] = {"variables": {}}
+                    merged_records[time_key] = {"variables": {"time": {"data": time_key}}}
                     for sc in sys_cols:
                         if sc in row:
                             merged_records[time_key]["variables"][sc] = {"data": row[sc]}
@@ -264,7 +297,6 @@ class ErddapClient:
                             current_level[dim_val] = {}
                         current_level = current_level[dim_val]
             
-            # 2. Extract perfectly unflattened N-dimensional arrays
             def extract_array(node, var_name, dims_left):
                 if not dims_left:
                     val = node.get(var_name)
@@ -291,7 +323,6 @@ class ErddapClient:
                             return v_str
                     return val
                 
-                # Enforce numerical sort for dimension coordinates (e.g., diameter 9.0 vs 10.0)
                 def sort_key(k):
                     try:
                         return float(k)
@@ -304,7 +335,7 @@ class ErddapClient:
                 if time_val not in merged_records: continue
                 rec_vars = merged_records[time_val]["variables"]
                 
-                remaining_dims = shape_dims[1:] # Strip 'time' which is our base level
+                remaining_dims = shape_dims[1:]
                 
                 for v_name in var_cols:
                     if len(shape_dims) == 1:
