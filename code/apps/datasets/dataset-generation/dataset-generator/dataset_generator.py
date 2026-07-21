@@ -1206,41 +1206,41 @@ class DatasetGenerator:
                         static_data = native_vars.get(primary_vs_var, {}).get("data", [])
                         
                     raw_dims = native_vars.get(primary_vs_var, {}).get("shape", [out_name])
-                    
                     dims = [out_name if d == "diameter" else d for d in raw_dims]
-                    coords = {dims[0]: static_data} if len(dims) == 1 else {}
-                    da = xr.DataArray(data=static_data, coords=coords, dims=dims, name=out_name)
                     
-                    if "time" in da.dims and not pd.Index(da.time.values).is_unique:
-                        da_name = da.name
-                        da_attrs = da.attrs
-                        da = da.groupby("time").mean(dim="time")
-                        da.name = da_name
-                        da.attrs = da_attrs
+                    # Create the coordinate array cleanly
+                    da_coord = xr.DataArray(data=static_data, dims=dims)
+                    
+                    if "time" in da_coord.dims and not pd.Index(da_coord.time.values).is_unique:
+                        da_attrs = da_coord.attrs
+                        da_coord = da_coord.groupby("time").mean(dim="time")
+                        da_coord.attrs = da_attrs
 
                     native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
                     for attr_key, attr_val in native_attrs.items(): 
-                        da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                        da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                     
-                    native_units = da.attrs.get("native_units") or da.attrs.get("units")
+                    native_units = da_coord.attrs.get("native_units") or da_coord.attrs.get("units")
                     target_units_raw = var.get("attributes", {}).get("units")
                     target_units = target_units_raw.get("data") if isinstance(target_units_raw, dict) else target_units_raw
                     
                     for attr_key, attr_val in var.get("attributes", {}).items(): 
-                        da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                        da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                     
                     if native_units and target_units and (native_units != target_units):
                         try:
                             norm_native = self.normalize_unit_string(native_units)
                             norm_target = self.normalize_unit_string(target_units)
-                            data_quantity = ureg.Quantity(da.values, norm_native)
-                            da.values = data_quantity.to(norm_target).magnitude
-                            da.attrs["units"] = target_units
+                            data_quantity = ureg.Quantity(da_coord.values, norm_native)
+                            da_coord.values = data_quantity.to(norm_target).magnitude
+                            da_coord.attrs["units"] = target_units
                         except Exception as e:
                             L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
-                            da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
+                            da_coord.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
                     
-                    data_arrays.append(da)
+                    # Store as a native Dataset coordinate to bypass xarray DataArray name conflicts
+                    ds_coord = xr.Dataset(coords={out_name: da_coord})
+                    data_arrays.append(ds_coord)
                     continue
 
                 input_arrays = {}
