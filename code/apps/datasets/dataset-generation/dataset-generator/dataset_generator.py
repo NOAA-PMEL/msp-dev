@@ -1096,7 +1096,7 @@ class DatasetGenerator:
                             hw_def = hw_defs_cache[hw_cache_key]
                             hw_vars = hw_def.get("variables", {})
                             
-                            # Drill into the device definition to find the exact native casing (e.g., dn -> dN)
+                            # Bind Varmap string to the exact Hardware Definition case (e.g., intn -> intN)
                             if true_raw_var_name not in hw_vars:
                                 for k in hw_vars.keys():
                                     if k.lower() == true_raw_var_name.lower():
@@ -1288,6 +1288,11 @@ class DatasetGenerator:
                         except Exception as e:
                             L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
                             da_coord.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
+
+                    # Drilldown Lineage Mapping
+                    da_coord.attrs["instrument_source"] = trace.get("source_id", "Unknown")
+                    da_coord.attrs["variablemap_source"] = trace.get("vmap_def_id", "Unknown")
+                    da_coord.attrs["raw_variable_name"] = trace.get("raw_variable_name", "Unknown")
                     
                     ds_coord = xr.Dataset(coords={out_name: da_coord})
                     data_arrays.append(ds_coord)
@@ -1310,8 +1315,16 @@ class DatasetGenerator:
                     
                     for r in records:
                         r_vars = r.get("variables", {})
-                        if "time" in r_vars and raw_key in r_vars:
-                            val = r_vars[raw_key].get("data")
+                        
+                        target_key = raw_key
+                        if target_key not in r_vars:
+                            for k in r_vars.keys():
+                                if k.lower() == raw_key.lower():
+                                    target_key = k
+                                    break
+                                    
+                        if "time" in r_vars and target_key in r_vars:
+                            val = r_vars[target_key].get("data")
                             if val is None or val == "":
                                 val = np.nan
                             else:
@@ -1352,7 +1365,7 @@ class DatasetGenerator:
                                 times.append(parsed_time)
                                 values.append(val)
                             
-                            hw_source = r_vars[raw_key].get("attributes", {}).get("source_id", {}).get("data")
+                            hw_source = r_vars[target_key].get("attributes", {}).get("source_id", {}).get("data")
                             if hw_source: unique_sources.add(hw_source)
 
                     if times:
@@ -1402,8 +1415,21 @@ class DatasetGenerator:
 
                 coords = {"time": final_times}
                 for dim in dims:
-                    if dim != "time" and dim in native_vars:
-                        coords[dim] = native_vars[dim].get("data", [])
+                    if dim != "time":
+                        static_data = []
+                        if dim in native_vars:
+                            static_data = native_vars[dim].get("attributes", {}).get("static_data", {}).get("data", [])
+                            if not static_data:
+                                static_data = native_vars[dim].get("data", [])
+                        
+                        if not static_data:
+                            for t_key, t_val in variable_tracing_registry.items():
+                                if t_key[1] == dim and t_val.get("is_coordinate"):
+                                    static_data = t_val.get("static_data", [])
+                                    break
+                        
+                        if static_data and len(static_data) > 0:
+                            coords[dim] = static_data
                 
                 da = xr.DataArray(data=final_values, coords=coords, dims=dims, name=out_name)
                 
@@ -1453,6 +1479,10 @@ class DatasetGenerator:
                         da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
 
                 if unique_sources: da.attrs["sources"] = ", ".join(sorted(list(unique_sources)))
+                da.attrs["instrument_source"] = trace.get("source_id", "Unknown")
+                da.attrs["variablemap_source"] = trace.get("vmap_def_id", "Unknown")
+                da.attrs["raw_variable_name"] = trace.get("raw_variable_name", "Unknown")
+
                 data_arrays.append(da)
 
             if not data_arrays:
@@ -1511,7 +1541,16 @@ class DatasetGenerator:
                             coords["time"] = master_time
                             shape.append(len(master_time))
                         elif dim in native_vars:
-                            static_data = native_vars[dim].get("data", [])
+                            static_data = native_vars[dim].get("attributes", {}).get("static_data", {}).get("data", [])
+                            if not static_data:
+                                static_data = native_vars[dim].get("data", [])
+                            
+                            if not static_data:
+                                for t_key, t_val in variable_tracing_registry.items():
+                                    if t_key[1] == dim and t_val.get("is_coordinate"):
+                                        static_data = t_val.get("static_data", [])
+                                        break
+                                        
                             coords[dim] = static_data
                             shape.append(len(static_data))
                         elif dim in aligned_ds.variables:
@@ -1588,22 +1627,34 @@ class DatasetGenerator:
             try:
                 target_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
                 
-                dep_resp = await self.client.get("/deployment-definition/registry/get/")
-                if dep_resp.status_code == 200:
-                    deployments = dep_resp.json().get("results", [])
-                    valid_deps = []
+                ids_resp = await self.client.get("/deployment-definition/registry/ids/get/")
+                if ids_resp.status_code == 200 and "results" in ids_resp.json():
+                    dep_ids = ids_resp.json()["results"]
                     
-                    for dep in deployments:
-                        d_data = dep.get("data", {})
-                        d_start = d_data.get("planned_start_time", "1970-01-01T00:00:00Z")
-                        d_end = d_data.get("actual_end_time", d_data.get("planned_end_time", "9999-12-31T23:59:59Z"))
-                        try:
-                            dt_s = datetime.fromisoformat(d_start.replace("Z", "+00:00"))
-                            dt_e = datetime.fromisoformat(d_end.replace("Z", "+00:00"))
-                            if dt_s <= target_dt <= dt_e:
-                                valid_deps.append(dep)
-                        except ValueError:
-                            pass
+                    async def fetch_dep(dep_id):
+                        return await self.client.get("/deployment-definition/registry/get/", params={"name": dep_id})
+                    
+                    dep_responses = await asyncio.gather(*(fetch_dep(did) for did in dep_ids))
+                    
+                    valid_deps = []
+                    for resp in dep_responses:
+                        if resp.status_code == 200 and resp.json().get("results"):
+                            dep = resp.json()["results"][0]
+                            d_data = dep.get("data", {})
+                            
+                            p_ref_from_dep = d_data.get("platform_ref")
+                            if primary_platform and p_ref_from_dep != primary_platform:
+                                continue
+
+                            d_start = d_data.get("planned_start_time", "1970-01-01T00:00:00Z")
+                            d_end = d_data.get("actual_end_time", d_data.get("planned_end_time", "9999-12-31T23:59:59Z"))
+                            try:
+                                dt_s = datetime.fromisoformat(d_start.replace("Z", "+00:00"))
+                                dt_e = datetime.fromisoformat(d_end.replace("Z", "+00:00"))
+                                if dt_s <= target_dt <= dt_e:
+                                    valid_deps.append(dep)
+                            except ValueError:
+                                pass
                     
                     if valid_deps:
                         active_dep = valid_deps[0]
@@ -1619,22 +1670,28 @@ class DatasetGenerator:
                                 resolved_project = p_data.get("display_name", proj_ref)
                                 resolved_project_ref = proj_ref
                         else:
-                            proj_resp = await self.client.get("/project-definition/registry/get/")
-                            if proj_resp.status_code == 200:
-                                projects = proj_resp.json().get("results", [])
-                                for proj in projects:
-                                    p_data = proj.get("data", {})
-                                    p_start = p_data.get("planned_start_time", "1970-01-01T00:00:00Z")
-                                    p_end = p_data.get("actual_end_time", p_data.get("planned_end_time", "9999-12-31T23:59:59Z"))
-                                    try:
-                                        dt_s = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
-                                        dt_e = datetime.fromisoformat(p_end.replace("Z", "+00:00"))
-                                        if dt_s <= target_dt <= dt_e:
-                                            resolved_project = p_data.get("display_name", proj.get("metadata", {}).get("name"))
-                                            resolved_project_ref = proj.get("metadata", {}).get("name", "Unallocated")
-                                            break
-                                    except ValueError:
-                                        pass
+                            proj_ids_resp = await self.client.get("/project-definition/registry/ids/get/")
+                            if proj_ids_resp.status_code == 200 and "results" in proj_ids_resp.json():
+                                proj_ids = proj_ids_resp.json()["results"]
+                                async def fetch_proj(pid):
+                                    return await self.client.get("/project-definition/registry/get/", params={"name": pid})
+                                proj_responses = await asyncio.gather(*(fetch_proj(pid) for pid in proj_ids))
+                                
+                                for resp in proj_responses:
+                                    if resp.status_code == 200 and resp.json().get("results"):
+                                        proj = resp.json()["results"][0]
+                                        p_data = proj.get("data", {})
+                                        p_start = p_data.get("planned_start_time", "1970-01-01T00:00:00Z")
+                                        p_end = p_data.get("actual_end_time", p_data.get("planned_end_time", "9999-12-31T23:59:59Z"))
+                                        try:
+                                            dt_s = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
+                                            dt_e = datetime.fromisoformat(p_end.replace("Z", "+00:00"))
+                                            if dt_s <= target_dt <= dt_e:
+                                                resolved_project = p_data.get("display_name", proj.get("metadata", {}).get("name"))
+                                                resolved_project_ref = proj.get("metadata", {}).get("name", "Unallocated")
+                                                break
+                                        except ValueError:
+                                            pass
 
             except Exception as e:
                 L.error("Failed to resolve GitOps metadata", extra={"reason": str(e)})
