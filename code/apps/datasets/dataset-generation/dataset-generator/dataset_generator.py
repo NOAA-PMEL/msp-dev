@@ -1003,6 +1003,42 @@ class DatasetGenerator:
         
         L.info("Starting batch-optimized pipeline", extra={"dataset_id": dataset_id, "start": start_time, "end": end_time})
         
+        def _extract_vars_dict(schema_doc):
+            """Polymorphic helper to find 'variables' dictionary anywhere in schema responses."""
+            if not schema_doc or not isinstance(schema_doc, dict):
+                return {}
+            if "variables" in schema_doc and isinstance(schema_doc["variables"], dict):
+                return schema_doc["variables"]
+            if "data" in schema_doc and isinstance(schema_doc["data"], dict):
+                d = schema_doc["data"]
+                if "variables" in d and isinstance(d["variables"], dict):
+                    return d["variables"]
+            for k, v in schema_doc.items():
+                if isinstance(v, dict) and "data" in v and isinstance(v["data"], dict):
+                    if "variables" in v["data"] and isinstance(v["data"]["variables"], dict):
+                        return v["data"]["variables"]
+                if isinstance(v, dict) and "variables" in v and isinstance(v["variables"], dict):
+                    return v["variables"]
+            return {}
+
+        def _find_var_def(vars_dict, target_name):
+            """Flexible alias finder matching exact names, lowercase, or stripped prefixes."""
+            if not vars_dict or not isinstance(vars_dict, dict):
+                return None, None
+            if target_name in vars_dict:
+                return target_name, vars_dict[target_name]
+            target_lower = target_name.lower()
+            for k, v in vars_dict.items():
+                if k.lower() == target_lower:
+                    return k, v
+            for prefix in ["opc_", "smps_", "aps_", "nav_"]:
+                if target_lower.startswith(prefix):
+                    stripped = target_lower[len(prefix):]
+                    for k, v in vars_dict.items():
+                        if k.lower() == stripped:
+                            return k, v
+            return None, None
+
         try:
             # -----------------------------------------------------------------
             # PASS 1: Identify Unique VariableSets & Resolve Mappings ONCE
@@ -1061,19 +1097,10 @@ class DatasetGenerator:
                     if not vs_id or not vs_var: continue
                     
                     active_vmap = vs_to_hardware_map.get(vs_id)
-                    vmap_vars = active_vmap.get("variables") or active_vmap.get("data", {}).get("variables", {}) if active_vmap else {}
+                    vmap_vars = _extract_vars_dict(active_vmap)
+                    _, target_var_def = _find_var_def(vmap_vars, vs_var)
                     
-                    target_var_def = None
-                    if active_vmap:
-                        if vs_var in vmap_vars:
-                            target_var_def = vmap_vars[vs_var]
-                        else:
-                            for k, v in vmap_vars.items():
-                                if k.lower() == vs_var.lower():
-                                    target_var_def = v
-                                    break
-                    
-                    if target_var_def:
+                    if active_vmap and target_var_def:
                         sources = target_var_def.get("source", {})
                         src_info = next(iter(sources.values())) if sources else {}
                             
@@ -1102,17 +1129,14 @@ class DatasetGenerator:
                                     hw_defs_cache[hw_cache_key] = {}
                                     
                             hw_def = hw_defs_cache[hw_cache_key]
-                            hw_vars = hw_def.get("data", {}).get("variables", {})
-                            if not hw_vars:
-                                hw_vars = hw_def.get("variables", {})
+                            hw_vars = _extract_vars_dict(hw_def)
                             
-                            if true_raw_var_name not in hw_vars:
-                                for k in hw_vars.keys():
-                                    if k.lower() == true_raw_var_name.lower():
-                                        true_raw_var_name = k
-                                        break
+                            matched_key, hw_var = _find_var_def(hw_vars, true_raw_var_name)
+                            if matched_key:
+                                true_raw_var_name = matched_key
+                            else:
+                                hw_var = {}
 
-                            hw_var = hw_vars.get(true_raw_var_name, {})
                             hw_var_type = hw_var.get("attributes", {}).get("variable_type", {}).get("data", "")
                             
                             if hw_var_type == "coordinate":
@@ -1227,6 +1251,8 @@ class DatasetGenerator:
             # PASS 4: Compile Xarray & Output NetCDF entirely from In-Memory Cache
             # -----------------------------------------------------------------
             vs_dim_map = {}
+            compiled_coords = {}
+            
             for var in config.get("variables", []):
                 if "static_value" in var: continue
                 out_name = var["name"]
@@ -1237,7 +1263,8 @@ class DatasetGenerator:
                 vs_var = primary_source.get("variable_name")
                 trace = variable_tracing_registry.get((vs_id, vs_var), {})
                 if trace.get("is_coordinate"):
-                    vs_dim_map[vs_id] = out_name
+                    raw_name = trace.get("raw_variable_name", vs_var)
+                    vs_dim_map[(vs_id, raw_name)] = out_name
 
             data_arrays = []
             for var in config.get("variables", []):
@@ -1256,18 +1283,23 @@ class DatasetGenerator:
                 
                 if trace.get("is_coordinate") and not is_calculated:
                     vs_def = vs_defs_cache.get(primary_vs_id, {})
-                    vs_data = vs_def.get("data", {})
-                    native_vars = vs_data.get("variables", {}) if "variables" in vs_data else vs_def.get("variables", {})
+                    vs_data = vs_def.get("data", {}) if "data" in vs_def else vs_def
+                    native_vars = _extract_vars_dict(vs_def)
                     vs_attrs = vs_data.get("attributes", {})
                     
                     static_data = trace.get("static_data", [])
                     if not static_data:
-                        static_data = native_vars.get(primary_vs_var, {}).get("data", [])
+                        _, coord_var_obj = _find_var_def(native_vars, primary_vs_var)
+                        if coord_var_obj:
+                            static_data = coord_var_obj.get("data", [])
                         
-                    raw_dims = native_vars.get(primary_vs_var, {}).get("shape", [out_name])
-                    dims = [out_name if d == "diameter" else d for d in raw_dims]
+                    _, coord_var_obj = _find_var_def(native_vars, primary_vs_var)
+                    raw_dims = coord_var_obj.get("shape", [out_name]) if coord_var_obj else [out_name]
+                    dims = [vs_dim_map.get((primary_vs_id, d), d) for d in raw_dims]
                     
                     L.debug(f"DEBUG PASS 4 [COORD]: Compiling Coordinate '{out_name}'. Dims={dims}. static_data length={len(static_data)}")
+                    
+                    compiled_coords[out_name] = static_data
                     
                     try:
                         da_coord = xr.DataArray(data=static_data, dims=dims)
@@ -1280,9 +1312,10 @@ class DatasetGenerator:
                         for attr_key, attr_val in vs_attrs.items():
                             da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
 
-                        native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
-                        for attr_key, attr_val in native_attrs.items(): 
-                            da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                        if coord_var_obj:
+                            native_attrs = coord_var_obj.get("attributes", {})
+                            for attr_key, attr_val in native_attrs.items(): 
+                                da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                         
                         native_units = da_coord.attrs.get("native_units") or da_coord.attrs.get("units")
                         target_units_raw = var.get("attributes", {}).get("units")
@@ -1402,18 +1435,48 @@ class DatasetGenerator:
                 else:
                     final_values = input_arrays["primary"]["values"]
                     final_times = input_arrays["primary"]["times"]
+
+                vs_def = vs_defs_cache.get(primary_vs_id, {})
+                vs_data = vs_def.get("data", {}) if "data" in vs_def else vs_def
+                native_vars = _extract_vars_dict(vs_def)
+                vs_attrs = vs_data.get("attributes", {})
                 
-                if isinstance(final_values, list) and len(final_values) > 0:
-                    first_list_item = next((v for v in final_values if isinstance(v, list)), None)
-                    if first_list_item is not None:
+                _, primary_var_obj = _find_var_def(native_vars, primary_vs_var)
+                if not primary_var_obj and primary_vs_id in vs_to_hardware_map:
+                    vmap_vars = _extract_vars_dict(vs_to_hardware_map[primary_vs_id])
+                    _, primary_var_obj = _find_var_def(vmap_vars, primary_vs_var)
+
+                raw_dims = primary_var_obj.get("shape", ["time"]) if primary_var_obj else ["time"]
+                dims = [vs_dim_map.get((primary_vs_id, d), d) for d in raw_dims]
+
+                coords = {"time": final_times}
+                for dim in dims:
+                    if dim != "time":
+                        if dim in compiled_coords:
+                            coords[dim] = compiled_coords[dim]
+                        else:
+                            L.warning(f"Coordinate '{dim}' not found in compiled_coords for {out_name}.")
+                            coords[dim] = []
+
+                if len(dims) > 1 and "time" in dims:
+                    second_dim_name = dims[1] if dims[0] == "time" else dims[0]
+                    expected_dim_len = len(coords.get(second_dim_name, []))
+                    
+                    if isinstance(final_values, list) and len(final_values) > 0:
                         try:
-                            max_len = max(len(v) if isinstance(v, list) else 1 for v in final_values if isinstance(v, list))
                             padded = []
                             for v in final_values:
                                 if isinstance(v, list):
-                                    padded.append(v + [np.nan] * (max_len - len(v)))
+                                    if expected_dim_len > 0 and len(v) < expected_dim_len:
+                                        v_padded = v + [np.nan] * (expected_dim_len - len(v))
+                                    elif expected_dim_len > 0 and len(v) > expected_dim_len:
+                                        v_padded = v[:expected_dim_len]
+                                    else:
+                                        v_padded = v
+                                    padded.append(v_padded)
                                 else:
-                                    padded.append([np.nan] * max_len)
+                                    fill_len = expected_dim_len if expected_dim_len > 0 else 1
+                                    padded.append([np.nan] * fill_len)
                             final_values = np.array(padded, dtype=np.float32)
                         except Exception as pad_err:
                             L.warning(f"Padding failed for {out_name}", extra={"error": str(pad_err)})
@@ -1422,34 +1485,12 @@ class DatasetGenerator:
                             final_values = np.array(final_values, dtype=np.float32)
                         except ValueError:
                             pass
+                else:
+                    try:
+                        final_values = np.array(final_values, dtype=np.float32)
+                    except ValueError:
+                        pass
 
-                vs_def = vs_defs_cache.get(primary_vs_id, {})
-                vs_data = vs_def.get("data", {})
-                native_vars = vs_data.get("variables", {}) if "variables" in vs_data else vs_def.get("variables", {})
-                vs_attrs = vs_data.get("attributes", {})
-                
-                raw_dims = native_vars.get(primary_vs_var, {}).get("shape", ["time"])
-                target_coord_dim = vs_dim_map.get(primary_vs_id, out_name)
-                dims = [target_coord_dim if d == "diameter" else d for d in raw_dims]
-
-                coords = {"time": final_times}
-                for dim in dims:
-                    if dim != "time":
-                        static_data = []
-                        if dim in native_vars:
-                            static_data = native_vars[dim].get("attributes", {}).get("static_data", {}).get("data", [])
-                            if not static_data:
-                                static_data = native_vars[dim].get("data", [])
-                        
-                        if not static_data:
-                            for t_key, t_val in variable_tracing_registry.items():
-                                if t_key[1] == dim and t_val.get("is_coordinate"):
-                                    static_data = t_val.get("static_data", [])
-                                    break
-                        
-                        if static_data and len(static_data) > 0:
-                            coords[dim] = static_data
-                            
                 L.debug(f"DEBUG PASS 4 [VAR]: Compiling DataArray '{out_name}'. Dims expected: {dims}. final_values shape: {getattr(final_values, 'shape', len(final_values))}.")
                 L.debug(f"DEBUG PASS 4 [VAR]: Extracted Coords keys: {list(coords.keys())}. Values lengths: {[len(c) for c in coords.values()]}")
                 
@@ -1476,9 +1517,10 @@ class DatasetGenerator:
                     for attr_key, attr_val in vs_attrs.items():
                         da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
 
-                    native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
-                    for attr_key, attr_val in native_attrs.items(): 
-                        da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                    if primary_var_obj:
+                        native_attrs = primary_var_obj.get("attributes", {})
+                        for attr_key, attr_val in native_attrs.items(): 
+                            da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                     
                     native_units = da.attrs.get("native_units") or da.attrs.get("units")
                     
@@ -1551,13 +1593,17 @@ class DatasetGenerator:
                     primary_vs_var = primary_source.get("variable_name")
                     
                     vs_def = vs_defs_cache.get(primary_vs_id, {})
-                    vs_data = vs_def.get("data", {})
-                    native_vars = vs_data.get("variables", {}) if "variables" in vs_data else vs_def.get("variables", {})
+                    vs_data = vs_def.get("data", {}) if "data" in vs_def else vs_def
+                    native_vars = _extract_vars_dict(vs_def)
                     vs_attrs = vs_data.get("attributes", {})
                     
-                    raw_dims = native_vars.get(primary_vs_var, {}).get("shape", ["time"])
-                    target_coord_dim = vs_dim_map.get(primary_vs_id, out_name)
-                    dims = [target_coord_dim if d == "diameter" else d for d in raw_dims]
+                    _, primary_var_obj = _find_var_def(native_vars, primary_vs_var)
+                    if not primary_var_obj and primary_vs_id in vs_to_hardware_map:
+                        vmap_vars = _extract_vars_dict(vs_to_hardware_map[primary_vs_id])
+                        _, primary_var_obj = _find_var_def(vmap_vars, primary_vs_var)
+
+                    raw_dims = primary_var_obj.get("shape", ["time"]) if primary_var_obj else ["time"]
+                    dims = [vs_dim_map.get((primary_vs_id, d), d) for d in raw_dims]
                     
                     coords = {}
                     shape = []
@@ -1565,23 +1611,9 @@ class DatasetGenerator:
                         if dim == "time":
                             coords["time"] = master_time
                             shape.append(len(master_time))
-                        elif dim in native_vars:
-                            static_data = native_vars[dim].get("attributes", {}).get("static_data", {}).get("data", [])
-                            if not static_data:
-                                static_data = native_vars[dim].get("data", [])
-                            
-                            if not static_data:
-                                for t_key, t_val in variable_tracing_registry.items():
-                                    if t_key[1] == dim and t_val.get("is_coordinate"):
-                                        static_data = t_val.get("static_data", [])
-                                        break
-                                        
-                            coords[dim] = static_data
-                            shape.append(len(static_data))
-                        elif dim in aligned_ds.variables:
-                            static_data = aligned_ds[dim].values
-                            coords[dim] = static_data
-                            shape.append(len(static_data))
+                        elif dim in compiled_coords:
+                            coords[dim] = compiled_coords[dim]
+                            shape.append(len(compiled_coords[dim]))
                         else:
                             coords[dim] = [0]
                             shape.append(1)
@@ -1602,9 +1634,10 @@ class DatasetGenerator:
                     for attr_key, attr_val in vs_attrs.items():
                         empty_da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
 
-                    native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
-                    for attr_key, attr_val in native_attrs.items(): 
-                        empty_da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                    if primary_var_obj:
+                        native_attrs = primary_var_obj.get("attributes", {})
+                        for attr_key, attr_val in native_attrs.items(): 
+                            empty_da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                         
                     for attr_key, attr_val in var.get("attributes", {}).items(): 
                         unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
