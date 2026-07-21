@@ -1061,11 +1061,14 @@ class DatasetGenerator:
                     if not vs_id or not vs_var: continue
                     
                     active_vmap = vs_to_hardware_map.get(vs_id)
-                    if active_vmap and vs_var in active_vmap.get("variables", {}):
-                        target_var_def = active_vmap["variables"][vs_var]
+                    vmap_vars = active_vmap.get("variables") or active_vmap.get("data", {}).get("variables", {}) if active_vmap else {}
+                    
+                    if active_vmap and vs_var in vmap_vars:
+                        target_var_def = vmap_vars[vs_var]
                         
                         sources = target_var_def.get("source", {})
                         src_info = next(iter(sources.values())) if sources else {}
+                            
                         s_id = src_info.get("source_id")
                         s_type = src_info.get("source_type", "device")
                         raw_var_name = src_info.get("source_variable", vs_var)
@@ -1163,6 +1166,22 @@ class DatasetGenerator:
                             
                     current_start = current_end
 
+                if all_records:
+                    raw_times = [r["variables"]["time"]["data"].replace("Z", "") for r in all_records if "variables" in r and "time" in r["variables"]]
+                    if raw_times:
+                        try:
+                            parsed_times = pd.to_datetime(raw_times).round("1s").values
+                            idx = 0
+                            for r in all_records:
+                                if "variables" in r and "time" in r["variables"]:
+                                    r["_parsed_time"] = parsed_times[idx]
+                                    idx += 1
+                        except Exception as e:
+                            L.warning("Vectorized time parse failed, falling back to slow loop", extra={"reason": str(e)})
+                            for r in all_records:
+                                if "variables" in r and "time" in r["variables"]:
+                                    r["_parsed_time"] = pd.to_datetime(r["variables"]["time"]["data"].replace("Z", "")).round("1s").to_datetime64()
+
                 bulk_telemetry_cache[s_id] = all_records
 
             # -----------------------------------------------------------------
@@ -1226,7 +1245,6 @@ class DatasetGenerator:
                     raw_dims = native_vars.get(primary_vs_var, {}).get("shape", [out_name])
                     dims = [out_name if d == "diameter" else d for d in raw_dims]
                     
-                    # Create the coordinate array cleanly
                     da_coord = xr.DataArray(data=static_data, dims=dims)
                     
                     if "time" in da_coord.dims and not pd.Index(da_coord.time.values).is_unique:
@@ -1256,7 +1274,6 @@ class DatasetGenerator:
                             L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
                             da_coord.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
                     
-                    # Store as a native Dataset coordinate to bypass xarray DataArray name conflicts
                     ds_coord = xr.Dataset(coords={out_name: da_coord})
                     data_arrays.append(ds_coord)
                     continue
@@ -1294,7 +1311,16 @@ class DatasetGenerator:
                                         val = val_s.split(",")
                                         
                                 if isinstance(val, list):
-                                    val = [float(v) if v is not None and str(v).strip() != "" else np.nan for v in val]
+                                    clean_val = []
+                                    for v in val:
+                                        if v is None or str(v).strip() == "":
+                                            clean_val.append(np.nan)
+                                        else:
+                                            try:
+                                                clean_val.append(float(v))
+                                            except (ValueError, TypeError):
+                                                clean_val.append(np.nan)
+                                    val = clean_val
                                 elif v_type in ["float", "double"] and not isinstance(val, float):
                                     try:
                                         val = float(val)
@@ -1306,9 +1332,10 @@ class DatasetGenerator:
                                     except (ValueError, TypeError):
                                         val = np.nan
 
-                            rounded_dt = pd.to_datetime(r_vars["time"]["data"].replace("Z", "")).round("1s")
-                            times.append(rounded_dt.to_datetime64())
-                            values.append(val)
+                            parsed_time = r.get("_parsed_time")
+                            if parsed_time is not None:
+                                times.append(parsed_time)
+                                values.append(val)
                             
                             hw_source = r_vars[raw_key].get("attributes", {}).get("source_id", {}).get("data")
                             if hw_source: unique_sources.add(hw_source)
@@ -1518,7 +1545,6 @@ class DatasetGenerator:
             # -----------------------------------------------------------------
             primary_platform = None
             for vmap in vs_to_hardware_map.values():
-                # Extract safely from the standard datastore structure
                 p_ref = vmap.get("variablemap_type_id")
                 if not p_ref:
                     p_ref = vmap.get("data", {}).get("attributes", {}).get("platform")
@@ -1563,11 +1589,10 @@ class DatasetGenerator:
                 except Exception as e:
                     L.error("Failed to resolve ProjectAllocation", extra={"reason": str(e)})
 
-            # 1. Inject custom extended global attributes from the dataset configuration
             for attr_key, attr_val in config.get("attributes", {}).items():
-                aligned_ds.attrs[attr_key] = attr_val
+                unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                aligned_ds.attrs[attr_key] = unpacked_val
 
-            # 2. Inject standard dynamically resolved context
             aligned_ds.attrs["title"] = f"Dataset: {dataset_id}"
             aligned_ds.attrs["project"] = resolved_project_name
             aligned_ds.attrs["project_ref"] = resolved_project_ref
