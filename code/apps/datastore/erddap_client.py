@@ -82,6 +82,48 @@ class ErddapClient:
     # ---------------------------------------------------------
     # TELEMETRY QUERIES
     # ---------------------------------------------------------
+    # async def device_data_get(self, request: DataRequest, definition: dict = None) -> dict:
+    #     """Fetches historical device telemetry natively from ERDDAP and repacks it."""
+    #     make = request.make
+    #     model = request.model
+    #     sn = request.serial_number
+        
+    #     if request.device_id and "::" in request.device_id:
+    #         parts = request.device_id.split("::")
+    #         if not make and len(parts) > 0: make = parts[0]
+    #         if not model and len(parts) > 1: model = parts[1]
+    #         if not sn and len(parts) > 2: sn = parts[2]
+
+    #     self.logger.warning(f"BUILDING DATASET ID: make={make}, model={model}, sn={sn}, raw_device_id={request.device_id}")
+
+    #     query_args = []
+    #     if sn:
+    #         # Removed quotes in case ERDDAP typed this column as numeric
+    #         query_args.append(f'serial_number=%22{sn}%22')
+            
+    #     if request.start_time:  # <--- Was start_timestamp
+    #         safe_start = urllib.parse.quote(request.start_time)
+    #         query_args.append(f"time%3E={safe_start}")
+            
+    #     if request.end_time:    # <--- Was end_timestamp
+    #         safe_end = urllib.parse.quote(request.end_time)
+    #         query_args.append(f"time%3C={safe_end}")
+            
+    #     query_args.append("orderBy(%22time%22)")
+
+    #     # Fetch and stitch all timeline versions automatically
+    #     combined_flat_data = await self._discover_and_fetch_all_versions(make, model, query_args)
+
+    #     # Repackage ERDDAP's flat data into the nested Datastore JSON format
+    #     formatted_results = []
+    #     for row in combined_flat_data:
+    #         formatted_record = {"variables": {}}
+    #         for key, val in row.items():
+    #             formatted_record["variables"][key] = {"data": val}
+    #         formatted_results.append(formatted_record)
+            
+    #     return {"results": formatted_results}
+
     async def device_data_get(self, request: DataRequest, definition: dict = None) -> dict:
         """Fetches historical device telemetry natively from ERDDAP and repacks it."""
         make = request.make
@@ -98,14 +140,13 @@ class ErddapClient:
 
         query_args = []
         if sn:
-            # Removed quotes in case ERDDAP typed this column as numeric
             query_args.append(f'serial_number=%22{sn}%22')
             
-        if request.start_time:  # <--- Was start_timestamp
+        if request.start_time:
             safe_start = urllib.parse.quote(request.start_time)
             query_args.append(f"time%3E={safe_start}")
             
-        if request.end_time:    # <--- Was end_timestamp
+        if request.end_time:
             safe_end = urllib.parse.quote(request.end_time)
             query_args.append(f"time%3C={safe_end}")
             
@@ -119,11 +160,23 @@ class ErddapClient:
         for row in combined_flat_data:
             formatted_record = {"variables": {}}
             for key, val in row.items():
+                if isinstance(val, str):
+                    val_s = val.strip()
+                    if val_s.startswith("[") and val_s.endswith("]"):
+                        try:
+                            val = json.loads(val_s)
+                        except Exception:
+                            pass
+                    elif "," in val_s and key not in ["time", "make", "model", "serial_number", "timestamp"]:
+                        try:
+                            val = [float(x) for x in val_s.split(",")]
+                        except ValueError:
+                            pass
                 formatted_record["variables"][key] = {"data": val}
             formatted_results.append(formatted_record)
             
         return {"results": formatted_results}
-
+    
     async def controller_data_get(self, request: ControllerDataRequest, definition: dict = None) -> dict:
         """Fetches historical controller telemetry natively from ERDDAP and repacks it."""
         make = request.make
