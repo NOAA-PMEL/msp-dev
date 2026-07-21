@@ -1031,7 +1031,6 @@ class DatasetGenerator:
             for k, v in vars_dict.items():
                 if k.lower() == target_lower:
                     return k, v
-            # Fix: Check both k and target for prefixes to ensure robust mapping
             for k, v in vars_dict.items():
                 k_lower = k.lower()
                 for prefix in ["opc_", "smps_", "aps_", "nav_", "cpc_"]:
@@ -1407,16 +1406,19 @@ class DatasetGenerator:
                                             except (ValueError, TypeError):
                                                 clean_val.append(np.nan)
                                     val = clean_val
-                                elif v_type in ["float", "double"] and not isinstance(val, float):
-                                    try:
-                                        val = float(val)
-                                    except (ValueError, TypeError):
-                                        val = np.nan
-                                elif v_type in ["int", "integer"] and not isinstance(val, int):
-                                    try:
-                                        val = int(float(val))
-                                    except (ValueError, TypeError):
-                                        val = np.nan
+                                    
+                                # FIX: Skip aggressive scalar type casting if the value is an array/list
+                                elif not isinstance(val, (list, np.ndarray)):
+                                    if v_type in ["float", "double"] and not isinstance(val, float):
+                                        try:
+                                            val = float(val)
+                                        except (ValueError, TypeError):
+                                            val = np.nan
+                                    elif v_type in ["int", "integer"] and not isinstance(val, int):
+                                        try:
+                                            val = int(float(val))
+                                        except (ValueError, TypeError):
+                                            val = np.nan
 
                             parsed_time = r.get("_parsed_time")
                             if parsed_time is not None:
