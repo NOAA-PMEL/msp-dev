@@ -1168,6 +1168,9 @@ class DatasetGenerator:
                     coords = {dims[0]: static_data} if len(dims) == 1 else {}
                     da = xr.DataArray(data=static_data, coords=coords, dims=dims, name=out_name)
                     
+                    if "time" in da.dims and not pd.Index(da.time.values).is_unique:
+                        da = da.groupby("time").mean(dim="time")
+
                     # 1. Unpack Native Attributes safely
                     native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
                     for attr_key, attr_val in native_attrs.items(): 
@@ -1268,6 +1271,9 @@ class DatasetGenerator:
                         coords[dim] = native_vars[dim].get("data", [])
                 
                 da = xr.DataArray(data=final_values, coords=coords, dims=dims, name=out_name)
+                
+                if "time" in da.dims and not pd.Index(da.time.values).is_unique:
+                    da = da.groupby("time").mean(dim="time")
                 
                 if "coordinates" in var:
                     for custom_dim, custom_grid in var["coordinates"].items():
