@@ -995,6 +995,7 @@ class DatasetGenerator:
         Highly optimized pipeline that resolves mappings, fetches telemetry, 
         and extracts schemas exactly once per unique resource.
         """
+        import asyncio
         dataset_id = config.get("id", "unknown_dataset")
         freq_sec = config.get("timebase", {}).get("record_frequency_sec", 60)
         
@@ -1100,10 +1101,20 @@ class DatasetGenerator:
                 }
                 
                 L.info(f"Bulk-retrieving historical telemetry stream from: {s_id}", extra={"endpoint": endpoint})
-                resp = await self.client.get(endpoint, params=params)
-                resp.raise_for_status()
-                records = resp.json().get("results", [])
-                bulk_telemetry_cache[s_id] = records
+                
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        resp = await self.client.get(endpoint, params=params, headers={"Connection": "close"}, timeout=180.0)
+                        resp.raise_for_status()
+                        records = resp.json().get("results", [])
+                        bulk_telemetry_cache[s_id] = records
+                        break
+                    except Exception as e:
+                        if attempt == max_retries - 1:
+                            raise e
+                        L.warning(f"Fetch failed for {s_id} on attempt {attempt+1}. Retrying...", extra={"error": str(e)})
+                        await asyncio.sleep(2)
 
             # -----------------------------------------------------------------
             # PASS 3: Fetch and Cache VariableSet Schema Definitions ONCE
@@ -1227,7 +1238,9 @@ class DatasetGenerator:
                             if val is None or val == "":
                                 val = np.nan
                             else:
-                                if v_type in ["float", "double"] and not isinstance(val, float):
+                                if isinstance(val, list):
+                                    val = [float(v) if v is not None and v != "" else np.nan for v in val]
+                                elif v_type in ["float", "double"] and not isinstance(val, float):
                                     try:
                                         val = float(val)
                                     except (ValueError, TypeError):
@@ -1261,6 +1274,13 @@ class DatasetGenerator:
                 else:
                     final_values = input_arrays["primary"]["values"]
                     final_times = input_arrays["primary"]["times"]
+                
+                # Prevent object arrays (list of lists) from being silently dropped by xarray mean operations
+                if isinstance(final_values, list):
+                    try:
+                        final_values = np.array(final_values, dtype=np.float32)
+                    except ValueError:
+                        pass
 
                 vs_def = vs_defs_cache.get(primary_vs_id, {})
                 native_vars = vs_def.get("variables", {})
@@ -1330,6 +1350,9 @@ class DatasetGenerator:
             else:
                 ds = xr.merge(data_arrays, join='outer')
             
+            # Save variables that do not depend on time (e.g. coordinates like opc_diameter)
+            static_vars = {k: v for k, v in ds.variables.items() if "time" not in v.dims}
+            
             if "time" in ds.dims:
                 ds = ds.groupby("time").mean(dim="time")
             
@@ -1340,6 +1363,11 @@ class DatasetGenerator:
                     aligned_ds.coords["time"] = aligned_ds.time - pd.Timedelta(seconds=half_base)
             else:
                 aligned_ds = ds
+
+            # Restore static variables explicitly dropped by xarray resampling
+            for k, v in static_vars.items():
+                if k not in aligned_ds.variables:
+                    aligned_ds[k] = v
 
             master_time = pd.date_range(start=start_time.replace("Z", ""), end=end_time.replace("Z", ""), freq=f"{freq_sec}s", inclusive="left")
             aligned_ds = aligned_ds.reindex(time=master_time)
@@ -1495,7 +1523,7 @@ class DatasetGenerator:
                 async with httpx.AsyncClient() as client:
                     with open(filepath, "rb") as f:
                         files = {"file": (filename, f, "application/x-netcdf")}
-                        resp = await client.post(storage_url, files=files, params={"dataset_id": dataset_id}, timeout=30.0)
+                        resp = await client.post(storage_url, files=files, params={"dataset_id": dataset_id}, timeout=180.0)
                         resp.raise_for_status()
                 L.info(f"Successfully pushed {filename} to central dataset-storage.")
                 os.remove(filepath)
