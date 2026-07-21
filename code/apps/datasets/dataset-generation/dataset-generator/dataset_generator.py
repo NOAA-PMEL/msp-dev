@@ -1031,12 +1031,14 @@ class DatasetGenerator:
             for k, v in vars_dict.items():
                 if k.lower() == target_lower:
                     return k, v
-            for prefix in ["opc_", "smps_", "aps_", "nav_"]:
-                if target_lower.startswith(prefix):
-                    stripped = target_lower[len(prefix):]
-                    for k, v in vars_dict.items():
-                        if k.lower() == stripped:
-                            return k, v
+            # Fix: Check both k and target for prefixes to ensure robust mapping
+            for k, v in vars_dict.items():
+                k_lower = k.lower()
+                for prefix in ["opc_", "smps_", "aps_", "nav_", "cpc_"]:
+                    if k_lower.startswith(prefix) and k_lower[len(prefix):] == target_lower:
+                        return k, v
+                    if target_lower.startswith(prefix) and target_lower[len(prefix):] == k_lower:
+                        return k, v
             return None, None
 
         try:
@@ -1111,7 +1113,7 @@ class DatasetGenerator:
                         is_coordinate = False
                         static_data = []
                         true_raw_var_name = raw_var_name
-                        hw_shape = ["time"]
+                        hw_shape = target_var_def.get("shape")
                         
                         if s_id and len(s_id.split("::")) >= 2:
                             parts = s_id.split("::")
@@ -1139,7 +1141,9 @@ class DatasetGenerator:
                                 hw_var = {}
 
                             hw_var_type = hw_var.get("attributes", {}).get("variable_type", {}).get("data", "")
-                            hw_shape = hw_var.get("shape", ["time"])
+                            
+                            if not hw_shape:
+                                hw_shape = hw_var.get("shape", ["time"])
                             
                             if hw_var_type == "coordinate":
                                 is_coordinate = True
@@ -1269,6 +1273,8 @@ class DatasetGenerator:
                 if trace.get("is_coordinate"):
                     raw_name = trace.get("raw_variable_name", vs_var)
                     vs_dim_map[(vs_id, raw_name)] = out_name
+                    vs_dim_map[raw_name] = out_name
+                    vs_dim_map[vs_var] = out_name
 
             data_arrays = []
             for var in config.get("variables", []):
@@ -1299,7 +1305,7 @@ class DatasetGenerator:
                         
                     _, coord_var_obj = _find_var_def(native_vars, primary_vs_var)
                     raw_dims = coord_var_obj.get("shape", [out_name]) if coord_var_obj else [out_name]
-                    dims = [vs_dim_map.get((primary_vs_id, d), d) for d in raw_dims]
+                    dims = [vs_dim_map.get((primary_vs_id, d), vs_dim_map.get(d, d)) for d in raw_dims]
                     
                     L.debug(f"DEBUG PASS 4 [COORD]: Compiling Coordinate '{out_name}'. Dims={dims}. static_data length={len(static_data)}")
                     
@@ -1364,7 +1370,7 @@ class DatasetGenerator:
                     times, values = [], []
                     raw_key = trace["raw_variable_name"]
                     v_type = var.get("type", "float")
-                    
+
                     for r in records:
                         r_vars = r.get("variables", {})
                         
@@ -1447,12 +1453,11 @@ class DatasetGenerator:
                     vmap_vars = _extract_vars_dict(vs_to_hardware_map[primary_vs_id])
                     _, primary_var_obj = _find_var_def(vmap_vars, primary_vs_var)
 
-                raw_dims = trace.get("shape")
+                raw_dims = primary_var_obj.get("shape") if primary_var_obj else None
                 if not raw_dims:
-                    raw_dims = primary_var_obj.get("shape", ["time"]) if primary_var_obj else ["time"]
+                    raw_dims = trace.get("shape", ["time"])
                     
-                target_coord_dim = vs_dim_map.get(primary_vs_id, out_name)
-                dims = [target_coord_dim if d == "diameter" else d for d in raw_dims]
+                dims = [vs_dim_map.get((primary_vs_id, d), vs_dim_map.get(d, d)) for d in raw_dims]
 
                 coords = {"time": final_times}
                 for dim in dims:
@@ -1614,12 +1619,11 @@ class DatasetGenerator:
                         vmap_vars = _extract_vars_dict(vs_to_hardware_map[primary_vs_id])
                         _, primary_var_obj = _find_var_def(vmap_vars, primary_vs_var)
 
-                    raw_dims = trace.get("shape")
+                    raw_dims = primary_var_obj.get("shape") if primary_var_obj else None
                     if not raw_dims:
-                        raw_dims = primary_var_obj.get("shape", ["time"]) if primary_var_obj else ["time"]
+                        raw_dims = trace.get("shape", ["time"])
                         
-                    target_coord_dim = vs_dim_map.get(primary_vs_id, out_name)
-                    dims = [target_coord_dim if d == "diameter" else d for d in raw_dims]
+                    dims = [vs_dim_map.get((primary_vs_id, d), vs_dim_map.get(d, d)) for d in raw_dims]
                     
                     coords = {}
                     shape = []
