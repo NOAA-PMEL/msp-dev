@@ -94,6 +94,12 @@ class ErddapClient:
                 raw_def = results[0]
                 definition = raw_def.get("device-definition", raw_def)
 
+        # DEBUG CHECKPOINT 1: Exact definition schema structure
+        try:
+            self.logger.info(f"DEBUG SCHEMA [DEVICE]: {json.dumps(definition, default=str)}")
+        except Exception:
+            self.logger.info(f"DEBUG SCHEMA [DEVICE]: {definition}")
+
         if not definition:
             self.logger.error(f"FAIL-FAST: Missing device definition schema for make='{make}', model='{model}'")
             raise ValueError(f"Missing device definition schema for make='{make}', model='{model}'")
@@ -131,6 +137,12 @@ class ErddapClient:
         for ds_data in datasets_data:
             rows = ds_data.get("results", [])
             if not rows: continue
+
+            # DEBUG CHECKPOINT 2: Exact raw ERDDAP row structure
+            try:
+                self.logger.info(f"DEBUG ERDDAP ROW [DEVICE]: {json.dumps(rows[0], default=str)}")
+            except Exception:
+                self.logger.info(f"DEBUG ERDDAP ROW [DEVICE]: {rows[0]}")
             
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
@@ -242,6 +254,12 @@ class ErddapClient:
                 raw_def = results[0]
                 definition = raw_def.get("controller-definition", raw_def)
 
+        # DEBUG CHECKPOINT 1: Exact definition schema structure
+        try:
+            self.logger.info(f"DEBUG SCHEMA [CONTROLLER]: {json.dumps(definition, default=str)}")
+        except Exception:
+            self.logger.info(f"DEBUG SCHEMA [CONTROLLER]: {definition}")
+
         if not definition:
             self.logger.error(f"FAIL-FAST: Missing controller definition schema for make='{make}', model='{model}'")
             raise ValueError(f"Missing controller definition schema for make='{make}', model='{model}'")
@@ -280,6 +298,12 @@ class ErddapClient:
             rows = ds_data.get("results", [])
             if not rows: continue
             
+            # DEBUG CHECKPOINT 2: Exact raw ERDDAP row structure
+            try:
+                self.logger.info(f"DEBUG ERDDAP ROW [CONTROLLER]: {json.dumps(rows[0], default=str)}")
+            except Exception:
+                self.logger.info(f"DEBUG ERDDAP ROW [CONTROLLER]: {rows[0]}")
+
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
 
