@@ -996,6 +996,7 @@ class DatasetGenerator:
         and extracts schemas exactly once per unique resource.
         """
         import asyncio
+        import json
         dataset_id = config.get("id", "unknown_dataset")
         freq_sec = config.get("timebase", {}).get("record_frequency_sec", 60)
         
@@ -1046,6 +1047,7 @@ class DatasetGenerator:
             # -----------------------------------------------------------------
             variable_tracing_registry = {} 
             telemetry_sources_to_fetch = {} 
+            hw_defs_cache = {}
 
             for var in config.get("variables", []):
                 if "static_value" in var: continue
@@ -1061,21 +1063,50 @@ class DatasetGenerator:
                     if active_vmap and vs_var in active_vmap.get("variables", {}):
                         target_var_def = active_vmap["variables"][vs_var]
                         
-                        var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
-                        if var_type == "coordinate":
-                            variable_tracing_registry[(vs_id, vs_var)] = {
-                                "source_id": "STATIC_COORDINATE",
-                                "raw_variable_name": vs_var,
-                                "vmap_def_id": active_vmap.get("variablemap_definition_id"),
-                                "is_coordinate": True
-                            }
-                            continue
-                        
                         sources = target_var_def.get("source", {})
                         src_info = next(iter(sources.values())) if sources else {}
                         s_id = src_info.get("source_id")
                         s_type = src_info.get("source_type", "device")
                         raw_var_name = src_info.get("source_variable", vs_var)
+                        
+                        is_coordinate = False
+                        static_data = []
+                        
+                        if s_id and len(s_id.split("::")) >= 2:
+                            parts = s_id.split("::")
+                            make, model = parts[0], parts[1]
+                            hw_cache_key = f"{s_type}::{make}::{model}"
+                            
+                            if hw_cache_key not in hw_defs_cache:
+                                try:
+                                    hw_resp = await self.client.get(f"/{s_type}-definition/registry/get/", params={"make": make, "model": model})
+                                    if hw_resp.status_code == 200 and hw_resp.json().get("results"):
+                                        hw_defs_cache[hw_cache_key] = hw_resp.json()["results"][0]
+                                    else:
+                                        hw_defs_cache[hw_cache_key] = {}
+                                except Exception as e:
+                                    L.warning(f"Failed to fetch {hw_cache_key}", extra={"reason": str(e)})
+                                    hw_defs_cache[hw_cache_key] = {}
+                                    
+                            hw_def = hw_defs_cache[hw_cache_key]
+                            hw_var = hw_def.get("variables", {}).get(raw_var_name, {})
+                            hw_var_type = hw_var.get("attributes", {}).get("variable_type", {}).get("data", "")
+                            
+                            if hw_var_type == "coordinate":
+                                is_coordinate = True
+                                static_data = hw_var.get("data", [])
+                                
+                        var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+                        
+                        if var_type == "coordinate" or is_coordinate:
+                            variable_tracing_registry[(vs_id, vs_var)] = {
+                                "source_id": "STATIC_COORDINATE",
+                                "raw_variable_name": vs_var,
+                                "vmap_def_id": active_vmap.get("variablemap_definition_id"),
+                                "is_coordinate": True,
+                                "static_data": static_data
+                            }
+                            continue
                         
                         if s_id:
                             variable_tracing_registry[(vs_id, vs_var)] = {
@@ -1138,7 +1169,6 @@ class DatasetGenerator:
             # -----------------------------------------------------------------
             # PASS 4: Compile Xarray & Output NetCDF entirely from In-Memory Cache
             # -----------------------------------------------------------------
-            # Map VariableSet IDs to custom coordinate names to disambiguate multi-sensor dimensions
             vs_dim_map = {}
             for var in config.get("variables", []):
                 if "static_value" in var: continue
@@ -1171,10 +1201,12 @@ class DatasetGenerator:
                     vs_def = vs_defs_cache.get(primary_vs_id, {})
                     native_vars = vs_def.get("variables", {})
                     
-                    static_data = native_vars.get(primary_vs_var, {}).get("data", [])
+                    static_data = trace.get("static_data", [])
+                    if not static_data:
+                        static_data = native_vars.get(primary_vs_var, {}).get("data", [])
+                        
                     raw_dims = native_vars.get(primary_vs_var, {}).get("shape", [out_name])
                     
-                    # Disambiguate dimension names (e.g. rename generic 'diameter' to 'opc_diameter')
                     dims = [out_name if d == "diameter" else d for d in raw_dims]
                     coords = {dims[0]: static_data} if len(dims) == 1 else {}
                     da = xr.DataArray(data=static_data, coords=coords, dims=dims, name=out_name)
@@ -1186,15 +1218,11 @@ class DatasetGenerator:
                         da.name = da_name
                         da.attrs = da_attrs
 
-                    # 1. Unpack Native Attributes safely
                     native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
                     for attr_key, attr_val in native_attrs.items(): 
                         da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                     
-                    # 2. Extract native_units first, fallback to units
                     native_units = da.attrs.get("native_units") or da.attrs.get("units")
-                    
-                    # 3. Unpack Target Attributes safely
                     target_units_raw = var.get("attributes", {}).get("units")
                     target_units = target_units_raw.get("data") if isinstance(target_units_raw, dict) else target_units_raw
                     
@@ -1205,7 +1233,6 @@ class DatasetGenerator:
                         try:
                             norm_native = self.normalize_unit_string(native_units)
                             norm_target = self.normalize_unit_string(target_units)
-                            
                             data_quantity = ureg.Quantity(da.values, norm_native)
                             da.values = data_quantity.to(norm_target).magnitude
                             da.attrs["units"] = target_units
@@ -1238,8 +1265,18 @@ class DatasetGenerator:
                             if val is None or val == "":
                                 val = np.nan
                             else:
+                                if isinstance(val, str):
+                                    val_s = val.strip()
+                                    if val_s.startswith("[") and val_s.endswith("]"):
+                                        try:
+                                            val = json.loads(val_s)
+                                        except Exception:
+                                            pass
+                                    elif "," in val_s:
+                                        val = val_s.split(",")
+                                        
                                 if isinstance(val, list):
-                                    val = [float(v) if v is not None and v != "" else np.nan for v in val]
+                                    val = [float(v) if v is not None and str(v).strip() != "" else np.nan for v in val]
                                 elif v_type in ["float", "double"] and not isinstance(val, float):
                                     try:
                                         val = float(val)
@@ -1275,12 +1312,24 @@ class DatasetGenerator:
                     final_values = input_arrays["primary"]["values"]
                     final_times = input_arrays["primary"]["times"]
                 
-                # Prevent object arrays (list of lists) from being silently dropped by xarray mean operations
                 if isinstance(final_values, list):
-                    try:
-                        final_values = np.array(final_values, dtype=np.float32)
-                    except ValueError:
-                        pass
+                    if len(final_values) > 0 and isinstance(final_values[0], list):
+                        try:
+                            max_len = max(len(v) if isinstance(v, list) else 1 for v in final_values)
+                            padded = []
+                            for v in final_values:
+                                if isinstance(v, list):
+                                    padded.append(v + [np.nan] * (max_len - len(v)))
+                                else:
+                                    padded.append([v] + [np.nan] * (max_len - 1))
+                            final_values = np.array(padded, dtype=np.float32)
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            final_values = np.array(final_values, dtype=np.float32)
+                        except ValueError:
+                            pass
 
                 vs_def = vs_defs_cache.get(primary_vs_id, {})
                 native_vars = vs_def.get("variables", {})
@@ -1313,15 +1362,12 @@ class DatasetGenerator:
                                 kwargs={"fill_value": np.nan}
                             )
 
-                # 1. Unpack Native Attributes safely
                 native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
                 for attr_key, attr_val in native_attrs.items(): 
                     da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                 
-                # 2. Extract native_units first, fallback to units
                 native_units = da.attrs.get("native_units") or da.attrs.get("units")
                 
-                # 3. Unpack Target Attributes safely
                 target_units = None
                 for attr_key, attr_val in var.get("attributes", {}).items():
                     unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
@@ -1350,7 +1396,6 @@ class DatasetGenerator:
             else:
                 ds = xr.merge(data_arrays, join='outer')
             
-            # Save variables that do not depend on time (e.g. coordinates like opc_diameter)
             static_vars = {k: v for k, v in ds.variables.items() if "time" not in v.dims}
             
             if "time" in ds.dims:
@@ -1364,7 +1409,6 @@ class DatasetGenerator:
             else:
                 aligned_ds = ds
 
-            # Restore static variables explicitly dropped by xarray resampling
             for k, v in static_vars.items():
                 if k not in aligned_ds.variables:
                     aligned_ds[k] = v
@@ -1376,7 +1420,6 @@ class DatasetGenerator:
                 if "static_value" in var: continue
                 out_name = var["name"]
                 
-                # Check .variables instead of .data_vars to prevent overwriting coordinates
                 if out_name not in aligned_ds.variables:
                     L.warning(f"Variable '{out_name}' missing from telemetry. Injecting NaN placeholder array.", extra={"dataset_id": dataset_id})
                     
