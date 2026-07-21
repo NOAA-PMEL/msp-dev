@@ -1111,6 +1111,7 @@ class DatasetGenerator:
                         is_coordinate = False
                         static_data = []
                         true_raw_var_name = raw_var_name
+                        hw_shape = ["time"]
                         
                         if s_id and len(s_id.split("::")) >= 2:
                             parts = s_id.split("::")
@@ -1138,6 +1139,7 @@ class DatasetGenerator:
                                 hw_var = {}
 
                             hw_var_type = hw_var.get("attributes", {}).get("variable_type", {}).get("data", "")
+                            hw_shape = hw_var.get("shape", ["time"])
                             
                             if hw_var_type == "coordinate":
                                 is_coordinate = True
@@ -1152,7 +1154,8 @@ class DatasetGenerator:
                                 "raw_variable_name": true_raw_var_name,
                                 "vmap_def_id": active_vmap.get("variablemap_definition_id"),
                                 "is_coordinate": True,
-                                "static_data": static_data
+                                "static_data": static_data,
+                                "shape": hw_shape
                             }
                             continue
                         
@@ -1161,7 +1164,8 @@ class DatasetGenerator:
                                 "source_id": s_id,
                                 "raw_variable_name": true_raw_var_name,
                                 "vmap_def_id": active_vmap.get("variablemap_definition_id"),
-                                "is_coordinate": False
+                                "is_coordinate": False,
+                                "shape": hw_shape
                             }
                             if s_id not in telemetry_sources_to_fetch:
                                 telemetry_sources_to_fetch[s_id] = {"source_type": s_type, "fields": set()}
@@ -1361,9 +1365,6 @@ class DatasetGenerator:
                     raw_key = trace["raw_variable_name"]
                     v_type = var.get("type", "float")
                     
-                    if records and len(records) > 0:
-                        L.warning(f"DEBUG PASS 4 RECS [{out_name}]: raw_key='{raw_key}', sample_record_keys={list(records[0].get('variables', {}).keys())}")
-
                     for r in records:
                         r_vars = r.get("variables", {})
                         
@@ -1446,8 +1447,12 @@ class DatasetGenerator:
                     vmap_vars = _extract_vars_dict(vs_to_hardware_map[primary_vs_id])
                     _, primary_var_obj = _find_var_def(vmap_vars, primary_vs_var)
 
-                raw_dims = primary_var_obj.get("shape", ["time"]) if primary_var_obj else ["time"]
-                dims = [vs_dim_map.get((primary_vs_id, d), d) for d in raw_dims]
+                raw_dims = trace.get("shape")
+                if not raw_dims:
+                    raw_dims = primary_var_obj.get("shape", ["time"]) if primary_var_obj else ["time"]
+                    
+                target_coord_dim = vs_dim_map.get(primary_vs_id, out_name)
+                dims = [target_coord_dim if d == "diameter" else d for d in raw_dims]
 
                 coords = {"time": final_times}
                 for dim in dims:
@@ -1462,17 +1467,18 @@ class DatasetGenerator:
                     second_dim_name = dims[1] if dims[0] == "time" else dims[0]
                     expected_dim_len = len(coords.get(second_dim_name, []))
                     
-                    if isinstance(final_values, list) and len(final_values) > 0:
+                    if isinstance(final_values, (list, np.ndarray)) and len(final_values) > 0:
                         try:
                             padded = []
                             for v in final_values:
-                                if isinstance(v, list):
-                                    if expected_dim_len > 0 and len(v) < expected_dim_len:
-                                        v_padded = v + [np.nan] * (expected_dim_len - len(v))
-                                    elif expected_dim_len > 0 and len(v) > expected_dim_len:
-                                        v_padded = v[:expected_dim_len]
+                                if isinstance(v, (list, np.ndarray)):
+                                    v_list = list(v) if isinstance(v, np.ndarray) else v
+                                    if expected_dim_len > 0 and len(v_list) < expected_dim_len:
+                                        v_padded = v_list + [np.nan] * (expected_dim_len - len(v_list))
+                                    elif expected_dim_len > 0 and len(v_list) > expected_dim_len:
+                                        v_padded = v_list[:expected_dim_len]
                                     else:
-                                        v_padded = v
+                                        v_padded = v_list
                                     padded.append(v_padded)
                                 else:
                                     fill_len = expected_dim_len if expected_dim_len > 0 else 1
@@ -1481,21 +1487,22 @@ class DatasetGenerator:
                         except Exception as pad_err:
                             L.warning(f"Padding failed for {out_name}", extra={"error": str(pad_err)})
                     else:
-                        try:
-                            final_values = np.array(final_values, dtype=np.float32)
-                        except ValueError:
-                            pass
+                        final_values = np.empty((len(final_values), expected_dim_len), dtype=np.float32)
+                        final_values[:] = np.nan
                 else:
                     try:
                         final_values = np.array(final_values, dtype=np.float32)
                     except ValueError:
                         pass
 
-                L.debug(f"DEBUG PASS 4 [VAR]: Compiling DataArray '{out_name}'. Dims expected: {dims}. final_values shape: {getattr(final_values, 'shape', len(final_values))}.")
+                L.info(f"DEBUG DATA {out_name} PRE-DA: dtype={getattr(final_values, 'dtype', 'unknown')}, shape={getattr(final_values, 'shape', len(final_values))}")
+                if len(final_values) > 0:
+                    L.info(f"DEBUG DATA {out_name} PRE-DA SAMPLE: {final_values[0][:5] if isinstance(final_values[0], (list, np.ndarray)) else final_values[:5]}")
                 L.debug(f"DEBUG PASS 4 [VAR]: Extracted Coords keys: {list(coords.keys())}. Values lengths: {[len(c) for c in coords.values()]}")
                 
                 try:
                     da = xr.DataArray(data=final_values, coords=coords, dims=dims, name=out_name)
+                    L.info(f"DEBUG DATA {out_name} XARRAY CREATED:\n{da}")
                     
                     if "time" in da.dims and not pd.Index(da.time.values).is_unique:
                         da_name = da.name
@@ -1557,6 +1564,7 @@ class DatasetGenerator:
                 ds = xr.Dataset()
             else:
                 ds = xr.merge(data_arrays, join='outer')
+                L.info(f"DEBUG DATA MERGED DATASET:\n{ds}")
             
             static_vars = {k: v for k, v in ds.variables.items() if "time" not in v.dims}
             
@@ -1568,6 +1576,7 @@ class DatasetGenerator:
                 aligned_ds = ds.resample(time=f"{freq_sec}s", closed="left", label="right", offset=f"{half_base}s").mean(dim="time")
                 if len(aligned_ds.time) > 0:
                     aligned_ds.coords["time"] = aligned_ds.time - pd.Timedelta(seconds=half_base)
+                L.info(f"DEBUG DATA RESAMPLED DATASET:\n{aligned_ds}")
             else:
                 aligned_ds = ds
 
@@ -1592,6 +1601,9 @@ class DatasetGenerator:
                     primary_vs_id = primary_source.get("variableset_id")
                     primary_vs_var = primary_source.get("variable_name")
                     
+                    trace_key = (primary_vs_id, primary_vs_var)
+                    trace = variable_tracing_registry.get(trace_key, {})
+                    
                     vs_def = vs_defs_cache.get(primary_vs_id, {})
                     vs_data = vs_def.get("data", {}) if "data" in vs_def else vs_def
                     native_vars = _extract_vars_dict(vs_def)
@@ -1602,8 +1614,12 @@ class DatasetGenerator:
                         vmap_vars = _extract_vars_dict(vs_to_hardware_map[primary_vs_id])
                         _, primary_var_obj = _find_var_def(vmap_vars, primary_vs_var)
 
-                    raw_dims = primary_var_obj.get("shape", ["time"]) if primary_var_obj else ["time"]
-                    dims = [vs_dim_map.get((primary_vs_id, d), d) for d in raw_dims]
+                    raw_dims = trace.get("shape")
+                    if not raw_dims:
+                        raw_dims = primary_var_obj.get("shape", ["time"]) if primary_var_obj else ["time"]
+                        
+                    target_coord_dim = vs_dim_map.get(primary_vs_id, out_name)
+                    dims = [target_coord_dim if d == "diameter" else d for d in raw_dims]
                     
                     coords = {}
                     shape = []
