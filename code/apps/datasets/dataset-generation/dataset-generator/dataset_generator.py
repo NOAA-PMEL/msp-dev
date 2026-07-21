@@ -1384,7 +1384,18 @@ class DatasetGenerator:
                                 if k.lower() == raw_key.lower():
                                     target_key = k
                                     break
-                                    
+                            if target_key not in r_vars:
+                                raw_lower = raw_key.lower()
+                                for prefix in ["opc_", "smps_", "aps_", "nav_", "cpc_"]:
+                                    if raw_lower.startswith(prefix):
+                                        stripped = raw_lower[len(prefix):]
+                                        for k in r_vars.keys():
+                                            if k.lower() == stripped:
+                                                target_key = k
+                                                break
+                                    if target_key in r_vars:
+                                        break
+
                         if "time" in r_vars and target_key in r_vars:
                             val = r_vars[target_key].get("data")
                             if val is None or val == "":
@@ -1574,7 +1585,7 @@ class DatasetGenerator:
                 L.warning("No data extracted for any target variables. Building blank schema.", extra={"dataset_id": dataset_id})
                 ds = xr.Dataset()
             else:
-                ds = xr.merge(data_arrays, join='outer')
+                ds = xr.merge(data_arrays, join='outer', combine_attrs='drop')
                 L.info(f"DEBUG DATA MERGED DATASET:\n{ds}")
             
             static_vars = {k: v for k, v in ds.variables.items() if "time" not in v.dims}
@@ -1692,17 +1703,6 @@ class DatasetGenerator:
             # -----------------------------------------------------------------
             # PASS 5: Resolve GitOps Context & Global Metadata
             # -----------------------------------------------------------------
-            aligned_ds.attrs["title"] = f"Dataset: {dataset_id}"
-            aligned_ds.attrs["history"] = f"Generated {datetime.utcnow().isoformat()}Z"
-            
-            if "conventions" in config:
-                aligned_ds.attrs["Conventions"] = config["conventions"].get("name", "CF-1.8")
-                aligned_ds.attrs["featureType"] = config["conventions"].get("featureType", "timeSeries")
-
-            for attr_key, attr_val in config.get("attributes", {}).items():
-                unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-                aligned_ds.attrs[attr_key] = unpacked_val
-
             primary_platform = None
             for vmap in vs_to_hardware_map.values():
                 p_ref = vmap.get("variablemap_type_id")
@@ -1791,10 +1791,41 @@ class DatasetGenerator:
             except Exception as e:
                 L.error("Failed to resolve GitOps metadata", extra={"reason": str(e)})
 
-            aligned_ds.attrs["deployment"] = resolved_deployment
-            aligned_ds.attrs["deployment_ref"] = resolved_deployment_ref
+            # RESET GLOBAL ATTRIBUTES: Clear out all variable-level residue
+            aligned_ds.attrs = {}
+
+            # Collect global deduplicated sources and variablemaps
+            all_sources = sorted(list(telemetry_sources_to_fetch.keys()))
+            all_vmaps = sorted(list(set(vmap.get("variablemap_definition_id") for vmap in vs_to_hardware_map.values() if vmap.get("variablemap_definition_id"))))
+
+            # Compile strictly clean global dataset metadata
+            aligned_ds.attrs["title"] = config.get("attributes", {}).get("title", f"Dataset: {dataset_id}")
             aligned_ds.attrs["project"] = resolved_project
             aligned_ds.attrs["project_ref"] = resolved_project_ref
+            aligned_ds.attrs["platform"] = primary_platform if primary_platform else "Unknown Platform"
+            aligned_ds.attrs["deployment"] = resolved_deployment
+            aligned_ds.attrs["deployment_ref"] = resolved_deployment_ref
+            aligned_ds.attrs["variablemaps"] = ", ".join(all_vmaps) if all_vmaps else "None"
+            aligned_ds.attrs["sources"] = ", ".join(all_sources) if all_sources else "None"
+            aligned_ds.attrs["history"] = f"Generated {datetime.utcnow().isoformat()}Z"
+            
+            conv_cfg = config.get("conventions", {})
+            aligned_ds.attrs["Conventions"] = conv_cfg.get("name", "CF-1.8")
+            
+            # Enforce CF featureType: trajectory for mobile lat/lon paths, timeSeries for static
+            if "featureType" in conv_cfg:
+                aligned_ds.attrs["featureType"] = conv_cfg["featureType"]
+            elif "latitude" in aligned_ds.variables or "longitude" in aligned_ds.variables:
+                aligned_ds.attrs["featureType"] = "trajectory"
+            else:
+                aligned_ds.attrs["featureType"] = "timeSeries"
+
+            # Pass through non-variable explicit config global attributes
+            excluded_global_attrs = {"evaluate_by", "units", "standard_name", "instrument_source", "variablemap_source", "raw_variable_name"}
+            for attr_key, attr_val in config.get("attributes", {}).items():
+                if attr_key not in excluded_global_attrs:
+                    unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                    aligned_ds.attrs[attr_key] = unpacked_val
 
             safe_start = start_time.replace(":", "").replace("-", "")
             filename = f"{dataset_id}.{safe_start}.nc"
