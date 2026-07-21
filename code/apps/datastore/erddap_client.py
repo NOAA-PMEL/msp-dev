@@ -137,24 +137,45 @@ class ErddapClient:
         for ds_data in datasets_data:
             rows = ds_data.get("results", [])
             if not rows: continue
-
+            
             # DEBUG CHECKPOINT 2: Exact raw ERDDAP row structure
             try:
-                self.logger.info(f"DEBUG ERDDAP ROW [DEVICE]: {json.dumps(rows[0], default=str)}")
+                self.logger.info(f"DEBUG ERDDAP ROW [{make} {model}]: {json.dumps(rows[0], default=str)}")
             except Exception:
-                self.logger.info(f"DEBUG ERDDAP ROW [DEVICE]: {rows[0]}")
-            
+                self.logger.info(f"DEBUG ERDDAP ROW [{make} {model}]: {rows[0]}")
+
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
 
-            # Natively extract active dimensions strictly from the GitOps definition schema
+            def_vars = _extract_schema_node(definition, "variables")
             def_dims = _extract_schema_node(definition, "dimensions")
-            shape_dims = ["time"]
-            for dim in def_dims.keys():
-                if dim != "time" and dim in all_cols:
-                    shape_dims.append(dim)
 
-            var_cols = [c for c in all_cols if c not in sys_cols and c not in shape_dims and not c.endswith("_dim")]
+            # Emulate sidecar.py exact shape extraction
+            var_cols_raw = [c for c in all_cols if c not in sys_cols and c != "time" and not c.endswith("_dim")]
+            target_var = next((v for v in var_cols_raw if v in def_vars), None)
+
+            shape_dims = ["time"]
+            if target_var and "shape" in def_vars[target_var]:
+                for dim in def_vars[target_var]["shape"]:
+                    if dim != "time" and dim in all_cols and dim not in shape_dims:
+                        shape_dims.append(dim)
+            else:
+                for dim in def_dims.keys():
+                    if dim != "time" and dim in all_cols and dim not in shape_dims:
+                        shape_dims.append(dim)
+                
+                # Ultimate Safety Net: Native ERDDAP _dim evaluation
+                if len(shape_dims) == 1:
+                    for c in all_cols:
+                        if c.endswith("_dim") and rows[0].get(c) is not None:
+                            dim_name = c[:-4]
+                            if dim_name in all_cols and dim_name not in shape_dims:
+                                shape_dims.append(dim_name)
+
+            var_cols = [c for c in var_cols_raw if c not in shape_dims]
+            
+            # DEBUG CHECKPOINT 3: Matrix Identification
+            self.logger.info(f"DEBUG EXTRACTED SHAPE [{make} {model}]: {shape_dims} for vars: {var_cols}")
             
             grouped = {}
             for row in rows:
@@ -300,21 +321,42 @@ class ErddapClient:
             
             # DEBUG CHECKPOINT 2: Exact raw ERDDAP row structure
             try:
-                self.logger.info(f"DEBUG ERDDAP ROW [CONTROLLER]: {json.dumps(rows[0], default=str)}")
+                self.logger.info(f"DEBUG ERDDAP ROW [{make} {model}]: {json.dumps(rows[0], default=str)}")
             except Exception:
-                self.logger.info(f"DEBUG ERDDAP ROW [CONTROLLER]: {rows[0]}")
+                self.logger.info(f"DEBUG ERDDAP ROW [{make} {model}]: {rows[0]}")
 
             sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
             all_cols = list(rows[0].keys())
 
-            # Natively extract active dimensions strictly from the GitOps definition schema
+            def_vars = _extract_schema_node(definition, "variables")
             def_dims = _extract_schema_node(definition, "dimensions")
-            shape_dims = ["time"]
-            for dim in def_dims.keys():
-                if dim != "time" and dim in all_cols:
-                    shape_dims.append(dim)
 
-            var_cols = [c for c in all_cols if c not in sys_cols and c not in shape_dims and not c.endswith("_dim")]
+            # Emulate sidecar.py exact shape extraction
+            var_cols_raw = [c for c in all_cols if c not in sys_cols and c != "time" and not c.endswith("_dim")]
+            target_var = next((v for v in var_cols_raw if v in def_vars), None)
+
+            shape_dims = ["time"]
+            if target_var and "shape" in def_vars[target_var]:
+                for dim in def_vars[target_var]["shape"]:
+                    if dim != "time" and dim in all_cols and dim not in shape_dims:
+                        shape_dims.append(dim)
+            else:
+                for dim in def_dims.keys():
+                    if dim != "time" and dim in all_cols and dim not in shape_dims:
+                        shape_dims.append(dim)
+                
+                # Ultimate Safety Net: Native ERDDAP _dim evaluation
+                if len(shape_dims) == 1:
+                    for c in all_cols:
+                        if c.endswith("_dim") and rows[0].get(c) is not None:
+                            dim_name = c[:-4]
+                            if dim_name in all_cols and dim_name not in shape_dims:
+                                shape_dims.append(dim_name)
+
+            var_cols = [c for c in var_cols_raw if c not in shape_dims]
+            
+            # DEBUG CHECKPOINT 3: Matrix Identification
+            self.logger.info(f"DEBUG EXTRACTED SHAPE [{make} {model}]: {shape_dims} for vars: {var_cols}")
             
             grouped = {}
             for row in rows:
