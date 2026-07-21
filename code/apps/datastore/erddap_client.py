@@ -33,7 +33,7 @@ class ErddapClient:
         try:
             resp = await self.http.get(url)
             if resp.status_code == 404:
-                return {"results": []}
+                return {"dataset_id": dataset_id, "results": []}
                 
             resp.raise_for_status()
             data = resp.json()
@@ -42,15 +42,142 @@ class ErddapClient:
             cols = table.get("columnNames", [])
             rows = table.get("rows", [])
             
-            return {"results": [dict(zip(cols, row)) for row in rows]}
+            return {"dataset_id": dataset_id, "results": [dict(zip(cols, row)) for row in rows]}
             
         except Exception as e:
             self.logger.error("ERDDAP fetch failed", extra={"url": url, "reason": str(e)})
-            return {"results": []}
+            return {"dataset_id": dataset_id, "results": []}
 
     async def _discover_and_fetch_all_versions(self, make: str, model: str, query_args: List[str]) -> List[dict]:
         """Dynamically discovers all versioned and shape-split datasets for a device and fetches them concurrently."""
-        search_url = f"{self.base_url}/tabledap/allDatasets.json?datasetID&datasetID=~%22telemetry_{make}_{model}_v.*%22"
+        safe_make = make.replace("-", "_")
+        safe_model = model.replace("-", "_")
+        search_url = f"{self.base_url}/tabledap/allDatasets.json?datasetID&datasetID=~%22telemetry_{safe_make}_{safe_model}_v.*%22"
+        dataset_ids = []
+        
+        try:
+            resp = await self.http.get(search_url)
+            if resp.status_code == 200:
+                rows = resp.json().get("table", {}).get("rows", [])
+                dataset_ids = [row[0] for row in rows]
+        except Exception as e:
+            self.logger.warning(f"Dataset discovery failed for {make} {model}. Reason: {e}")
+            
+        if not dataset_ids:
+            dataset_ids = [f"telemetry_{safe_make}_{safe_model}_v1_time"]
+
+        tasks = [self._fetch_tabledap(ds_id, query_args) for ds_id in dataset_ids]
+        return await asyncio.gather(*tasks)
+    
+    # ---------------------------------------------------------
+    # TELEMETRY QUERIES
+    # ---------------------------------------------------------
+    async def device_data_get(self, request: DataRequest, definition: dict = None) -> dict:
+        """Fetches historical device telemetry natively from ERDDAP and explicitly un-flattens dimensions."""
+        make = request.make
+        model = request.model
+        sn = request.serial_number
+        
+        if request.device_id and "::" in request.device_id:
+            parts = request.device_id.split("::")
+            if not make and len(parts) > 0: make = parts[0]
+            if not model and len(parts) > 1: model = parts[1]
+            if not sn and len(parts) > 2: sn = parts[2]
+
+        self.logger.warning(f"BUILDING DATASET ID: make={make}, model={model}, sn={sn}, raw_device_id={request.device_id}")
+
+        query_args = []
+        if sn:
+            query_args.append(f'serial_number=%22{sn}%22')
+            
+        if request.start_time:
+            safe_start = urllib.parse.quote(request.start_time)
+            query_args.append(f"time%3E={safe_start}")
+            
+        if request.end_time:
+            safe_end = urllib.parse.quote(request.end_time)
+            query_args.append(f"time%3C={safe_end}")
+            
+        query_args.append("orderBy(%22time%22)")
+
+        # Fetch all shape dataset slices. Returns a list of dicts: {"dataset_id": str, "results": list}
+        datasets_data = await self._discover_and_fetch_all_versions(make, model, query_args)
+
+        merged_records = {}
+        for ds_data in datasets_data:
+            dataset_id = ds_data.get("dataset_id")
+            rows = ds_data.get("results", [])
+            if not rows: continue
+            
+            # Parse shape dimensions exactly from the ERDDAP dataset ID (e.g., telemetry_TSI_APS3321_v5_time_diameter)
+            parts = dataset_id.split("_v")
+            if len(parts) < 2: continue
+            shape_str = parts[1].split("_", 1)[1] if "_" in parts[1] else "time"
+            shape_dims = shape_str.split("_")
+            
+            sys_cols = {"timestamp", "author", "command", "make", "model", "format_version", "serial_number"}
+            all_cols = list(rows[0].keys())
+            var_cols = [c for c in all_cols if c not in sys_cols and c not in shape_dims and not c.endswith("_dim")]
+            
+            # 1. Group rows perfectly using the known shape dimensions
+            grouped = {}
+            for row in rows:
+                time_key = row.get("time")
+                if not time_key: continue
+                
+                if time_key not in merged_records:
+                    merged_records[time_key] = {"variables": {}}
+                    for sc in sys_cols:
+                        if sc in row:
+                            merged_records[time_key]["variables"][sc] = {"data": row[sc]}
+                            
+                current_level = grouped
+                for i, dim in enumerate(shape_dims):
+                    dim_val = row.get(dim)
+                    if i == len(shape_dims) - 1:
+                        current_level[dim_val] = row 
+                    else:
+                        if dim_val not in current_level:
+                            current_level[dim_val] = {}
+                        current_level = current_level[dim_val]
+            
+            # 2. Extract perfectly unflattened N-dimensional arrays
+            def extract_array(node, var_name, dims_left):
+                if not dims_left:
+                    val = node.get(var_name)
+                    if val == "NaN" or val == "": return None
+                    if isinstance(val, str) and "," in val and var_name not in sys_cols:
+                        try:
+                            val = [float(x) for x in val.split(",")]
+                        except ValueError:
+                            pass
+                    return val
+                return [extract_array(node[k], var_name, dims_left[1:]) for k in sorted(node.keys())]
+
+            for time_val, time_node in grouped.items():
+                if time_val not in merged_records: continue
+                rec_vars = merged_records[time_val]["variables"]
+                
+                remaining_dims = shape_dims[1:] # Strip 'time' which is our base level
+                
+                for v_name in var_cols:
+                    if len(shape_dims) == 1:
+                        val = time_node.get(v_name)
+                        if val == "NaN" or val == "": val = None
+                        rec_vars[v_name] = {"data": val}
+                    else:
+                        rec_vars[v_name] = {"data": extract_array(time_node, v_name, remaining_dims)}
+
+        formatted_results = list(merged_records.values())
+        formatted_results.sort(key=lambda x: x.get("variables", {}).get("time", {}).get("data", ""))
+            
+        return {"results": formatted_results}
+        
+    async def _discover_and_fetch_all_versions(self, make: str, model: str, query_args: List[str]) -> List[dict]:
+        """Dynamically discovers all versioned and shape-split datasets for a device and fetches them concurrently."""
+        safe_make = make.replace("-", "_")
+        safe_model = model.replace("-", "_")
+        search_url = f"{self.base_url}/tabledap/allDatasets.json?datasetID&datasetID=~%22telemetry_{safe_make}_{safe_model}_v.*%22"
         dataset_ids = []
         
         try:
@@ -63,7 +190,7 @@ class ErddapClient:
             self.logger.warning(f"Dataset discovery failed for {make} {model}. Reason: {e}")
             
         if not dataset_ids:
-            dataset_ids = [f"telemetry_{make}_{model}_v1_time"]
+            dataset_ids = [f"telemetry_{safe_make}_{safe_model}_v1_time"]
 
         # 2. Fetch all discovered shape datasets concurrently
         tasks = [self._fetch_tabledap(ds_id, query_args) for ds_id in dataset_ids]
