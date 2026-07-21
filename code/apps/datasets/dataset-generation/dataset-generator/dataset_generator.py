@@ -1044,7 +1044,7 @@ class DatasetGenerator:
                     L.error(f"No active variablemap mapping found in registry for {vs_id}")
 
             # -----------------------------------------------------------------
-            # PASS 2: Deduplicate and Bulk Fetch Raw Telemetry Sources ONCE
+            # PASS 2: Fetch Hardware Context and Validate Telemetry Sources
             # -----------------------------------------------------------------
             variable_tracing_registry = {} 
             telemetry_sources_to_fetch = {} 
@@ -1075,6 +1075,7 @@ class DatasetGenerator:
                         
                         is_coordinate = False
                         static_data = []
+                        true_raw_var_name = raw_var_name
                         
                         if s_id and len(s_id.split("::")) >= 2:
                             parts = s_id.split("::")
@@ -1093,7 +1094,16 @@ class DatasetGenerator:
                                     hw_defs_cache[hw_cache_key] = {}
                                     
                             hw_def = hw_defs_cache[hw_cache_key]
-                            hw_var = hw_def.get("variables", {}).get(raw_var_name, {})
+                            hw_vars = hw_def.get("variables", {})
+                            
+                            # Drill into the device definition to find the exact native casing (e.g., dn -> dN)
+                            if true_raw_var_name not in hw_vars:
+                                for k in hw_vars.keys():
+                                    if k.lower() == true_raw_var_name.lower():
+                                        true_raw_var_name = k
+                                        break
+
+                            hw_var = hw_vars.get(true_raw_var_name, {})
                             hw_var_type = hw_var.get("attributes", {}).get("variable_type", {}).get("data", "")
                             
                             if hw_var_type == "coordinate":
@@ -1105,7 +1115,7 @@ class DatasetGenerator:
                         if var_type == "coordinate" or is_coordinate:
                             variable_tracing_registry[(vs_id, vs_var)] = {
                                 "source_id": "STATIC_COORDINATE",
-                                "raw_variable_name": vs_var,
+                                "raw_variable_name": true_raw_var_name,
                                 "vmap_def_id": active_vmap.get("variablemap_definition_id"),
                                 "is_coordinate": True,
                                 "static_data": static_data
@@ -1115,13 +1125,13 @@ class DatasetGenerator:
                         if s_id:
                             variable_tracing_registry[(vs_id, vs_var)] = {
                                 "source_id": s_id,
-                                "raw_variable_name": raw_var_name,
+                                "raw_variable_name": true_raw_var_name,
                                 "vmap_def_id": active_vmap.get("variablemap_definition_id"),
                                 "is_coordinate": False
                             }
                             if s_id not in telemetry_sources_to_fetch:
                                 telemetry_sources_to_fetch[s_id] = {"source_type": s_type, "fields": set()}
-                            telemetry_sources_to_fetch[s_id]["fields"].add(raw_var_name)
+                            telemetry_sources_to_fetch[s_id]["fields"].add(true_raw_var_name)
 
             L.info("Deduplicated Telemetry Sources discovered", extra={"unique_sources": list(telemetry_sources_to_fetch.keys())})
 
@@ -1236,7 +1246,9 @@ class DatasetGenerator:
                 
                 if trace.get("is_coordinate") and not is_calculated:
                     vs_def = vs_defs_cache.get(primary_vs_id, {})
-                    native_vars = vs_def.get("variables", {})
+                    vs_data = vs_def.get("data", {})
+                    native_vars = vs_data.get("variables", {})
+                    vs_attrs = vs_data.get("attributes", {})
                     
                     static_data = trace.get("static_data", [])
                     if not static_data:
@@ -1251,6 +1263,9 @@ class DatasetGenerator:
                         da_attrs = da_coord.attrs
                         da_coord = da_coord.groupby("time").mean(dim="time")
                         da_coord.attrs = da_attrs
+
+                    for attr_key, attr_val in vs_attrs.items():
+                        da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
 
                     native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
                     for attr_key, attr_val in native_attrs.items(): 
@@ -1377,7 +1392,9 @@ class DatasetGenerator:
                             pass
 
                 vs_def = vs_defs_cache.get(primary_vs_id, {})
-                native_vars = vs_def.get("variables", {})
+                vs_data = vs_def.get("data", {})
+                native_vars = vs_data.get("variables", {})
+                vs_attrs = vs_data.get("attributes", {})
                 
                 raw_dims = native_vars.get(primary_vs_var, {}).get("shape", ["time"])
                 target_coord_dim = vs_dim_map.get(primary_vs_id, out_name)
@@ -1406,6 +1423,9 @@ class DatasetGenerator:
                                 method="linear", 
                                 kwargs={"fill_value": np.nan}
                             )
+
+                for attr_key, attr_val in vs_attrs.items():
+                    da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
 
                 native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
                 for attr_key, attr_val in native_attrs.items(): 
@@ -1476,7 +1496,10 @@ class DatasetGenerator:
                     primary_vs_var = primary_source.get("variable_name")
                     
                     vs_def = vs_defs_cache.get(primary_vs_id, {})
-                    native_vars = vs_def.get("variables", {})
+                    vs_data = vs_def.get("data", {})
+                    native_vars = vs_data.get("variables", {})
+                    vs_attrs = vs_data.get("attributes", {})
+                    
                     raw_dims = native_vars.get(primary_vs_var, {}).get("shape", ["time"])
                     target_coord_dim = vs_dim_map.get(primary_vs_id, out_name)
                     dims = [target_coord_dim if d == "diameter" else d for d in raw_dims]
@@ -1512,6 +1535,9 @@ class DatasetGenerator:
                             
                     empty_da = xr.DataArray(data=np.full(shape, np.nan, dtype=np.float32), coords=coords, dims=dims, name=out_name)
                     
+                    for attr_key, attr_val in vs_attrs.items():
+                        empty_da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+
                     native_attrs = native_vars.get(primary_vs_var, {}).get("attributes", {})
                     for attr_key, attr_val in native_attrs.items(): 
                         empty_da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
@@ -1541,66 +1567,82 @@ class DatasetGenerator:
                     aligned_ds[out_name] = da
 
             # -----------------------------------------------------------------
-            # PASS 5: RESOLVE TIME-BOUND PROJECT ALLOCATIONS & GLOBAL ATTRIBUTES
+            # PASS 5: Resolve GitOps Context & Global Metadata
             # -----------------------------------------------------------------
-            primary_platform = None
-            for vmap in vs_to_hardware_map.values():
-                p_ref = vmap.get("variablemap_type_id")
-                if not p_ref:
-                    p_ref = vmap.get("data", {}).get("attributes", {}).get("platform")
-                if isinstance(p_ref, dict): 
-                    p_ref = p_ref.get("data")
-                if p_ref:
-                    primary_platform = p_ref
-                    break
-                
-            resolved_project_name = "Unknown Project"
-            resolved_project_ref = "Unallocated"
-            
-            if primary_platform:
-                try:
-                    alloc_resp = await self.client.get("/projectallocation-definition/registry/get/")
-                    if alloc_resp.status_code == 200:
-                        allocations = alloc_resp.json().get("results", [])
-                        target_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-                        
-                        for alloc in allocations:
-                            data = alloc.get("data", {})
-                            if data.get("host_platform_ref") == primary_platform:
-                                a_start_str = data.get("start_time", "1970-01-01T00:00:00Z")
-                                a_end_str = data.get("end_time", "9999-12-31T23:59:59Z")
-                                
-                                try:
-                                    a_start_dt = datetime.fromisoformat(a_start_str.replace("Z", "+00:00"))
-                                    a_end_dt = datetime.fromisoformat(a_end_str.replace("Z", "+00:00"))
-                                    
-                                    if a_start_dt <= target_dt <= a_end_dt:
-                                        resolved_project_ref = data.get("project_ref")
-                                        break
-                                except ValueError:
-                                    continue
-                        
-                        if resolved_project_ref != "Unallocated":
-                            proj_resp = await self.client.get("/project-definition/registry/get/", params={"name": resolved_project_ref})
-                            if proj_resp.status_code == 200:
-                                projs = proj_resp.json().get("results", [])
-                                if projs:
-                                    resolved_project_name = projs[0].get("data", {}).get("display_name", resolved_project_ref)
-                except Exception as e:
-                    L.error("Failed to resolve ProjectAllocation", extra={"reason": str(e)})
-
-            for attr_key, attr_val in config.get("attributes", {}).items():
-                unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-                aligned_ds.attrs[attr_key] = unpacked_val
-
             aligned_ds.attrs["title"] = f"Dataset: {dataset_id}"
-            aligned_ds.attrs["project"] = resolved_project_name
-            aligned_ds.attrs["project_ref"] = resolved_project_ref
             aligned_ds.attrs["history"] = f"Generated {datetime.utcnow().isoformat()}Z"
             
             if "conventions" in config:
                 aligned_ds.attrs["Conventions"] = config["conventions"].get("name", "CF-1.8")
                 aligned_ds.attrs["featureType"] = config["conventions"].get("featureType", "timeSeries")
+
+            for attr_key, attr_val in config.get("attributes", {}).items():
+                unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                aligned_ds.attrs[attr_key] = unpacked_val
+
+            resolved_project = "Unknown Project"
+            resolved_project_ref = "Unallocated"
+            resolved_deployment = "Unknown Deployment"
+            resolved_deployment_ref = "Unallocated"
+
+            try:
+                target_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                
+                dep_resp = await self.client.get("/deployment-definition/registry/get/")
+                if dep_resp.status_code == 200:
+                    deployments = dep_resp.json().get("results", [])
+                    valid_deps = []
+                    
+                    for dep in deployments:
+                        d_data = dep.get("data", {})
+                        d_start = d_data.get("planned_start_time", "1970-01-01T00:00:00Z")
+                        d_end = d_data.get("actual_end_time", d_data.get("planned_end_time", "9999-12-31T23:59:59Z"))
+                        try:
+                            dt_s = datetime.fromisoformat(d_start.replace("Z", "+00:00"))
+                            dt_e = datetime.fromisoformat(d_end.replace("Z", "+00:00"))
+                            if dt_s <= target_dt <= dt_e:
+                                valid_deps.append(dep)
+                        except ValueError:
+                            pass
+                    
+                    if valid_deps:
+                        active_dep = valid_deps[0]
+                        dep_data = active_dep.get("data", {})
+                        resolved_deployment = dep_data.get("display_name", "Unknown Deployment")
+                        resolved_deployment_ref = active_dep.get("metadata", {}).get("name", "Unallocated")
+                        
+                        proj_ref = dep_data.get("project_ref")
+                        if proj_ref:
+                            proj_resp = await self.client.get("/project-definition/registry/get/", params={"name": proj_ref})
+                            if proj_resp.status_code == 200 and proj_resp.json().get("results"):
+                                p_data = proj_resp.json()["results"][0].get("data", {})
+                                resolved_project = p_data.get("display_name", proj_ref)
+                                resolved_project_ref = proj_ref
+                        else:
+                            proj_resp = await self.client.get("/project-definition/registry/get/")
+                            if proj_resp.status_code == 200:
+                                projects = proj_resp.json().get("results", [])
+                                for proj in projects:
+                                    p_data = proj.get("data", {})
+                                    p_start = p_data.get("planned_start_time", "1970-01-01T00:00:00Z")
+                                    p_end = p_data.get("actual_end_time", p_data.get("planned_end_time", "9999-12-31T23:59:59Z"))
+                                    try:
+                                        dt_s = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
+                                        dt_e = datetime.fromisoformat(p_end.replace("Z", "+00:00"))
+                                        if dt_s <= target_dt <= dt_e:
+                                            resolved_project = p_data.get("display_name", proj.get("metadata", {}).get("name"))
+                                            resolved_project_ref = proj.get("metadata", {}).get("name", "Unallocated")
+                                            break
+                                    except ValueError:
+                                        pass
+
+            except Exception as e:
+                L.error("Failed to resolve GitOps metadata", extra={"reason": str(e)})
+
+            aligned_ds.attrs["deployment"] = resolved_deployment
+            aligned_ds.attrs["deployment_ref"] = resolved_deployment_ref
+            aligned_ds.attrs["project"] = resolved_project
+            aligned_ds.attrs["project_ref"] = resolved_project_ref
 
             safe_start = start_time.replace(":", "").replace("-", "")
             filename = f"{dataset_id}.{safe_start}.nc"
