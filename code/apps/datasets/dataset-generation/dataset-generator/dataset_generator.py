@@ -1110,6 +1110,7 @@ class DatasetGenerator:
                         static_data = []
                         true_raw_var_name = raw_var_name
                         hw_shape = target_var_def.get("shape")
+                        hw_var = {}
                         
                         if s_id and len(s_id.split("::")) >= 2:
                             parts = s_id.split("::")
@@ -1155,7 +1156,9 @@ class DatasetGenerator:
                                 "vmap_def_id": active_vmap.get("variablemap_definition_id"),
                                 "is_coordinate": True,
                                 "static_data": static_data,
-                                "shape": hw_shape
+                                "shape": hw_shape,
+                                "hw_attrs": hw_var.get("attributes", {}),
+                                "vmap_attrs": target_var_def.get("attributes", {})
                             }
                             continue
                         
@@ -1165,7 +1168,9 @@ class DatasetGenerator:
                                 "raw_variable_name": true_raw_var_name,
                                 "vmap_def_id": active_vmap.get("variablemap_definition_id"),
                                 "is_coordinate": False,
-                                "shape": hw_shape
+                                "shape": hw_shape,
+                                "hw_attrs": hw_var.get("attributes", {}),
+                                "vmap_attrs": target_var_def.get("attributes", {})
                             }
                             if s_id not in telemetry_sources_to_fetch:
                                 telemetry_sources_to_fetch[s_id] = {"source_type": s_type, "fields": set()}
@@ -1259,6 +1264,32 @@ class DatasetGenerator:
             compiled_coords = {}
             saved_var_attrs = {}  # Registry to guarantee zero-loss variable attribute retention
             
+            # Helper to strictly build explicit metadata hierarchically
+            def build_master_attrs(trace, var_obj, config_var, unique_srcs=None):
+                mattrs = {}
+                for k, v in trace.get("hw_attrs", {}).items():
+                    mattrs[k] = v.get("data") if isinstance(v, dict) else v
+                for k, v in trace.get("vmap_attrs", {}).items():
+                    mattrs[k] = v.get("data") if isinstance(v, dict) else v
+                if var_obj:
+                    for k, v in var_obj.get("attributes", {}).items():
+                        mattrs[k] = v.get("data") if isinstance(v, dict) else v
+                
+                native_u = mattrs.get("native_units") or mattrs.get("units")
+                target_u = None
+                
+                for k, v in config_var.get("attributes", {}).items():
+                    unpacked_val = v.get("data") if isinstance(v, dict) else v
+                    if k == "units": target_u = unpacked_val
+                    mattrs[k] = unpacked_val
+                    
+                mattrs["instrument_source"] = trace.get("source_id", "Unknown")
+                mattrs["variablemap_source"] = trace.get("vmap_def_id", "Unknown")
+                mattrs["raw_variable_name"] = trace.get("raw_variable_name", "Unknown")
+                if unique_srcs: mattrs["sources"] = ", ".join(sorted(list(unique_srcs)))
+                
+                return mattrs, native_u, target_u
+
             for var in config.get("variables", []):
                 if "static_value" in var: continue
                 out_name = var["name"]
@@ -1293,9 +1324,7 @@ class DatasetGenerator:
                 
                 if trace.get("is_coordinate") and not is_calculated:
                     vs_def = vs_defs_cache.get(primary_vs_id, {})
-                    vs_data = vs_def.get("data", {}) if "data" in vs_def else vs_def
                     native_vars = _extract_vars_dict(vs_def)
-                    vs_attrs = vs_data.get("attributes", {})
                     
                     static_data = trace.get("static_data", [])
                     if not static_data:
@@ -1317,20 +1346,8 @@ class DatasetGenerator:
                         if "time" in da_coord.dims and not pd.Index(da_coord.time.values).is_unique:
                             da_coord = da_coord.groupby("time").mean(dim="time", keep_attrs=True)
 
-                        for attr_key, attr_val in vs_attrs.items():
-                            da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-
-                        if coord_var_obj:
-                            native_attrs = coord_var_obj.get("attributes", {})
-                            for attr_key, attr_val in native_attrs.items(): 
-                                da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-                        
-                        native_units = da_coord.attrs.get("native_units") or da_coord.attrs.get("units")
-                        target_units_raw = var.get("attributes", {}).get("units")
-                        target_units = target_units_raw.get("data") if isinstance(target_units_raw, dict) else target_units_raw
-                        
-                        for attr_key, attr_val in var.get("attributes", {}).items(): 
-                            da_coord.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                        mattrs, native_units, target_units = build_master_attrs(trace, coord_var_obj, var)
+                        da_coord.attrs.update(mattrs)
                         
                         if native_units and target_units and (native_units != target_units):
                             try:
@@ -1343,10 +1360,6 @@ class DatasetGenerator:
                                 L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
                                 da_coord.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
 
-                        da_coord.attrs["instrument_source"] = trace.get("source_id", "Unknown")
-                        da_coord.attrs["variablemap_source"] = trace.get("vmap_def_id", "Unknown")
-                        da_coord.attrs["raw_variable_name"] = trace.get("raw_variable_name", "Unknown")
-                        
                         saved_var_attrs[out_name] = da_coord.attrs.copy()
                         ds_coord = xr.Dataset(coords={out_name: da_coord})
                         data_arrays.append(ds_coord)
@@ -1383,7 +1396,6 @@ class DatasetGenerator:
                         if "time" in r_vars and target_key in r_vars:
                             val = r_vars[target_key].get("data")
                             
-                            # CHECKPOINT 1: Log raw incoming telemetry structure on first record
                             if len(values) == 0:
                                 val_preview = str(val)[:200] if val is not None else "None"
                                 L.info(f"CHECKPOINT 1 [RAW TELEMETRY INGEST] {out_name} -> target_key='{target_key}': type={type(val).__name__}, preview={val_preview}")
@@ -1451,9 +1463,7 @@ class DatasetGenerator:
                     final_times = input_arrays["primary"]["times"]
 
                 vs_def = vs_defs_cache.get(primary_vs_id, {})
-                vs_data = vs_def.get("data", {}) if "data" in vs_def else vs_def
                 native_vars = _extract_vars_dict(vs_def)
-                vs_attrs = vs_data.get("attributes", {})
                 
                 _, primary_var_obj = _find_var_def(native_vars, primary_vs_var)
                 if not primary_var_obj and primary_vs_id in vs_to_hardware_map:
@@ -1507,7 +1517,6 @@ class DatasetGenerator:
                     except ValueError:
                         pass
 
-                # CHECKPOINT 2: Comprehensive matrix content inspection before DataArray construction
                 if isinstance(final_values, np.ndarray):
                     v_size = final_values.size
                     v_non_nan = np.count_nonzero(~np.isnan(final_values))
@@ -1542,39 +1551,19 @@ class DatasetGenerator:
                                     kwargs={"fill_value": np.nan}
                                 )
 
-                    for attr_key, attr_val in vs_attrs.items():
-                        da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-
-                    if primary_var_obj:
-                        native_attrs = primary_var_obj.get("attributes", {})
-                        for attr_key, attr_val in native_attrs.items(): 
-                            da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
+                    mattrs, native_units, target_units = build_master_attrs(trace, primary_var_obj, var, unique_sources)
+                    da.attrs.update(mattrs)
                     
-                    native_units = da.attrs.get("native_units") or da.attrs.get("units")
-                    
-                    target_units = None
-                    for attr_key, attr_val in var.get("attributes", {}).items():
-                        unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-                        if attr_key == "units": 
-                            target_units = unpacked_val
-                        da.attrs[attr_key] = unpacked_val
-                        
                     if native_units and target_units and (native_units != target_units):
                         try:
                             norm_native = self.normalize_unit_string(native_units)
                             norm_target = self.normalize_unit_string(target_units)
-                            
                             data_quantity = ureg.Quantity(da.values, norm_native)
                             da.values = data_quantity.to(norm_target).magnitude
                             da.attrs["units"] = target_units
                         except Exception as e:
                             L.error(f"Unit conversion failed for {out_name}: {e}")
                             da.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
-
-                    if unique_sources: da.attrs["sources"] = ", ".join(sorted(list(unique_sources)))
-                    da.attrs["instrument_source"] = trace.get("source_id", "Unknown")
-                    da.attrs["variablemap_source"] = trace.get("vmap_def_id", "Unknown")
-                    da.attrs["raw_variable_name"] = trace.get("raw_variable_name", "Unknown")
 
                     saved_var_attrs[out_name] = da.attrs.copy()
                     data_arrays.append(da)
@@ -1625,9 +1614,7 @@ class DatasetGenerator:
                     trace = variable_tracing_registry.get(trace_key, {})
                     
                     vs_def = vs_defs_cache.get(primary_vs_id, {})
-                    vs_data = vs_def.get("data", {}) if "data" in vs_def else vs_def
                     native_vars = _extract_vars_dict(vs_def)
-                    vs_attrs = vs_data.get("attributes", {})
                     
                     _, primary_var_obj = _find_var_def(native_vars, primary_vs_var)
                     if not primary_var_obj and primary_vs_id in vs_to_hardware_map:
@@ -1666,17 +1653,8 @@ class DatasetGenerator:
                             
                     empty_da = xr.DataArray(data=np.full(shape, np.nan, dtype=np.float32), coords=coords, dims=dims, name=out_name)
                     
-                    for attr_key, attr_val in vs_attrs.items():
-                        empty_da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-
-                    if primary_var_obj:
-                        native_attrs = primary_var_obj.get("attributes", {})
-                        for attr_key, attr_val in native_attrs.items(): 
-                            empty_da.attrs[attr_key] = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-                        
-                    for attr_key, attr_val in var.get("attributes", {}).items(): 
-                        unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
-                        empty_da.attrs[attr_key] = unpacked_val
+                    mattrs, _, _ = build_master_attrs(trace, primary_var_obj, var)
+                    empty_da.attrs.update(mattrs)
                         
                     saved_var_attrs[out_name] = empty_da.attrs.copy()
                     aligned_ds[out_name] = empty_da
