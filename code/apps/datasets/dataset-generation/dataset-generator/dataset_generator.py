@@ -1308,6 +1308,8 @@ class DatasetGenerator:
                 input_arrays = {}
                 unique_sources = set()
                 for param_name, input_source in fetch_list.items():
+                    if records and len(records) > 0:
+                        L.warning(f"DEBUG PASS 4 RECS [{out_name}]: raw_key='{raw_key}', sample_record_keys={list(records[0].get('variables', {}).keys())}")
                     vs_id = input_source.get("variableset_id")
                     vs_var = input_source.get("variable_name")
                     
