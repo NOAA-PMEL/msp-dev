@@ -7,7 +7,7 @@ import sys
 from time import sleep
 from typing import List
 
-# import numpy as np
+import numpy as np
 from ulid import ULID
 from pathlib import Path
 import os
@@ -2475,6 +2475,184 @@ class SamplingSystem:
         
         return s
     
+    # async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict, data_buffer: dict = None):
+    #     map_type = "direct"
+    #     try:
+    #         target_time = time_index["index_ready"]
+    #         var_record = variableset_record["variables"][variable_name]
+
+    #         # --- Coordinate Fast-Path ---
+    #         attr_var_type = var_record.get("attributes", {}).get("variable_type", {}).get("data", "")
+    #         if attr_var_type == "coordinate":
+    #             static_array = var_record.get("attributes", {}).get("static_data", {}).get("data", [])
+                
+    #             # --- APPLY UNIT CONVERSION TO COORDINATES ---
+    #             target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+    #             native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                
+    #             if static_array and target_unit and native_unit and target_unit != native_unit:
+    #                 try:
+    #                     norm_native = self.normalize_unit_string(native_unit)
+    #                     norm_target = self.normalize_unit_string(target_unit)
+                        
+    #                     data_quantity = ureg.Quantity(static_array, norm_native)
+    #                     converted = data_quantity.to(norm_target).magnitude
+                        
+    #                     if isinstance(static_array, list):
+    #                         if hasattr(converted, "tolist"):
+    #                             static_array = [round(float(v), 3) for v in converted.tolist()]
+    #                         else:
+    #                             static_array = [round(float(v), 3) for v in converted]
+    #                     else:
+    #                         static_array = round(float(converted), 3)
+    #                 except Exception as e:
+    #                     self.logger.error("Unit conversion failed for coordinate", extra={"variable": variable_name, "reason": str(e)})
+
+    #             # Instantly yield the static array we hydrated earlier and exit
+    #             variableset_record["variables"][variable_name]["data"] = static_array
+    #             self.logger.debug(f"EVALUATED [COORDINATE]: Clock={get_datetime_string()} BinTime={target_time} Var='{variableset_name}::{variable_name}' = {static_array}")
+    #             return
+
+    #         if data_buffer is not None:
+    #             indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
+    #         else:
+    #             indexed_data = []
+            
+    #         v_type = var_record.get("type", "float")
+    #         var_class = var_record.get("variable_type", "sensor") 
+    #         shape = var_record.get("shape", ["time"])
+            
+    #         raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
+            
+    #         idx_meth_raw = raw_var_def.get("index_method", "average")
+    #         if isinstance(idx_meth_raw, list) and len(idx_meth_raw) > 0:
+    #             index_method = idx_meth_raw[-1].lower()
+    #         elif isinstance(idx_meth_raw, str):
+    #             index_method = idx_meth_raw.lower()
+    #         else:
+    #             index_method = "average"
+
+    #         fill_strat = raw_var_def.get("fill_strategy", {})
+    #         fill_method = fill_strat.get("method", "forward_fill" if var_class == "setting" else "none")
+    #         max_age_seconds = fill_strat.get("max_age_seconds", 10)
+
+    #         varmap_name = variablemap.get("variablemap", {}).get("metadata", {}).get("name", "unknown")
+    #         cache_key = f"{varmap_name}::{variableset_name}::{variable_name}"
+
+    #         val = None
+            
+    #         # --- EVALUATION LOGIC ---
+    #         if len(indexed_data) == 0:
+    #             if fill_method == "forward_fill" and cache_key in self.forward_fill_cache:
+    #                 cached_record = self.forward_fill_cache[cache_key]
+    #                 cached_time_str = cached_record["timestamp"]
+                    
+    #                 try:
+    #                     target_dt = string_to_datetime(target_time)
+    #                     cached_dt = string_to_datetime(cached_time_str)
+    #                     age = (target_dt - cached_dt).total_seconds()
+                        
+    #                     if age <= max_age_seconds:
+    #                         val = cached_record["val"] 
+    #                     else:
+    #                         val = "" if v_type in ["string", "str", "char"] else None
+    #                 except Exception as e:
+    #                     self.logger.error("Error calculating cache age", extra={"reason": str(e)})
+    #                     val = "" if v_type in ["string", "str", "char"] else None
+    #             else:
+    #                 val = "" if v_type in ["string", "str", "char"] else None
+            
+    #         else:
+    #             if len(indexed_data) == 1:
+    #                 val = indexed_data[0]
+    #             else:
+    #                 if v_type in ["string", "str", "char"]:
+    #                     val = indexed_data[-1] 
+    #                 else:
+    #                     if index_method == "last":
+    #                         val = indexed_data[-1]
+    #                     elif index_method == "first":
+    #                         val = indexed_data[0]
+    #                     elif index_method == "max":
+    #                         val = max(indexed_data)
+    #                     elif index_method == "min":
+    #                         val = min(indexed_data)
+    #                     else: 
+    #                         if len(shape) > 1:
+    #                             try:
+    #                                 val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
+    #                             except Exception as e:
+    #                                 self.logger.error("2D averaging error", extra={"reason": str(e)})
+    #                                 val = indexed_data[-1]
+    #                         else:
+    #                             val = round(sum(indexed_data) / len(indexed_data), 3)
+
+    #         # --- UNIT CONVERSION LOGIC ---
+    #         if val is not None and val != "":
+    #             # 1. Enforce the data type defined in the hydrated schema
+    #             if v_type in ["float", "double"] and not isinstance(val, float):
+    #                 try:
+    #                     val = float(val)
+    #                 except (ValueError, TypeError):
+    #                     pass
+    #             elif v_type in ["int", "integer"] and not isinstance(val, int):
+    #                 try:
+    #                     val = int(float(val))
+    #                 except (ValueError, TypeError):
+    #                     pass
+                
+    #             target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+    #             native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                
+    #             # DEBUG: Print exactly what the conversion engine sees before doing anything
+    #             self.logger.info(
+    #                 f"CONVERSION CHECK [{variable_name}]: "
+    #                 f"val={val} (type={type(val).__name__}), "
+    #                 f"native={native_unit}, target={target_unit}"
+    #             )
+
+    #             # Coerce string representations of numbers (e.g. "14.2") into actual floats
+    #             if isinstance(val, str) and v_type not in ["string", "str", "char"]:
+    #                 try:
+    #                     val = float(val)
+    #                 except (ValueError, TypeError):
+    #                     pass
+                        
+    #             if isinstance(val, (int, float, list)):
+    #                 if target_unit and native_unit and target_unit != native_unit:
+    #                     try:
+    #                         norm_native = self.normalize_unit_string(native_unit)
+    #                         norm_target = self.normalize_unit_string(target_unit)
+                            
+    #                         data_quantity = ureg.Quantity(val, norm_native)
+    #                         converted = data_quantity.to(norm_target).magnitude
+                            
+    #                         if isinstance(val, list):
+    #                             if hasattr(converted, "tolist"):
+    #                                 val = [round(float(v), 3) for v in converted.tolist()]
+    #                             else:
+    #                                 val = [round(float(v), 3) for v in converted]
+    #                         else:
+    #                             val = round(float(converted), 3)
+                                
+    #                         self.logger.info(f"CONVERSION SUCCESS [{variable_name}]: {data_quantity.magnitude} {norm_native} -> {val} {norm_target}")
+    #                     except Exception as e:
+    #                         self.logger.error("Unit conversion failed", extra={"variable": variable_name, "native": native_unit, "target": target_unit, "reason": str(e)})
+
+    #                 # --- UPDATE CACHE ---
+    #                 self.forward_fill_cache[cache_key] = {
+    #                     "val": val,
+    #                     "timestamp": target_time
+    #                 }
+
+    #         variableset_record["variables"][variable_name]["data"] = val
+    #         self.logger.debug(f"EVALUATED [DIRECT]: Clock={get_datetime_string()} BinTime={target_time} Var='{variableset_name}::{variable_name}' = {val}")
+
+    #     except Exception as e:
+    #         self.logger.error("update_direct_variable_by_time_index", extra={"reason": str(e)})
+
+    #     return
+        
     async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict, data_buffer: dict = None):
         map_type = "direct"
         try:
@@ -2514,14 +2692,59 @@ class SamplingSystem:
                 return
 
             if data_buffer is not None:
-                indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
+                raw_indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
             else:
-                indexed_data = []
+                raw_indexed_data = []
             
             v_type = var_record.get("type", "float")
             var_class = var_record.get("variable_type", "sensor") 
             shape = var_record.get("shape", ["time"])
             
+            # --- PRE-PROCESS RAW DATA (Type Coercion & Array Deserialization) ---
+            indexed_data = []
+            for raw_val in raw_indexed_data:
+                if raw_val is None or raw_val == "":
+                    indexed_data.append(np.nan)
+                    continue
+
+                if isinstance(raw_val, str):
+                    val_s = raw_val.strip()
+                    if val_s.startswith("[") and val_s.endswith("]"):
+                        try:
+                            raw_val = json.loads(val_s)
+                        except Exception:
+                            pass
+                    elif "," in val_s:
+                        raw_val = val_s.split(",")
+
+                if isinstance(raw_val, list):
+                    clean_val = []
+                    for v in raw_val:
+                        if v is None or str(v).strip() == "":
+                            clean_val.append(np.nan)
+                        else:
+                            try:
+                                clean_val.append(float(v))
+                            except (ValueError, TypeError):
+                                clean_val.append(np.nan)
+                    indexed_data.append(clean_val)
+
+                elif not isinstance(raw_val, (list, np.ndarray)):
+                    if v_type in ["float", "double"] and not isinstance(raw_val, float):
+                        try:
+                            raw_val = float(raw_val)
+                        except (ValueError, TypeError):
+                            raw_val = np.nan
+                    elif v_type in ["int", "integer"] and not isinstance(raw_val, int):
+                        try:
+                            raw_val = int(float(raw_val))
+                        except (ValueError, TypeError):
+                            raw_val = np.nan
+                    indexed_data.append(raw_val)
+                else:
+                    indexed_data.append(raw_val)
+            # --------------------------------------------------------------------
+
             raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
             
             idx_meth_raw = raw_var_def.get("index_method", "average")
@@ -2567,25 +2790,51 @@ class SamplingSystem:
                     val = indexed_data[0]
                 else:
                     if v_type in ["string", "str", "char"]:
-                        val = indexed_data[-1] 
+                        valid_strs = [s for s in indexed_data if not (isinstance(s, float) and np.isnan(s))]
+                        val = valid_strs[-1] if valid_strs else ""
                     else:
                         if index_method == "last":
                             val = indexed_data[-1]
                         elif index_method == "first":
                             val = indexed_data[0]
                         elif index_method == "max":
-                            val = max(indexed_data)
+                            with np.errstate(all='ignore'):
+                                val = float(np.nanmax(indexed_data))
                         elif index_method == "min":
-                            val = min(indexed_data)
+                            with np.errstate(all='ignore'):
+                                val = float(np.nanmin(indexed_data))
                         else: 
                             if len(shape) > 1:
                                 try:
-                                    val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
+                                    # Pad 2D arrays to identical lengths to prevent zip/numpy truncation
+                                    max_len = max([len(v) if isinstance(v, (list, np.ndarray)) else 1 for v in indexed_data])
+                                    padded = []
+                                    for v in indexed_data:
+                                        if isinstance(v, (list, np.ndarray)):
+                                            v_list = list(v) if isinstance(v, np.ndarray) else v
+                                            padded.append(v_list + [np.nan] * (max_len - len(v_list)))
+                                        else:
+                                            padded.append([v] + [np.nan] * (max_len - 1))
+                                    
+                                    arr = np.array(padded, dtype=np.float64)
+                                    with np.errstate(all='ignore'):
+                                        val_arr = np.nanmean(arr, axis=0)
+                                        
+                                    val = [round(float(x), 3) if not np.isnan(x) else None for x in val_arr]
                                 except Exception as e:
                                     self.logger.error("2D averaging error", extra={"reason": str(e)})
                                     val = indexed_data[-1]
                             else:
-                                val = round(sum(indexed_data) / len(indexed_data), 3)
+                                arr = np.array(indexed_data, dtype=np.float64)
+                                with np.errstate(all='ignore'):
+                                    mean_val = np.nanmean(arr)
+                                val = round(float(mean_val), 3) if not np.isnan(mean_val) else None
+
+            # JSON sanitization for lists/NaNs (if we fetched a single list or last element directly)
+            if isinstance(val, list):
+                val = [v if not (isinstance(v, float) and np.isnan(v)) else None for v in val]
+            elif isinstance(val, float) and np.isnan(val):
+                val = None
 
             # --- UNIT CONVERSION LOGIC ---
             if val is not None and val != "":
@@ -2603,13 +2852,6 @@ class SamplingSystem:
                 
                 target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
                 native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
-                
-                # DEBUG: Print exactly what the conversion engine sees before doing anything
-                self.logger.info(
-                    f"CONVERSION CHECK [{variable_name}]: "
-                    f"val={val} (type={type(val).__name__}), "
-                    f"native={native_unit}, target={target_unit}"
-                )
 
                 # Coerce string representations of numbers (e.g. "14.2") into actual floats
                 if isinstance(val, str) and v_type not in ["string", "str", "char"]:
@@ -2629,13 +2871,12 @@ class SamplingSystem:
                             
                             if isinstance(val, list):
                                 if hasattr(converted, "tolist"):
-                                    val = [round(float(v), 3) for v in converted.tolist()]
+                                    val = [round(float(v), 3) if v is not None and not np.isnan(v) else None for v in converted.tolist()]
                                 else:
-                                    val = [round(float(v), 3) for v in converted]
+                                    val = [round(float(v), 3) if v is not None and not np.isnan(v) else None for v in converted]
                             else:
                                 val = round(float(converted), 3)
                                 
-                            self.logger.info(f"CONVERSION SUCCESS [{variable_name}]: {data_quantity.magnitude} {norm_native} -> {val} {norm_target}")
                         except Exception as e:
                             self.logger.error("Unit conversion failed", extra={"variable": variable_name, "native": native_unit, "target": target_unit, "reason": str(e)})
 
@@ -2646,14 +2887,14 @@ class SamplingSystem:
                     }
 
             variableset_record["variables"][variable_name]["data"] = val
-            self.logger.debug(f"EVALUATED [DIRECT]: Clock={get_datetime_string()} BinTime={target_time} Var='{variableset_name}::{variable_name}' = {val}")
+            val_preview = str(val)[:200] + "..." if isinstance(val, list) and len(str(val)) > 200 else val
+            self.logger.debug(f"EVALUATED [DIRECT]: Clock={get_datetime_string()} BinTime={target_time} Var='{variableset_name}::{variable_name}' = {val_preview}")
 
         except Exception as e:
             self.logger.error("update_direct_variable_by_time_index", extra={"reason": str(e)})
 
         return
-        
-
+    
     # async def update_variablesets_by_time_index(self, variablemap: dict, time_index: dict):
     #     variable_updates = {
     #         "direct": self.update_direct_variable_by_time_index,
@@ -3244,6 +3485,7 @@ class SamplingSystem:
     #     except Exception as e:
     #         self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
 
+
     # async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
     #     import importlib
     #     try:
@@ -3272,7 +3514,6 @@ class SamplingSystem:
     #         sources = raw_var_def.get("source", {})
 
     #         for param_name, param_mapping in parameters.items():
-    #             # FIX 1: Support BOTH underscore and dash immediately to prevent None
     #             src_var_alias = param_mapping.get("source_variable") or param_mapping.get("source-variable")
     #             val = None
 
@@ -3280,8 +3521,6 @@ class SamplingSystem:
     #                 real_src_var = src_var_alias
     #                 target_vset_name = variableset_name
 
-    #                 # FIX 2: Only dive into the sources dictionary if it actually exists! 
-    #                 # If it doesn't, we still proceed to look up `real_src_var` locally.
     #                 if src_var_alias in sources:
     #                     src_def = sources[src_var_alias]
     #                     real_src_var = src_def.get("source_variable", src_var_alias)
@@ -3291,7 +3530,6 @@ class SamplingSystem:
     #                     target_vset = evaluated_vsets[target_vset_name]
     #                     if real_src_var in target_vset["variables"]:
     #                         target_var_def = target_vset["variables"][real_src_var]
-                            
     #                         var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
     #                         if var_type == "coordinate":
     #                             val = target_var_def.get("attributes", {}).get("data", {}).get("data")
@@ -3303,21 +3541,20 @@ class SamplingSystem:
     #                     if real_src_var in target_vset["variables"]:
     #                         target_var_def = target_vset["variables"][real_src_var]
     #                         var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
-    #                         if var_type == "coordinate":
-    #                             val = target_var_def.get("attributes", {}).get("data", {}).get("data")
-    #                         else:
-    #                             val = target_var_def.get("data")
+    #                         val = target_var_def.get("attributes", {}).get("data", {}).get("data") if var_type == "coordinate" else target_var_def.get("data")
 
     #                 elif real_src_var in variableset_record["variables"]:
     #                     target_var_def = variableset_record["variables"][real_src_var]
-                        
     #                     var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
-    #                     if var_type == "coordinate":
-    #                         val = target_var_def.get("attributes", {}).get("data", {}).get("data")
-    #                     else:
-    #                         val = target_var_def.get("data")
+    #                     val = target_var_def.get("attributes", {}).get("data", {}).get("data") if var_type == "coordinate" else target_var_def.get("data")
 
     #             kwargs[param_name] = val
+            
+    #         # ---> FIX 1: Prevent math crashes by safely aborting if required sensors drop a tick <---
+    #         if any(v is None or v == "" for v in kwargs.values()):
+    #             self.logger.debug(f"Skipping calculation for {variable_name}: Missing inputs {kwargs}")
+    #             variableset_record["variables"][variable_name]["data"] = None
+    #             return
             
     #         try:
     #             if asyncio.iscoroutinefunction(calc_func):
@@ -3325,7 +3562,7 @@ class SamplingSystem:
     #             else:
     #                 result = calc_func(self, **kwargs)
     #         except Exception as user_func_err:
-    #             self.logger.debug(f"USER FUNCTION CRASH: {def_name} failed.", extra={"reason": str(user_func_err)})
+    #             self.logger.error(f"USER FUNCTION CRASH: {def_name} failed.", extra={"reason": str(user_func_err)})
     #             return
  
     #         if isinstance(result, dict) and variable_name in result:
@@ -3333,8 +3570,33 @@ class SamplingSystem:
     #         else:
     #             final_val = result
 
+    #         # ---> FIX 2: Apply Unit Conversion to Calculated Outputs! <---
+    #         if final_val is not None and isinstance(final_val, (int, float, list)):
+    #             var_record = variableset_record["variables"][variable_name]
+    #             target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+    #             native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                
+    #             if target_unit and native_unit and target_unit != native_unit:
+    #                 try:
+    #                     norm_native = self.normalize_unit_string(native_unit)
+    #                     norm_target = self.normalize_unit_string(target_unit)
+    #                     data_quantity = ureg.Quantity(final_val, norm_native)
+    #                     converted = data_quantity.to(norm_target).magnitude
+                        
+    #                     if isinstance(final_val, list):
+    #                         if hasattr(converted, "tolist"):
+    #                             final_val = [round(float(v), 3) for v in converted.tolist()]
+    #                         else:
+    #                             final_val = [round(float(v), 3) for v in converted]
+    #                     else:
+    #                         final_val = round(float(converted), 3)
+    #                 except Exception as e:
+    #                     self.logger.error("Unit conversion failed for calculated var", extra={"variable": variable_name, "reason": str(e)})
+
     #         variableset_record["variables"][variable_name]["data"] = final_val
-    #         self.logger.debug(f"EVALUATED [CALCULATED]: Clock={get_datetime_string()} BinTime={time_index['index_ready']} Var='{variableset_name}::{variable_name}' = {final_val}")
+            
+    #         # ---> ELEVATED TO INFO: Prints success visibly in terminal <---
+    #         self.logger.info(f"EVALUATED [CALCULATED]: Clock={get_datetime_string()} BinTime={time_index.get('index_ready')} Var='{variableset_name}::{variable_name}' = {final_val}")
 
     #     except Exception as e:
     #         self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
@@ -3424,7 +3686,7 @@ class SamplingSystem:
                 final_val = result
 
             # ---> FIX 2: Apply Unit Conversion to Calculated Outputs! <---
-            if final_val is not None and isinstance(final_val, (int, float, list)):
+            if final_val is not None and isinstance(final_val, (int, float, list, np.ndarray)):
                 var_record = variableset_record["variables"][variable_name]
                 target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
                 native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
@@ -3436,7 +3698,7 @@ class SamplingSystem:
                         data_quantity = ureg.Quantity(final_val, norm_native)
                         converted = data_quantity.to(norm_target).magnitude
                         
-                        if isinstance(final_val, list):
+                        if isinstance(final_val, (list, np.ndarray)):
                             if hasattr(converted, "tolist"):
                                 final_val = [round(float(v), 3) for v in converted.tolist()]
                             else:
@@ -3446,10 +3708,21 @@ class SamplingSystem:
                     except Exception as e:
                         self.logger.error("Unit conversion failed for calculated var", extra={"variable": variable_name, "reason": str(e)})
 
+            # --- PARITY FIX: JSON sanitization for arrays/NaNs before MQTT broadcast ---
+            if isinstance(final_val, np.ndarray):
+                final_val = final_val.tolist()
+
+            if isinstance(final_val, list):
+                final_val = [v if not (isinstance(v, float) and np.isnan(v)) else None for v in final_val]
+            elif isinstance(final_val, float) and np.isnan(final_val):
+                final_val = None
+            # -------------------------------------------------------------------------
+
             variableset_record["variables"][variable_name]["data"] = final_val
             
             # ---> ELEVATED TO INFO: Prints success visibly in terminal <---
-            self.logger.info(f"EVALUATED [CALCULATED]: Clock={get_datetime_string()} BinTime={time_index.get('index_ready')} Var='{variableset_name}::{variable_name}' = {final_val}")
+            val_preview = str(final_val)[:200] + "..." if isinstance(final_val, list) and len(str(final_val)) > 200 else final_val
+            self.logger.info(f"EVALUATED [CALCULATED]: Clock={get_datetime_string()} BinTime={time_index.get('index_ready')} Var='{variableset_name}::{variable_name}' = {val_preview}")
 
         except Exception as e:
             self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})

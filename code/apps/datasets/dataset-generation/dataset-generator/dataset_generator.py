@@ -1262,9 +1262,8 @@ class DatasetGenerator:
             # -----------------------------------------------------------------
             vs_dim_map = {}
             compiled_coords = {}
-            saved_var_attrs = {}  # Registry to guarantee zero-loss variable attribute retention
+            saved_var_attrs = {}  
             
-            # Helper to strictly build explicit metadata hierarchically
             def build_master_attrs(trace, var_obj, config_var, unique_srcs=None):
                 mattrs = {}
                 for k, v in trace.get("hw_attrs", {}).items():
@@ -1338,8 +1337,6 @@ class DatasetGenerator:
                     
                     L.debug(f"DEBUG PASS 4 [COORD]: Compiling Coordinate '{out_name}'. Dims={dims}. static_data length={len(static_data)}")
                     
-                    compiled_coords[out_name] = static_data
-                    
                     try:
                         da_coord = xr.DataArray(data=static_data, dims=dims)
                         
@@ -1359,6 +1356,9 @@ class DatasetGenerator:
                             except Exception as e:
                                 L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
                                 da_coord.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
+
+                        # THE FIX: Ensure telemetry mapping fetches the fully converted array
+                        compiled_coords[out_name] = da_coord.values.tolist() if isinstance(da_coord.values, np.ndarray) else da_coord.values
 
                         saved_var_attrs[out_name] = da_coord.attrs.copy()
                         ds_coord = xr.Dataset(coords={out_name: da_coord})
@@ -1395,10 +1395,6 @@ class DatasetGenerator:
 
                         if "time" in r_vars and target_key in r_vars:
                             val = r_vars[target_key].get("data")
-                            
-                            if len(values) == 0:
-                                val_preview = str(val)[:200] if val is not None else "None"
-                                L.info(f"CHECKPOINT 1 [RAW TELEMETRY INGEST] {out_name} -> target_key='{target_key}': type={type(val).__name__}, preview={val_preview}")
 
                             if val is None or val == "":
                                 val = np.nan
@@ -1516,24 +1512,6 @@ class DatasetGenerator:
                         final_values = np.array(final_values, dtype=np.float32)
                     except ValueError:
                         pass
-
-                if isinstance(final_values, np.ndarray):
-                    v_size = final_values.size
-                    v_non_nan = np.count_nonzero(~np.isnan(final_values))
-                    v_non_zero = np.count_nonzero((~np.isnan(final_values)) & (final_values != 0))
-                    
-                    active_slice = []
-                    if final_values.ndim > 1:
-                        valid_row_idxs = np.where(~np.isnan(final_values).all(axis=1))[0]
-                        if len(valid_row_idxs) > 0:
-                            target_row = final_values[valid_row_idxs[0]]
-                            nz = target_row[(~np.isnan(target_row)) & (target_row != 0)]
-                            active_slice = nz[:10].tolist() if len(nz) > 0 else target_row[:10].tolist()
-                    else:
-                        nz = final_values[(~np.isnan(final_values)) & (final_values != 0)]
-                        active_slice = nz[:10].tolist() if len(nz) > 0 else final_values[:10].tolist()
-
-                    L.info(f"CHECKPOINT 2 [PRE-XARRAY MATRIX] {out_name}: shape={final_values.shape}, non_nan={v_non_nan}/{v_size}, non_zero={v_non_zero}, active_sample={active_slice}")
 
                 try:
                     da = xr.DataArray(data=final_values, coords=coords, dims=dims, name=out_name)
@@ -1810,15 +1788,6 @@ class DatasetGenerator:
                 if attr_key not in excluded_global_attrs:
                     unpacked_val = attr_val.get("data") if isinstance(attr_val, dict) else attr_val
                     aligned_ds.attrs[attr_key] = unpacked_val
-
-            # CHECKPOINT 3: Validate all variables on final Dataset right before NetCDF serialization
-            for vname in aligned_ds.data_vars:
-                arr_val = aligned_ds[vname].values
-                if isinstance(arr_val, np.ndarray):
-                    v_size = arr_val.size
-                    v_non_nan = np.count_nonzero(~np.isnan(arr_val))
-                    v_non_zero = np.count_nonzero((~np.isnan(arr_val)) & (arr_val != 0))
-                    L.info(f"CHECKPOINT 3 [FINAL NETCDF VARIABLE] {vname}: shape={arr_val.shape}, non_nan={v_non_nan}/{v_size}, non_zero={v_non_zero}")
 
             safe_start = start_time.replace(":", "").replace("-", "")
             filename = f"{dataset_id}.{safe_start}.nc"
