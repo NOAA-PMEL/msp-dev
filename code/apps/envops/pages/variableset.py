@@ -517,12 +517,24 @@ def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, 
         if len(y) == 0:
             y = variables.get(real_y_axis, {}).get("data", [])
             
+        # The telemetry matrix is a flat 1D list representing the Z values for this time bucket
         orig_z = variables.get(z_axis, {}).get("data", [])
-        if not isinstance(orig_z, list): orig_z = [orig_z]
         
-        for yi, yval in enumerate(y):
-            try: heatmap_patch["data"][0]["z"][yi].append(orig_z[yi])
-            except IndexError: pass
+        # Plotly heatmaps extending over the x-axis (time) expect a 2D array [time_buckets][y_bins]
+        # But when patching, Plotly expects Z to be updated per Y-bin: z[yi].append(val)
+        
+        # Ensure the patch structure exists
+        if "z" not in current_fig["data"][0] or not current_fig["data"][0]["z"]:
+             heatmap_patch["data"][0]["z"] = [[] for _ in range(len(y))]
+             
+        for yi in range(len(y)):
+            try:
+                # Safely extract the bin value from the 1D telemetry payload
+                val = orig_z[yi] if isinstance(orig_z, list) and yi < len(orig_z) else None
+                heatmap_patch["data"][0]["z"][yi].append(val)
+            except Exception as e:
+                L.error(f"Error patching heatmap bin {yi}: {e}")
+                heatmap_patch["data"][0]["z"][yi].append(None)
             
         heatmaps.append(heatmap_patch)
         
