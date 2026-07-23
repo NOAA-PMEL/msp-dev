@@ -1338,27 +1338,34 @@ class DatasetGenerator:
                     L.debug(f"DEBUG PASS 4 [COORD]: Compiling Coordinate '{out_name}'. Dims={dims}. static_data length={len(static_data)}")
                     
                     try:
+                        mattrs, native_units, target_units = build_master_attrs(trace, coord_var_obj, var)
+                        
+                        # --- THE FIX: Perform conversion before Xarray builds the Pandas.Index ---
+                        if native_units and target_units and (native_units != target_units):
+                            try:
+                                norm_native = self.normalize_unit_string(native_units)
+                                norm_target = self.normalize_unit_string(target_units)
+                                data_quantity = ureg.Quantity(static_data, norm_native)
+                                converted = data_quantity.to(norm_target).magnitude
+                                
+                                # Store as a strict float32 numpy array to prevent precision drift
+                                static_data = np.array(converted, dtype=np.float32)
+                                mattrs["units"] = target_units
+                            except Exception as e:
+                                L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
+                                mattrs["units"] = f"{native_units} (CONVERSION FAILED)"
+                        else:
+                            static_data = np.array(static_data, dtype=np.float32)
+                        # -------------------------------------------------------------------------
+                        
                         da_coord = xr.DataArray(data=static_data, dims=dims)
                         
                         if "time" in da_coord.dims and not pd.Index(da_coord.time.values).is_unique:
                             da_coord = da_coord.groupby("time").mean(dim="time", keep_attrs=True)
 
-                        mattrs, native_units, target_units = build_master_attrs(trace, coord_var_obj, var)
                         da_coord.attrs.update(mattrs)
-                        
-                        if native_units and target_units and (native_units != target_units):
-                            try:
-                                norm_native = self.normalize_unit_string(native_units)
-                                norm_target = self.normalize_unit_string(target_units)
-                                data_quantity = ureg.Quantity(da_coord.values, norm_native)
-                                da_coord.values = data_quantity.to(norm_target).magnitude
-                                da_coord.attrs["units"] = target_units
-                            except Exception as e:
-                                L.error(f"Unit conversion failed for coordinate {out_name}: {e}")
-                                da_coord.attrs["units"] = f"{native_units} (CONVERSION FAILED)"
 
-                        # THE FIX: Ensure telemetry mapping fetches the fully converted array
-                        compiled_coords[out_name] = da_coord.values.tolist() if isinstance(da_coord.values, np.ndarray) else da_coord.values
+                        compiled_coords[out_name] = da_coord.values
 
                         saved_var_attrs[out_name] = da_coord.attrs.copy()
                         ds_coord = xr.Dataset(coords={out_name: da_coord})
@@ -1395,6 +1402,10 @@ class DatasetGenerator:
 
                         if "time" in r_vars and target_key in r_vars:
                             val = r_vars[target_key].get("data")
+                            
+                            if len(values) == 0:
+                                val_preview = str(val)[:200] if val is not None else "None"
+                                L.info(f"CHECKPOINT 1 [RAW TELEMETRY INGEST] {out_name} -> target_key='{target_key}': type={type(val).__name__}, preview={val_preview}")
 
                             if val is None or val == "":
                                 val = np.nan
@@ -1512,6 +1523,24 @@ class DatasetGenerator:
                         final_values = np.array(final_values, dtype=np.float32)
                     except ValueError:
                         pass
+
+                if isinstance(final_values, np.ndarray):
+                    v_size = final_values.size
+                    v_non_nan = np.count_nonzero(~np.isnan(final_values))
+                    v_non_zero = np.count_nonzero((~np.isnan(final_values)) & (final_values != 0))
+                    
+                    active_slice = []
+                    if final_values.ndim > 1:
+                        valid_row_idxs = np.where(~np.isnan(final_values).all(axis=1))[0]
+                        if len(valid_row_idxs) > 0:
+                            target_row = final_values[valid_row_idxs[0]]
+                            nz = target_row[(~np.isnan(target_row)) & (target_row != 0)]
+                            active_slice = nz[:10].tolist() if len(nz) > 0 else target_row[:10].tolist()
+                    else:
+                        nz = final_values[(~np.isnan(final_values)) & (final_values != 0)]
+                        active_slice = nz[:10].tolist() if len(nz) > 0 else final_values[:10].tolist()
+
+                    L.info(f"CHECKPOINT 2 [PRE-XARRAY MATRIX] {out_name}: shape={final_values.shape}, non_nan={v_non_nan}/{v_size}, non_zero={v_non_zero}, active_sample={active_slice}")
 
                 try:
                     da = xr.DataArray(data=final_values, coords=coords, dims=dims, name=out_name)
