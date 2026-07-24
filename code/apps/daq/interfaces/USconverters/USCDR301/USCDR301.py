@@ -12,7 +12,6 @@ from envds.daq.event import DAQEvent
 
 from pydantic import BaseModel
 
-
 task_list = []
 
 class USCDR301(Interface):
