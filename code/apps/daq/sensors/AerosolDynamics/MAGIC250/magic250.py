@@ -177,12 +177,69 @@ class MAGIC250(Sensor):
                         # 3. Acknowledge health by setting the ACTUAL state to match the REQUESTED state
                         self.settings.set_actual(name, target_val)
 
+    # async def sampling_monitor(self):
+    #     start_command = "Log,1\n"
+    #     stop_command = "Log,0\n"
+
+    #     need_start = True
+    #     start_requested = False
+        
+    #     await asyncio.sleep(2)
+
+    #     while True:
+    #         try:
+    #             # Fetch the dictionary and extract the requested target state safely
+    #             state_obj = self.settings.get_setting("sampling_state")
+    #             state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
+    #             state_str = str(state).lower()
+
+    #             if self.sampling() and state_str == "sampling":
+
+    #                 if need_start:
+    #                     if self.collecting:
+    #                         await self.interface_send_data(data={"data": stop_command})
+    #                         await asyncio.sleep(2)
+    #                         self.collecting = False
+    #                         continue
+    #                     else:
+    #                         await self.interface_send_data(data={"data": start_command})
+    #                         need_start = False
+    #                         start_requested = True
+    #                         await asyncio.sleep(2)
+    #                         continue
+    #                 elif start_requested:
+    #                     if self.collecting:
+    #                         start_requested = False
+    #                     else:
+    #                         await self.interface_send_data(data={"data": start_command})
+    #                         await asyncio.sleep(2)
+    #                         continue
+    #             elif state_str in ["idle", "maintenance", "error", "calibration"]:
+    #                 if self.collecting or not need_start:
+    #                     await self.interface_send_data(data={"data": stop_command})
+    #                     self.logger.info(f"State transitioned to {state_str}. Halting MAGIC250 sampling.")
+    #                     await asyncio.sleep(2)
+    #                     self.collecting = False
+    #                     need_start = True
+    #                     start_requested = False
+
+    #             await asyncio.sleep(1)
+
+    #         except Exception as e:
+    #             self.logger.error(f"sampling monitor error: {e}")
+
+    #         await asyncio.sleep(1)
+
     async def sampling_monitor(self):
         start_command = "Log,1\n"
         stop_command = "Log,0\n"
 
         need_start = True
         start_requested = False
+        
+        # Initialize watchdog
+        self.last_scan_time = asyncio.get_event_loop().time()
+        watchdog_timeout = 30  # 30 seconds for a 1Hz instrument prevents false positives
         
         await asyncio.sleep(2)
 
@@ -194,6 +251,12 @@ class MAGIC250(Sensor):
                 state_str = str(state).lower()
 
                 if self.sampling() and state_str == "sampling":
+                    current_time = asyncio.get_event_loop().time()
+                    
+                    # Watchdog check: If we think we are running but haven't received data
+                    if not need_start and not start_requested and (current_time - getattr(self, 'last_scan_time', current_time)) > watchdog_timeout:
+                        self.logger.warning("sampling_monitor watchdog triggered: no data received. Restarting log.")
+                        need_start = True
 
                     if need_start:
                         if self.collecting:
@@ -205,11 +268,13 @@ class MAGIC250(Sensor):
                             await self.interface_send_data(data={"data": start_command})
                             need_start = False
                             start_requested = True
+                            self.last_scan_time = asyncio.get_event_loop().time() # Reset watchdog
                             await asyncio.sleep(2)
                             continue
                     elif start_requested:
                         if self.collecting:
                             start_requested = False
+                            self.last_scan_time = asyncio.get_event_loop().time() # Reset watchdog
                         else:
                             await self.interface_send_data(data={"data": start_command})
                             await asyncio.sleep(2)
@@ -230,6 +295,31 @@ class MAGIC250(Sensor):
 
             await asyncio.sleep(1)
 
+    # async def default_data_loop(self):
+    #     while True:
+    #         try:
+    #             data = await self.default_data_buffer.get()
+    #             self.logger.debug("default_data_loop", extra={"data": data})
+
+    #             record = self.default_parse(data)
+    #             if record:
+    #                 self.collecting = True
+
+    #             if record and self.sampling():
+    #                 event = DAQEvent.create_data_update(
+    #                     source=self.get_id_as_source(),
+    #                     data=record,
+    #                 )
+    #                 destpath = f"{self.get_id_as_topic()}/data/update"
+    #                 event["destpath"] = destpath
+    #                 self.logger.debug("default_data_loop", extra={"data": event, "destpath": destpath})
+                    
+    #                 await self.send_message(event)
+
+    #         except Exception as e:
+    #             print(f"default_data_loop error: {e}")
+    #         await asyncio.sleep(0.1)
+
     async def default_data_loop(self):
         while True:
             try:
@@ -239,6 +329,8 @@ class MAGIC250(Sensor):
                 record = self.default_parse(data)
                 if record:
                     self.collecting = True
+                    # A complete record was parsed successfully; reset the watchdog timer
+                    self.last_scan_time = asyncio.get_event_loop().time()
 
                 if record and self.sampling():
                     event = DAQEvent.create_data_update(
@@ -252,7 +344,7 @@ class MAGIC250(Sensor):
                     await self.send_message(event)
 
             except Exception as e:
-                print(f"default_data_loop error: {e}")
+                self.logger.error(f"default_data_loop error: {e}")
             await asyncio.sleep(0.1)
 
     def default_parse(self, data):
