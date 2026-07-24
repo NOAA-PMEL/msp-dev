@@ -168,20 +168,55 @@ class SpiderMagic810(Sensor):
     #             pass
     #         await asyncio.sleep(1)
 
+    # async def sampling_monitor(self):
+    #     # Added \n to flush network buffers, msg,1 for verbose output, and st for scan time
+    #     scan_time = self.sampling_frequency if hasattr(self, 'sampling_frequency') else 30
+    #     # cmds = [
+    #     #     # "stop\r", 
+    #     #     # "sm,1\r", 
+    #     #     # "msg,1\r\n", 
+    #     #     # f"st,{scan_time}\r\n", 
+    #     #     "v1,5\r", 
+    #     #     "v2,5000\r", 
+    #     #     "hvgo\r"
+    #     # ]
+    #     # Added \n to flush network buffers...
+
+    #     # switch to 60 sec scans
+    #     # TODO: make scan time configurable
+    #     cmds = [
+    #         "stop\r\n", 
+    #         "scan, 5, 5000, 8, 0\r\n", 
+    #         "hvgo\r\n"
+    #     ]
+    #     need_start = True
+    #     await asyncio.sleep(2)
+        
+    #     while True:
+    #         try:
+    #             state_obj = self.settings.get_setting("sampling_state")
+    #             state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
+    #             state_str = str(state).lower()
+
+    #             if self.sampling() and state_str == "sampling":
+    #                 if need_start:
+    #                     for c in cmds: 
+    #                         await self.interface_send_data(data={"data": c})
+    #                         # Increased delay to 1.0s to prevent overwhelming the ADI board
+    #                         await asyncio.sleep(1.0)
+    #                     need_start = False
+    #             else:
+    #                 if not need_start:
+    #                     await self.interface_send_data(data={"data": "stop\r\n"})
+    #                     need_start = True
+    #         except Exception as e:
+    #             self.logger.error("sampling_monitor error", extra={"error": str(e)})
+    #         await asyncio.sleep(1)
+
     async def sampling_monitor(self):
         # Added \n to flush network buffers, msg,1 for verbose output, and st for scan time
         scan_time = self.sampling_frequency if hasattr(self, 'sampling_frequency') else 30
-        # cmds = [
-        #     # "stop\r", 
-        #     # "sm,1\r", 
-        #     # "msg,1\r\n", 
-        #     # f"st,{scan_time}\r\n", 
-        #     "v1,5\r", 
-        #     "v2,5000\r", 
-        #     "hvgo\r"
-        # ]
-        # Added \n to flush network buffers...
-
+        
         # switch to 60 sec scans
         # TODO: make scan time configurable
         cmds = [
@@ -190,6 +225,11 @@ class SpiderMagic810(Sensor):
             "hvgo\r\n"
         ]
         need_start = True
+        
+        # Initialize watchdog
+        self.last_scan_time = asyncio.get_event_loop().time()
+        watchdog_timeout = 120  # 120 seconds to allow for 60s scan + processing/overhead
+        
         await asyncio.sleep(2)
         
         while True:
@@ -199,12 +239,21 @@ class SpiderMagic810(Sensor):
                 state_str = str(state).lower()
 
                 if self.sampling() and state_str == "sampling":
+                    current_time = asyncio.get_event_loop().time()
+                    
+                    # Watchdog check: If we are supposed to be scanning but haven't received a complete scan record
+                    if not need_start and (current_time - getattr(self, 'last_scan_time', current_time)) > watchdog_timeout:
+                        self.logger.warning("sampling_monitor watchdog triggered: no scan data received. Restarting scan.")
+                        need_start = True
+                        
                     if need_start:
                         for c in cmds: 
                             await self.interface_send_data(data={"data": c})
                             # Increased delay to 1.0s to prevent overwhelming the ADI board
                             await asyncio.sleep(1.0)
                         need_start = False
+                        # Reset the watchdog immediately after sending start commands
+                        self.last_scan_time = asyncio.get_event_loop().time()
                 else:
                     if not need_start:
                         await self.interface_send_data(data={"data": "stop\r\n"})
@@ -225,6 +274,54 @@ class SpiderMagic810(Sensor):
     #             pass
     #         await asyncio.sleep(0.1)
 
+    # async def default_data_loop(self):
+    #     while True:
+    #         try:
+    #             data_msg = await self.default_data_buffer.get()
+                
+    #             if data_msg:
+    #                 self.collecting = True
+    #                 self.logger.debug("buffer_pulled", extra={"payload_type": str(type(data_msg))})
+
+    #             record = self.default_parse(data_msg)
+                
+    #             if not record:
+    #                 continue
+
+    #             if record and self.sampling():
+    #                 self.logger.debug("scan_complete_starting_inversion", extra={"rec_ts": record.get("timestamp")})
+                    
+    #                 try:
+    #                     record = self.inversion_routine.invert(record)
+    #                     self.logger.debug("inversion_complete", extra={"status": "success"})
+    #                 except Exception as e:
+    #                     self.logger.error("inversion_runtime_error", extra={"err_detail": str(e), "trace": traceback.format_exc()})
+
+    #                 # Handle reverse scans natively
+    #                 vp_rd = record["variables"]["vp_rd"]["data"].strip()
+    #                 self.logger.debug("direction_check", extra={"vp_rd_val": vp_rd})
+    #                 if vp_rd == "pd" or vp_rd == "nd":
+    #                     for name, variable in self.metadata["variables"].items():
+    #                         if name in ["time", "diameter", "dN", "dlogDp", "dNdlogDp", "intN"]:
+    #                             continue
+    #                         if variable["shape"] == ["time", "scan_bins"]: 
+    #                             if isinstance(record["variables"][name]["data"], list):
+    #                                 record["variables"][name]["data"].reverse()
+
+    #                 event = DAQEvent.create_data_update(
+    #                     source=self.get_id_as_source(),
+    #                     data=record,
+    #                 )
+    #                 destpath = f"{self.get_id_as_topic()}/data/update"
+    #                 event["destpath"] = destpath
+                    
+    #                 self.logger.debug("publishing_record", extra={"dest_topic": destpath})
+    #                 await self.send_message(event)
+
+    #         except Exception as e:
+    #             self.logger.error("data_loop_error", extra={"err_detail": str(e), "trace": traceback.format_exc()})
+    #         await asyncio.sleep(0.001)
+
     async def default_data_loop(self):
         while True:
             try:
@@ -240,6 +337,9 @@ class SpiderMagic810(Sensor):
                     continue
 
                 if record and self.sampling():
+                    # A complete scan record was parsed successfully; reset the watchdog timer
+                    self.last_scan_time = asyncio.get_event_loop().time()
+                    
                     self.logger.debug("scan_complete_starting_inversion", extra={"rec_ts": record.get("timestamp")})
                     
                     try:
