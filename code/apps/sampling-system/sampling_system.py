@@ -1536,7 +1536,14 @@ class SamplingSystem:
                             elif "value" in setting_state:
                                 mock_variables[setting_name] = {"data": setting_state["value"]}
                             elif "data" in setting_state:
-                                mock_variables[setting_name] = {"data": setting_state["data"]}
+                                # --- THE FIX: Extract the scalar from the nested data block ---
+                                s_data = setting_state["data"]
+                                if isinstance(s_data, dict):
+                                    s_val = s_data.get("actual", s_data.get("requested", s_data.get("value")))
+                                    mock_variables[setting_name] = {"data": s_val}
+                                else:
+                                    mock_variables[setting_name] = {"data": s_data}
+                                # --------------------------------------------------------------
                             else:
                                 mock_variables[setting_name] = {"data": setting_state}
                         else:
