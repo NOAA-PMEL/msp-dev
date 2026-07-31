@@ -35,3 +35,12 @@ async def turn_off_tec(self, **kwargs):
 async def turn_off_24v_bus(self, **kwargs):
     L.info("action_triggered", extra={"action": "turn_off_24v_bus"})
     return {"power_24v_bus": 0}
+
+# --- VALVE ACTIONS ---
+async def set_valve_total_aerosol(self, **kwargs):
+    L.info("action_triggered", extra={"action": "set_valve_total_aerosol"})
+    return {"size_cut_valve_state_sp": 0}
+
+async def set_valve_cyclone(self, **kwargs):
+    L.info("action_triggered", extra={"action": "set_valve_cyclone"})
+    return {"size_cut_valve_state_sp": 1}
