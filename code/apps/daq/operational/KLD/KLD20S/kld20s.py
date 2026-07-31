@@ -193,15 +193,22 @@ class KLD20S(Operational):
             if "time" in record["variables"]:
                 record["variables"]["time"]["data"] = timestamp
                 
-            if "valve_state" in record["variables"]:
-                sp_setting = self.settings.get_setting("valve_state")
-                if sp_setting:
-                    sp_val = sp_setting.get("actual") if isinstance(sp_setting, dict) and "actual" in sp_setting else (sp_setting.get("requested") if isinstance(sp_setting, dict) else sp_setting)
-                    if sp_val is not None:
-                        try:
-                            record["variables"]["valve_state"]["data"] = int(float(sp_val))
-                        except (ValueError, TypeError):
+            # Grab the actual state and inject it into both the main telemetry and the setting
+            sp_setting = self.settings.get_setting("valve_state_sp")
+            if sp_setting:
+                sp_val = sp_setting.get("actual") if isinstance(sp_setting, dict) and "actual" in sp_setting else (sp_setting.get("requested") if isinstance(sp_setting, dict) else sp_setting)
+                if sp_val is not None:
+                    try:
+                        int_val = int(float(sp_val))
+                        if "valve_state" in record["variables"]:
+                            record["variables"]["valve_state"]["data"] = int_val
+                        if "valve_state_sp" in record["variables"]:
+                            record["variables"]["valve_state_sp"]["data"] = int_val
+                    except (ValueError, TypeError):
+                        if "valve_state" in record["variables"]:
                             record["variables"]["valve_state"]["data"] = sp_val
+                        if "valve_state_sp" in record["variables"]:
+                            record["variables"]["valve_state_sp"]["data"] = sp_val
 
             return record
 
