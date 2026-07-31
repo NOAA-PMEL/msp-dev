@@ -46,7 +46,7 @@ from envds.util.util import (
 )
 
 # from envds.daq.event import DAQEvent
-# from envds.daq.types import DAQEventType as det
+from envds.daq.types import DAQEventType as det
 from envds.sampling.event import SamplingEvent
 from envds.sampling.types import SamplingEventType as sampet
 
@@ -1253,8 +1253,15 @@ class SamplingSystem:
                     await self.device_data_update(ce)
                 elif ce["type"] == "envds.controller.data.update":
                     await self.controller_data_update(ce)
-                elif ce["type"] in ["envds.settings.update", "envds.controller.settings.update"]:
-                    await self.controller_settings_update(ce)
+                # elif ce["type"] in ["envds.settings.update", "envds.controller.settings.update"]:
+                #     await self.controller_settings_update(ce)
+                elif ce["type"] in [
+                    det.sensor_settings_update(), 
+                    det.controller_settings_update(), 
+                    det.device_settings_update(),
+                    "envds.settings.update" 
+                ]:
+                    await self.device_settings_update(ce)
                 elif ce["type"] == "envds.variableset.data.update":
                     await self.handle_foreign_variableset(ce)
                 elif ce["type"] == "envds.operations.log":
@@ -1446,9 +1453,53 @@ class SamplingSystem:
             self.logger.error("device_data_update", extra={"reason": e})
         pass
 
-    async def controller_settings_update(self, ce: CloudEvent):
+    # async def controller_settings_update(self, ce: CloudEvent):
+    #     """
+    #     Normalizes discrete settings updates (like Shelly switch states) into 
+    #     standard telemetry data records so they can be processed and forward-filled
+    #     by the variable mapping engine.
+    #     """
+    #     try:
+    #         # Extract the raw settings dictionary
+    #         raw_settings = ce.data.get("settings", {})
+    #         if not raw_settings:
+    #             # Fallback if the payload is packed directly in the data block
+    #             raw_settings = ce.data
+            
+    #         # Reformat the settings to perfectly mimic the telemetry variables structure
+    #         mock_variables = {}
+    #         for setting_name, setting_state in raw_settings.items():
+    #             if isinstance(setting_state, dict) and "actual" in setting_state:
+    #                 # Extract the "actual" state of the setting
+    #                 mock_variables[setting_name] = {"data": setting_state["actual"]}
+    #             else:
+    #                 mock_variables[setting_name] = {"data": setting_state}
+
+    #         # Inject the timestamp so the time-indexer works
+    #         timestamp = ce.data.get("timestamp", get_datetime_string())
+    #         mock_variables["time"] = {"data": timestamp}
+
+    #         # Replace the event data with our normalized mock variables
+    #         ce.data["variables"] = mock_variables
+
+    #         # Extract source routing info to find the correct variable maps
+    #         # Format is typically: envds.<namespace>.<group>.<make::model::serial>
+    #         source_parts = ce["source"].split(".")
+    #         if len(source_parts) >= 4:
+    #             # Grabs the actual hardware ID (e.g., Shelly::ShellyPro3::shel28)
+    #             source_id = source_parts[-1] 
+                
+    #             self.logger.debug("controller_settings_update - normalized", extra={"source_id": source_id, "vars": mock_variables})
+                
+    #             # Push into the standard variable mapping pipeline
+    #             await self.update_by_source(source_id=source_id, source_data=ce)
+
+    #     except Exception as e:
+    #         self.logger.error("controller_settings_update", extra={"reason": str(e)})
+
+    async def device_settings_update(self, ce: CloudEvent):
         """
-        Normalizes discrete settings updates (like Shelly switch states) into 
+        Normalizes discrete settings updates (like Shelly switch states or Sensor setpoints) into 
         standard telemetry data records so they can be processed and forward-filled
         by the variable mapping engine.
         """
@@ -1456,39 +1507,60 @@ class SamplingSystem:
             # Extract the raw settings dictionary
             raw_settings = ce.data.get("settings", {})
             if not raw_settings:
+                raw_settings = ce.data.get("setting", {})
+            if not raw_settings:
                 # Fallback if the payload is packed directly in the data block
                 raw_settings = ce.data
             
             # Reformat the settings to perfectly mimic the telemetry variables structure
             mock_variables = {}
-            for setting_name, setting_state in raw_settings.items():
-                if isinstance(setting_state, dict) and "actual" in setting_state:
-                    # Extract the "actual" state of the setting
-                    mock_variables[setting_name] = {"data": setting_state["actual"]}
+            if isinstance(raw_settings, dict):
+                # Handle single setting format: {"name": "fan_speed_sp", "actual": 60.0}
+                if "name" in raw_settings and ("actual" in raw_settings or "requested" in raw_settings or "value" in raw_settings):
+                    s_name = raw_settings["name"]
+                    s_val = raw_settings.get("actual", raw_settings.get("requested", raw_settings.get("value")))
+                    mock_variables[s_name] = {"data": s_val}
                 else:
-                    mock_variables[setting_name] = {"data": setting_state}
+                    for setting_name, setting_state in raw_settings.items():
+                        if setting_name in ["timestamp", "time"]:
+                            continue
+                        if isinstance(setting_state, dict):
+                            if "name" in setting_state:
+                                s_name = setting_state["name"]
+                                s_val = setting_state.get("actual", setting_state.get("requested", setting_state.get("value", setting_state.get("data"))))
+                                mock_variables[s_name] = {"data": s_val}
+                            elif "actual" in setting_state:
+                                mock_variables[setting_name] = {"data": setting_state["actual"]}
+                            elif "requested" in setting_state:
+                                mock_variables[setting_name] = {"data": setting_state["requested"]}
+                            elif "value" in setting_state:
+                                mock_variables[setting_name] = {"data": setting_state["value"]}
+                            elif "data" in setting_state:
+                                mock_variables[setting_name] = {"data": setting_state["data"]}
+                            else:
+                                mock_variables[setting_name] = {"data": setting_state}
+                        else:
+                            mock_variables[setting_name] = {"data": setting_state}
 
             # Inject the timestamp so the time-indexer works
-            timestamp = ce.data.get("timestamp", get_datetime_string())
+            timestamp = ce.data.get("timestamp") or ce.get("time") or get_datetime_string()
             mock_variables["time"] = {"data": timestamp}
 
             # Replace the event data with our normalized mock variables
             ce.data["variables"] = mock_variables
 
             # Extract source routing info to find the correct variable maps
-            # Format is typically: envds.<namespace>.<group>.<make::model::serial>
-            source_parts = ce["source"].split(".")
-            if len(source_parts) >= 4:
-                # Grabs the actual hardware ID (e.g., Shelly::ShellyPro3::shel28)
-                source_id = source_parts[-1] 
-                
-                self.logger.debug("controller_settings_update - normalized", extra={"source_id": source_id, "vars": mock_variables})
+            source_raw = ce.get("source", "")
+            source_id = source_raw.split(".")[-1] if "." in source_raw else source_raw
+            
+            if source_id:
+                self.logger.debug("device_settings_update - normalized", extra={"source_id": source_id, "vars": mock_variables})
                 
                 # Push into the standard variable mapping pipeline
                 await self.update_by_source(source_id=source_id, source_data=ce)
 
         except Exception as e:
-            self.logger.error("controller_settings_update", extra={"reason": str(e)})
+            self.logger.error("device_settings_update", extra={"reason": str(e)})
 
     async def handle_foreign_variableset(self, ce: CloudEvent):
         """Caches variablesets evaluated by other nodes so we can use them in local calculations."""
