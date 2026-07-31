@@ -250,6 +250,79 @@ class DwyerSCD(Operational):
                 self.logger.error("default_data_loop error", extra={"error": str(e)})
             await asyncio.sleep(0.1)
 
+    # def default_parse(self, data):
+    #     if not data: return None
+    #     try:
+    #         raw_payload = data.data if isinstance(data.data, dict) else {}
+    #         timestamp = raw_payload.get("timestamp")
+    #         iface_data = raw_payload.get("data", "")
+            
+    #         raw_str = iface_data.strip()
+    #         self.logger.debug("default_parse - raw string received", extra={"raw_str": raw_str})
+            
+    #         # Modbus ASCII responses must start with a colon
+    #         if not raw_str or not raw_str.startswith(":"):
+    #             return None
+                
+    #         addr = int(raw_str[1:3], 16)
+    #         if addr != self.modbus_address:
+    #             self.logger.debug("default_parse - ignoring message for different Modbus address", extra={"addr": addr})
+    #             return None
+                
+    #         func = int(raw_str[3:5], 16)
+            
+    #         # Function 03: Read Response
+    #         if func == 3:
+    #             if len(raw_str) < 15: # Needs to be long enough to contain PV and SV
+    #                 return None
+                    
+    #             v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
+    #             record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+    #             self.include_metadata = False
+                
+    #             record["timestamp"] = timestamp
+    #             if "time" in record["variables"]:
+    #                 record["variables"]["time"]["data"] = timestamp
+
+    #             # Extract the 4 hex characters representing the PV
+    #             pv_raw = int(raw_str[7:11], 16)
+                
+    #             # Filter out SCD1000 documented hardware error codes (8002H, 8003H, etc.)
+    #             if pv_raw >= 0x8000:
+    #                 self.logger.warning("default_parse - SCD hardware error code detected", extra={"error_code": hex(pv_raw)})
+    #                 record["variables"]["process_value"]["data"] = None
+    #             else:
+    #                 # Handle signed 16-bit integer conversion for negative temperatures
+    #                 if pv_raw > 32767:
+    #                     pv_raw -= 65536
+    #                 record["variables"]["process_value"]["data"] = round(pv_raw / 10.0, 1)
+
+    #             return record
+                
+    #         # Function 06: Write Response (Acknowledge)
+    #         elif func == 6:
+    #             if len(raw_str) < 13:
+    #                 return None
+                    
+    #             reg = int(raw_str[5:9], 16)
+    #             val_raw = int(raw_str[9:13], 16)
+                
+    #             # If the controller echoes back our write to the SV register (1001H)
+    #             if reg == 0x1001:
+    #                 if val_raw > 32767:
+    #                     val_raw -= 65536
+                        
+    #                 sv_actual = round(val_raw / 10.0, 1)
+    #                 self.settings.set_actual("set_value", actual=sv_actual)
+    #                 self.logger.info("default_parse - SV Write Confirmed", extra={"sv_actual": sv_actual})
+                
+    #             # We do not return a data record for write acknowledgements
+    #             return None
+
+    #     except Exception as e:
+    #         self.logger.error("default_parse - critical error", extra={"error": str(e), "data": data})
+    #         return None
+
     def default_parse(self, data):
         if not data: return None
         try:
@@ -290,12 +363,26 @@ class DwyerSCD(Operational):
                 # Filter out SCD1000 documented hardware error codes (8002H, 8003H, etc.)
                 if pv_raw >= 0x8000:
                     self.logger.warning("default_parse - SCD hardware error code detected", extra={"error_code": hex(pv_raw)})
-                    record["variables"]["process_value"]["data"] = None
+                    if "process_value" in record["variables"]:
+                        record["variables"]["process_value"]["data"] = None
                 else:
                     # Handle signed 16-bit integer conversion for negative temperatures
                     if pv_raw > 32767:
                         pv_raw -= 65536
-                    record["variables"]["process_value"]["data"] = round(pv_raw / 10.0, 1)
+                    if "process_value" in record["variables"]:
+                        record["variables"]["process_value"]["data"] = round(pv_raw / 10.0, 1)
+
+                # Extract SV directly from hardware response
+                sv_raw = int(raw_str[11:15], 16)
+                if sv_raw > 32767:
+                    sv_raw -= 65536
+                sv_actual = round(sv_raw / 10.0, 1)
+                
+                # Update local settings cache so the UI stays perfectly in sync
+                self.settings.set_actual("set_value", actual=sv_actual)
+                
+                if "set_value" in record["variables"]:
+                    record["variables"]["set_value"]["data"] = sv_actual
 
                 return record
                 
@@ -322,7 +409,7 @@ class DwyerSCD(Operational):
         except Exception as e:
             self.logger.error("default_parse - critical error", extra={"error": str(e), "data": data})
             return None
-
+        
 class ServerConfig(BaseModel):
     host: str = "localhost"
     port: int = 9080

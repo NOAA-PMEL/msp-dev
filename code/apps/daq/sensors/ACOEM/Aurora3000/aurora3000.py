@@ -353,13 +353,22 @@ class Aurora3000(Sensor):
                     self.settings.set_setting("calibration_routine", requested="none")
                     self.settings.set_actual("calibration_routine", "none")
                     self.current_cal_routine = "none"
+
+                    # Force update the record dynamically so the UI sees the reset immediately this tick
+                    if "calibration_status" in record["variables"]:
+                        cs_obj = self.settings.get_setting("calibration_status")
+                        record["variables"]["calibration_status"]["data"] = cs_obj.get("actual") if isinstance(cs_obj, dict) else cs_obj
+                    if "calibration_routine" in record["variables"]:
+                        cr_obj = self.settings.get_setting("calibration_routine")
+                        record["variables"]["calibration_routine"]["data"] = cr_obj.get("actual") if isinstance(cr_obj, dict) else cr_obj
+
             except (KeyError, TypeError):
                 pass
                 
-            # Add status variable to UI updates
-            if "calibration_status" in record["variables"]:
-                cal_stat = self.settings.get_setting("calibration_status")
-                record["variables"]["calibration_status"]["data"] = cal_stat.get("actual", "none") if isinstance(cal_stat, dict) else "none"
+            # # Add status variable to UI updates
+            # if "calibration_status" in record["variables"]:
+            #     cal_stat = self.settings.get_setting("calibration_status")
+            #     record["variables"]["calibration_status"]["data"] = cal_stat.get("actual", "none") if isinstance(cal_stat, dict) else "none"
 
             return record
             

@@ -263,6 +263,15 @@ class SanAce92RF(Operational):
                     record["variables"]["time"]["data"] = timestamp
                 if "fan_speed" in record["variables"]:
                     record["variables"]["fan_speed"]["data"] = round(speed, 3)
+                if "fan_speed_sp" in record["variables"]:
+                    sp_setting = self.settings.get_setting("fan_speed_sp")
+                    if sp_setting:
+                        sp_val = sp_setting.get("actual") if isinstance(sp_setting, dict) and "actual" in sp_setting else (sp_setting.get("requested") if isinstance(sp_setting, dict) else sp_setting)
+                        if sp_val is not None:
+                            try:
+                                record["variables"]["fan_speed_sp"]["data"] = float(sp_val)
+                            except (ValueError, TypeError):
+                                record["variables"]["fan_speed_sp"]["data"] = sp_val
             else:
                 self.logger.warning(
                     "default_parse - zero or negative elapsed time", 

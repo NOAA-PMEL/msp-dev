@@ -155,6 +155,28 @@ class KLD20S(Operational):
                 self.logger.error("default_data_loop error", extra={"error": str(e)})
             await asyncio.sleep(0.1)
 
+    # def default_parse(self, data):
+    #     if not data: return None
+    #     try:
+    #         v_types = ["main", "setting"] if self.include_metadata else ["main"]
+    #         record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+    #         self.include_metadata = False
+
+    #         raw_payload = data.data if isinstance(data.data, dict) else {}
+    #         timestamp = raw_payload.get("timestamp")
+            
+    #         if not timestamp: return None
+
+    #         record["timestamp"] = timestamp
+    #         if "time" in record["variables"]:
+    #             record["variables"]["time"]["data"] = timestamp
+
+    #         return record
+
+    #     except Exception as e:
+    #         self.logger.error("default_parse - critical error", extra={"error": str(e)})
+    #         return None
+
     def default_parse(self, data):
         if not data: return None
         try:
@@ -170,13 +192,23 @@ class KLD20S(Operational):
             record["timestamp"] = timestamp
             if "time" in record["variables"]:
                 record["variables"]["time"]["data"] = timestamp
+                
+            if "valve_state" in record["variables"]:
+                sp_setting = self.settings.get_setting("valve_state")
+                if sp_setting:
+                    sp_val = sp_setting.get("actual") if isinstance(sp_setting, dict) and "actual" in sp_setting else (sp_setting.get("requested") if isinstance(sp_setting, dict) else sp_setting)
+                    if sp_val is not None:
+                        try:
+                            record["variables"]["valve_state"]["data"] = int(float(sp_val))
+                        except (ValueError, TypeError):
+                            record["variables"]["valve_state"]["data"] = sp_val
 
             return record
 
         except Exception as e:
             self.logger.error("default_parse - critical error", extra={"error": str(e)})
             return None
-
+        
 class ServerConfig(BaseModel):
     host: str = "localhost"
     port: int = 9080

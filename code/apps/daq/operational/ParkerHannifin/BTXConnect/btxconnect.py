@@ -208,6 +208,76 @@ class BTXConnect(Operational):
                 self.logger.error("default_data_loop error", extra={"error": str(e)})
             await asyncio.sleep(0.1)
 
+    # def default_parse(self, data):
+    #     if not data: return None
+    #     try:
+    #         v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
+    #         record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+    #         self.include_metadata = False
+
+    #         raw_payload = data.data if isinstance(data.data, dict) else {}
+    #         timestamp = raw_payload.get("timestamp")
+    #         iface_data = raw_payload.get("data", {})
+            
+    #         self.logger.debug(
+    #             "default_parse - raw iface_data received", 
+    #             extra={"iface_data": iface_data, "timestamp": timestamp}
+    #         )
+            
+    #         if not timestamp or "data" not in iface_data:
+    #             self.logger.warning(
+    #                 "default_parse - missing timestamp or data key", 
+    #                 extra={"raw_payload": raw_payload}
+    #             )
+    #             return None
+
+    #         current_read_timestamp = string_to_datetime(timestamp)
+            
+    #         try:
+    #             dataRead = float(iface_data["data"])  # Raw pulse count
+    #         except (ValueError, TypeError) as e:
+    #             self.logger.warning(
+    #                 "default_parse - failed to cast pulse count to float", 
+    #                 extra={"error": str(e), "data_value": iface_data.get("data")}
+    #             )
+    #             return None
+
+    #         # Require two points to calculate RPM over time
+    #         if not self.last_read_timestamp or self.last_read_count is None:
+    #             self.logger.debug("default_parse - initializing first data point, skipping RPM calculation")
+    #             self.last_read_timestamp = current_read_timestamp
+    #             self.last_read_count = dataRead
+    #             return None
+
+    #         elapsed_time = (current_read_timestamp - self.last_read_timestamp).total_seconds()
+            
+    #         if elapsed_time > 0:
+    #             # Assuming 2 pulses per revolution for standard tachometer
+    #             revs = (dataRead - self.last_read_count) / 4.0
+    #             speed = 60.0 * revs / elapsed_time
+                
+    #             record["timestamp"] = timestamp
+    #             if "time" in record["variables"]:
+    #                 record["variables"]["time"]["data"] = timestamp
+    #             if "pump_speed" in record["variables"]:
+    #                 record["variables"]["pump_speed"]["data"] = round(speed, 3)
+    #         else:
+    #             self.logger.warning(
+    #                 "default_parse - zero or negative elapsed time", 
+    #                 extra={"elapsed_time": elapsed_time, "current_ts": current_read_timestamp, "last_ts": self.last_read_timestamp}
+    #             )
+    #             # Drop out early to prevent updating last_read_timestamp if time went backwards
+    #             return None
+
+    #         self.last_read_timestamp = current_read_timestamp
+    #         self.last_read_count = dataRead
+
+    #         return record
+
+    #     except Exception as e:
+    #         self.logger.error("default_parse - critical error", extra={"error": str(e), "data": data})
+    #         return None
+
     def default_parse(self, data):
         if not data: return None
         try:
@@ -261,6 +331,15 @@ class BTXConnect(Operational):
                     record["variables"]["time"]["data"] = timestamp
                 if "pump_speed" in record["variables"]:
                     record["variables"]["pump_speed"]["data"] = round(speed, 3)
+                if "pump_speed_sp" in record["variables"]:
+                    sp_setting = self.settings.get_setting("pump_speed_sp")
+                    if sp_setting:
+                        sp_val = sp_setting.get("actual") if isinstance(sp_setting, dict) and "actual" in sp_setting else (sp_setting.get("requested") if isinstance(sp_setting, dict) else sp_setting)
+                        if sp_val is not None:
+                            try:
+                                record["variables"]["pump_speed_sp"]["data"] = float(sp_val)
+                            except (ValueError, TypeError):
+                                record["variables"]["pump_speed_sp"]["data"] = sp_val
             else:
                 self.logger.warning(
                     "default_parse - zero or negative elapsed time", 
@@ -277,7 +356,7 @@ class BTXConnect(Operational):
         except Exception as e:
             self.logger.error("default_parse - critical error", extra={"error": str(e), "data": data})
             return None
-
+        
 class ServerConfig(BaseModel):
     host: str = "localhost"
     port: int = 9080
