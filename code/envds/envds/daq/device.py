@@ -649,9 +649,26 @@ class Device(envdsBase):
             await asyncio.sleep(1)
             
 
+    # # each device should handle this as required
+    # async def settings_check(self):
+    #     pass
+
     # each device should handle this as required
     async def settings_check(self):
-        pass
+        if not self.settings.get_health():
+            for name in list(self.settings.get_settings().keys()):
+                if not self.settings.get_health_setting(name):
+                    setting_obj = self.settings.get_setting(name)
+                    target_val = setting_obj.get("requested") if isinstance(setting_obj, dict) else setting_obj
+                    
+                    if name == "sampling_state":
+                        target_str = str(target_val).lower()
+                        if target_str == "sampling":
+                            self.start()
+                        elif target_str == "idle":
+                            self.stop()
+                            
+                        self.settings.set_actual(name, target_val)
 
     async def interface_send_data(self, data: dict, path_id: str = "default"):
 
@@ -1142,6 +1159,95 @@ class Device(envdsBase):
                 self.include_metadata = True
                 await asyncio.sleep(1)
 
+    # def build_data_record(
+    #     self, meta: bool = False, variable_types: list[str] = ["main"]
+    # ) -> dict:
+    #     # TODO: change data_format -> format_version
+    #     # TODO: create record for any number of variable_types
+    #     record = {
+    #         # "time": get_datetime_string(),
+    #         "timestamp": get_datetime_string(),
+    #         # "instance": {
+    #         #     "serial_number": self.config.serial_number,
+    #         #     "sampling_mode": mode,
+    #         # }
+    #     }
+    #     # print(record)
+    #     if meta:
+    #         record["attributes"] = self.config.metadata.dict()["attributes"]
+    #         # print(record)
+    #         record["attributes"]["serial_number"] = {
+    #             "type": "char",
+    #             "data": self.config.serial_number,
+    #         }
+    #         record["attributes"]["mode"] = {"type": "char", "data": "default"}
+    #         record["attributes"]["variable_types"] = {
+    #             "type": "string",
+    #             "data": ",".join(variable_types),
+    #         }
+    #     else:
+    #         record["attributes"] = {
+    #             "make": {"data": self.config.make},
+    #             "model": {"data": self.config.model},
+    #             "serial_number": {"data": self.config.serial_number},
+    #             "mode": {"data": "default"},
+    #             "format_version": {"data": self.device_format_version},
+    #             "variable_types": {"data": ",".join(variable_types)},
+    #         }
+    #     # record["attributes"]["serial_number"] = {"data": self.config.serial_number}
+    #     # record["attributes"]["mode"] = {"data": "default"}
+    #     # record["attributes"]["variable_types"] = {"data": ",".join(variable_type)}
+
+    #     # print(record)
+
+    #     #     "variables": {},
+    #     # }
+
+    #     record["dimensions"] = {"time": 1}
+    #     record["variables"] = dict()
+
+    #     # record["variables"] = dict()
+    #     if meta:
+    #         for name, variable in self.config.metadata.dict()["variables"].items():
+    #             variable_type = variable["attributes"].get(
+    #                 "variable_type", {"type": "string", "data": "main"}
+    #             )
+    #             if variable_type["data"] in variable_types:
+    #                 record["variables"][name] = self.config.metadata.dict()[
+    #                     "variables"
+    #                 ][name]
+
+    #         # record["variables"] = self.config.metadata.dict()["variables"]
+
+    #         # print(1, record)
+    #         # for name, _ in record["variables"].items():
+    #         #     record["variables"][name]["data"] = None
+    #         for name, var_dict in record["variables"].items():
+    #             # Do not scrub the data array if the variable is a static coordinate
+    #             var_type = var_dict.get("attributes", {}).get("variable_type", {}).get("data")
+    #             if var_type != "coordinate":
+    #                 record["variables"][name]["data"] = None
+    #         # print(2, record)
+    #     else:
+    #         for name, variable in self.config.metadata.dict()["variables"].items():
+    #             variable_type = variable["attributes"].get(
+    #                 "variable_type", {"type": "string", "data": "main"}
+    #             )
+    #             # print(f"variable_type: {variable_type}, {variable_types}")
+    #             if variable_type["data"] in variable_types:
+    #                 # print(f"name: {name}")
+    #                 record["variables"][name] = {
+    #                     "attributes": {"variable_type": {"data": variable_type}},
+    #                     "data": None,
+    #                 }
+    #         # print(3, record)
+
+    #         # record["variables"] = dict()
+    #         # for name,_ in self.config.metadata.variables.items():
+    #         #     record["variables"][name] = {"data": None}
+
+    #     return record
+
     def build_data_record(
         self, meta: bool = False, variable_types: list[str] = ["main"]
     ) -> dict:
@@ -1177,19 +1283,10 @@ class Device(envdsBase):
                 "format_version": {"data": self.device_format_version},
                 "variable_types": {"data": ",".join(variable_types)},
             }
-        # record["attributes"]["serial_number"] = {"data": self.config.serial_number}
-        # record["attributes"]["mode"] = {"data": "default"}
-        # record["attributes"]["variable_types"] = {"data": ",".join(variable_type)}
-
-        # print(record)
-
-        #     "variables": {},
-        # }
 
         record["dimensions"] = {"time": 1}
         record["variables"] = dict()
 
-        # record["variables"] = dict()
         if meta:
             for name, variable in self.config.metadata.dict()["variables"].items():
                 variable_type = variable["attributes"].get(
@@ -1200,37 +1297,36 @@ class Device(envdsBase):
                         "variables"
                     ][name]
 
-            # record["variables"] = self.config.metadata.dict()["variables"]
-
-            # print(1, record)
-            # for name, _ in record["variables"].items():
-            #     record["variables"][name]["data"] = None
             for name, var_dict in record["variables"].items():
-                # Do not scrub the data array if the variable is a static coordinate
                 var_type = var_dict.get("attributes", {}).get("variable_type", {}).get("data")
-                if var_type != "coordinate":
+                
+                # --- THE FIX: Auto-fill settings from cache instead of scrubbing ---
+                if var_type == "setting":
+                    s_obj = self.settings.get_setting(name)
+                    s_val = s_obj.get("actual", s_obj.get("requested")) if isinstance(s_obj, dict) else s_obj
+                    record["variables"][name]["data"] = s_val
+                elif var_type != "coordinate":
                     record["variables"][name]["data"] = None
-            # print(2, record)
         else:
             for name, variable in self.config.metadata.dict()["variables"].items():
                 variable_type = variable["attributes"].get(
                     "variable_type", {"type": "string", "data": "main"}
                 )
-                # print(f"variable_type: {variable_type}, {variable_types}")
                 if variable_type["data"] in variable_types:
-                    # print(f"name: {name}")
+                    val = None
+                    
+                    # --- THE FIX: Auto-fill settings from cache ---
+                    if variable_type["data"] == "setting":
+                        s_obj = self.settings.get_setting(name)
+                        val = s_obj.get("actual", s_obj.get("requested")) if isinstance(s_obj, dict) else s_obj
+                        
                     record["variables"][name] = {
                         "attributes": {"variable_type": {"data": variable_type}},
-                        "data": None,
+                        "data": val,
                     }
-            # print(3, record)
-
-            # record["variables"] = dict()
-            # for name,_ in self.config.metadata.variables.items():
-            #     record["variables"][name] = {"data": None}
 
         return record
-
+    
     def get_definition_by_variable_type(
         self, device_def: dict, variable_type: str = "main"
     ) -> dict:
