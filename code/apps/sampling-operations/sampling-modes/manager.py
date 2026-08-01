@@ -284,57 +284,82 @@ class SamplingModesManager:
     #     except Exception as e:
     #         self.logger.error("configure error", extra={"reason": str(e)})
 
+    # def configure(self):
+    #     try:
+    #         # 1. LOAD ACTIONS FROM DIRECTORY
+    #         actions = self._load_json_dir("/app/config/actions")
+    #         for action in actions:
+    #             kind = action["kind"]
+    #             name = action["metadata"]["name"]
+    #             if kind not in self.sampling_actions:
+    #                 self.sampling_actions[kind] = dict()
+    #             self.sampling_actions[kind][name] = {
+    #                 "config": action,
+    #                 "action": SamplingAction(action, self.actions_target_buffer),
+    #             }
+
+    #             if "sources" in action:
+    #                 for src_name, src in action["sources"].items():
+    #                     vm_name = src["variablemap_name"]
+    #                     vs_name = src["variableset_name"]
+    #                     src_id = f"{vm_name}::{vs_name}"
+    #                     if src_id not in self.actions_source_map:
+    #                         self.actions_source_map[src_id] = []
+    #                     self.actions_source_map[src_id].append({"kind": kind, "name": name})
+            
+    #         # 2. LOAD MODES FROM DIRECTORY
+    #         modes = self._load_json_dir("/app/config/modes")
+    #         for mode in modes:
+    #             kind = mode["kind"]
+    #             name = mode["metadata"]["name"]
+    #             if kind not in self.sampling_modes:
+    #                 self.sampling_modes[kind] = dict()
+    #             self.sampling_modes[kind][name] = {
+    #                 "config": mode,
+    #                 "mode": SamplingMode(mode, self.status_buffer, self.actions_buffer, self.transitions_buffer),
+    #             }
+
+    #             if "requirements" in mode:
+    #                 for req_mode in mode["requirements"]:
+    #                     try:
+    #                         req_kind = req_mode["kind"]
+    #                         req_name = req_mode["name"]
+    #                         if req_kind not in self.mode_requirements_map:
+    #                             self.mode_requirements_map[req_kind] = dict()
+    #                         if req_name not in self.mode_requirements_map[req_kind]:
+    #                             self.mode_requirements_map[req_kind][req_name] = []
+    #                         self.mode_requirements_map[req_kind][req_name].append(
+    #                             {"kind": kind, "name": name, "active": False}
+    #                         )
+    #                     except KeyError:
+    #                         continue
+    #     except Exception as e:
+    #         self.logger.error("configure-manager", extra={"reason": e})
+
     def configure(self):
         try:
             # 1. LOAD ACTIONS FROM DIRECTORY
             actions = self._load_json_dir("/app/config/actions")
-            for action in actions:
-                kind = action["kind"]
-                name = action["metadata"]["name"]
-                if kind not in self.sampling_actions:
-                    self.sampling_actions[kind] = dict()
-                self.sampling_actions[kind][name] = {
-                    "config": action,
-                    "action": SamplingAction(action, self.actions_target_buffer),
-                }
-
-                if "sources" in action:
-                    for src_name, src in action["sources"].items():
-                        vm_name = src["variablemap_name"]
-                        vs_name = src["variableset_name"]
-                        src_id = f"{vm_name}::{vs_name}"
-                        if src_id not in self.actions_source_map:
-                            self.actions_source_map[src_id] = []
-                        self.actions_source_map[src_id].append({"kind": kind, "name": name})
+            for action_cfg in actions:
+                self.load_action(action_cfg)
             
             # 2. LOAD MODES FROM DIRECTORY
             modes = self._load_json_dir("/app/config/modes")
-            for mode in modes:
-                kind = mode["kind"]
-                name = mode["metadata"]["name"]
-                if kind not in self.sampling_modes:
-                    self.sampling_modes[kind] = dict()
-                self.sampling_modes[kind][name] = {
-                    "config": mode,
-                    "mode": SamplingMode(mode, self.status_buffer, self.actions_buffer, self.transitions_buffer),
-                }
+            
+            if modes:
+                # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+                if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+                    first_ns = modes[0].get("metadata", {}).get("sampling_namespace", "")
+                    if "/" in first_ns:
+                        self.config.deployment_ref = first_ns.split("/")[-1]
+                        self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+                # -------------------------------------
+                
+                for mode_cfg in modes:
+                    self.load_mode(mode_cfg)
 
-                if "requirements" in mode:
-                    for req_mode in mode["requirements"]:
-                        try:
-                            req_kind = req_mode["kind"]
-                            req_name = req_mode["name"]
-                            if req_kind not in self.mode_requirements_map:
-                                self.mode_requirements_map[req_kind] = dict()
-                            if req_name not in self.mode_requirements_map[req_kind]:
-                                self.mode_requirements_map[req_kind][req_name] = []
-                            self.mode_requirements_map[req_kind][req_name].append(
-                                {"kind": kind, "name": name, "active": False}
-                            )
-                        except KeyError:
-                            continue
         except Exception as e:
-            self.logger.error("configure-manager", extra={"reason": e})
+            self.logger.error("configure-manager", extra={"reason": str(e)})
 
     def load_mode(self, cfg):
         """Processes a definition and instantiates a SamplingMode object using a composite key."""
