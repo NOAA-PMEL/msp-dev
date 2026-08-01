@@ -240,8 +240,11 @@ class SystemModesManager:
         results = []
         dir_path = Path(dir_path_str)
         
+        self.logger.info(f"[DEBUG] _load_json_dir called. Path: '{dir_path_str}' | Exists: {dir_path.exists()} | Is Dir: {dir_path.is_dir()}")
+        
         if dir_path.exists() and dir_path.is_dir():
             for file_path in dir_path.glob("*.json"):
+                self.logger.info(f"[DEBUG] Found file: {file_path.name}")
                 try:
                     with open(file_path, "r") as f:
                         raw_content = f.read()
@@ -251,8 +254,10 @@ class SystemModesManager:
                         
                         data = json.loads(expanded_content)
                         if isinstance(data, list):
+                            self.logger.info(f"[DEBUG] Parsed list of {len(data)} items from {file_path.name}")
                             results.extend(data)
                         else:
+                            self.logger.info(f"[DEBUG] Parsed single dict from {file_path.name}")
                             results.append(data)
                             
                     self.logger.info(f"Loaded and expanded file: {file_path.name}")
@@ -266,8 +271,8 @@ class SystemModesManager:
     def configure(self):
         """Loads system mode definitions from mounted files and bootstraps identity."""
         try:
-            # ---> THE FIX: Scan the directory instead of hardcoding one file <---
-            modes = self._load_json_dir("/app/config")
+            # ---> THE FIX: Target the exact, deterministic mount path <---
+            modes = self._load_json_dir("/app/config/modes")
             
             if modes:
                 # --- IMMUTABLE IDENTITY BOOTSTRAP ---
@@ -281,7 +286,7 @@ class SystemModesManager:
                 for cfg in modes:
                     self.load_mode(cfg)
             else:
-                self.logger.info("No local system modes found in /app/config. Skipping.")
+                self.logger.info("No local system modes found in /app/config/modes. Skipping.")
         except Exception as e:
             self.logger.error("configure_failed", extra={"reason": str(e)})
 
@@ -516,9 +521,15 @@ class SystemModesManager:
         await asyncio.sleep(5)
         while True:
             try:
+                self.logger.info(f"[DEBUG] publish_local_definitions loop starting. Modes in memory: {len(self.modes)}")
+                
                 for (name, ns), obj in self.modes.items():
+                    self.logger.info(f"[DEBUG] Evaluating mode '{name}' | Config NS: '{ns}' | Node Deployment Ref: '{self.config.deployment_ref}'")
+                    
                     # Only re-publish profiles that genuinely belong to our node namespace
                     if self.config.deployment_ref in ns or not self.config.deployment_ref:
+                        self.logger.info(f"[DEBUG] Mode '{name}' matched namespace filter. Preparing CloudEvent.")
+                        
                         event = SamplingEvent.create_definition_registry_update(
                             resource="systemmode-definition",
                             source=f"envds.{self.config.daq_id}.system-modes",
@@ -528,7 +539,11 @@ class SystemModesManager:
                         destpath = f"envds/{self.config.daq_id}/systemmode-definition/registry/update"
                         event["destpath"] = destpath
                         
+                        self.logger.info(f"[DEBUG] Sending event for '{name}' to Knative Broker. Target destpath: {destpath}")
                         await self.send_event(event)
+                        self.logger.info(f"[DEBUG] Successfully posted event to Knative for '{name}'")
+                    else:
+                        self.logger.info(f"[DEBUG] Mode '{name}' SKIPPED. Config NS '{ns}' did not match Node Ref '{self.config.deployment_ref}'")
                     
             except Exception as e: 
                 self.logger.error("publish_failed", extra={"reason": str(e)})
