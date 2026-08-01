@@ -113,6 +113,190 @@ def make_kpi_col(title, id_val, icon=None):
         ], className="bg-white border rounded shadow-sm p-2 h-100 d-flex flex-column justify-content-center align-items-center")
     ], style={"flex": "1 1 auto", "minWidth": "140px"})
 
+# def build_live_dependency_tree(health_store, host_id):
+#     """
+#     Traverses declarative JSON definitions and builds interactive tabs for ALL 
+#     available System Modes. Automatically cross-references deployment aliases, 
+#     strictly deduplicates tabs, and visually highlights blocking conditions.
+#     """
+#     systemmodes = fetch_registry_data("systemmode")
+#     samplingmodes = fetch_registry_data("samplingmode")
+#     samplingstates = fetch_registry_data("samplingstate")
+    
+#     if not health_store:
+#         return html.P("No telemetry available to build dependency tree.", className="text-danger text-center my-4")
+
+#     # Sort so the Host Node appears first, followed by the payloads
+#     sorted_deps = sorted(health_store.keys(), key=lambda x: 0 if x == host_id else 1)
+#     accordion_items = []
+    
+#     for dep_ref in sorted_deps:
+#         node_telemetry = health_store.get(dep_ref, {})
+        
+#         # --- 1. ALIAS CROSS-REFERENCING (Refactored for Speed) ---
+#         this_dep_results = fetch_registry_data("deployment", {"name": dep_ref})
+#         this_dep = this_dep_results[0] if this_dep_results else {}
+#         platform_ref = this_dep.get("data", {}).get("platform_ref", "")
+        
+#         related_dep_names = [dep_ref]
+#         if platform_ref:
+#             related_deps = fetch_registry_data("deployment", {"platform_ref": platform_ref})
+#             for d in related_deps:
+#                 n = d.get("metadata", {}).get("name")
+#                 if n and n not in related_dep_names:
+#                     related_dep_names.append(n)
+        
+#         # --- 2. STRICT DEDUPLICATION & SCOPING ---
+#         def build_scoped_dict(source_list):
+#             scoped = {}
+#             for item in source_list:
+#                 name = item.get("metadata", {}).get("name")
+#                 ns = item.get("metadata", {}).get("sampling_namespace", "")
+#                 if not name: continue
+                
+#                 is_match = any(alias in ns for alias in related_dep_names)
+#                 if is_match:
+#                     if dep_ref in ns or name not in scoped:
+#                         scoped[name] = item
+            
+#             if not scoped:
+#                 for item in source_list:
+#                     name = item.get("metadata", {}).get("name")
+#                     if name and name not in scoped:
+#                         scoped[name] = item
+#             return scoped
+            
+#         node_sys_modes_dict = build_scoped_dict(systemmodes)
+#         node_samp_modes_dict = build_scoped_dict(samplingmodes)
+#         node_samp_states_dict = build_scoped_dict(samplingstates)
+        
+#         node_sys_modes = list(node_sys_modes_dict.values())
+
+#         # --- 3. TELEMETRY CHECKER ---
+#         def check_if_uid_is_active(uid):
+#             status_record = node_telemetry.get(uid)
+#             if not status_record: return False
+#             state_block = status_record.get("state", {})
+#             for k, v in state_block.items():
+#                 actual = str(v.get("actual", "") if isinstance(v, dict) else v).lower()
+#                 if actual in ["true", "active", "1", "yes"]: return True
+#             return False
+
+#         active_system_mode = "unknown"
+#         for uid, status in node_telemetry.items():
+#             if status.get("id", {}).get("app_group", "") == "system":
+#                 if check_if_uid_is_active(uid):
+#                     active_system_mode = uid
+#                     break
+
+#         node_sys_modes.sort(key=lambda x: (0 if x.get("metadata", {}).get("name") == active_system_mode else 1, x.get("metadata", {}).get("name")))
+
+#         is_host = (dep_ref == host_id)
+#         node_label = "HOST NODE" if is_host else "SUB-NODE"
+#         icon_class = "bi-hdd-network text-primary" if is_host else "bi-hdd text-info"
+        
+#         # --- 4. BUILD TABS WITH BLOCKER HIGHLIGHTS ---
+#         mode_tabs = []
+#         for mode_config in node_sys_modes:
+#             sm_name_top = mode_config.get("metadata", {}).get("name", "unknown")
+#             is_active_mode = (sm_name_top == active_system_mode)
+            
+#             tab_label = f"🟢 {sm_name_top.upper()}" if is_active_mode else sm_name_top.upper()
+#             tree_components = []
+#             requirements = mode_config.get("requirements", [])
+            
+#             if not requirements:
+#                 tree_components.append(html.P(f"System Mode '{sm_name_top.upper()}' operates standalone with no active or required sampling logic.", className="text-muted text-center fst-italic my-4"))
+#             else:
+#                 for req in requirements:
+#                     if req.get("kind") == "SamplingMode":
+#                         sm_name = req.get("name")
+#                         sm_is_active = check_if_uid_is_active(sm_name)
+                        
+#                         sm_badge_color = "success" if sm_is_active else "danger"
+#                         sm_status_label = "RUNNING" if sm_is_active else "HALTED / PENDING"
+                        
+#                         nested_state_rows = []
+#                         sm_definition = node_samp_modes_dict.get(sm_name)
+                        
+#                         if sm_definition:
+#                             for sm_req in sm_definition.get("requirements", []):
+#                                 if sm_req.get("kind") == "SamplingState":
+#                                     ss_name = sm_req.get("name")
+#                                     ss_is_active = check_if_uid_is_active(ss_name)
+                                    
+#                                     ss_badge_color = "success" if ss_is_active else "danger"
+#                                     ss_status_label = "STABILIZED" if ss_is_active else "NOT STABILIZED"
+                                    
+#                                     nested_condition_items = []
+#                                     ss_definition = node_samp_states_dict.get(ss_name)
+                                    
+#                                     if ss_definition:
+#                                         for cond_req in ss_definition.get("requirements", []):
+#                                             if cond_req.get("kind") == "SamplingCondition":
+#                                                 cond_name = cond_req.get("name")
+#                                                 cond_is_met = check_if_uid_is_active(cond_name)
+                                                
+#                                                 cond_icon = "bi-check-circle-fill text-success" if cond_is_met else "bi-x-circle-fill text-danger"
+#                                                 cond_badge = dbc.Badge("MET", color="success", className="ms-2") if cond_is_met else dbc.Badge("BLOCKING (UNMET)", color="danger", className="ms-2 shadow-sm")
+                                                
+#                                                 row_class = "list-group-item ps-5 border-0 py-2"
+#                                                 if not cond_is_met:
+#                                                     row_class += " bg-danger bg-opacity-10 rounded my-1" 
+                                                
+#                                                 nested_condition_items.append(html.Li([
+#                                                     html.I(className=f"bi {cond_icon} me-2"),
+#                                                     html.Span("Condition: ", className="text-muted small"),
+#                                                     html.Span(f"{cond_name}", className="font-monospace fw-bold text-dark"),
+#                                                     cond_badge
+#                                                 ], className=row_class))
+
+#                                     state_row_class = "list-group-item ps-4 border-0 pb-1"
+#                                     if not ss_is_active:
+#                                         state_row_class += " border-start border-danger border-3"
+                                        
+#                                     nested_state_rows.append(html.Div([
+#                                         html.Li([
+#                                             html.I(className="bi bi-arrow-return-right me-2 opacity-50 text-primary"),
+#                                             html.Span("Required State: ", className="text-muted small me-1"),
+#                                             html.Span(f"{ss_name}", className="fw-bold text-dark me-2 font-monospace"),
+#                                             dbc.Badge(ss_status_label, color=ss_badge_color, className="fw-bold", style={"fontSize": "0.65rem"})
+#                                         ], className=state_row_class),
+#                                         html.Ul(nested_condition_items, className="list-group list-group-flush mb-2") if nested_condition_items else ""
+#                                     ]))
+
+#                         tree_components.append(dbc.Card([
+#                             dbc.CardHeader([
+#                                 html.I(className="bi bi-toggles me-2 text-primary"),
+#                                 html.Span("Required Mode: ", className="text-muted small me-1"),
+#                                 html.Span(sm_name, className="fw-bold text-dark font-monospace"),
+#                                 dbc.Badge(sm_status_label, color=sm_badge_color, className="float-end fw-bold mt-1 shadow-sm")
+#                             ], className="bg-white border-bottom-0 p-2"),
+#                             dbc.CardBody(
+#                                 html.Ul(nested_state_rows, className="list-group list-group-flush p-0 m-0"),
+#                                 className="p-1 bg-light border-top"
+#                             ) if nested_state_rows else ""
+#                         ], className="mb-3 shadow-sm border" + (" border-danger" if not sm_is_active else "")))
+
+#             mode_tabs.append(dbc.Tab(
+#                 html.Div(tree_components, className="pt-3"), 
+#                 label=tab_label, 
+#                 tab_id=sm_name_top
+#             ))
+
+#         accordion_items.append(dbc.AccordionItem(
+#             dbc.Tabs(mode_tabs, active_tab=active_system_mode if active_system_mode != "unknown" else None),
+#             title=html.Div([
+#                 html.I(className=f"bi {icon_class} me-2"),
+#                 html.Span(f"{node_label}: ", className="small fw-bold text-muted me-1"),
+#                 html.Span(dep_ref, className="font-monospace fw-bold text-dark me-3"),
+#                 dbc.Badge(f"MODE: {active_system_mode.upper()}", color="dark", className="shadow-sm")
+#             ]),
+#             item_id=dep_ref
+#         ))
+        
+#     return dbc.Accordion(accordion_items, start_collapsed=False, always_open=True, active_item=sorted_deps)
+
 def build_live_dependency_tree(health_store, host_id):
     """
     Traverses declarative JSON definitions and builds interactive tabs for ALL 
@@ -123,6 +307,12 @@ def build_live_dependency_tree(health_store, host_id):
     samplingmodes = fetch_registry_data("samplingmode")
     samplingstates = fetch_registry_data("samplingstate")
     
+    print("\n================ [DEBUG: DEPENDENCY TREE] ================")
+    print(f"Datastore returned {len(systemmodes)} SystemModes")
+    if systemmodes:
+        print(f"Sample SystemMode Namespace: {systemmodes[0].get('metadata', {}).get('sampling_namespace')}")
+    print("==========================================================")
+        
     if not health_store:
         return html.P("No telemetry available to build dependency tree.", className="text-danger text-center my-4")
 
@@ -146,6 +336,9 @@ def build_live_dependency_tree(health_store, host_id):
                 if n and n not in related_dep_names:
                     related_dep_names.append(n)
         
+        print(f"\nEvaluating Scoping for Node: {dep_ref}")
+        print(f"Allowed Aliases for Matching: {related_dep_names}")
+                    
         # --- 2. STRICT DEDUPLICATION & SCOPING ---
         def build_scoped_dict(source_list):
             scoped = {}
@@ -158,7 +351,10 @@ def build_live_dependency_tree(health_store, host_id):
                 if is_match:
                     if dep_ref in ns or name not in scoped:
                         scoped[name] = item
-            
+                else:
+                    if item.get("kind") == "SystemMode":
+                        print(f"   [REJECTED] {name} | Namespace '{ns}' did not match any allowed aliases.")
+                        
             if not scoped:
                 for item in source_list:
                     name = item.get("metadata", {}).get("name")
@@ -171,6 +367,7 @@ def build_live_dependency_tree(health_store, host_id):
         node_samp_states_dict = build_scoped_dict(samplingstates)
         
         node_sys_modes = list(node_sys_modes_dict.values())
+        print(f"Final Scoped SystemModes for {dep_ref}: {len(node_sys_modes)}")
 
         # --- 3. TELEMETRY CHECKER ---
         def check_if_uid_is_active(uid):
@@ -202,6 +399,7 @@ def build_live_dependency_tree(health_store, host_id):
             is_active_mode = (sm_name_top == active_system_mode)
             
             tab_label = f"🟢 {sm_name_top.upper()}" if is_active_mode else sm_name_top.upper()
+
             tree_components = []
             requirements = mode_config.get("requirements", [])
             
@@ -242,7 +440,7 @@ def build_live_dependency_tree(health_store, host_id):
                                                 
                                                 row_class = "list-group-item ps-5 border-0 py-2"
                                                 if not cond_is_met:
-                                                    row_class += " bg-danger bg-opacity-10 rounded my-1" 
+                                                    row_class += " bg-danger bg-opacity-10 rounded my-1"
                                                 
                                                 nested_condition_items.append(html.Li([
                                                     html.I(className=f"bi {cond_icon} me-2"),
@@ -296,7 +494,6 @@ def build_live_dependency_tree(health_store, host_id):
         ))
         
     return dbc.Accordion(accordion_items, start_collapsed=False, always_open=True, active_item=sorted_deps)
-
 
 def layout(deployment_id=None):
     if not deployment_id:

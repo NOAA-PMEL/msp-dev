@@ -703,31 +703,54 @@ class SystemModesManager:
     #             if 'data' in locals():
     #                 self.status_buffer.task_done()
 
+    # async def status_publish_monitor(self):
+    #     """Standardized monitor: Immediate update on change, reliable 30s heartbeat."""
+    #     last_control_broadcast = 0
+    #     while True:
+    #         try:
+    #             # 1. Retrieve the standardized status payload from the evaluation loop
+    #             data = await self.status_buffer.get()
+    #             status_data = data.get("status", {})
+    #             # 2. STRICT envds STANDARD: Use the System Mode factory
+    #             # This ensures the CloudEvent 'type' is set correctly for dashboard filtering
+    #             event = SamplingEvent.create_system_mode_status_update(
+    #                 source=f"envds.{self.config.daq_id}.system-modes", 
+    #                 data=status_data
+    #             )
+    #             # 3. Dynamic Topic Routing
+    #             # Uses the daq_id from ConfigMap to allow raz1, crk8s, etc., to coexist
+    #             destpath = f"envds/{self.config.daq_id}/system-modes/status/update"
+    #             event["destpath"] = destpath
+    #             event["deploymentref"] = self.config.deployment_ref
+    #             # ---> ADD THIS LINE: Broadcast our primary authority <---
+    #             event["isprimarycontroller"] = str(self.config.is_primary_controller).lower()
+    #             # 4. Broadcast via the manager's MQTT publish queue
+    #             await self.send_to_mqtt(destpath, event)
+
+    #             # --- NEW: Piggyback the System Control Heartbeat ---
+    #             now = get_datetime().timestamp()
+    #             if now - last_control_broadcast >= 30:
+    #                 ctrl_event = SamplingEvent.create_system_control_update(
+    #                     source=f"envds.{self.config.daq_id}.system-modes", 
+    #                     data={"mode": self.control_mode}
+    #                 )
+    #                 await self.send_to_mqtt(f"envds/{self.config.daq_id}/system-modes/control/update", ctrl_event)
+    #                 last_control_broadcast = now
+    #             # ---------------------------------------------------
+
+    #         except Exception as e:
+    #             self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
+    #         finally:
+    #             # 5. Mark the task as done to prevent buffer lockup
+    #             if 'data' in locals():
+    #                 self.status_buffer.task_done()
+
     async def status_publish_monitor(self):
         """Standardized monitor: Immediate update on change, reliable 30s heartbeat."""
         last_control_broadcast = 0
         while True:
             try:
-                # 1. Retrieve the standardized status payload from the evaluation loop
-                data = await self.status_buffer.get()
-                status_data = data.get("status", {})
-                # 2. STRICT envds STANDARD: Use the System Mode factory
-                # This ensures the CloudEvent 'type' is set correctly for dashboard filtering
-                event = SamplingEvent.create_system_mode_status_update(
-                    source=f"envds.{self.config.daq_id}.system-modes", 
-                    data=status_data
-                )
-                # 3. Dynamic Topic Routing
-                # Uses the daq_id from ConfigMap to allow raz1, crk8s, etc., to coexist
-                destpath = f"envds/{self.config.daq_id}/system-modes/status/update"
-                event["destpath"] = destpath
-                event["deploymentref"] = self.config.deployment_ref
-                # ---> ADD THIS LINE: Broadcast our primary authority <---
-                event["isprimarycontroller"] = str(self.config.is_primary_controller).lower()
-                # 4. Broadcast via the manager's MQTT publish queue
-                await self.send_to_mqtt(destpath, event)
-
-                # --- NEW: Piggyback the System Control Heartbeat ---
+                # --- NEW: Unblocked System Control Heartbeat ---
                 now = get_datetime().timestamp()
                 if now - last_control_broadcast >= 30:
                     ctrl_event = SamplingEvent.create_system_control_update(
@@ -738,12 +761,37 @@ class SystemModesManager:
                     last_control_broadcast = now
                 # ---------------------------------------------------
 
+                # 1. Retrieve the standardized status payload from the evaluation loop WITHOUT blocking forever
+                try:
+                    data = await asyncio.wait_for(self.status_buffer.get(), timeout=5.0)
+                    status_data = data.get("status", {})
+                    
+                    # 2. STRICT envds STANDARD: Use the System Mode factory
+                    event = SamplingEvent.create_system_mode_status_update(
+                        source=f"envds.{self.config.daq_id}.system-modes", 
+                        data=status_data
+                    )
+                    
+                    # 3. Dynamic Topic Routing
+                    destpath = f"envds/{self.config.daq_id}/system-modes/status/update"
+                    event["destpath"] = destpath
+                    event["deploymentref"] = self.config.deployment_ref
+                    
+                    # Broadcast our primary authority
+                    event["isprimarycontroller"] = str(self.config.is_primary_controller).lower()
+                    
+                    # 4. Broadcast via the manager's MQTT publish queue
+                    await self.send_to_mqtt(destpath, event)
+                    
+                    self.status_buffer.task_done()
+                    
+                except asyncio.TimeoutError:
+                    # Expected timeout when no status changes occur; loop continues to service heartbeat
+                    pass
+
             except Exception as e:
                 self.logger.error("status_publish_monitor error", extra={"reason": str(e)})
-            finally:
-                # 5. Mark the task as done to prevent buffer lockup
-                if 'data' in locals():
-                    self.status_buffer.task_done()
+
 async def shutdown():
     print("shutting down")
 
