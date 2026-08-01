@@ -211,27 +211,77 @@ class SystemModesManager:
             
     #     return results
     
+    # def configure(self):
+    #     """Loads system mode definitions from mounted files and bootstraps identity."""
+    #     try:
+    #         path = "/app/config/system_modes_modes.json"
+    #         if os.path.exists(path):
+    #             with open(path, "r") as f:
+    #                 modes = json.load(f)
+                    
+    #                 if modes:
+    #                     # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+    #                     if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+    #                         first_ns = modes[0].get("metadata", {}).get("sampling_namespace", "")
+    #                         if "/" in first_ns:
+    #                             self.config.deployment_ref = first_ns.split("/")[-1]
+    #                             self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+    #                     # -------------------------------------
+                        
+    #                     for cfg in modes:
+    #                         self.load_mode(cfg)
+    #         else:
+    #             self.logger.info("No local system modes found at /app/config/system_modes_modes.json. Skipping.")
+    #     except Exception as e:
+    #         self.logger.error("configure_failed", extra={"reason": str(e)})
+
+    def _load_json_dir(self, dir_path_str: str) -> list:
+        """Scans a directory for JSON files, injects env vars, and returns the parsed list."""
+        results = []
+        dir_path = Path(dir_path_str)
+        
+        if dir_path.exists() and dir_path.is_dir():
+            for file_path in dir_path.glob("*.json"):
+                try:
+                    with open(file_path, "r") as f:
+                        raw_content = f.read()
+                        
+                        # ---> INJECT VARIABLES BEFORE PARSING <---
+                        expanded_content = os.path.expandvars(raw_content)
+                        
+                        data = json.loads(expanded_content)
+                        if isinstance(data, list):
+                            results.extend(data)
+                        else:
+                            results.append(data)
+                            
+                    self.logger.info(f"Loaded and expanded file: {file_path.name}")
+                except Exception as e:
+                    self.logger.error(f"Failed to parse {file_path.name}", extra={"reason": str(e)})
+        else:
+            self.logger.info(f"{dir_path_str} not found or empty. Skipping local load.")
+            
+        return results
+    
     def configure(self):
         """Loads system mode definitions from mounted files and bootstraps identity."""
         try:
-            path = "/app/config/system_modes_modes.json"
-            if os.path.exists(path):
-                with open(path, "r") as f:
-                    modes = json.load(f)
-                    
-                    if modes:
-                        # --- IMMUTABLE IDENTITY BOOTSTRAP ---
-                        if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
-                            first_ns = modes[0].get("metadata", {}).get("sampling_namespace", "")
-                            if "/" in first_ns:
-                                self.config.deployment_ref = first_ns.split("/")[-1]
-                                self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
-                        # -------------------------------------
-                        
-                        for cfg in modes:
-                            self.load_mode(cfg)
+            # ---> THE FIX: Scan the directory instead of hardcoding one file <---
+            modes = self._load_json_dir("/app/config")
+            
+            if modes:
+                # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+                if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+                    first_ns = modes[0].get("metadata", {}).get("sampling_namespace", "")
+                    if "/" in first_ns:
+                        self.config.deployment_ref = first_ns.split("/")[-1]
+                        self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+                # -------------------------------------
+                
+                for cfg in modes:
+                    self.load_mode(cfg)
             else:
-                self.logger.info("No local system modes found at /app/config/system_modes_modes.json. Skipping.")
+                self.logger.info("No local system modes found in /app/config. Skipping.")
         except Exception as e:
             self.logger.error("configure_failed", extra={"reason": str(e)})
 
