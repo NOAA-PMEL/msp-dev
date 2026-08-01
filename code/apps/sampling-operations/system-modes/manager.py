@@ -212,37 +212,28 @@ class SystemModesManager:
     #     return results
     
     def configure(self):
-        """Loads system mode definitions from mounted files."""
-        try:
-            # ---> LOAD FROM THE DIRECTORY <---
-            modes = self._load_json_dir("/app/config/modes")
-            
-            if modes:
-                # --- IMMUTABLE IDENTITY BOOTSTRAP ---
-                if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
-                    first_ns = modes[0].get("metadata", {}).get("sampling_namespace", "")
-                    if "/" in first_ns:
-                        self.config.deployment_ref = first_ns.split("/")[-1]
-                        self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
-                # -------------------------------------
-                
-                for cfg in modes:
-                    self.load_mode(cfg)
-            else:
-                self.logger.info("No local system modes found in /app/config/modes. Skipping.")
-                
-        except Exception as e:
-            self.logger.error("configure_failed", extra={"reason": str(e)})
-
-    def configure(self):
-        """Loads system mode definitions from mounted files."""
+        """Loads system mode definitions from mounted files and bootstraps identity."""
         try:
             path = "/app/config/system_modes_modes.json"
             if os.path.exists(path):
                 with open(path, "r") as f:
-                    for cfg in json.load(f): self.load_mode(cfg)
+                    modes = json.load(f)
+                    
+                    if modes:
+                        # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+                        if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+                            first_ns = modes[0].get("metadata", {}).get("sampling_namespace", "")
+                            if "/" in first_ns:
+                                self.config.deployment_ref = first_ns.split("/")[-1]
+                                self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+                        # -------------------------------------
+                        
+                        for cfg in modes:
+                            self.load_mode(cfg)
+            else:
+                self.logger.info("No local system modes found at /app/config/system_modes_modes.json. Skipping.")
         except Exception as e:
-            L.error("configure_failed", extra={"reason": str(e)})
+            self.logger.error("configure_failed", extra={"reason": str(e)})
 
     async def submit_get(self, path: str):
         """Standard helper to fetch from local datastore with logging."""
