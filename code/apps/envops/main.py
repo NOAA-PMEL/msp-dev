@@ -136,6 +136,7 @@ async def mqtt_listen_task():
 
                         # 1. Route Operations Health (Status Updates)
                         if any(x in ce_type for x in ["systemmode", "samplingmode", "samplingstate", "samplingcondition", "control.update"]):
+                            L.debug("mqtt_listen_task", extra={"ce_str": ce_str})
                             for dep_id in manager.active_connections.get("deployment_c2", {}).keys():
                                 await manager.broadcast(ce_str, "deployment_c2", dep_id)
                             
