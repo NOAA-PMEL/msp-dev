@@ -520,12 +520,12 @@ class SystemModesManager:
                     # Only re-publish profiles that genuinely belong to our node namespace
                     if self.config.deployment_ref in ns or not self.config.deployment_ref:
                         event = SamplingEvent.create_definition_registry_update(
-                            resource="systemmode",
+                            resource="systemmode-definition",
                             source=f"envds.{self.config.daq_id}.system-modes",
                             data={"systemmode": obj.config}
                         )
                         
-                        destpath = f"envds/{self.config.daq_id}/systemmode/registry/update"
+                        destpath = f"envds/{self.config.daq_id}/systemmode-definition/registry/update"
                         event["destpath"] = destpath
                         
                         await self.send_event(event)
