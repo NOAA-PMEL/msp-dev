@@ -202,6 +202,41 @@ class LatLonRegionLocation(SamplingCriterion):
         
         return result
 
+class TimeModulo(SamplingCriterion):
+    """
+    Evaluates the current UTC minute to toggle states at regular intervals.
+    Example: 15-minute interval toggling on a 30-minute overall loop.
+    """
+    def __init__(self, config):
+        self.interval_minutes = 30
+        self.active_minutes = 15
+        super(TimeModulo, self).__init__(config)
+        self.logger.debug("TimeModulo instantiated")
+
+    def configure(self):
+        super(TimeModulo, self).configure()
+        if "interval_minutes" in self.config:
+            self.interval_minutes = int(self.config["interval_minutes"])
+        if "active_minutes" in self.config:
+            self.active_minutes = int(self.config["active_minutes"])
+
+    async def evaluate(self, sources) -> bool:
+        await super(TimeModulo, self).evaluate(sources)
+        current_minute = datetime.now(timezone.utc).minute
+        
+        # Check if we are in the 'active' portion of the cycle
+        cycle_position = current_minute % self.interval_minutes
+        result = cycle_position < self.active_minutes
+        
+        self.logger.debug("evaluate", extra={
+            "current_minute": current_minute, 
+            "cycle_position": cycle_position, 
+            "interval": self.interval_minutes,
+            "active_threshold": self.active_minutes,
+            "eval_result": result
+        })
+        return result
+
 async def eval_min_max_limit(criterion: dict, source_data: dict):
     crit_source = criterion["source"]
     data = source_data["crit_source"]["data"]
