@@ -3,6 +3,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+async def calculate_relative_wind_direction_from_fixed(self, wind_direction=None):
+    """
+    Converts a 0-360 degree wind direction into a -180 to 180 relative scale.
+    0 is the reference point (bow of the ship).
+    """
+    if wind_direction is None:
+        return None
+        
+    try:
+        # Shift scale from 0-360 to -180 to 180
+        relative_dir = (wind_direction + 180) % 360 - 180
+        
+        return {"relative_wind_direction": round(relative_dir, 2)}
+    except Exception as e:
+        self.logger.error("Error calculating relative wind direction", extra={"reason": str(e)})
+        return None
+
 async def calculate_true_wind_speed(self, relative_wind_speed=None, relative_wind_direction=None, platform_speed=None, platform_heading=None):
     """
     Calculates true wind speed based on apparent (relative) wind and platform vectors.
@@ -33,7 +50,7 @@ async def calculate_true_wind_speed(self, relative_wind_speed=None, relative_win
     except Exception as e:
         self.logger.error("Error calculating true wind speed", extra={"reason": e})
         return None
-    
+
 async def calculate_true_wind_direction(self, relative_wind_speed=None, relative_wind_direction=None, platform_speed=None, platform_heading=None):
     """
     Calculates True Wind Direction (TWD) using vector subtraction of the 
@@ -45,9 +62,9 @@ async def calculate_true_wind_direction(self, relative_wind_speed=None, relative
         
     try:
         # 2. Unit Consistency: Convert Platform Speed (km/h) to m/s to match wind speed
-        # Based on your varmap, platform_speed is in km/h.
-        p_speed_ms = platform_speed / 3.6 
-
+        # Based on your varmap, platform_speed is in m/s.
+        p_speed_ms = platform_speed
+        
         # 3. Trigonometric conversion (Apparent Wind Angle relative to Bow)
         rel_wd_rad = math.radians(relative_wind_direction)
         
