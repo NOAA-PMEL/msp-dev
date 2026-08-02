@@ -80,7 +80,7 @@ class DatasetGenerator:
             L.error(f"Failed to execute {action_def}: {e}")
             return None
 
-async def generate_dataset(self, config: dict, start_time: str, end_time: str):
+    async def generate_dataset(self, config: dict, start_time: str, end_time: str):
         """
         Highly optimized pipeline that resolves mappings, fetches telemetry, 
         recursively evaluates calculated variables in dependency order, 
