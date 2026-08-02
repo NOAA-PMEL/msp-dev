@@ -27,7 +27,10 @@ class DatasetGenerator:
             return unit_str
         import re
         s = re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
-        s = s.replace("kilometers/hour", "km/h")  # <-- Added Furuno exact match
+        s = s.replace("degrees_C", "degC")
+        s = s.replace("degrees_north", "degree_north")
+        s = s.replace("degrees_east", "degree_east")
+        s = s.replace("kilometers/hour", "km/h")
         s = s.replace("km/hr", "km/h")
         s = s.replace("m/sec", "m/s")
         s = s.replace("knots", "knot")
@@ -77,9 +80,10 @@ class DatasetGenerator:
             L.error(f"Failed to execute {action_def}: {e}")
             return None
 
-    async def generate_dataset(self, config: dict, start_time: str, end_time: str):
+async def generate_dataset(self, config: dict, start_time: str, end_time: str):
         """
         Highly optimized pipeline that resolves mappings, fetches telemetry, 
+        recursively evaluates calculated variables in dependency order, 
         and extracts schemas, gracefully populating available streams and injecting NaN placeholders for missing sources.
         """
         import asyncio
@@ -121,25 +125,12 @@ class DatasetGenerator:
             return None, None
 
         try:
-            # -----------------------------------------------------------------
-            # PASS 1: Identify Unique VariableSets & Resolve Mappings ONCE
-            # -----------------------------------------------------------------
-            unique_vs_ids = set()
-            for var in config.get("variables", []):
-                if "static_value" in var: continue
-                source_def = var.get("source", {})
-                fetch_list = source_def.get("inputs", {}) if "calculate_method" in source_def else {"primary": source_def}
-                for input_source in fetch_list.values():
-                    vs_id = input_source.get("variableset_id")
-                    if vs_id: unique_vs_ids.add(vs_id)
-
-            L.info("Deduplicated VariableSets discovered", extra={"unique_variablesets": list(unique_vs_ids)})
-
-            vs_to_hardware_map = {} 
-            for vs_id in unique_vs_ids:
-                vmap_name = vs_id.split("::")[0]
-                L.debug(f"Fetching variablemap mapping definition for: {vmap_name}")
-
+            cached_vmaps = {}
+            vs_to_hardware_map = {}
+            
+            async def get_active_vmap(vmap_name):
+                if vmap_name in cached_vmaps:
+                    return cached_vmaps[vmap_name]
                 try:
                     vmap_resp = await self.client.get("/variablemap-definition/registry/get/", params={"variablemap": vmap_name})
                     vmap_resp.raise_for_status()
@@ -155,113 +146,142 @@ class DatasetGenerator:
                     if cfg_time <= query_time:
                         active_vmap = vmap
                         break
-                
-                if active_vmap:
-                    vs_to_hardware_map[vs_id] = active_vmap
-                    L.debug(f"Successfully cached mapping schema for {vs_id}", extra={
-                        "vmap_def_id": active_vmap.get("variablemap_definition_id")
-                    })
-                else:
-                    L.error(f"No active variablemap mapping found in registry for {vs_id}")
+                cached_vmaps[vmap_name] = active_vmap
+                return active_vmap
 
             # -----------------------------------------------------------------
-            # PASS 2: Fetch Hardware Context and Validate Telemetry Sources
+            # PASS 1 & 2: RECURSIVE VARIABLE DISCOVERY & HARDWARE TRACING
             # -----------------------------------------------------------------
             variable_tracing_registry = {} 
             telemetry_sources_to_fetch = {} 
             hw_defs_cache = {}
 
+            async def discover_variable_tree(vs_id, vs_var):
+                key = (vs_id, vs_var)
+                if key in variable_tracing_registry:
+                    return
+                
+                vmap_name = vs_id.split("::")[0]
+                active_vmap = await get_active_vmap(vmap_name)
+                if not active_vmap:
+                    L.error(f"No active variablemap mapping found for {vs_id}")
+                    return
+                
+                vmap_vars = _extract_vars_dict(active_vmap)
+                _, target_var_def = _find_var_def(vmap_vars, vs_var)
+                if not target_var_def:
+                    L.error(f"Variable '{vs_var}' not found in variablemap '{vmap_name}'")
+                    return
+                
+                vs_to_hardware_map[vs_id] = active_vmap
+                
+                map_type = str(target_var_def.get("map_type", "")).lower()
+                calc_method = target_var_def.get("calculate_method") or target_var_def.get("calculation_method")
+                
+                if map_type in ["calculated", "calculate", "calculation"] or calc_method:
+                    sources = target_var_def.get("source", {})
+                    
+                    variable_tracing_registry[key] = {
+                        "is_calculated": True,
+                        "vmap_def_id": active_vmap.get("variablemap_definition_id"),
+                        "vmap_var_def": target_var_def,
+                        "calc_method": calc_method,
+                        "sources": sources,
+                        "vmap_attrs": target_var_def.get("attributes", {})
+                    }
+                    
+                    for src_alias, src_info in sources.items():
+                        dep_var = src_info.get("source_variable")
+                        dep_vs_raw = src_info.get("variableset", "")
+                        
+                        if not dep_vs_raw or "::" not in dep_vs_raw:
+                            dep_vs_id = f"{vmap_name}::{dep_vs_raw}" if dep_vs_raw else vs_id
+                        else:
+                            dep_vs_id = dep_vs_raw
+                            
+                        if dep_var:
+                            await discover_variable_tree(dep_vs_id, dep_var)
+                            
+                else:
+                    sources = target_var_def.get("source", {})
+                    src_info = next(iter(sources.values())) if sources else {}
+                    
+                    s_id = src_info.get("source_id")
+                    s_type = src_info.get("source_type", "device")
+                    raw_var_name = src_info.get("source_variable", vs_var)
+                    
+                    is_coordinate = False
+                    static_data = []
+                    true_raw_var_name = raw_var_name
+                    hw_shape = target_var_def.get("shape")
+                    hw_var = {}
+                    
+                    if s_id and len(s_id.split("::")) >= 2:
+                        parts = s_id.split("::")
+                        make, model = parts[0], parts[1]
+                        hw_cache_key = f"{s_type}::{make}::{model}"
+                        
+                        if hw_cache_key not in hw_defs_cache:
+                            try:
+                                hw_resp = await self.client.get(f"/{s_type}-definition/registry/get/", params={"make": make, "model": model})
+                                if hw_resp.status_code == 200 and hw_resp.json().get("results"):
+                                    hw_defs_cache[hw_cache_key] = hw_resp.json()["results"][0]
+                                else:
+                                    hw_defs_cache[hw_cache_key] = {}
+                            except Exception as e:
+                                L.warning(f"Failed to fetch {hw_cache_key}", extra={"reason": str(e)})
+                                hw_defs_cache[hw_cache_key] = {}
+                                
+                        hw_def = hw_defs_cache[hw_cache_key]
+                        hw_vars = _extract_vars_dict(hw_def)
+                        matched_key, hw_var = _find_var_def(hw_vars, true_raw_var_name)
+                        if matched_key:
+                            true_raw_var_name = matched_key
+                            
+                        hw_var_type = hw_var.get("attributes", {}).get("variable_type", {}).get("data", "")
+                        if not hw_shape:
+                            hw_shape = hw_var.get("shape", ["time"])
+                            
+                        if hw_var_type == "coordinate":
+                            is_coordinate = True
+                            static_data = hw_var.get("data", [])
+                            
+                    var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+                    
+                    if var_type == "coordinate" or is_coordinate:
+                        variable_tracing_registry[key] = {
+                            "is_calculated": False,
+                            "source_id": "STATIC_COORDINATE",
+                            "raw_variable_name": true_raw_var_name,
+                            "vmap_def_id": active_vmap.get("variablemap_definition_id"),
+                            "is_coordinate": True,
+                            "static_data": static_data,
+                            "shape": hw_shape,
+                            "hw_attrs": hw_var.get("attributes", {}),
+                            "vmap_attrs": target_var_def.get("attributes", {})
+                        }
+                    elif s_id:
+                        variable_tracing_registry[key] = {
+                            "is_calculated": False,
+                            "source_id": s_id,
+                            "raw_variable_name": true_raw_var_name,
+                            "vmap_def_id": active_vmap.get("variablemap_definition_id"),
+                            "is_coordinate": False,
+                            "shape": hw_shape,
+                            "hw_attrs": hw_var.get("attributes", {}),
+                            "vmap_attrs": target_var_def.get("attributes", {})
+                        }
+                        if s_id not in telemetry_sources_to_fetch:
+                            telemetry_sources_to_fetch[s_id] = {"source_type": s_type, "fields": set()}
+                        telemetry_sources_to_fetch[s_id]["fields"].add(true_raw_var_name)
+
             for var in config.get("variables", []):
                 if "static_value" in var: continue
                 source_def = var.get("source", {})
-                fetch_list = source_def.get("inputs", {}) if "calculate_method" in source_def else {"primary": source_def}
-                
-                for input_source in fetch_list.values():
-                    vs_id = input_source.get("variableset_id")
-                    vs_var = input_source.get("variable_name")
-                    if not vs_id or not vs_var: continue
-                    
-                    active_vmap = vs_to_hardware_map.get(vs_id)
-                    vmap_vars = _extract_vars_dict(active_vmap)
-                    _, target_var_def = _find_var_def(vmap_vars, vs_var)
-                    
-                    if active_vmap and target_var_def:
-                        sources = target_var_def.get("source", {})
-                        src_info = next(iter(sources.values())) if sources else {}
-                            
-                        s_id = src_info.get("source_id")
-                        s_type = src_info.get("source_type", "device")
-                        raw_var_name = src_info.get("source_variable", vs_var)
-                        
-                        is_coordinate = False
-                        static_data = []
-                        true_raw_var_name = raw_var_name
-                        hw_shape = target_var_def.get("shape")
-                        hw_var = {}
-                        
-                        if s_id and len(s_id.split("::")) >= 2:
-                            parts = s_id.split("::")
-                            make, model = parts[0], parts[1]
-                            hw_cache_key = f"{s_type}::{make}::{model}"
-                            
-                            if hw_cache_key not in hw_defs_cache:
-                                try:
-                                    hw_resp = await self.client.get(f"/{s_type}-definition/registry/get/", params={"make": make, "model": model})
-                                    if hw_resp.status_code == 200 and hw_resp.json().get("results"):
-                                        hw_defs_cache[hw_cache_key] = hw_resp.json()["results"][0]
-                                    else:
-                                        hw_defs_cache[hw_cache_key] = {}
-                                except Exception as e:
-                                    L.warning(f"Failed to fetch {hw_cache_key}", extra={"reason": str(e)})
-                                    hw_defs_cache[hw_cache_key] = {}
-                                    
-                            hw_def = hw_defs_cache[hw_cache_key]
-                            hw_vars = _extract_vars_dict(hw_def)
-                            
-                            matched_key, hw_var = _find_var_def(hw_vars, true_raw_var_name)
-                            if matched_key:
-                                true_raw_var_name = matched_key
-                            else:
-                                hw_var = {}
-
-                            hw_var_type = hw_var.get("attributes", {}).get("variable_type", {}).get("data", "")
-                            
-                            if not hw_shape:
-                                hw_shape = hw_var.get("shape", ["time"])
-                            
-                            if hw_var_type == "coordinate":
-                                is_coordinate = True
-                                static_data = hw_var.get("data", [])
-                                L.debug(f"DEBUG PASS 2: Discovered coordinate '{true_raw_var_name}' from hardware. Data length: {len(static_data)}")
-                                
-                        var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
-                        
-                        if var_type == "coordinate" or is_coordinate:
-                            variable_tracing_registry[(vs_id, vs_var)] = {
-                                "source_id": "STATIC_COORDINATE",
-                                "raw_variable_name": true_raw_var_name,
-                                "vmap_def_id": active_vmap.get("variablemap_definition_id"),
-                                "is_coordinate": True,
-                                "static_data": static_data,
-                                "shape": hw_shape,
-                                "hw_attrs": hw_var.get("attributes", {}),
-                                "vmap_attrs": target_var_def.get("attributes", {})
-                            }
-                            continue
-                        
-                        if s_id:
-                            variable_tracing_registry[(vs_id, vs_var)] = {
-                                "source_id": s_id,
-                                "raw_variable_name": true_raw_var_name,
-                                "vmap_def_id": active_vmap.get("variablemap_definition_id"),
-                                "is_coordinate": False,
-                                "shape": hw_shape,
-                                "hw_attrs": hw_var.get("attributes", {}),
-                                "vmap_attrs": target_var_def.get("attributes", {})
-                            }
-                            if s_id not in telemetry_sources_to_fetch:
-                                telemetry_sources_to_fetch[s_id] = {"source_type": s_type, "fields": set()}
-                            telemetry_sources_to_fetch[s_id]["fields"].add(true_raw_var_name)
+                vs_id = source_def.get("variableset_id")
+                vs_var = source_def.get("variable_name")
+                if vs_id and vs_var:
+                    await discover_variable_tree(vs_id, vs_var)
 
             L.info("Deduplicated Telemetry Sources discovered", extra={"unique_sources": list(telemetry_sources_to_fetch.keys())})
 
@@ -331,7 +351,7 @@ class DatasetGenerator:
             vs_defs_cache = {}
             for (vs_id, vs_var), trace in variable_tracing_registry.items():
                 if vs_id not in vs_defs_cache:
-                    records = bulk_telemetry_cache.get(trace["source_id"], [])
+                    records = bulk_telemetry_cache.get(trace.get("source_id"), [])
                     sample_time = None
                     if records and "variables" in records[0] and "time" in records[0]["variables"]:
                         try:
@@ -341,15 +361,16 @@ class DatasetGenerator:
                     
                     L.info(f"Caching definition schema file for variableset: {vs_id}")
                     vs_defs_cache[vs_id] = await self.fetch_variableset_def(
-                        vs_id, data_time=sample_time, exact_vmap_id=trace["vmap_def_id"]
+                        vs_id, data_time=sample_time, exact_vmap_id=trace.get("vmap_def_id")
                     )
 
             # -----------------------------------------------------------------
-            # PASS 4: Compile Xarray & Output NetCDF entirely from In-Memory Cache
+            # PASS 4: RECURSIVE EVALUATION, COMPILATION & XARRAY MERGE
             # -----------------------------------------------------------------
             vs_dim_map = {}
             compiled_coords = {}
             saved_var_attrs = {}  
+            evaluated_var_cache = {}
             
             def build_master_attrs(trace, var_obj, config_var, unique_srcs=None):
                 mattrs = {}
@@ -376,17 +397,130 @@ class DatasetGenerator:
                 
                 return mattrs, native_u, target_u
 
+            async def evaluate_variable(vs_id, vs_var, target_data_type="float"):
+                key = (vs_id, vs_var)
+                if key in evaluated_var_cache:
+                    return evaluated_var_cache[key]
+                
+                trace = variable_tracing_registry.get(key)
+                if not trace:
+                    return None
+                
+                if trace.get("is_coordinate"):
+                    res = {"times": None, "values": trace.get("static_data", []), "trace": trace}
+                    evaluated_var_cache[key] = res
+                    return res
+                
+                if not trace.get("is_calculated"):
+                    s_id = trace.get("source_id")
+                    records = bulk_telemetry_cache.get(s_id, [])
+                    times, values = [], []
+                    raw_key = trace["raw_variable_name"]
+                    
+                    for r in records:
+                        r_vars = r.get("variables", {})
+                        target_key = raw_key
+                        if target_key not in r_vars:
+                            for k in r_vars.keys():
+                                if k.lower() == raw_key.lower():
+                                    target_key = k
+                                    break
+
+                        if "time" in r_vars and target_key in r_vars:
+                            val = r_vars[target_key].get("data")
+                            if val is None or val == "":
+                                val = np.nan
+                            else:
+                                if isinstance(val, str):
+                                    val_s = val.strip()
+                                    if val_s.startswith("[") and val_s.endswith("]"):
+                                        try: val = json.loads(val_s)
+                                        except Exception: pass
+                                    elif "," in val_s:
+                                        val = val_s.split(",")
+                                        
+                                if isinstance(val, list):
+                                    clean_val = [float(v) if v is not None and str(v).strip() != "" else np.nan for v in val]
+                                    val = clean_val
+                                elif not isinstance(val, (list, np.ndarray)):
+                                    try: val = float(val)
+                                    except (ValueError, TypeError): val = np.nan
+                                    
+                            parsed_time = r.get("_parsed_time")
+                            if parsed_time is not None:
+                                times.append(parsed_time)
+                                values.append(val)
+                                
+                    res = {"times": times, "values": values, "trace": trace}
+                    evaluated_var_cache[key] = res
+                    return res
+                
+                else:
+                    vmap_var_def = trace["vmap_var_def"]
+                    calc_method = trace["calc_method"]
+                    sources = trace["sources"]
+                    
+                    action_module = calc_method.get("action_module", calc_method.get("service", "calculations.default"))
+                    action_def = calc_method.get("action_def", calc_method.get("path", "").strip("/"))
+                    parameters = calc_method.get("parameters", {})
+                    
+                    vmap_name = vs_id.split("::")[0]
+                    
+                    input_arrays = {}
+                    for param_name, param_cfg in parameters.items():
+                        alias = param_cfg.get("source_variable") or param_cfg.get("source-variable")
+                        if alias and alias in sources:
+                            src_info = sources[alias]
+                            dep_var = src_info.get("source_variable")
+                            dep_vs_raw = src_info.get("variableset", "")
+                            
+                            if not dep_vs_raw or "::" not in dep_vs_raw:
+                                dep_vs_id = f"{vmap_name}::{dep_vs_raw}" if dep_vs_raw else vs_id
+                            else:
+                                dep_vs_id = dep_vs_raw
+                                
+                            if dep_var:
+                                dep_res = await evaluate_variable(dep_vs_id, dep_var)
+                                if dep_res and dep_res.get("times") is not None and len(dep_res.get("times")) > 0:
+                                    input_arrays[param_name] = dep_res
+                                    
+                    if not input_arrays:
+                        L.error(f"Calculation for '{vs_var}' in '{vs_id}' missing all inputs!")
+                        return None
+                    
+                    df_inputs = pd.DataFrame()
+                    for p_name, p_data in input_arrays.items():
+                        s = pd.Series(data=p_data["values"], index=p_data["times"], name=p_name)
+                        s = s[~s.index.duplicated(keep='first')]
+                        if df_inputs.empty:
+                            df_inputs = s.to_frame()
+                        else:
+                            df_inputs = df_inputs.join(s, how="outer")
+                            
+                    math_params = {col: df_inputs[col].tolist() for col in df_inputs.columns}
+                    aligned_times = df_inputs.index.values
+                    
+                    calc_result = await self.execute_calculation(action_module, action_def, math_params)
+                    if not calc_result:
+                        L.error(f"Calculation '{action_def}' returned None for '{vs_var}'")
+                        return None
+                        
+                    final_values = calc_result.get(vs_var)
+                    if final_values is None and len(calc_result) == 1:
+                        final_values = next(iter(calc_result.values()))
+                        
+                    res = {"times": aligned_times, "values": final_values, "trace": trace}
+                    evaluated_var_cache[key] = res
+                    return res
+
             for var in config.get("variables", []):
                 if "static_value" in var: continue
                 out_name = var["name"]
                 source_def = var.get("source", {})
-                fetch_list = source_def.get("inputs", {}) if "calculate_method" in source_def else {"primary": source_def}
-                primary_source = fetch_list.get("primary", next(iter(fetch_list.values()), {}))
-                vs_id = primary_source.get("variableset_id")
-                vs_var = primary_source.get("variable_name")
+                vs_id = source_def.get("variableset_id")
+                vs_var = source_def.get("variable_name")
                 trace = variable_tracing_registry.get((vs_id, vs_var), {})
                 
-                # Maps natively discovered hardware dimensions to defined dataset coordinates
                 if trace.get("is_coordinate"):
                     raw_name = trace.get("raw_variable_name", vs_var)
                     vs_dim_map[(vs_id, raw_name)] = out_name
@@ -399,16 +533,12 @@ class DatasetGenerator:
                 if "static_value" in var: continue
                 
                 source_def = var.get("source", {})
-                is_calculated = "calculate_method" in source_def
-                fetch_list = source_def.get("inputs", {}) if is_calculated else {"primary": source_def}
-                
-                primary_source = fetch_list.get("primary", next(iter(fetch_list.values()), {}))
-                primary_vs_id = primary_source.get("variableset_id")
-                primary_vs_var = primary_source.get("variable_name")
+                primary_vs_id = source_def.get("variableset_id")
+                primary_vs_var = source_def.get("variable_name")
                 trace_key = (primary_vs_id, primary_vs_var)
                 trace = variable_tracing_registry.get(trace_key, {})
                 
-                if trace.get("is_coordinate") and not is_calculated:
+                if trace.get("is_coordinate"):
                     vs_def = vs_defs_cache.get(primary_vs_id, {})
                     native_vars = _extract_vars_dict(vs_def)
                     
@@ -427,15 +557,12 @@ class DatasetGenerator:
                     try:
                         mattrs, native_units, target_units = build_master_attrs(trace, coord_var_obj, var)
                         
-                        # --- THE FIX: Perform conversion before Xarray builds the Pandas.Index ---
                         if native_units and target_units and (native_units != target_units):
                             try:
                                 norm_native = self.normalize_unit_string(native_units)
                                 norm_target = self.normalize_unit_string(target_units)
                                 data_quantity = ureg.Quantity(static_data, norm_native)
                                 converted = data_quantity.to(norm_target).magnitude
-                                
-                                # Store as a strict float32 numpy array to prevent precision drift
                                 static_data = np.array(converted, dtype=np.float32)
                                 mattrs["units"] = target_units
                             except Exception as e:
@@ -443,7 +570,6 @@ class DatasetGenerator:
                                 mattrs["units"] = f"{native_units} (CONVERSION FAILED)"
                         else:
                             static_data = np.array(static_data, dtype=np.float32)
-                        # -------------------------------------------------------------------------
                         
                         da_coord = xr.DataArray(data=static_data, dims=dims)
                         
@@ -451,9 +577,7 @@ class DatasetGenerator:
                             da_coord = da_coord.groupby("time").mean(dim="time", keep_attrs=True)
 
                         da_coord.attrs.update(mattrs)
-
                         compiled_coords[out_name] = da_coord.values
-
                         saved_var_attrs[out_name] = da_coord.attrs.copy()
                         ds_coord = xr.Dataset(coords={out_name: da_coord})
                         data_arrays.append(ds_coord)
@@ -462,115 +586,15 @@ class DatasetGenerator:
 
                     continue
 
-                input_arrays = {}
-                unique_sources = set()
-                for param_name, input_source in fetch_list.items():
-                    vs_id = input_source.get("variableset_id")
-                    vs_var = input_source.get("variable_name")
-                    
-                    trace_key = (vs_id, vs_var)
-                    if trace_key not in variable_tracing_registry: continue
-                    trace = variable_tracing_registry[trace_key]
-                    
-                    records = bulk_telemetry_cache.get(trace["source_id"], [])
-                    times, values = [], []
-                    raw_key = trace["raw_variable_name"]
-                    v_type = var.get("type", "float")
+                eval_res = await evaluate_variable(primary_vs_id, primary_vs_var, target_data_type=var.get("type", "float"))
+                if not eval_res or eval_res.get("times") is None or len(eval_res.get("times")) == 0:
+                    L.warning(f"No telemetry data evaluated for variable '{out_name}' ({primary_vs_id}::{primary_vs_var}). Injecting NaN placeholder array.")
+                    continue
 
-                    for r in records:
-                        r_vars = r.get("variables", {})
-                        
-                        target_key = raw_key
-                        if target_key not in r_vars:
-                            for k in r_vars.keys():
-                                if k.lower() == raw_key.lower():
-                                    target_key = k
-                                    break
-
-                        if "time" in r_vars and target_key in r_vars:
-                            val = r_vars[target_key].get("data")
-                            
-                            if len(values) == 0:
-                                val_preview = str(val)[:200] if val is not None else "None"
-                                L.info(f"CHECKPOINT 1 [RAW TELEMETRY INGEST] {out_name} -> target_key='{target_key}': type={type(val).__name__}, preview={val_preview}")
-
-                            if val is None or val == "":
-                                val = np.nan
-                            else:
-                                if isinstance(val, str):
-                                    val_s = val.strip()
-                                    if val_s.startswith("[") and val_s.endswith("]"):
-                                        try:
-                                            val = json.loads(val_s)
-                                        except Exception:
-                                            pass
-                                    elif "," in val_s:
-                                        val = val_s.split(",")
-                                        
-                                if isinstance(val, list):
-                                    clean_val = []
-                                    for v in val:
-                                        if v is None or str(v).strip() == "":
-                                            clean_val.append(np.nan)
-                                        else:
-                                            try:
-                                                clean_val.append(float(v))
-                                            except (ValueError, TypeError):
-                                                clean_val.append(np.nan)
-                                    val = clean_val
-                                    
-                                elif not isinstance(val, (list, np.ndarray)):
-                                    if v_type in ["float", "double"] and not isinstance(val, float):
-                                        try:
-                                            val = float(val)
-                                        except (ValueError, TypeError):
-                                            val = np.nan
-                                    elif v_type in ["int", "integer"] and not isinstance(val, int):
-                                        try:
-                                            val = int(float(val))
-                                        except (ValueError, TypeError):
-                                            val = np.nan
-
-                            parsed_time = r.get("_parsed_time")
-                            if parsed_time is not None:
-                                times.append(parsed_time)
-                                values.append(val)
-                            
-                            hw_source = r_vars[target_key].get("attributes", {}).get("source_id", {}).get("data")
-                            if hw_source: unique_sources.add(hw_source)
-
-                    if times:
-                        input_arrays[param_name] = {"values": values, "times": times}
-
-                if not input_arrays: continue
-
-                if is_calculated:
-                    action_module = source_def["calculate_method"]["action_module"]
-                    action_def = source_def["calculate_method"]["action_def"]
-                    
-                    # --- THE FIX: Align independent telemetry streams by time before calculating ---
-                    df_inputs = pd.DataFrame()
-                    for param_k, param_v in input_arrays.items():
-                        s = pd.Series(data=param_v["values"], index=param_v["times"], name=param_k)
-                        # Drop duplicate times to prevent reindexing issues
-                        s = s[~s.index.duplicated(keep='first')]
-                        if df_inputs.empty:
-                            df_inputs = s.to_frame()
-                        else:
-                            df_inputs = df_inputs.join(s, how="outer")
-                            
-                    # Missing gaps are intentionally left as NaNs to prevent averaging bias
-                    
-                    math_params = {col: df_inputs[col].tolist() for col in df_inputs.columns}
-                    aligned_times = df_inputs.index.values
-
-                    calc_result = await self.execute_calculation(action_module, action_def, math_params)
-                    if not calc_result: continue
-                    final_values = calc_result.get(out_name)
-                    final_times = aligned_times
-                else:
-                    final_values = input_arrays["primary"]["values"]
-                    final_times = input_arrays["primary"]["times"]
+                final_values = eval_res["values"]
+                final_times = eval_res["times"]
+                
+                unique_sources = set([trace.get("source_id")]) if trace.get("source_id") else set()
 
                 vs_def = vs_defs_cache.get(primary_vs_id, {})
                 native_vars = _extract_vars_dict(vs_def)
@@ -714,12 +738,8 @@ class DatasetGenerator:
                     L.warning(f"Variable '{out_name}' missing from telemetry. Injecting NaN placeholder array.", extra={"dataset_id": dataset_id})
                     
                     source_def = var.get("source", {})
-                    is_calc = "calculate_method" in source_def
-                    fetch_list = source_def.get("inputs", {}) if is_calc else {"primary": source_def}
-                    primary_source = fetch_list.get("primary", next(iter(fetch_list.values()), {}))
-                    primary_vs_id = primary_source.get("variableset_id")
-                    primary_vs_var = primary_source.get("variable_name")
-                    
+                    primary_vs_id = source_def.get("variableset_id")
+                    primary_vs_var = source_def.get("variable_name")
                     trace_key = (primary_vs_id, primary_vs_var)
                     trace = variable_tracing_registry.get(trace_key, {})
                     
@@ -762,7 +782,6 @@ class DatasetGenerator:
                                 shape[idx] = len(custom_grid)
                             
                     empty_da = xr.DataArray(data=np.full(shape, np.nan, dtype=np.float32), coords=coords, dims=dims, name=out_name)
-                    
                     mattrs, _, _ = build_master_attrs(trace, primary_var_obj, var)
                     empty_da.attrs.update(mattrs)
                         
@@ -789,13 +808,12 @@ class DatasetGenerator:
                     saved_var_attrs[out_name] = da.attrs.copy()
                     aligned_ds[out_name] = da
 
-            # STRICT ATTRIBUTE RESTORATION: Re-inject saved variable attributes back into aligned_ds
             for var_name in aligned_ds.variables:
                 if var_name in saved_var_attrs:
                     aligned_ds[var_name].attrs.update(saved_var_attrs[var_name])
 
             # -----------------------------------------------------------------
-            # PASS 5: Resolve GitOps Context & Global Metadata
+            # PASS 5: RESOLVE GITOPS CONTEXT & GLOBAL METADATA
             # -----------------------------------------------------------------
             primary_platform = None
             for vmap in vs_to_hardware_map.values():
@@ -885,14 +903,11 @@ class DatasetGenerator:
             except Exception as e:
                 L.error("Failed to resolve GitOps metadata", extra={"reason": str(e)})
 
-            # RESET GLOBAL ATTRIBUTES: Clear out all variable-level residue
             aligned_ds.attrs = {}
 
-            # Collect global deduplicated sources and variablemaps
             all_sources = sorted(list(telemetry_sources_to_fetch.keys()))
             all_vmaps = sorted(list(set(vmap.get("variablemap_definition_id") for vmap in vs_to_hardware_map.values() if vmap.get("variablemap_definition_id"))))
 
-            # Compile strictly clean global dataset metadata
             aligned_ds.attrs["title"] = config.get("attributes", {}).get("title", f"Dataset: {dataset_id}")
             aligned_ds.attrs["project"] = resolved_project
             aligned_ds.attrs["project_ref"] = resolved_project_ref
@@ -906,7 +921,6 @@ class DatasetGenerator:
             conv_cfg = config.get("conventions", {})
             aligned_ds.attrs["Conventions"] = conv_cfg.get("name", "CF-1.8")
             
-            # Enforce CF featureType: trajectory for mobile lat/lon paths, timeSeries for static
             if "featureType" in conv_cfg:
                 aligned_ds.attrs["featureType"] = conv_cfg["featureType"]
             elif "latitude" in aligned_ds.variables or "longitude" in aligned_ds.variables:
@@ -914,7 +928,6 @@ class DatasetGenerator:
             else:
                 aligned_ds.attrs["featureType"] = "timeSeries"
 
-            # Pass through non-variable explicit config global attributes
             excluded_global_attrs = {"evaluate_by", "units", "standard_name", "instrument_source", "variablemap_source", "raw_variable_name"}
             for attr_key, attr_val in config.get("attributes", {}).items():
                 if attr_key not in excluded_global_attrs:
@@ -927,7 +940,6 @@ class DatasetGenerator:
 
             aligned_ds.to_netcdf(filepath, engine="netcdf4", format="NETCDF4")
 
-            # Force the output to go to the 'raw' stage so QC picks it up!
             storage_url = f"http://dataset-storage.{self.daq_id}-system.svc.cluster.local:80/upload/raw"
             
             try:
