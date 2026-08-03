@@ -13,6 +13,7 @@ from envds.daq.event import DAQEvent
 from cloudevents.http import CloudEvent
 from pydantic import BaseModel
 
+
 class APS3321(Sensor):
     def __init__(self, config=None, **kwargs):
         super(APS3321, self).__init__(config=config, **kwargs)

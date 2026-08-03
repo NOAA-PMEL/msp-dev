@@ -15,6 +15,7 @@ from envds.daq.event import DAQEvent
 from cloudevents.http import CloudEvent
 from pydantic import BaseModel
 
+
 task_list = []
 class POPS1100(Sensor):
     def __init__(self, config=None, **kwargs):
