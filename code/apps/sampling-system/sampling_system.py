@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import logging
 import math
@@ -6,13 +7,17 @@ import sys
 from time import sleep
 from typing import List
 
-# import numpy as np
+import numpy as np
 from ulid import ULID
 from pathlib import Path
 import os
 
 import httpx
 from logfmter import Logfmter
+import pint
+
+ureg = pint.UnitRegistry()
+ureg.default_format = "~"
 
 # from registry import registry
 # from flask import Flask, request
@@ -41,12 +46,10 @@ from envds.util.util import (
 )
 
 # from envds.daq.event import DAQEvent
-# from envds.daq.types import DAQEventType as det
+from envds.daq.types import DAQEventType as det
 from envds.sampling.event import SamplingEvent
 from envds.sampling.types import SamplingEventType as sampet
 
-
-# import pymongo
 
 import uvicorn
 
@@ -71,7 +74,7 @@ handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
-L.setLevel(logging.INFO)
+L.setLevel(logging.DEBUG)
 
 
 # test
@@ -81,6 +84,7 @@ class SamplingSystemConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     debug: bool = True
+    log_level: str = "INFO"
     # knative_broker: str = (
     #     "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     # )
@@ -100,6 +104,11 @@ class SamplingSystemConfig(BaseSettings):
     # TODO fix ns prefix
     daq_id: str | None = None
 
+    # --- ADD THESE LINES FOR ROLE-BASED DELEGATION ---
+    node_id: str = "default-node"
+    node_roles: str = "local-controller"  # Comma-separated list of roles
+    # -------------------------------------------------
+
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
     # mqtt_topic_filter: str = 'aws-id/acg-daq/+'
@@ -111,6 +120,13 @@ class SamplingSystemConfig(BaseSettings):
 
     knative_broker: str | None = None
 
+    # --- DYNAMIC TICK DELAYS ---
+    # How long to wait after a bucket closes for network packets to arrive.
+    # Defaults are optimized for Edge hardware (Local MQTT = ~0ms latency).
+    tick_delay_direct: float = 0.3  
+    tick_delay_calc: float = 1.0    
+    # ---------------------------
+
     class Config:
         env_prefix = "SAMPLING_SYSTEM_"
         case_sensitive = False
@@ -120,8 +136,11 @@ class SamplingSystem:
     """docstring for SamplingSystem."""
 
     def __init__(self):
+        self.config = SamplingSystemConfig()
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        # self.logger.setLevel(logging.DEBUG)
+        numeric_level = getattr(logging, self.config.log_level.upper(), logging.INFO)
+        self.logger.setLevel(numeric_level)
         self.logger.debug("SamplingSystem instantiated")
         self.platforms = dict()
         self.platform_layouts = dict()
@@ -138,519 +157,336 @@ class SamplingSystem:
         self.index_ready_buffer = asyncio.Queue()
         self.index_monitor_tasks = dict()
 
-        self.config = SamplingSystemConfig()
+        self.http_client = None
+
+        # self.config = SamplingSystemConfig()
         self.configure()
         print("here:7")
 
-        self.mqtt_buffer = asyncio.Queue()
-        asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.handle_mqtt_buffer())
-        asyncio.create_task(self.index_monitor())
-        print("SamplingSystem: init: here:8")
+        # self.mqtt_buffer = asyncio.Queue()
+        # asyncio.create_task(self.get_from_mqtt_loop())
+        # asyncio.create_task(self.handle_mqtt_buffer())
+        # asyncio.create_task(self.index_monitor())
+        # asyncio.create_task(self.publish_local_definitions())
+        # asyncio.create_task(self.sync_sampling_definitions_loop())
+        # print("SamplingSystem: init: here:8")
 
+    async def setup(self):
+        self.logger.info("Running SamplingSystem async setup...")
+        # Create queues inside the active event loop
+        # FIX: Apply backpressure bounds to queues
+        self.mqtt_buffer = asyncio.Queue(maxsize=1000)
+        self.index_ready_buffer = asyncio.Queue(maxsize=1000)
+        self.outbound_mqtt_buffer = asyncio.Queue(maxsize=1000)
+
+        # ADD THIS: Cache for Forward-Filling jittery data
+        self.forward_fill_cache = {}
+
+        # Add a set to hold task references
+        if not hasattr(self, '_background_tasks'):
+            self._background_tasks = set()
+
+        t1 = asyncio.create_task(self.get_from_mqtt_loop())
+        # t2 = asyncio.create_task(self.handle_mqtt_buffer())
+        # --- THE FIX: Spawn a pool of 10 workers to drain the RAM queue ---
+        for _ in range(3):
+            self._background_tasks.add(asyncio.create_task(self.handle_mqtt_buffer()))
+        # ------------------------------------------------------------------
+        t3 = asyncio.create_task(self.index_monitor())
+        t4 = asyncio.create_task(self.publish_local_definitions())
+        t5 = asyncio.create_task(self.sync_sampling_definitions_loop())
+        t6 = asyncio.create_task(self.outbound_mqtt_worker())
+        
+        # Store strong references
+        # self._background_tasks.update({t1, t2, t3, t4, t5, t6})
+        self._background_tasks.update({t1, t3, t4, t5, t6})
+        
+        self.logger.info("SamplingSystem background tasks started successfully.")
+
+    # --- Add/Update these methods to match the Registrar pattern ---
+    def open_http_client(self):
+        self.logger.debug("open_http_client")
+        # Define connection limits here
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
+
+    async def close_http_client(self):
+        if getattr(self, 'http_client', None):
+            await self.http_client.aclose()
+            self.http_client = None
+
+    def _load_json_dir(self, path_str: str) -> list:
+        """Scans a directory or reads a file for JSON, injects env vars, and returns the parsed list."""
+        results = []
+        path_obj = Path(path_str)
+        
+        files_to_parse = []
+        if path_obj.exists():
+            # Support both flat files AND directories
+            if path_obj.is_file() and path_obj.suffix == '.json':
+                files_to_parse.append(path_obj)
+            elif path_obj.is_dir():
+                files_to_parse.extend(path_obj.glob("*.json"))
+        
+        for file_path in files_to_parse:
+            try:
+                with open(file_path, "r") as f:
+                    raw_content = f.read()
+                    
+                    # Inject Environment Variables before parsing!
+                    expanded_content = os.path.expandvars(raw_content)
+                    
+                    data = json.loads(expanded_content)
+                    if isinstance(data, list):
+                        results.extend(data)
+                    else:
+                        results.append(data)
+                        
+                self.logger.info(f"Loaded and expanded file: {file_path.name}")
+            except Exception as e:
+                self.logger.error(f"Failed to parse {file_path.name}", extra={"reason": str(e)})
+        else:
+            if not files_to_parse:
+                self.logger.info("configure", extra={"mesg": f"{path_str} not found or empty. Skipping."})
+            
+        return results
 
     def configure(self):
         # set clients
-
         self.logger.debug("configure", extra={"self.config": self.config})
 
-        try:
-            # load resource configmaps
-            #   load payloads
-
-
-            # with open("/app/config/platforms.json", "r") as f:
-            #     platforms = json.load(f)
-
-            # self.logger.debug("configure", extra={"platforms": platforms})
-            # for platform in platforms:
-            #     if not platform:
-            #         continue
-            #     self.logger.debug("configure", extra={"platform": platform})
-            #     if platform["kind"] != "Platform":
-            #         continue
-            #     if (name := platform["metadata"]["name"]) not in self.platforms:
-            #         self.platforms[name] = platform
-            # self.logger.debug("configure", extra={"platforms": self.platforms})
-            # # load layout configmaps
-
-            # load variablemap configmaps
-            with open("/app/config/platform_variablemaps.json", "r") as f:
-                variablemaps = json.load(f)
-
-            # TODO allow for multiple configs of a given map that are retrieved from datastore or loaded
-
-            self.logger.debug("configure", extra={"variablemaps": variablemaps})
-            for vm in variablemaps:
-                self.logger.debug("configure", extra={"variablemap": vm})
-                if vm["kind"] != "PlatformVariableMap":
-                    continue
-                vm_name = vm["metadata"]["name"]
-                platform_name = vm["metadata"]["platform"]
-                sampling_namespace = vm["metadata"]["sampling_namespace"]
-                valid_config_time = vm["metadata"]["valid_config_time"]
-                
-                if "platform" not in self.variablemaps:
-                    self.variablemaps["platform"] = dict()
-                if platform_name not in self.variablemaps["platform"]:
-                    self.variablemaps["platform"][platform_name] = dict()
-                if vm_name not in self.variablemaps["platform"][platform_name]:
-                    self.variablemaps["platform"][platform_name][vm_name] = dict()
-                if valid_config_time not in self.variablemaps["platform"][platform_name][vm_name]:
-                    self.variablemaps["platform"][platform_name][vm_name][valid_config_time] = {
-                        "variablemap": vm,
-                        "variablesets": dict(),
-                        "indexed": dict(),
-                        "sources": dict()
-                    }
-
-                vm_data = vm["data"]
-                current_vm = self.variablemaps["platform"][platform_name][vm_name][valid_config_time]
-                for vs_name, vs_def in vm_data["variablesets"].items():
-                    if vs_name not in current_vm["variablesets"]:
-                        current_vm["variablesets"][vs_name] = {
-                            "attributes": dict(),
-                            "dimensions": dict(),
-                            "variables": dict()
-                        }
-                    current_vm["variablesets"][vs_name]["attributes"] = dict()
-                    for att_name, att_val in vm_data["attributes"].items():
-                        self.logger.debug("configure", extra={"att_name": att_name, "att_val":att_val})
-                        current_vm["variablesets"][vs_name]["attributes"][att_name] = {
-                            "type": f"{type(att_val).__name__}",
-                            "data": att_val
-                        }
-                    current_vm["variablesets"][vs_name]["attributes"]["index_type"] = {"type": "string", "data": vs_def["index"]["index_type"]}
-                    vtype = f"{type(vs_def['index']['index_value']).__name__}"
-                    current_vm["variablesets"][vs_name]["attributes"]["index_value"] = {"type": vtype, "data": vs_def["index"]["index_value"]}
-                    current_vm["variablesets"][vs_name]["attributes"]["variablemap_kind"] = {"type": "string", "data": vm["kind"]}
-
-                    current_vm["variablesets"][vs_name]["dimensions"] = {"time": 0}
-
-                    print(f"configure: {current_vm}")
-                    # add variables for variableset
-                    for v_name, v in vm_data["variables"].items():
-                        if v["variableset"] == vs_name:
-                            current_vm["variablesets"][vs_name]["variables"][v_name] = {
-                                "type": v["type"],
-                                "shape": v["shape"],
-                                "attributes": v["attributes"].copy(),
-                            }
-
-                            # add in missing dimensions
-                            for sh in v["shape"]:
-                                if sh not in current_vm["variablesets"][vs_name]["dimensions"]:
-                                    current_vm["variablesets"][vs_name]["dimensions"][sh] = 0
-
-                            # add extra attributes
-                            current_v =  current_vm["variablesets"][vs_name]["variables"][v_name]
-                            current_v["attributes"]["map_type"] = {"type": "string", "data": v["map_type"]}
-                            if v["map_type"] == "direct":
-                                direct_var = v["direct_value"]["source_variable"]
-                                current_v["attributes"]["source_type"] = {"type": "string", "data": v["source"][direct_var]["source_type"]}
-                                current_v["attributes"]["source_id"] = {"type": "string", "data": v["source"][direct_var]["source_id"]}
-                                current_v["attributes"]["source_variable"] = {"type": "string", "data": v["source"][direct_var]["source_variable"]}
-                                
-                                # add x-ref source_id->variable
-                                # if "direct" not in current_vm["sources"]:
-                                #     current_vm["sources"]["direct"] = dict()
-                                if v["source"][direct_var]["source_id"] not in current_vm["sources"]:
-                                    current_vm["sources"][v["source"][direct_var]["source_id"]] = []
-                                source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
-
-                                if source_entry not in current_vm["sources"][v["source"][direct_var]["source_id"]]:
-                                    current_vm["sources"][v["source"][direct_var]["source_id"]].append(source_entry)
-
-                            else:
-                                continue
-
-
-                    # this holds list of variablesets for each index and indexed variable data
-                    if vs_def["index"]["index_type"] not in current_vm["indexed"]:
-                        current_vm["indexed"][vs_def["index"]["index_type"]] = dict()
-                        if vs_def["index"]["index_value"] not in current_vm["indexed"][vs_def["index"]["index_type"]]:
-                            current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]] = {
-                                "variablesets": [],
-                                "data": dict()
-                            }
+        # --- 1. JIT MISSION CONTEXT LOADING ---
+        self.active_deployment_ref = "unknown"
         
-                        # add variableset to list for x-ref
-                        if vs_name not in current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]]["variablesets"]:
-                            current_vm["indexed"][vs_def["index"]["index_type"]][vs_def["index"]["index_value"]]["variablesets"].append(vs_name)
-                
-                        
-                        # create indexing task for current index if necessary
-                        if (index_type:=vs_def["index"]["index_type"]) not in self.index_monitor_tasks:
-                            self.index_monitor_tasks[index_type] = dict()
-                            if index_type == "time":
-                                index_value = vs_def["index"]["index_value"]
-                                self.logger.debug("configure", extra={"index_type": index_type, "index_value": index_value})
-                                if index_value not in self.index_monitor_tasks[index_type] or not self.index_monitor_tasks[index_type][index_value]:
-                                    self.index_monitor_tasks[index_type][index_value] = asyncio.create_task(self.index_time_monitor(timebase=index_value))
-                                # self.index_monitor_tasks[index_type][index_value] = {
-                                #     index_value: asyncio.create_task(
-                                #         self.index_time_monitor(
-                                #             # variablemap=vm_id,
-                                #             timebase=index_value,
-                                #         )
-                                #     )
-                                # }
-                                # self.logger.debug("configure", extra={"index_monitor_tasks": self.index_monitor_tasks})
+        # FIX: Check both the generic directory and the exact file path fallback
+        self.local_deployments = self._load_json_dir("/app/config/deployments") or self._load_json_dir("/app/config/deployments.json")
+        
+        if self.local_deployments and len(self.local_deployments) > 0:
+            active_dep = self.local_deployments[0]
+            self.active_deployment_ref = active_dep.get("metadata", {}).get("name", "unknown")
+            self.logger.info("JIT Mission context loaded.", extra={"deployment": self.active_deployment_ref})
 
+        # --- 2. UNIVERSAL GITOPS METADATA LOADING ---
+        self.local_platforms = self._load_json_dir("/app/config/platforms") or self._load_json_dir("/app/config/platform_defs.json")
 
-
-            #     attributes = vm_data["attributes"]
-            #     variablemap_type = attributes["variablemap_type"]
-            #     if variablemap_type == "Platform":
-            #         variablemap_type_id = attributes["platform"]
-            #     valid_config_time = attributes["valid_config_time"]
-            #     variablemap_id = "::".join(
-            #         [variablemap_type_id, vm_id, valid_config_time]
-            #     )
-
-            #     revision = attributes["revision"]
-
-
-            # for vm in variablemaps:
-            #     if vm["kind"] != "VariableMap":
-            #         continue
-            #     vm_id = vm["metadata"]["name"]
-            #     attributes = vm["data"]["attributes"]
-            #     variablemap_type = attributes["variablemap_type"]
-            #     if variablemap_type == "Platform":
-            #         variablemap_type_id = attributes["platform"]
-            #     valid_config_time = attributes["valid_config_time"]
-            #     variablemap_id = "::".join(
-            #         [variablemap_type_id, vm_id, valid_config_time]
-            #     )
-
-            #     revision = attributes["revision"]
-
-            #     # vm_cfg_time = vm["revision-time"]
-            #     # if vm_name not in self.variablemaps["maps"]:
-            #     if variablemap_id not in self.variablemaps:
-            #         self.variablemaps[variablemap_id] = vm
-            #     # if vm_cfg_time not in self.variablemaps[vm_name]:
-            #     #     self.variablemaps[name][vm_name][vm_cfg_time] = vm
-            #     else:
-            #         try:
-            #             # replace with newer revision
-            #             if (
-            #                 self.variablemaps[name]["data"]["attributes"]["revision"]
-            #                 < revision
-            #             ):
-            #                 self.variablemaps[variablemap_id] = vm
-            #         except Exception:
-            #             # replace anyway as there is something wrong
-            #             self.variablemaps[variablemap_id] = vm
-
-            #     # TODO: send event to datastore to save definition
-
-            # # TODO retrieve all variable maps from datastore?
-
-            # # build variableset(s) from latest revision of variablemap(s)
-            # for vm_id, vm in self.variablemaps.items():
-            #     # for vm_cfg_time, vm in vm.items():
-            #     # parts = vm_id.split("::")
-            #     # valid_config_time = parts[2]
-            #     valid_config_time = self.get_id_components(vm_id=vm_id)["valid_config_time"]
-
-            #     for vs_name, vs in vm["data"]["variablesets"].items():
-
-            #         # make sure it's a known index for now
-            #         if vs["index"]["index_type"] != "time":
-            #             continue
-
-            #         vs_id = "::".join([vm_id, vs_name])
-            #         # vs_id = self.get_variableset_id(vs)
-            #         if vs_id not in self.variablesets["variablesets"]:
-            #             self.variablesets["variablesets"][vs_id] = dict()
-            #             # {
-            #             #     "data": dict(),
-            #             #     "index": dict()
-            #             # }
-            #         index_type = vs["index"]["index_type"]
-            #         index_value = vs["index"]["index_value"]
-
-            #         current_vs = self.variablesets["variablesets"][vs_id] = {
-            #             "apiVersion": "envds.sampling.system/v1",
-            #             "kind": "VariableSet",
-            #             "metadata": {
-            #                 "name": vs_name,
-            #                 "sampling_namespace": vm["data"]["attributes"]["sampling_namespace"]
-            #             },
-            #             "data": dict()
-            #         }
-
-            #         current_vs["data"]["attributes"] = {
-            #             "variablemap_id": vm_id,
-            #             "valid_config_time": vm["data"]["attributes"][
-            #                 "valid_config_time"
-            #             ],
-            #             "revision": vm["data"]["attributes"]["valid_config_time"],
-            #             "index_type": index_type,
-            #             "index_value": index_value,
-            #         }
-
-            #         if index_type == "time":
-            #             current_vs["data"]["dimensions"] = {"time": 0}
-            #         else:
-            #             # don't know what to do with other index types yet
-            #             continue
-
-            #         current_vs["data"]["variables"] = dict()
-
-            #         time_var = {
-            #             "type": "str",
-            #             "shape": ["time"],
-            #             "attributes": {
-            #                 # how to make sure these are always using proper config?
-            #                 "long_name": {"type": "string", "data": "Time"}
-            #             },
-            #             "data": None,
-            #         }
-            #         current_vs["data"]["variables"]["time"] = time_var
-
-            #         valid_config_var = {
-            #             "type": "str",
-            #             "shape": ["time"],
-            #             "attributes": {
-            #                 # how to make sure these are always using proper config?
-            #                 "long_name": {
-            #                     "type": "string",
-            #                     "data": "Valid Configuration Start Time",
-            #                 }
-            #             },
-            #             "data": None,
-            #         }
-            #         current_vs["data"]["variables"]["valid_config_time"] = valid_config_var
-
-            #         revision_var = {
-            #             "type": "int",
-            #             "shape": ["time"],
-            #             "attributes": {
-            #                 # how to make sure these are always using proper config?
-            #                 "long_name": {
-            #                     "type": "string",
-            #                     "data": "Revision of Valid Configuration Start Time",
-            #                 }
-            #             },
-            #             "data": None,
-            #         }
-            #         current_vs["data"]["variables"]["revison"] = valid_config_var
-
-            #         for v_name, v in vm["data"]["variables"].items():
-            #             if vs_name == v["variableset"]:
-            #                 current_vs["data"]["variables"][v_name] = {
-            #                     "type": v["type"],
-            #                     "shape": v["shape"],
-            #                     "attributes": v["attributes"],
-            #                     "data": None,
-            #                 }
-            #                 attibutes = current_vs["data"]["variables"][v_name]["attributes"]
-
-            #                 # add extra dimensions if needed
-            #                 for sh in v["shape"]:
-            #                     if sh not in current_vs["data"]["dimensions"]:
-            #                         current_vs["data"]["dimensions"]["sh"] = 0
-
-            #                 attributes["map_type"] = {
-            #                     "type": "string",
-            #                     "data": v["map_type"],
-            #                 }
-            #                 if v["map_type"] == "direct":
-            #                     attributes["source_type"] = {
-            #                         "type": "string",
-            #                         "data": v["source"]["source_type"],
-            #                     }
-            #                     attributes["source_id"] = {
-            #                         "type": "string",
-            #                         "data": v["source"]["source_id"],
-            #                     }
-            #                     attributes["source_variable"] = {
-            #                         "type": "string",
-            #                         "data": v["source"]["source_variable"],
-            #                     }
-
-            #                     v_source_id = v["source"]["source_id"]
-            #                     if "direct" not in self.variablesets["sources"]:
-            #                         self.variablesets["sources"]["direct"] = dict()
-            #                     if v_source_id not in self.variablesets["sources"]:
-            #                         self.variablesets["sources"]["direct"][v_source_id] = dict()
-            #                     if (
-            #                         vs_id
-            #                         not in self.variablesets["sources"]["direct"][v_source_id]
-            #                     ):
-            #                         self.variablesets["sources"]["direct"][v_source_id][vs_id] = {
-            #                             "valid_config_time": valid_config_time,
-            #                             "variable": v_name
-            #                         }
-
-            #         # create indexing task for current index if necessary
-            #         if index_type not in self.index_monitor_tasks:
-            #             if index_type == "time":
-            #                 self.index_monitor_tasks[index_type] = {
-            #                     index_value: asyncio.create_task(
-            #                         self.index_time_monitor(
-            #                             self,
-            #                             variablemap=vm_id,
-            #                             timebase=index_value,
-            #                         )
-            #                     )
-            #                 }
-
-            #         # TODO: is this what I want to do?
-            #         # add variableset to list based on index
-            #         if index_type not in self.variablesets["indices"]:
-            #             self.variablesets["indices"][index_type] = dict()
-            #         if index_value not in self.variablesets["indices"][index_type]:
-            #             self.variablesets["indices"][index_type][index_value] = []
-            #         if (
-            #             vs_id
-            #             not in self.variablesets["indices"][index_type][index_value]
-            #         ):
-            #             vs_id not in self.variablesets["indices"][index_type][
-            #                 index_value
-            #             ].append(vs_id)
-
-            #     # if vm_id not in self.variablesets["maps"]:
-            #     #     self.variablesets["maps"][vm_id] = dict()
-            #     # if vm_cfg_time not in self.variablesets["maps"][vm_id]:
-            #     #     self.variablesets["maps"][vm_id][vm_cfg_time] = {
-            #     #         "variablegroups": dict(),
-            #     #         "indices": dict(),
-            #     #         # "sources": dict()
-            #     #     }
-
-            #     # # add each variable group
-            #     # for vg_name, vg in vm["variablegroups"].items():
-            #     #     if vg_name not in self.variablesets:
-            #     #         self.variablesets["maps"][vm_id][vm_cfg_time][
-            #     #             "variablegroups"
-            #     #         ][vg_name] = {index: vg["index"], "variables": dict()}
-
-            #     #     index_type = vg["index"]["index_type"]
-            #     #     index_value = vg["index"]["index_value"]
-
-            #     #     # create index and add vg_name to index for x-ref
-            #     #     if (
-            #     #         index_type
-            #     #         not in self.variablesets[vm_id][vm_cfg_time][
-            #     #             "indices"
-            #     #         ]
-            #     #     ):
-            #     #         self.variablesets["maps"][vm_id][vm_cfg_time][
-            #     #             "indices"
-            #     #         ][index_type] = dict()
-
-            #     #     # start index monitors
-            #     #     if index_type not in self.index_monitor_tasks:
-            #     #         self.index_monitor_tasks[index_type] = {
-            #     #             index_value: asyncio.create_task(
-            #     #                 self.index_timebase_monitor(
-            #     #                     self,
-            #     #                     variablemap=vm_id,
-            #     #                     timebase=index_value,
-            #     #                 )
-            #     #             )
-            #     #         }
-
-            #     #     if (
-            #     #         index_value
-            #     #         not in self.variablesets["maps"][vm_id][
-            #     #             vm_cfg_time
-            #     #         ]["indices"][index_type]
-            #     #     ):
-            #     #         self.variablesets["maps"][vm_id][vm_cfg_time][
-            #     #             "indices"
-            #     #         ][index_type][index_value] = {
-            #     #             "variablegroups": [],
-            #     #             "data": [],
-            #     #         }
-            #     #         if (
-            #     #             vg_name
-            #     #             not in self.variablesets["maps"][vm_id][
-            #     #                 vm_cfg_time
-            #     #             ]["indices"][index_type][index_value]["variablegroups"]
-            #     #         ):
-            #     #             self.variablesets["maps"][vm_id][
-            #     #                 vm_cfg_time
-            #     #             ]["indices"][index_type][index_value][
-            #     #                 "variablegroups"
-            #     #             ].append(
-            #     #                 vg_name
-            #     #             )
-
-            #     #     # for index_name, index_value in vm["variablegroups"][vg_name].items():
-            #     #     #     # if index_name not in self.platform_variablesets["maps"][vm_name]["variablegroups"][vg_name]["index"]:
-            #     #     #     #     self.platform_variablesets["maps"][vm_name]["variablegroups"][vg_name]["index"][index_name] = index_value
-            #     #     #     if index_name not in self.platform_variablesets[vm_name]["indices"]:
-            #     #     #         self.platform_variablesets["maps"][vm_name]["indices"][index_name] = dict()
-            #     #     #     if index_value not in self.platform_variablesets["maps"][vm_name]["indices"][index_name]:
-            #     #     #         self.platform_variablesets["maps"][vm_name]["indices"][index_name][index_value] = []
-
-            #     # # for vg_name in vm["variablegroups"]:
-            #     # #     if vg_name not in self.platform_variablesets[vm_name]["variablegroups"]:
-            #     # #         self.platform_variablesets[vm_name]["variablegroups"][vg_name] = {
-            #     # #             "timebase": vm["variablegroup"]["timebase"],
-            #     # #             "variables": dict()
-            #     # #         }
-
-            #     # # add variables to each variable group
-            #     # for name, variable in vm["variables"].items():
-            #     #     vg_name = variable["variablegroup"]
-            #     #     if (
-            #     #         name
-            #     #         not in self.variablesets["maps"][vm_id][
-            #     #             vm_cfg_time
-            #     #         ]["variablegroups"]["variables"][vg_name]
-            #     #     ):
-            #     #         self.variablesets["maps"][vm_id][vm_cfg_time][
-            #     #             "variablegroups"
-            #     #         ][vg_name]["variables"][name] = {
-            #     #             "map": variable,  # grab whole thing for now, not sure what we'll need
-            #     #             "data": dict(),
-            #     #             "value": dict(),
-            #     #         }
-
-            #     #     # add source and map_id for x-ref
-            #     #     for source_name, source in variable["sources"].items():
-            #     #         if (
-            #     #             vm_cfg_time
-            #     #             not in self.variablesets["sources"]
-            #     #         ):
-            #     #             self.variablesets["sources"][
-            #     #                 vm_cfg_time
-            #     #             ] = dict()
-            #     #         if (
-            #     #             source["source_id"]
-            #     #             not in self.variablesets["sources"][
-            #     #                 vm_cfg_time
-            #     #             ]
-            #     #         ):
-            #     #             self.variablesets["sources"][vm_cfg_time][
-            #     #                 "source_id"
-            #     #             ] = []
-            #     #         # build map_id
-            #     #         map_id = f"{vm_id}::{vg_name}::{name}"
-            #     #         if (
-            #     #             map_id
-            #     #             not in self.variablesets["sources"][
-            #     #                 vm_cfg_time
-            #     #             ]["source_id"]
-            #     #         ):
-            #     #             self.variablesets["sources"][vm_cfg_time][
-            #     #                 "source_id"
-            #     #             ].append(map_id)
+        # --- 3. VARIABLEMAP LOADING ---
+        try:
+            variablemaps = self._load_json_dir("/app/config/varmaps") or self._load_json_dir("/app/config/platform_variablemaps.json")
+            self.logger.debug("configure", extra={"variablemaps": variablemaps})
+            
+            for vm in variablemaps:
+                self.load_variablemap(vm)
 
         except Exception as e:
-            self.logger.error("configure error", extra={"reason": e})
+            self.logger.error("configure error", extra={"reason": str(e)})
+
+    def load_variablemap(self, vm: dict):
+        if vm.get("kind") != "PlatformVariableMap":
+            return
+            
+        metadata = vm.get("metadata", {})
+        vm_name = metadata.get("name")
+        platform_name = metadata.get("platform")
+        sampling_namespace = metadata.get("sampling_namespace", "")
+        valid_config_time = metadata.get("valid_config_time")
+        
+        if not all([vm_name, platform_name, valid_config_time]):
+            self.logger.error("load_variablemap missing critical metadata")
+            return
+
+        # Check allowed platforms
+        if hasattr(self, 'is_platform_allowed') and not self.is_platform_allowed(platform_name):
+            return
+
+        if "platform" not in self.variablemaps:
+            self.variablemaps["platform"] = dict()
+        if platform_name not in self.variablemaps["platform"]:
+            self.variablemaps["platform"][platform_name] = dict()
+        if vm_name not in self.variablemaps["platform"][platform_name]:
+            self.variablemaps["platform"][platform_name][vm_name] = dict()
+            
+        if valid_config_time in self.variablemaps["platform"][platform_name][vm_name]:
+            return # Already parsed
+            
+        # Initialize structure to hold execution maps and definitions
+        self.variablemaps["platform"][platform_name][vm_name][valid_config_time] = {
+            "variablemap": vm,
+            "variablesets": dict(),
+            "indexed": dict(),
+            "sources": dict()
+        }
+
+        vm_data = vm.get("data", {})
+        current_vm = self.variablemaps["platform"][platform_name][vm_name][valid_config_time]
+        
+        for vs_name, vs_def in vm_data.get("variablesets", {}).items():
+            
+            # ---------------------------------------------------------
+            # ATOMIC VARIABLESET-LEVEL COMPUTE DELEGATION
+            # ---------------------------------------------------------
+            eval_attr = vs_def.get("attributes", {}).get("evaluate_by", {})
+            if eval_attr:
+                # Parse allowed roles from the variableset definition
+                allowed_roles = [r.strip().lower() for r in eval_attr.get("data", "").split(",")]
+                # Parse this node's roles from environment configuration
+                my_roles = [r.strip().lower() for r in getattr(self.config, "node_roles", "").split(",")]
+                
+                # If this node shares NO roles with the allowed roles, skip the ENTIRE variableset instantly!
+                if not set(allowed_roles).intersection(set(my_roles)):
+                    self.logger.debug(
+                        "load_variablemap skipping variableset execution setup", 
+                        extra={"variableset": vs_name, "node_roles": my_roles, "required_roles": allowed_roles}
+                    )
+                    continue
+            # ---------------------------------------------------------
+
+            if vs_name not in current_vm["variablesets"]:
+                current_vm["variablesets"][vs_name] = {
+                    "attributes": dict(),
+                    "dimensions": dict(),
+                    "variables": dict()
+                }
+                
+            current_vm["variablesets"][vs_name]["attributes"] = dict()
+            
+            # Load global VariableMap attributes into the Variableset
+            for att_name, att_val in vm_data.get("attributes", {}).items():
+                current_vm["variablesets"][vs_name]["attributes"][att_name] = {
+                    "type": f"{type(att_val).__name__}",
+                    "data": att_val
+                }
+                
+            # Load local Variableset attributes (including the evaluate_by tag we just parsed)
+            for att_name, att_val in vs_def.get("attributes", {}).items():
+                current_vm["variablesets"][vs_name]["attributes"][att_name] = att_val.copy()
+                
+            current_vm["variablesets"][vs_name]["attributes"]["index_type"] = {"type": "string", "data": vs_def["index"]["index_type"]}
+            vtype = f"{type(vs_def['index']['index_value']).__name__}"
+            current_vm["variablesets"][vs_name]["attributes"]["index_value"] = {"type": vtype, "data": vs_def["index"]["index_value"]}
+            current_vm["variablesets"][vs_name]["attributes"]["variablemap_kind"] = {"type": "string", "data": vm["kind"]}
+
+            # Inject the routing metadata
+            current_vm["variablesets"][vs_name]["attributes"]["variablemap"] = {"type": "string", "data": vm_name}
+            current_vm["variablesets"][vs_name]["attributes"]["platform"] = {"type": "string", "data": platform_name}
+            current_vm["variablesets"][vs_name]["attributes"]["valid_config_time"] = {"type": "string", "data": valid_config_time}
+
+            current_vm["variablesets"][vs_name]["dimensions"] = {"time": 0}
+
+            # Add variables for variableset (No role checks needed here anymore!)
+            for v_name, v in vm_data.get("variables", {}).items():
+                if v.get("variableset") == vs_name:
+                    
+                    current_vm["variablesets"][vs_name]["variables"][v_name] = {
+                        "type": v.get("type", "float"),
+                        "variable_type": v.get("variable_type", "sensor"),
+                        "shape": v.get("shape", ["time"]),
+                        "attributes": v.get("attributes", {}).copy(),
+                    }
+
+                    for sh in v["shape"]:
+                        if sh not in current_vm["variablesets"][vs_name]["dimensions"]:
+                            current_vm["variablesets"][vs_name]["dimensions"][sh] = 0
+
+                    current_v = current_vm["variablesets"][vs_name]["variables"][v_name]
+                    current_v["attributes"]["map_type"] = {"type": "string", "data": v.get("map_type", "")}
+                    
+                    # Map sources to the internal cache to drive local MQTT evaluation triggers
+                    # if v.get("map_type") == "direct":
+                    #     direct_var = v.get("direct_value", {}).get("source_variable")
+                    #     if direct_var and "source" in v and direct_var in v["source"]:
+                    #         current_v["attributes"]["source_type"] = {"type": "string", "data": v["source"][direct_var]["source_type"]}
+                    #         current_v["attributes"]["source_id"] = {"type": "string", "data": v["source"][direct_var]["source_id"]}
+                    #         current_v["attributes"]["source_variable"] = {"type": "string", "data": v["source"][direct_var]["source_variable"]}
+                            
+                    #         source_id_val = v["source"][direct_var]["source_id"]
+                    #         if source_id_val not in current_vm["sources"]:
+                    #             current_vm["sources"][source_id_val] = []
+                                
+                    #         source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
+                    #         if source_entry not in current_vm["sources"][source_id_val]:
+                    #             current_vm["sources"][source_id_val].append(source_entry)
+                    if v.get("map_type") == "direct":
+                        sources = v.get("source", {})
+                        for src_alias, src_info in sources.items():
+                            source_id_val = src_info.get("source_id")
+                            
+                            if source_id_val:
+                                current_v["attributes"]["source_type"] = {"type": "string", "data": src_info.get("source_type", "device")}
+                                current_v["attributes"]["source_id"] = {"type": "string", "data": source_id_val}
+                                current_v["attributes"]["source_variable"] = {"type": "string", "data": src_info.get("source_variable")}
+                                
+                                if source_id_val not in current_vm["sources"]:
+                                    current_vm["sources"][source_id_val] = []
+                                    
+                                source_entry = {"variableset": vs_name, "variable": v_name, "map_type": "direct"}
+                                if source_entry not in current_vm["sources"][source_id_val]:
+                                    current_vm["sources"][source_id_val].append(source_entry)
+
+            # Indexed xrefs and task creation
+            index_type = vs_def["index"]["index_type"]
+            index_value = vs_def["index"]["index_value"]
+            
+            if index_type not in current_vm["indexed"]:
+                current_vm["indexed"][index_type] = dict()
+            if index_value not in current_vm["indexed"][index_type]:
+                current_vm["indexed"][index_type][index_value] = {
+                    "variablesets": [],
+                    "data": dict()
+                }
+
+            if vs_name not in current_vm["indexed"][index_type][index_value]["variablesets"]:
+                current_vm["indexed"][index_type][index_value]["variablesets"].append(vs_name)
+
+            if index_type not in self.index_monitor_tasks:
+                self.index_monitor_tasks[index_type] = dict()
+            if index_type == "time":
+                if index_value not in self.index_monitor_tasks[index_type] or not self.index_monitor_tasks[index_type][index_value]:
+                    self.index_monitor_tasks[index_type][index_value] = asyncio.create_task(self.index_time_monitor(timebase=index_value))
+                    
+    # def open_http_client(self):
+    #     self.http_client = httpx.AsyncClient()
+
+    # def open_http_client(self):
+    #     self.http_client = httpx.AsyncClient()
+
+    async def submit_get(self, path: str):
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None):
+                self.open_http_client()
+            
+            # FIX: Append .svc.cluster.local for asyncio DNS routing through Knative
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
+            
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", timeout=timeout)
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_get", extra={"reason": e})
+            return {}
+
+    async def submit_request(self, path: str, query: dict):
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None):
+                self.open_http_client()
+                
+            # FIX: Append .svc.cluster.local for asyncio DNS routing through Knative
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
+            
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", params=query, timeout=timeout)
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_request", extra={"reason": e})
+            return {}
 
     async def send_event(self, ce):
         try:
-            self.logger.debug(ce)  # , extra=template)
+            self.logger.debug(ce)
             try:
-                timeout = httpx.Timeout(5.0, read=0.1)
+                timeout = httpx.Timeout(5.0, read=10.0)
+                if not getattr(self, 'http_client', None):
+                    self.open_http_client()
                 headers, body = to_structured(ce)
                 self.logger.debug(
                     "send_event",
@@ -661,14 +497,13 @@ class SamplingSystem:
                     },
                 )
                 # send to knative broker
-                async with httpx.AsyncClient() as client:
-                    r = await client.post(
-                        self.config.knative_broker,
-                        headers=headers,
-                        data=body,
-                        timeout=timeout,
-                    )
-                    r.raise_for_status()
+                r = await self.http_client.post(
+                    self.config.knative_broker,
+                    headers=headers,
+                    data=body,
+                    timeout=timeout,
+                )
+                r.raise_for_status()
             except InvalidStructuredJSON:
                 self.logger.error(f"INVALID MSG: {ce}")
             except httpx.TimeoutException:
@@ -678,6 +513,658 @@ class SamplingSystem:
         except Exception as e:
             print("error", e)
         await asyncio.sleep(0.01)
+
+    async def outbound_mqtt_worker(self):
+        """Dedicated worker to publish messages over a single, persistent MQTT connection."""
+        reconnect = 5
+        while True:
+            try:
+                client_id = f"outbound-{str(ULID())}"
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as client:
+                    self.logger.info("Outbound MQTT worker connected.")
+                    
+                    while True:
+                        # Grab the topic and payload from the buffer
+                        topic, payload = await self.outbound_mqtt_buffer.get()
+                        
+                        # Publish instantly over the already-open socket
+                        await client.publish(topic, payload=payload)
+                        
+                        self.outbound_mqtt_buffer.task_done()
+                        
+            except MqttError as e:
+                self.logger.error(f"Outbound MQTT connection dropped: {e}. Reconnecting...")
+                await asyncio.sleep(reconnect)
+
+    async def send_to_mqtt(self, topic: str, ce: CloudEvent):
+        """Publishes a CloudEvent directly to the local MQTT broker."""
+        try:
+            payload = to_json(ce) # Convert CloudEvent to JSON string
+            await self.outbound_mqtt_buffer.put((topic, payload))
+            # # --- RING BUFFER LOGIC ---
+            # # If the queue is full, aggressively drop the oldest message
+            # if self.outbound_mqtt_buffer.full():
+            #     try:
+            #         dropped_msg = self.outbound_mqtt_buffer.get_nowait()
+            #         self.outbound_mqtt_buffer.task_done()
+            #         self.logger.warning("Outbound queue full! Dropped oldest variableset telemetry to stay in real-time.")
+            #     except asyncio.QueueEmpty:
+            #         pass
+            
+            # # Now that there is guaranteed space, put the newest message
+            # await self.outbound_mqtt_buffer.put((topic, payload))
+            # # -------------------------
+            
+        except Exception as e:
+            self.logger.error("send_to_mqtt error", extra={"reason": e})
+
+    # async def submit_get(self, path: str):
+    #     try:
+    #         timeout = httpx.Timeout(10.0, read=10.0)
+    #         if not getattr(self, 'http_client', None):
+    #             self.open_http_client()
+            
+    #         datastore_url = f"datastore.{self.config.daq_id}-system"
+    #         results = await self.http_client.get(f"http://{datastore_url}/{path}/", timeout=timeout)
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_get", extra={"reason": e})
+    #         return {}
+
+    # async def submit_request(self, path: str, query: dict):
+    #     try:
+    #         timeout = httpx.Timeout(10.0, read=10.0)
+    #         if not getattr(self, 'http_client', None):
+    #             self.open_http_client()
+                
+    #         datastore_url = f"datastore.{self.config.daq_id}-system"
+    #         results = await self.http_client.get(f"http://{datastore_url}/{path}/", params=query, timeout=timeout)
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_request", extra={"reason": e})
+    #         return {}
+
+    # async def send_event(self, ce):
+    #     try:
+    #         self.logger.debug(ce)  # , extra=template)
+    #         try:
+    #             timeout = httpx.Timeout(5.0, read=10.0)
+    #             if not getattr(self, 'http_client', None):
+    #                 self.open_http_client()
+    #             headers, body = to_structured(ce)
+    #             self.logger.debug(
+    #                 "send_event",
+    #                 extra={
+    #                     "broker": self.config.knative_broker,
+    #                     "h": headers,
+    #                     "b": body,
+    #                 },
+    #             )
+    #             # send to knative broker
+    #             # async with httpx.AsyncClient() as client:
+    #             # r = await client.post(
+    #             r = await self.http_client.post(
+    #                 self.config.knative_broker,
+    #                 headers=headers,
+    #                 data=body,
+    #                 timeout=timeout,
+    #             )
+    #             r.raise_for_status()
+    #         except InvalidStructuredJSON:
+    #             self.logger.error(f"INVALID MSG: {ce}")
+    #         except httpx.TimeoutException:
+    #             pass
+    #         except httpx.HTTPError as e:
+    #             self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+    #     except Exception as e:
+    #         print("error", e)
+    #     await asyncio.sleep(0.01)
+
+    # async def send_to_mqtt(self, topic: str, ce: CloudEvent):
+    #     """Publishes a CloudEvent directly to the local MQTT broker."""
+    #     try:
+    #         payload = to_json(ce) # Convert CloudEvent to JSON string
+    #         async with Client(self.config.mqtt_broker, port=self.config.mqtt_port) as client:
+    #             await client.publish(topic, payload=payload)
+    #     except Exception as e:
+    #         self.logger.error("send_to_mqtt error", extra={"reason": e})
+
+    # async def sync_sampling_definitions_loop(self):
+    #     """
+    #     Background loop to continuously fetch and update variablemaps 
+    #     and variablesets from the datastore/registrar.
+    #     """
+    #     while True:
+    #         try:
+    #             # 1. Fetch and Update VariableMaps
+    #             vmap_ids_resp = await self.submit_get(path="variablemap-definition/registry/ids/get")
+    #             if vmap_ids_resp and "results" in vmap_ids_resp:
+    #                 for vmap_id in vmap_ids_resp["results"]:
+    #                     query = {"variablemap_definition_id": vmap_id}
+    #                     vmap_resp = await self.submit_request(path="variablemap-definition/registry/get", query=query)
+                        
+    #                     if vmap_resp and "results" in vmap_resp and vmap_resp["results"]:
+    #                         vm = vmap_resp["results"][0]
+                            
+    #                         metadata = vm.get("metadata", {})
+    #                         attributes = vm.get("data", {}).get("attributes", {})
+                            
+    #                         vm_name = metadata.get("name")
+    #                         platform_name = attributes.get("platform")
+    #                         valid_config_time = attributes.get("valid_config_time")
+                            
+    #                         if not all([vm_name, platform_name, valid_config_time]):
+    #                             continue
+
+    #                         if "platform" not in self.variablemaps:
+    #                             self.variablemaps["platform"] = dict()
+    #                         if platform_name not in self.variablemaps["platform"]:
+    #                             self.variablemaps["platform"][platform_name] = dict()
+    #                         if vm_name not in self.variablemaps["platform"][platform_name]:
+    #                             self.variablemaps["platform"][platform_name][vm_name] = dict()
+                                
+    #                         if valid_config_time not in self.variablemaps["platform"][platform_name][vm_name]:
+    #                             # Initialize structure for newly discovered map
+    #                             self.variablemaps["platform"][platform_name][vm_name][valid_config_time] = {
+    #                                 "variablemap": vm,
+    #                                 "variablesets": dict(),
+    #                                 "indexed": dict(),
+    #                                 "sources": dict()
+    #                             }
+    #                             # Note: You can optionally run your `configure` parsing logic here 
+    #                             # to unpack `vm["data"]["variables"]` into the `variablesets` keys
+    #                             # to actively process data for this dynamically fetched map.
+
+    #             # 2. Fetch and Update VariableSets
+    #             vset_ids_resp = await self.submit_get(path="variableset-definition/registry/ids/get")
+    #             if vset_ids_resp and "results" in vset_ids_resp:
+    #                 for vset_id in vset_ids_resp["results"]:
+    #                     query = {"variableset_definition_id": vset_id}
+    #                     vset_resp = await self.submit_request(path="variableset-definition/registry/get", query=query)
+                        
+    #                     if vset_resp and "results" in vset_resp and vset_resp["results"]:
+    #                         vs = vset_resp["results"][0]
+    #                         if "variablesets" not in self.variablesets:
+    #                             self.variablesets["variablesets"] = dict()
+    #                         self.variablesets["variablesets"][vset_id] = vs
+
+    #             self.logger.debug(
+    #                 "sync_sampling_definitions_loop", 
+    #                 extra={
+    #                     "variablemaps_platforms": list(self.variablemaps.get("platform", {}).keys()),
+    #                     "variablesets_count": len(self.variablesets.get("variablesets", {}))
+    #                 }
+    #             )
+
+    #         except Exception as e:
+    #             self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+            
+    #         await asyncio.sleep(60)
+
+    # async def sync_sampling_definitions_loop(self):
+    #     while True:
+    #         try:
+    #             # 1. Fetch and Update VariableMaps
+    #             vmap_ids_resp = await self.submit_get(path="variablemap-definition/registry/ids/get")
+    #             print(f"sync_sampling_definitions_loop: vmap_ids: {vmap_ids_resp}")
+    #             if vmap_ids_resp and "results" in vmap_ids_resp:
+    #                 # self.logger.debug("sync_sampling_definitions_loop", extra={"vm_ids", vmap_ids_resp})
+    #                 for vmap_id in vmap_ids_resp["results"]:
+    #                     self.logger.debug("sync_sampling_definitions_loop", extra={"vm_id": vmap_id})
+    #                     # Extract platform_name from ID: platform_name::variablemap_name::valid_config_time
+    #                     parts = vmap_id.split("::")
+    #                     if len(parts) >= 3:
+    #                         platform_name = parts[0]
+    #                         if hasattr(self, 'is_platform_allowed') and not self.is_platform_allowed(platform_name):
+    #                             continue
+                                
+    #                     query = {"variablemap_definition_id": vmap_id}
+    #                     vmap_resp = await self.submit_request(path="variablemap-definition/registry/get", query=query)
+    #                     # self.logger.debug("sync_sampling_definitions_loop", extra={"vmaps", vmap_resp})
+
+    #                     if vmap_resp and "results" in vmap_resp and vmap_resp["results"]:
+    #                         vm_db = vmap_resp["results"][0]
+                            
+    #                         vm_name = vm_db.get("variablemap")
+    #                         platform_name = vm_db.get("variablemap_type_id")
+    #                         valid_config_time = vm_db.get("valid_config_time")
+                            
+    #                         if not all([vm_name, platform_name, valid_config_time]):
+    #                             continue
+
+    #                         # Mock the exact JSON structure the parser expects
+    #                         mock_vm = {
+    #                             "kind": "PlatformVariableMap",
+    #                             "metadata": {
+    #                                 "name": vm_name,
+    #                                 "platform": platform_name,
+    #                                 "sampling_namespace": vm_db.get("attributes", {}).get("sampling_namespace", ""),
+    #                                 "valid_config_time": valid_config_time
+    #                             },
+    #                             "data": vm_db
+    #                         }
+    #                         self.logger.debug("sync_sampling_definitions_loop", extra={"mock_vm": mock_vm})
+    #                         # Safely parse and generate the sources + start the indexing tasks!
+    #                         self.load_variablemap(mock_vm)
+
+    #             # 2. Fetch and Update VariableSets (same as before)
+    #             vset_ids_resp = await self.submit_get(path="variableset-definition/registry/ids/get")
+    #             print(f"sync_sampling_definitions_loop: vset_ids: {vset_ids_resp}")
+    #             if vset_ids_resp and "results" in vset_ids_resp:
+    #                 for vset_id in vset_ids_resp["results"]:
+    #                     query = {"variableset_definition_id": vset_id}
+    #                     vset_resp = await self.submit_request(path="variableset-definition/registry/get", query=query)
+                        
+    #                     if vset_resp and "results" in vset_resp and vset_resp["results"]:
+    #                         vs = vset_resp["results"][0]
+    #                         if "variablesets" not in self.variablesets:
+    #                             self.variablesets["variablesets"] = dict()
+    #                         self.variablesets["variablesets"][vset_id] = vs
+
+    #             self.logger.debug(
+    #                 "sync_sampling_definitions_loop", 
+    #                 extra={
+    #                     "variablemaps_platforms": list(self.variablemaps.get("platform", {}).keys()),
+    #                     "variablesets_count": len(self.variablesets.get("variablesets", {}))
+    #                 }
+    #             )
+
+    #         except Exception as e:
+    #             self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+            
+    #         await asyncio.sleep(60)
+
+    # async def sync_sampling_definitions_loop(self):
+    #     while True:
+    #         try:
+    #             # 1. Fetch VariableMaps
+    #             vmap_ids_resp = await self.submit_get(path="variablemap-definition/registry/ids/get")
+    #             if vmap_ids_resp and "results" in vmap_ids_resp:
+                    
+    #                 # FIX: Solve the N+1 HTTP query problem using asyncio.gather for concurrency
+    #                 async def fetch_vmap(vmap_id):
+    #                     return await self.submit_request(path="variablemap-definition/registry/get", query={"variablemap_definition_id": vmap_id})
+
+    #                 # Concurrently fetch all map definitions
+    #                 vmap_responses = await asyncio.gather(*(fetch_vmap(vid) for vid in vmap_ids_resp["results"]))
+
+    #                 for vmap_resp in vmap_responses:
+    #                     if vmap_resp and "results" in vmap_resp and vmap_resp["results"]:
+    #                         vm_db = vmap_resp["results"][0]
+    #                         # ... (rest of local caching logic) ...
+
+    #             # 2. Fetch VariableSets 
+    #             vset_ids_resp = await self.submit_get(path="variableset-definition/registry/ids/get")
+    #             if vset_ids_resp and "results" in vset_ids_resp:
+                    
+    #                 # FIX: Solve N+1 for VariableSets
+    #                 async def fetch_vset(vset_id):
+    #                     return await self.submit_request(path="variableset-definition/registry/get", query={"variableset_definition_id": vset_id})
+
+    #                 vset_responses = await asyncio.gather(*(fetch_vset(vid) for vid in vset_ids_resp["results"]))
+                    
+    #                 for vset_resp in vset_responses:
+    #                     if vset_resp and "results" in vset_resp and vset_resp["results"]:
+    #                         vs = vset_resp["results"][0]
+    #                         if "variablesets" not in self.variablesets:
+    #                             self.variablesets["variablesets"] = dict()
+    #                         # Key should be extracted carefully to match previous assignments
+    #                         vset_id_matched = vs.get("variableset_definition_id", "unknown")
+    #                         self.variablesets["variablesets"][vset_id_matched] = vs
+                            
+    #         except Exception as e:
+    #             self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+            
+    #         await asyncio.sleep(60)
+
+    async def sync_sampling_definitions_loop(self):
+        while True:
+            try:
+                
+                # ---------------------------------------------------------
+                # 1. FETCH ALL FLEET GITOPS METADATA
+                # ---------------------------------------------------------
+                # gitops_resources = ["deployment", "project", "platform", "contact"]
+                gitops_resources = ["deployment", "platform"]
+                
+                for resource in gitops_resources:
+                    try:
+                        # Get the list of all active IDs for this resource type
+                        ids_resp = await self.submit_get(path=f"{resource}-definition/registry/ids/get")
+                        if ids_resp and "results" in ids_resp:
+                            
+                            # Helper to fetch the full JSON document by name
+                            async def fetch_doc(doc_id, res_type=resource):
+                                return await self.submit_request(
+                                    path=f"{res_type}-definition/registry/get", 
+                                    query={"name": doc_id}  # <-- Matches the 'name' parameter in main.py
+                                )
+
+                            # Fetch them all concurrently
+                            doc_responses = await asyncio.gather(*(fetch_doc(did) for did in ids_resp["results"]))
+                            
+                            active_docs = []
+                            for resp in doc_responses:
+                                if resp and "results" in resp and resp["results"]:
+                                    active_docs.append(resp["results"][0])
+                            
+                            # Dynamically update self.deployments, self.projects, etc.
+                            if active_docs:
+                                setattr(self, f"{resource}s", active_docs)
+                                
+                    except Exception as e:
+                        self.logger.error(f"sync_sampling_definitions: failed to sync {resource}", extra={"reason": str(e)})
+                # ---------------------------------------------------------
+
+                vmap_ids_resp = await self.submit_get(path="variablemap-definition/registry/ids/get")
+                if vmap_ids_resp and "results" in vmap_ids_resp:
+                    
+                    async def fetch_vmap(vmap_id):
+                        return await self.submit_request(path="variablemap-definition/registry/get", query={"variablemap_definition_id": vmap_id})
+
+                    vmap_responses = await asyncio.gather(*(fetch_vmap(vid) for vid in vmap_ids_resp["results"]))
+
+                    for vmap_resp in vmap_responses:
+                        if vmap_resp and "results" in vmap_resp and vmap_resp["results"]:
+                            vm_db = vmap_resp["results"][0]
+                            
+                            # FIX: Concrete extraction and loading logic restored
+                            vm_name = vm_db.get("variablemap")
+                            platform_name = vm_db.get("variablemap_type_id")
+                            valid_config_time = vm_db.get("valid_config_time")
+                            
+                            if not all([vm_name, platform_name, valid_config_time]):
+                                continue
+
+                            mock_vm = {
+                                "kind": "PlatformVariableMap",
+                                "metadata": {
+                                    "name": vm_name,
+                                    "platform": platform_name,
+                                    "sampling_namespace": vm_db.get("attributes", {}).get("sampling_namespace", ""),
+                                    "valid_config_time": valid_config_time
+                                },
+                                "data": vm_db
+                            }
+                            self.load_variablemap(mock_vm)
+
+                # Fetch VariableSets 
+                vset_ids_resp = await self.submit_get(path="variableset-definition/registry/ids/get")
+                if vset_ids_resp and "results" in vset_ids_resp:
+                    
+                    async def fetch_vset(vset_id):
+                        return await self.submit_request(path="variableset-definition/registry/get", query={"variableset_definition_id": vset_id})
+
+                    vset_responses = await asyncio.gather(*(fetch_vset(vid) for vid in vset_ids_resp["results"]))
+                    
+                    for vset_resp in vset_responses:
+                        if vset_resp and "results" in vset_resp and vset_resp["results"]:
+                            vs = vset_resp["results"][0]
+                            if "variablesets" not in self.variablesets:
+                                self.variablesets["variablesets"] = dict()
+                            vset_id_matched = vs.get("variableset_definition_id", "unknown")
+                            self.variablesets["variablesets"][vset_id_matched] = vs
+                            
+            except Exception as e:
+                self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+            
+            await asyncio.sleep(60)
+
+    async def hydrate_local_variablemaps(self):
+        """
+        Asynchronously hydrates locally owned variable maps with physical 
+        limits and native units from the Datastore. Uses eventual consistency.
+        """
+        for platform_name, vm_dict in self.variablemaps.get("platform", {}).items():
+            for vm_name, time_dict in vm_dict.items():
+                for valid_time, vm_obj in time_dict.items():
+                    vm_data = vm_obj["variablemap"].get("data", {})
+                    
+                    for vs_name, vs_def in vm_data.get("variablesets", {}).items():
+                        for v_name, v_def in vm_data.get("variables", {}).items():
+                            if v_def.get("variableset") != vs_name: 
+                                continue
+                            
+                            v_type = v_def.get("variable_type", "sensor")
+                            m_type = v_def.get("map_type", "")
+                            
+                            # Hydrate ALL direct mappings (sensors and settings)
+                            if m_type == "direct":
+                                # attrs = v_def.get("attributes", {})
+                                # ---> FIX 1: Pull active attributes from memory to prevent wiping routing keys! <---
+                                active_var = vm_obj["variablesets"].get(vs_name, {}).get("variables", {}).get(v_name, {})
+                                attrs = active_var.get("attributes", v_def.get("attributes", {})).copy()
+
+                                # Idempotency check
+                                if "hydrated" not in attrs:
+                                    # direct_var = v_def.get("direct_value", {}).get("source_variable", v_name)
+                                    # src_info = v_def.get("source", {}).get(direct_var, {})
+                                    # ---> FIX 2: Modern source extraction (no direct_value needed) <---
+                                    sources = v_def.get("source", {})
+                                    src_info = next(iter(sources.values())) if sources else {}
+
+                                    src_type = src_info.get("source_type", "device") # 'device' or 'controller'
+                                    src_id = src_info.get("source_id", "")
+                                    src_var = src_info.get("source_variable", "")
+                                    
+                                    if not src_id: 
+                                        continue
+                                    
+                                    parts = src_id.split("::")
+                                    if len(parts) >= 2:
+                                        make, model = parts[0], parts[1]
+                                        
+                                        # Query the Datastore
+                                        datastore_url = f"http://datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+                                        path = f"{src_type}-definition/registry/get"
+                                        query = {"make": make, "model": model}
+                                        
+                                        try:
+                                            async with httpx.AsyncClient() as client:
+                                                resp = await client.get(f"{datastore_url}/{path}/", params=query, timeout=5.0)
+                                                
+                                            if resp.status_code == 200 and resp.json().get("results"):
+                                                hw_def = resp.json()["results"][0]
+                                                hw_vars = hw_def.get("variables", {})
+                                                
+                                                if src_var in hw_vars:
+                                                    hw_attrs = hw_vars[src_var].get("attributes", {})
+                                                    
+                                                    # --- THE FIX: Coordinate Hydration ---
+                                                    hw_var_type = hw_attrs.get("variable_type", {}).get("data", "")
+                                                    if hw_var_type == "coordinate":
+                                                        attrs["variable_type"] = {"type": "string", "data": "coordinate"}
+                                                        # Store the static array in the attributes so the evaluator can find it
+                                                        attrs["static_data"] = {"type": "array", "data": hw_vars[src_var].get("data", [])}
+                                                    # -------------------------------------
+                                                    
+                                                    # Specific hydration for settings (limits)
+                                                    if v_type == "setting":
+                                                        for attr_key in ["valid_min", "valid_max", "step_increment"]:
+                                                            if attr_key in hw_attrs and attr_key not in attrs:
+                                                                attrs[attr_key] = hw_attrs[attr_key].copy()
+                                                                self.logger.info(f"Hydrated limit {v_name} with {attr_key}: {hw_attrs[attr_key]['data']}")
+
+                                                    # Capture native units for live conversion logic
+                                                    if "units" in hw_attrs:
+                                                        attrs["native_units"] = hw_attrs["units"].copy()
+                                                        # If platform varmap didn't override it, default to the native unit
+                                                        if "units" not in attrs:
+                                                            attrs["units"] = hw_attrs["units"].copy()
+                                                        else:
+                                                            self.logger.info(f"Mapped {v_name} native_units: {hw_attrs['units']['data']} -> target: {attrs['units']['data']}")
+
+                                                    attrs["hydrated"] = {"type": "bool", "data": True}
+
+                                                    # Ensure the active variableset cache used for telemetry routing is also updated
+                                                    if vs_name in vm_obj["variablesets"] and v_name in vm_obj["variablesets"][vs_name]["variables"]:
+                                                        vm_obj["variablesets"][vs_name]["variables"][v_name]["attributes"] = attrs.copy()
+                                        except Exception as e:
+                                            self.logger.warning(f"Hydration failed for {v_name} (will retry later)", extra={"reason": str(e)})
+
+    async def publish_local_definitions(self):
+        """
+        Publishes the locally loaded JSON variablemaps and variablesets 
+        to the event broker so the datastore can register them globally.
+        Runs on a slow loop to guarantee eventual consistency.
+        """
+        # Initial wait to let other services boot before the first blast
+        await asyncio.sleep(5)
+        
+        while True:
+            try:
+
+                # Check for and inject missing hardware limits before broadcasting
+                await self.hydrate_local_variablemaps()
+
+                # --- 2. PUSH LOCAL JIT DEPLOYMENT ---
+                for dep in getattr(self, "local_deployments", []):
+                    dep_event = SamplingEvent.create_definition_registry_update(
+                        resource="deployment",
+                        source=f"envds.{self.config.daq_id}.sampling-system",
+                        data={"deployment-definition": dep}
+                    )
+                    dep_event["destpath"] = f"envds/{self.config.daq_id}/deployment-definition/registry/update"
+                    await self.send_event(dep_event)
+                # ------------------------------------
+
+                # --- NEW: PUSH UNIVERSAL DEFINITIONS ---
+                for plat in getattr(self, "local_platforms", []):
+                    plat_event = SamplingEvent.create_definition_registry_update(
+                        resource="platform",
+                        source=f"envds.{self.config.daq_id}.sampling-system",
+                        data={"platform-definition": plat}
+                    )
+                    plat_event["destpath"] = f"envds/{self.config.daq_id}/platform-definition/registry/update"
+                    await self.send_event(plat_event)
+
+                # for proj in getattr(self, "local_projects", []):
+                #     proj_event = SamplingEvent.create_definition_registry_update(
+                #         resource="project",
+                #         source=f"envds.{self.config.daq_id}.sampling-system",
+                #         data={"project-definition": proj}
+                #     )
+                #     proj_event["destpath"] = f"envds/{self.config.daq_id}/project-definition/registry/update"
+                #     await self.send_event(proj_event)
+
+                # for contact in getattr(self, "local_contacts", []):
+                #     contact_event = SamplingEvent.create_definition_registry_update(
+                #         resource="contact",
+                #         source=f"envds.{self.config.daq_id}.sampling-system",
+                #         data={"contact-definition": contact}
+                #     )
+                #     contact_event["destpath"] = f"envds/{self.config.daq_id}/contact-definition/registry/update"
+                #     await self.send_event(contact_event)
+                # ---------------------------------------
+
+                for platform, vm_dict in self.variablemaps.get("platform", {}).items():
+                    for vm_name, time_dict in vm_dict.items():
+                        for valid_time, vm_obj in time_dict.items():
+                            
+                            vm = vm_obj["variablemap"]
+                            
+                            # 1. Broadcast the VariableMap
+                            event = SamplingEvent.create_variablemap_definition_registry_update(
+                                source=f"envds.{self.config.daq_id}.sampling-system",
+                                data={"variablemap-definition": vm}
+                            )
+                            event["destpath"] = f"envds/{self.config.daq_id}/variablemap-definition/registry/update"
+                            await self.send_event(event)
+
+                            # 2. Broadcast the associated VariableSets
+                            vm_data = vm.get("data", {})
+                            for vs_name, vs_def in vm_data.get("variablesets", {}).items():
+                                vs_payload = {
+                                    "metadata": {"name": vs_name},
+                                    "data": {
+                                        "attributes": {
+                                            "variablemap_id": vm.get("metadata", {}).get("name"),
+                                            "variablemap_type": vm_data.get("attributes", {}).get("variablemap_type", "Platform"),
+                                            "platform": platform,
+                                            "valid_config_time": valid_time,
+                                        },
+                                        "index_type": vs_def.get("index", {}).get("index_type"),
+                                        "index_value": vs_def.get("index", {}).get("index_value"),
+                                        "dimensions": {},
+                                        "variables": {k: v for k, v in vm_data.get("variables", {}).items() if v.get("variableset") == vs_name}
+                                    }
+                                }
+                                
+                                vs_event = SamplingEvent.create_variableset_definition_registry_update(
+                                    source=f"envds.{self.config.daq_id}.sampling-system",
+                                    data={"variableset-definition": vs_payload}
+                                )
+                                vs_event["destpath"] = f"envds/{self.config.daq_id}/variableset-definition/registry/update"
+                                await self.send_event(vs_event)
+                                
+                self.logger.debug("publish_local_definitions", extra={"status": "completed"})
+                
+            except Exception as e:
+                self.logger.error("publish_local_definitions", extra={"reason": e})
+            
+            # Sleep for 60 seconds before announcing the definitions again
+            await asyncio.sleep(60)
+    
+    # def resolve_context_for_varmap(self, variablemap: dict, target_time: str) -> str:
+    #     """Returns deployment_ref for a given VariableMap and time."""
+    #     platform_ref = variablemap.get("variablemap", {}).get("data", {}).get("attributes", {}).get("platform")
+    #     if not platform_ref:
+    #         return "unknown"
+            
+    #     for dep in getattr(self, "deployments", []):
+    #         dep_data = dep.get("data", {})
+    #         if dep_data.get("platform_ref") == platform_ref:
+    #             start = dep_data.get("planned_start_time", "0000-00-00")
+    #             end = dep_data.get("planned_end_time", "9999-99-99")
+    #             actual_end = dep_data.get("actual_end_time", end)
+                
+    #             if start <= target_time <= actual_end:
+    #                 return dep.get("metadata", {}).get("name", "unknown")
+                    
+    #     if getattr(self, "active_deployment_ref", "unknown") != "unknown":
+    #         return self.active_deployment_ref
+            
+    #     return "unknown"
+
+    def resolve_context_for_varmap(self, variablemap: dict, target_time: str) -> str:
+        """Returns deployment_ref for a given VariableMap and time."""
+        vm = variablemap.get("variablemap", {})
+        
+        # THE FIX: Platform is stored in the metadata of the parsed mock_vm, 
+        # not inside data.attributes!
+        platform_ref = vm.get("metadata", {}).get("platform")
+        
+        # Fallbacks just in case it's a native variablemap format
+        if not platform_ref:
+            platform_ref = vm.get("data", {}).get("variablemap_type_id")
+        if not platform_ref:
+            platform_ref = vm.get("data", {}).get("attributes", {}).get("platform")
+
+        if not platform_ref:
+            self.logger.debug("resolve_context: no platform_ref found in variablemap")
+            return "unknown"
+            
+        # Evaluate against the GitOps graph synced from the Datastore
+        for dep in getattr(self, "deployments", []):
+            dep_data = dep.get("data", {})
+            
+            # Check if this deployment references our target platform
+            if dep_data.get("platform_ref") == platform_ref:
+                start = dep_data.get("planned_start_time", "1970-01-01T00:00:00Z")
+                end = dep_data.get("planned_end_time", "9999-12-31T23:59:59Z")
+                actual_end = dep_data.get("actual_end_time", end)
+                
+                # ISO-8601 string comparison safely bounds the time window
+                if start <= target_time <= actual_end:
+                    resolved_dep = dep.get("metadata", {}).get("name", "unknown")
+                    self.logger.debug(f"resolve_context: mapped {platform_ref} -> {resolved_dep}")
+                    return resolved_dep
+                    
+        # Fallback to JIT edge deployment if present (for Edge Nodes, not Digital Twins)
+        if getattr(self, "active_deployment_ref", "unknown") != "unknown":
+            return self.active_deployment_ref
+            
+        return "unknown"
 
     async def get_from_mqtt_loop(self):
         reconnect = 10
@@ -703,12 +1190,35 @@ class SamplingSystem:
                         # await client.subscribe(config.mqtt_topic_subscription, qos=2)
                     # async with client.messages() as messages:
                     async for message in self.client.messages:  # () as messages:
+                        topic = message.topic.value
+                        
+                        # FIX: Stop the app from processing its own outbound messages
+                        if "variableset" in topic:
+                            continue
 
                         try:
                             ce = from_json(message.payload)
                             topic = message.topic.value
                             ce["sourcepath"] = topic
+
+                            # # --- RING BUFFER LOGIC ---
+                            # # If the queue is full, aggressively drop the oldest message
+                            # if self.mqtt_buffer.full():
+                            #     try:
+                            #         dropped_ce = self.mqtt_buffer.get_nowait()
+                            #         self.mqtt_buffer.task_done()
+                            #         self.logger.warning("Queue full! Dropped oldest telemetry to stay in real-time.")
+                            #     except asyncio.QueueEmpty:
+                            #         pass
+                            
+                            # # Now that there is guaranteed space, put the newest message
+                            # await self.mqtt_buffer.put(ce)
+                            # # -------------------------
+
+
                             await self.mqtt_buffer.put(ce)
+
+
                             self.logger.debug(
                                 "get_from_mqtt_loop",
                                 extra={"cetype": ce["type"], "topic": topic},
@@ -743,11 +1253,26 @@ class SamplingSystem:
                     await self.device_data_update(ce)
                 elif ce["type"] == "envds.controller.data.update":
                     await self.controller_data_update(ce)
+                # elif ce["type"] in ["envds.settings.update", "envds.controller.settings.update"]:
+                #     await self.controller_settings_update(ce)
+                elif ce["type"] in [
+                    det.sensor_settings_update(), 
+                    det.controller_settings_update(), 
+                    det.device_settings_update(),
+                    "envds.settings.update" 
+                ]:
+                    await self.device_settings_update(ce)
+                elif ce["type"] == "envds.variableset.data.update":
+                    await self.handle_foreign_variableset(ce)
+                elif ce["type"] == "envds.operations.log":
+                    await self.handle_operations_log(ce)
+
+                self.mqtt_buffer.task_done()
 
             except Exception as e:
                 self.logger.error("handle_mqtt_buffer", extra={"reason": e})
 
-            await asyncio.sleep(0.0001)
+            # await asyncio.sleep(0.0001)
 
     # TODO change this for sampling-system
     async def device_data_update(self, ce: CloudEvent):
@@ -771,32 +1296,77 @@ class SamplingSystem:
             self.logger.error("device_data_update", extra={"reason": e})
         pass
 
+    # def get_variablemap_id(self, vm:dict):
+    #     try:
+    #         print(f"get_variablemap_id: {vm}")
+    #         # variablemap_type = vm["data"]["attributes"]["variablemap_index_type"]
+    #         # if variablemap_type == "Platform":
+    #         #     variablemap_type_id = vm["data"]["attributes"]["platform"]
+    #         # else:
+    #         #     return ""
+            
+    #         # variable_map_type_id = vm["data"]["attributes"]["variablemap_index_type_id"]
+    #         # variablemap_name = vm["metadata"]["name"]
+    #         # valid_config_time = vm["data"]["attributes"]["valid_config_time"]
+
+    #         vm_type = vm["variablemap"]["data"]["attributes"]["variablemap_type"]
+    #         vm_name = vm["variablemap"]["metadata"]["name"]
+    #         vm_ns = vm["variablemap"]["data"]["attributes"]["sampling_namespace"]
+    #         vm_valid_config_time = vm["variablemap"]["data"]["attributes"]["valid_config_time"]
+
+    #         # return "::".join([f"{vm_name}.{vm_ns}", vm_valid_config_time])
+    #         return "::".join([vm_name, vm_valid_config_time])
+
+    #         # return "::".join([variablemap_type_id, variablemap_name, valid_config_time])
+    #     except Exception as e:
+    #         self.logger.error("get_variablemap_id", extra={"reason": e})
+    #         return ""
     def get_variablemap_id(self, vm:dict):
         try:
-            print(f"get_variablemap_id: {vm}")
-            # variablemap_type = vm["data"]["attributes"]["variablemap_index_type"]
-            # if variablemap_type == "Platform":
-            #     variablemap_type_id = vm["data"]["attributes"]["platform"]
-            # else:
-            #     return ""
+            attrs = vm.get("variablemap", {}).get("data", {}).get("attributes", {})
+            meta = vm.get("variablemap", {}).get("metadata", {})
             
-            # variable_map_type_id = vm["data"]["attributes"]["variablemap_index_type_id"]
-            # variablemap_name = vm["metadata"]["name"]
-            # valid_config_time = vm["data"]["attributes"]["valid_config_time"]
+            vm_name = meta.get("name", "unknown")
+            vm_valid_config_time = attrs.get("valid_config_time") or meta.get("valid_config_time", "unknown")
 
-            vm_type = vm["variablemap"]["data"]["attributes"]["variablemap_type"]
-            vm_name = vm["variablemap"]["metadata"]["name"]
-            vm_ns = vm["variablemap"]["data"]["attributes"]["sampling_namespace"]
-            vm_valid_config_time = vm["variablemap"]["data"]["attributes"]["valid_config_time"]
-
-            # return "::".join([f"{vm_name}.{vm_ns}", vm_valid_config_time])
             return "::".join([vm_name, vm_valid_config_time])
-
-            # return "::".join([variablemap_type_id, variablemap_name, valid_config_time])
         except Exception as e:
-            self.logger.error("get_variablemap_id", extra={"reason": e})
+            self.logger.error("get_variablemap_id", extra={"reason": str(e)})
             return ""
 
+    # def get_variableset_full_id(self, variablemap:dict, variableset_name:str, variableset:dict):
+    #     try:
+    #         # variablemap_id = self.get_variablemap_id(vm=variablemap)
+
+    #         #variableset_id should not be bound to a valid_config
+    #         vm_platform = variablemap["variablemap"]["data"]["attributes"]["platform"]
+    #         vm_name = variablemap["variablemap"]["metadata"]["name"]
+    #         vm_valid_config_time = variablemap["variablemap"]["data"]["attributes"]["valid_config_time"]
+    #         # variablemap_id = variableset["data"]["attributes"]["variablemap_id"]
+            
+    #         # variableset_name = variableset["metadata"]["name"]
+    #         # self.logger.debug("get_variableset_id", extra={"vm_name": vm_name, "variableset_name": variableset_name})
+
+    #         return "::".join([vm_platform,vm_name, vm_valid_config_time, variableset_name])
+        
+    #     except Exception as e:
+    #         self.logger.error("get_variableset_id", extra={"reason": e})
+    #         return ""
+
+    def get_variableset_full_id(self, variablemap:dict, variableset_name:str, variableset:dict):
+        try:
+            attrs = variablemap.get("variablemap", {}).get("data", {}).get("attributes", {})
+            meta = variablemap.get("variablemap", {}).get("metadata", {})
+            
+            vm_platform = attrs.get("platform") or meta.get("platform", "unknown")
+            vm_name = meta.get("name", "unknown")
+            vm_valid_config_time = attrs.get("valid_config_time") or meta.get("valid_config_time", "unknown")
+            
+            return "::".join([vm_platform, vm_name, vm_valid_config_time, variableset_name])
+        except Exception as e:
+            self.logger.error("get_variableset_full_id", extra={"reason": str(e)})
+            return ""
+        
     def get_variableset_id(self, variablemap:dict, variableset_name:str, variableset:dict):
         try:
             # variablemap_id = self.get_variablemap_id(vm=variablemap)
@@ -815,8 +1385,12 @@ class SamplingSystem:
             return ""
 
     def get_variablemap_namespace(self, variablemap:dict):
-        return variablemap["variablemap"]["data"]["attributes"]["sampling_namespace"]
-
+        # return variablemap["variablemap"]["data"]["attributes"]["sampling_namespace"]
+        attrs = variablemap.get("variablemap", {}).get("data", {}).get("attributes", {})
+        meta = variablemap.get("variablemap", {}).get("metadata", {})
+        
+        return attrs.get("sampling_namespace") or meta.get("sampling_namespace", "unknown")
+    
     def get_id_components(self, vm_id:str=None, vs_id:str=None) -> dict:
         try:
             if vs_id:
@@ -879,103 +1453,256 @@ class SamplingSystem:
             self.logger.error("device_data_update", extra={"reason": e})
         pass
 
+    # async def controller_settings_update(self, ce: CloudEvent):
+    #     """
+    #     Normalizes discrete settings updates (like Shelly switch states) into 
+    #     standard telemetry data records so they can be processed and forward-filled
+    #     by the variable mapping engine.
+    #     """
+    #     try:
+    #         # Extract the raw settings dictionary
+    #         raw_settings = ce.data.get("settings", {})
+    #         if not raw_settings:
+    #             # Fallback if the payload is packed directly in the data block
+    #             raw_settings = ce.data
+            
+    #         # Reformat the settings to perfectly mimic the telemetry variables structure
+    #         mock_variables = {}
+    #         for setting_name, setting_state in raw_settings.items():
+    #             if isinstance(setting_state, dict) and "actual" in setting_state:
+    #                 # Extract the "actual" state of the setting
+    #                 mock_variables[setting_name] = {"data": setting_state["actual"]}
+    #             else:
+    #                 mock_variables[setting_name] = {"data": setting_state}
+
+    #         # Inject the timestamp so the time-indexer works
+    #         timestamp = ce.data.get("timestamp", get_datetime_string())
+    #         mock_variables["time"] = {"data": timestamp}
+
+    #         # Replace the event data with our normalized mock variables
+    #         ce.data["variables"] = mock_variables
+
+    #         # Extract source routing info to find the correct variable maps
+    #         # Format is typically: envds.<namespace>.<group>.<make::model::serial>
+    #         source_parts = ce["source"].split(".")
+    #         if len(source_parts) >= 4:
+    #             # Grabs the actual hardware ID (e.g., Shelly::ShellyPro3::shel28)
+    #             source_id = source_parts[-1] 
+                
+    #             self.logger.debug("controller_settings_update - normalized", extra={"source_id": source_id, "vars": mock_variables})
+                
+    #             # Push into the standard variable mapping pipeline
+    #             await self.update_by_source(source_id=source_id, source_data=ce)
+
+    #     except Exception as e:
+    #         self.logger.error("controller_settings_update", extra={"reason": str(e)})
+
+    async def device_settings_update(self, ce: CloudEvent):
+        """
+        Normalizes discrete settings updates (like Shelly switch states or Sensor setpoints) into 
+        standard telemetry data records so they can be processed and forward-filled
+        by the variable mapping engine.
+        """
+        try:
+            # Extract the raw settings dictionary
+            raw_settings = ce.data.get("settings", {})
+            if not raw_settings:
+                raw_settings = ce.data.get("setting", {})
+            if not raw_settings:
+                # Fallback if the payload is packed directly in the data block
+                raw_settings = ce.data
+            
+            # Reformat the settings to perfectly mimic the telemetry variables structure
+            mock_variables = {}
+            if isinstance(raw_settings, dict):
+                # Handle single setting format: {"name": "fan_speed_sp", "actual": 60.0}
+                if "name" in raw_settings and ("actual" in raw_settings or "requested" in raw_settings or "value" in raw_settings):
+                    s_name = raw_settings["name"]
+                    s_val = raw_settings.get("actual", raw_settings.get("requested", raw_settings.get("value")))
+                    mock_variables[s_name] = {"data": s_val}
+                else:
+                    for setting_name, setting_state in raw_settings.items():
+                        if setting_name in ["timestamp", "time"]:
+                            continue
+                        if isinstance(setting_state, dict):
+                            if "name" in setting_state:
+                                s_name = setting_state["name"]
+                                s_val = setting_state.get("actual", setting_state.get("requested", setting_state.get("value", setting_state.get("data"))))
+                                mock_variables[s_name] = {"data": s_val}
+                            elif "actual" in setting_state:
+                                mock_variables[setting_name] = {"data": setting_state["actual"]}
+                            elif "requested" in setting_state:
+                                mock_variables[setting_name] = {"data": setting_state["requested"]}
+                            elif "value" in setting_state:
+                                mock_variables[setting_name] = {"data": setting_state["value"]}
+                            elif "data" in setting_state:
+                                # --- THE FIX: Extract the scalar from the nested data block ---
+                                s_data = setting_state["data"]
+                                if isinstance(s_data, dict):
+                                    s_val = s_data.get("actual", s_data.get("requested", s_data.get("value")))
+                                    mock_variables[setting_name] = {"data": s_val}
+                                else:
+                                    mock_variables[setting_name] = {"data": s_data}
+                                # --------------------------------------------------------------
+                            else:
+                                mock_variables[setting_name] = {"data": setting_state}
+                        else:
+                            mock_variables[setting_name] = {"data": setting_state}
+
+            # Inject the timestamp so the time-indexer works
+            timestamp = ce.data.get("timestamp") or ce.get("time") or get_datetime_string()
+            mock_variables["time"] = {"data": timestamp}
+
+            # Replace the event data with our normalized mock variables
+            ce.data["variables"] = mock_variables
+
+            # Extract source routing info to find the correct variable maps
+            source_raw = ce.get("source", "")
+            source_id = source_raw.split(".")[-1] if "." in source_raw else source_raw
+            
+            if source_id:
+                self.logger.debug("device_settings_update - normalized", extra={"source_id": source_id, "vars": mock_variables})
+                
+                # Push into the standard variable mapping pipeline
+                await self.update_by_source(source_id=source_id, source_data=ce)
+
+        except Exception as e:
+            self.logger.error("device_settings_update", extra={"reason": str(e)})
+
+    async def handle_foreign_variableset(self, ce: CloudEvent):
+        """Caches variablesets evaluated by other nodes so we can use them in local calculations."""
+        try:
+            if not hasattr(self, "foreign_vsets"):
+                self.foreign_vsets = {}
+                
+            # Key by full unique ID to prevent namespace collisions!
+            vset_id = ce.get("variablesetid")
+            if vset_id:
+                self.foreign_vsets[vset_id] = ce.data
+            else:
+                # Fallback for old payloads
+                vset_name = ce.data.get("metadata", {}).get("name", "")
+                if vset_name:
+                    self.foreign_vsets[vset_name] = ce.data
+                
+        except Exception as e:
+            self.logger.error("handle_foreign_variableset", extra={"reason": str(e)})
+
     def is_valid_variable_set(self, vs_id: str, time:str) -> bool:
         valid_vs_id = self.get_valid_variableset_id_by_time(self, variableset_id=vs_id, source_time=time)
         return vs_id == valid_vs_id
 
-    async def get_valid_variablemaps(self, target_time:str):
+    # async def get_valid_variablemaps(self, target_time:str):
+    #     try:
+    #         self.logger.debug("get_valid_variablemaps", extra={"target_time": target_time})
+    #         valid_variablesets = []
+    #         for vmtype_name, vmtype in self.variablemaps.items():
+    #             for vmtype_type_name, vm_type_type in vmtype.items():
+    #                 for vm_name, vm in vm_type_type.items():
+
+    #                     current = ""
+    #                     for vm_valid_config_time in vm.keys():
+    #                         self.logger.debug("get_valid_variablemaps", extra={"vm_name": vm_name, "valid_config_time": vm_valid_config_time})
+    #                         # vm_parts = vm_id.split("::")
+    #                         # vm_valid_config_time = vm_parts[2]
+    #                         if target_time > vm_valid_config_time and vm_valid_config_time > current:
+    #                             current = vm_valid_config_time
+    #                     if current:
+    #                         valid_variablesets.append(
+    #                             {
+    #                                 "variablemap_type": vmtype_name,
+    #                                 "variablemap_type_name": vmtype_type_name,
+    #                                 "variablemap_name": vm_name,
+    #                                 "valid_config_time": current,
+    #                                 "variablemap": vm[current]
+    #                             }
+    #                         )
+
+    #     except Exception as e:
+    #         self.logger.error("get_valid_variablemaps", extra={"reason": e})
+    #         valid_variablesets = []
+        
+    #     # self.logger.debug("get_valid_variablemaps", extra={"valid_variable_sets": valid_variablesets})
+    #     return valid_variablesets
+    
+    async def get_valid_variablemaps(self, target_time: str, source_id: str = None):
+        valid_variablesets = []
         try:
-            self.logger.debug("get_valid_variablemaps", extra={"target_time": target_time})
-            valid_variablesets = []
             for vmtype_name, vmtype in self.variablemaps.items():
                 for vmtype_type_name, vm_type_type in vmtype.items():
                     for vm_name, vm in vm_type_type.items():
-
                         current = ""
-                        for vm_valid_config_time in vm.keys():
-                            self.logger.debug("get_valid_variablemaps", extra={"vm_name": vm_name, "valid_config_time": vm_valid_config_time})
-                            # vm_parts = vm_id.split("::")
-                            # vm_valid_config_time = vm_parts[2]
+                        for vm_valid_config_time, vm_obj in vm.items():
                             if target_time > vm_valid_config_time and vm_valid_config_time > current:
+                                # Fast-fail if this map doesn't care about the incoming source
+                                if source_id and source_id not in vm_obj["sources"]:
+                                    continue
                                 current = vm_valid_config_time
                         if current:
-                            valid_variablesets.append(
-                                {
-                                    "variablemap_type": vmtype_name,
-                                    "variablemap_type_name": vmtype_type_name,
-                                    "variablemap_name": vm_name,
-                                    "valid_config_time": current,
-                                    "variablemap": vm[current]
-                                }
-                            )
-
+                            valid_variablesets.append({
+                                # FIX: Pass the entire container object (vm[current]), 
+                                # which includes ["indexed"], ["sources"], and ["variablemap"]
+                                "variablemap": vm[current] 
+                            })
         except Exception as e:
             self.logger.error("get_valid_variablemaps", extra={"reason": e})
-            valid_variablesets = []
         
-        self.logger.debug("get_valid_variablemaps", extra={"valid_variable_sets": valid_variablesets})
         return valid_variablesets
-    
+        
+    # async def update_by_source(self, source_id:str, source_data: CloudEvent):
+    #     try:
+    #         # print("here:1")
+    #         # self.logger.debug("update_by_source", extra={"source_id": source_id})
+    #         # print("here:2")
+    #         source_time = source_data.data["variables"]["time"]["data"]
+    #         # print("here:3")
+    #         self.logger.debug("update_by_source", extra={"source_time": source_time})
+    #         # print("here:4")
+    #         vm_list = await self.get_valid_variablemaps(target_time=source_time)
+    #         # print(f"here:5 {vm_list}")
+    #         for vm in vm_list:
+    #             # print(f"here:6 {vm}")
+    #             # self.logger.debug("update_by_source", extra={"vm": vm})
+    #             # print("here:7")
+    #             variablemap = vm["variablemap"]
+    #             # print("here:8")
+    #             self.logger.debug("update_by_source", extra={"source_id": source_id, "vm": variablemap.keys()})
+    #             # print("here:9")
+    #             await self.update_variableset_by_source(variablemap=variablemap, source_id=source_id, source_data=source_data)
+    #             # print("here:10")
+
+    #     except Exception as e:
+    #         # print("here:11")
+
+    #         self.logger.error("update_by_source", extra={"reason": e})
+    #         # print("here:12")
+
     async def update_by_source(self, source_id:str, source_data: CloudEvent):
         try:
-            # print("here:1")
-            # self.logger.debug("update_by_source", extra={"source_id": source_id})
-            # print("here:2")
             source_time = source_data.data["variables"]["time"]["data"]
-            # print("here:3")
-            self.logger.debug("update_by_source", extra={"source_time": source_time})
-            # print("here:4")
-            vm_list = await self.get_valid_variablemaps(target_time=source_time)
-            # print(f"here:5 {vm_list}")
+            # FIX: Pass the source_id to filter out irrelevant maps instantly
+            vm_list = await self.get_valid_variablemaps(target_time=source_time, source_id=source_id)
             for vm in vm_list:
-                print(f"here:6 {vm}")
-                # self.logger.debug("update_by_source", extra={"vm": vm})
-                # print("here:7")
-                variablemap = vm["variablemap"]
-                # print("here:8")
-                self.logger.debug("update_by_source", extra={"source_id": source_id, "vm": variablemap.keys()})
-                # print("here:9")
-                await self.update_variableset_by_source(variablemap=variablemap, source_id=source_id, source_data=source_data)
-                # print("here:10")
-
+                await self.update_variableset_by_source(variablemap=vm["variablemap"], source_id=source_id, source_data=source_data)
         except Exception as e:
-            # print("here:11")
-
             self.logger.error("update_by_source", extra={"reason": e})
-            # print("here:12")
 
     async def update_variableset_by_source(self, variablemap:dict, source_id:str, source_data:CloudEvent):
-
         try:
-            print(f"update_variableset_by_source: variablemap = {variablemap}")
             self.logger.debug("update_variableset_by_source", extra={"source_id": source_id})
             source_time = source_data.data["variables"]["time"]["data"]
-            self.logger.debug("update_variableset_by_source", extra={"source_time": source_time})
-            for k,v in variablemap.items():
-                print(f"***variablemap[{k}] = {v}")
-                if k == "source_id" and v == source_id:
-                    print("***YES***")
             
             if source_id not in variablemap["sources"]:
-                print(f"!!! source_id: {source_id} not in variablemap[sources]: {variablemap['sources'].keys()}")
                 return
             
-            # print(f"update_variableset_by_source: {variablemap['sources']}")
             for src_xref in variablemap["sources"][source_id]:
-                self.logger.debug("update_variableset_by_source", extra={"source_xref": src_xref})
-                print(f"update_variableset_by_source: variablemap = {variablemap}")
-                for k in variablemap.keys():
-                    print(f"update_variableset_by_source: variablemap[{k}] = {variablemap[k]}")
                 variableset = variablemap["variablesets"][src_xref["variableset"]]
                 index_type = variableset["attributes"]["index_type"]["data"]
                 index_value = variableset["attributes"]["index_value"]["data"]
-                # if index_type not in variablemap["indexed"]["data"]:
+                
                 if index_type not in variablemap["indexed"]:
-                    # variablemap["indexed"]["data"][index_type] = dict()
                     variablemap["indexed"][index_type] = dict()
-                # if index_value not in variablemap["indexed"]["data"][index_type]:
                 if index_value not in variablemap["indexed"][index_type]:
-                    # variablemap["indexed"]["data"][index_type][index_value] = dict()
                     variablemap["indexed"][index_type][index_value] = dict()
                 if "variablesets" not in variablemap["indexed"][index_type][index_value]:
                     variablemap["indexed"][index_type][index_value]["variablesets"] = []
@@ -983,21 +1710,13 @@ class SamplingSystem:
                     variablemap["indexed"][index_type][index_value]["data"] = dict()
 
                 if index_type == "time":
-                    self.logger.debug("update_variableset_by_source", extra={"index_value": index_value, "source_time": source_time})
-
                     indexed_time = await self.get_indexed_time_value(
                         index_time=index_value,
                         source_time=source_time)
-                    self.logger.debug("update_variableset_by_source", extra={"indexed_time": indexed_time})
                     
-                    # if indexed_time not in variablemap["indexed"]["data"][index_type][index_value]:
-                    #     variablemap["indexed"]["data"][index_type][index_value][indexed_time] = dict()
                     if indexed_time not in variablemap["indexed"][index_type][index_value]["data"]:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time] = dict()
-                    print(f"update_variableset_by_source: variablemap = {variablemap}")
-                    
-                    # if (vs_name:=src_xref["variableset"]) not in variablemap["indexed"]["data"][indexed_time]:
-                    #     variablemap["indexed"]["data"][indexed_time][vs_name] = dict()
+                        
                     vs_name = src_xref["variableset"]
                     if vs_name not in variablemap["indexed"][index_type][index_value]["variablesets"]:
                         variablemap["indexed"][index_type][index_value]["variablesets"].append(vs_name)
@@ -1007,57 +1726,23 @@ class SamplingSystem:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type] = dict()
                     if vs_name not in variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type]:
                         variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name] = dict()
-                    print(f"update_variableset_by_source: variablemap = {variablemap}")
-
-                    # if src_xref["map_type"] == "direct":
-                    #     # if "direct" not in variablemap["indexed"]["data"][indexed_time][vs_name]:
-                    #     #     variablemap["indexed"]["data"][indexed_time][vs_name]["direct"] = dict()
-                    #     if "direct" not in variablemap["indexed"][indexed_time][index_type][index_value]["data"][indexed_time]:
-                    #         variablemap["indexed"][index_type][index_value]["data"][indexed_time]["direct"] = dict()
-                    #     if vs_name not in variablemap["indexed"][index_type][index_value]["data"][indexed_time]["direct"][vs_name]:
-                    #         variablemap["indexed"][index_type][index_value]["data"][indexed_time]["direct"][vs_name] = dict()
-
                     
                     if map_type == "direct":
-                        print(f"update_variableset_by_source: vs_name = {vs_name}")
                         direct_map = variablemap["indexed"][index_type][index_value]["data"][indexed_time][map_type][vs_name]
-                        self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
                         if (v_name:=src_xref["variable"]) not in direct_map:
                             direct_map[v_name] = []
-                        self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
-                        self.logger.debug("update_variableset_by_source", extra={"variablemap": variablemap["variablesets"]})
+                            
                         source_v = variablemap["variablesets"][vs_name]["variables"][v_name]["attributes"]["source_variable"]["data"]
-                        self.logger.debug("update_variableset_by_source", extra={"source_data": source_data.data})
-                        direct_map[v_name].append(
-                            source_data.data["variables"][source_v]["data"]
-                        )
-                        self.logger.debug("update_variableset_by_source", extra={"direct_map": direct_map})
-
-                    # self.logger.debug("update_variableset_by_source", extra={"vm": variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]})
-                    # print(f'!!!source_data: {variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name]}')
-                    # print(f'!!!source_data: {variablemap["indexed"]["data"]}')
+                        
+                        if source_v in source_data.data["variables"]:
+                            val = source_data.data["variables"][source_v]["data"]
+                            direct_map[v_name].append(val)
+                            self.logger.debug(f"MAPPED [LIVE]: Clock={get_datetime_string()} PacketTime={source_time} BucketTime={indexed_time} InnerVar='{source_v}' -> VarmapVar='{v_name}' = {val}")
+                        else:
+                            self.logger.debug(f"MISSING: Clock={get_datetime_string()} PacketTime={source_time} BucketTime={indexed_time} Inbound lacks source variable '{source_v}' (expected for '{v_name}')")
 
         except Exception as e:
             self.logger.error("update_variableset_by_source", extra={"reason": e})
-
-
-    # async def update_variableset_by_source(
-    #     self, source_id: str, source_data: CloudEvent
-    # ):
-    #     pass
-    #     if source_id not in self.variablesets["sources"]:
-    #         return
-    #     # for vs_id in self.variablesets["sources"][source_id]:
-    #     #     self.update_variable_by_id(
-    #     #         vs_id=vs_id, source_id=source_id, source_data=source_data
-    #     #     )
-    #     self.update_variable_by_id(vs_map=self.variablesets["sources"][source_id], source_id=source_id, source_data=source_data)
-    #     # loop through mapped vars in source_id
-    #     #
-    #     for vs_id, var_map in self.variablesets["sources"]["direct"].items():
-    #         source_time = source_data.data["variables"]["time"]["data"]
-    #         if self.is_valid_variable_set(vs_id=vs_id, time=source_time):
-    #             self.update_variable_by_id(vs_id=vs_id, vs_variable=var_map["variable"], source_data=source_data)
 
     async def update_variable_by_id(
         # self, vs_map: dict, source_id: str, source_data: CloudEvent
@@ -1178,23 +1863,47 @@ class SamplingSystem:
         )
         return indexed_time
 
-    async def get_index_value(self, index: dict, source_time: str):
+    # async def get_index_value(self, index: dict, source_time: str):
 
-        if index["index_type"] == "time":
-            tb = index["index_value"]
+    #     if index["index_type"] == "time":
+    #         tb = index["index_value"]
 
-            # source_time = source_data.data["variables"]["time"]["data"]
-            tb_time = self.round_to_nearest_N_seconds(
-                dt_string=source_time, timebase=tb
-            )
+    #         # source_time = source_data.data["variables"]["time"]["data"]
+    #         tb_time = self.round_to_nearest_N_seconds(
+    #             dt_string=source_time, timebase=tb
+    #         )
 
+    async def get_indexed_time_value(self, index_time: int, source_time: str):
+        # --- 1. Initialize the math cache if it doesn't exist ---
+        if not hasattr(self, "_time_math_cache"):
+            self._time_math_cache = {}
+            
+        # --- 2. Check the cache first (Ultra-fast O(1) lookup) ---
+        cache_key = f"{index_time}_{source_time}"
+        if cache_key in self._time_math_cache:
+            return self._time_math_cache[cache_key]
+            
+        # --- 3. Perform the true, mathematically accurate ISO rounding ---
+        indexed_time = self.get_timebase_period(
+            dt_string=source_time, timebase=index_time
+        )
+        
+        # --- 4. Save the result and prevent memory leaks ---
+        self._time_math_cache[cache_key] = indexed_time
+        
+        # Keep the cache small. 500 entries is plenty to cover the active tick window.
+        if len(self._time_math_cache) > 500:
+            self._time_math_cache.pop(next(iter(self._time_math_cache)))
+            
+        return indexed_time
+    
     def get_timebase_period(self, dt_string: str, timebase: int) -> str:
-        self.logger.debug("get_timebase_period", extra={"dt_string": dt_string, "timebase": timebase})
+        # self.logger.debug("get_timebase_period", extra={"dt_string": dt_string, "timebase": timebase})
         dt = string_to_datetime(dt_string)
-        self.logger.debug("get_timebase_period", extra={"dt": dt})
+        # self.logger.debug("get_timebase_period", extra={"dt": dt})
         dt_period = round_to_nearest_N_seconds(dt=dt, Nsec=timebase)
-        self.logger.debug("get_timebase_period", extra={"dt_period": dt_period})
-        self.logger.debug("get_timebase_period", extra={"period": datetime_to_string(dt_period)})
+        # self.logger.debug("get_timebase_period", extra={"dt_period": dt_period})
+        # self.logger.debug("get_timebase_period", extra={"period": datetime_to_string(dt_period)})
         if dt_period:
             return datetime_to_string(dt_period)
         else:
@@ -1234,105 +1943,185 @@ class SamplingSystem:
     #         result = ""
     #     return result
 
-    async def index_time_monitor(self, timebase: int):
+    # async def index_time_monitor(self, timebase: int):
 
-        # while True:
-        #     dt = get_datetime()
-        #     self.logger.debug("index_time_monitor", extra={"current_dt": dt, "timebase": timebase})
-        #     self.logger.debug("index_time_monitor", extra={"current_dt_period": round_to_nearest_N_seconds(dt=dt, Nsec=timebase)})
-        #     await asyncio.sleep(1)
+    #     # while True:
+    #     #     dt = get_datetime()
+    #     #     self.logger.debug("index_time_monitor", extra={"current_dt": dt, "timebase": timebase})
+    #     #     self.logger.debug("index_time_monitor", extra={"current_dt_period": round_to_nearest_N_seconds(dt=dt, Nsec=timebase)})
+    #     #     await asyncio.sleep(1)
+
+    #     try:
+    #         current_dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
+    #         self.logger.debug("index_time_monitor", extra={"current_dt": current_dt_period, "timebase": timebase})
+    #         last_dt_period = None
+    #         if timebase <= 5:
+    #             threshhold_direct = 0.75 * timebase
+    #             threshhold_final = 0.9 * timebase
+    #             update_threshhold = 0.8 * timebase
+    #         else:
+    #             threshhold_direct = 0.6 * timebase
+    #             threshhold_final = 0.75 * timebase
+    #             update_threshhold = 0.7 * timebase
+    #     except Exception as e:
+    #         self.logger.error("index_time_monitor-init", extra={"reason": e})
+
+    #     while True:
+    #         try:
+    #             # create timestamp for current interval and save to index values
+    #             # self.logger.debug("index_time_monitor: here")
+    #             dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
+    #             # self.logger.debug("index_time_monitor", extra={"dt_period": dt_period})
+
+    #             # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "dt_period": dt_period, "last_dt": last_dt_period})
+    #             if dt_period != current_dt_period:
+    #                 # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
+    #                 last_dt_period = current_dt_period
+    #                 current_dt_period = dt_period
+    #                 # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
+    #             # await asyncio.sleep(1)
+    #             # continue
+    #             # # get list of vs from self.variablesets["indices"]["time"][timebase]
+    #             # get all? valid variable maps based on time?
+    #             # loop through list of vs in each valid vm and update if index_type and value match
+
+
+    #             # current_time_period = timestamp_to_string(current_dt_period)
+    #             # target_vm = await self.get_variablemap_by_revision_time(
+    #             #     variablemap=variablemap, target_time=current_time_period
+    #             # )
+
+    #             # if current_time_period not in self.platform_variablesets["maps"][variablemap]["indices"]["timebase"][timebase]:
+    #             # if current_time_period not in target_vm["indices"]["timebase"][timebase]:
+    #             #     # self.platform_variablesets["maps"][variablemap]["indices"]["timebase"][timebase].append(current_time_period)
+    #             #     target_vm["indices"]["timebase"][timebase].append(current_time_period)
+
+    #             # check if current time is greater than threshold to create previous interval variableset
+    #             #   e.g., if tb=1, wait for next second, if tb>1, wait for 0.6*tb to pass (tb=10, wait for 6sec to pass)
+    #             if last_dt_period:
+    #                 # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
+    #                 if seconds_elapsed(initial_dt=last_dt_period) >= update_threshhold:
+    #                     self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
+    #                     last_time_period = datetime_to_string(last_dt_period)
+    #                     update = {
+    #                         # "variablemap": variablemap,
+    #                         # "variablemap_revision_time": target_vm["revision-time"],
+    #                         "index_type": "time",
+    #                         "index_value": timebase,
+    #                         "update_type": "update",
+    #                         "index_ready": last_time_period,
+    #                     }                   
+    #                     self.logger.debug("index_time_monitor", extra={"upate": update})
+    #                     await self.index_ready_buffer.put(update)
+    #                     last_dt_period = None
+
+    #                 # if seconds_elapsed(initial_dt=last_dt_period) >= threshhold_direct:
+    #                 #     update = {
+    #                 #         # "variablemap": variablemap,
+    #                 #         # "variablemap_revision_time": target_vm["revision-time"],
+    #                 #         "index_type": "time",
+    #                 #         "index_value": timebase,
+    #                 #         "update_type": "direct",
+    #                 #         "index_ready": last_time_period,
+    #                 #     }
+    #                 #     # await self.direct_timebase_ready_buffer.put(last_time_period)
+    #                 #     await self.index_ready_buffer.put(update)
+
+    #                 # elif seconds_elapsed(initial_dt=last_dt_period) >= threshhold_final:
+    #                 #     update = {
+    #                 #         # "variablemap": variablemap,
+    #                 #         # "variablemap_revision_time": target_vm["revision-time"],
+    #                 #         "index_type": "time",
+    #                 #         "index_value": timebase,
+    #                 #         "update_type": "final",
+    #                 #         "index_ready": last_time_period,
+    #                 #     }
+    #                     # await self.direct_timebase_ready_buffer.put(last_time_period)
+    #                     # await self.index_ready_buffer.put(update)
+    #         except Exception as e:
+    #             self.logger.error("index_time_monitor", extra={"reason": e})
+        
+    #             # await asyncio.sleep(time_to_next(timebase))
+    #         await asyncio.sleep(0.1)
+
+    async def index_time_monitor(self, timebase: int):
+        # try:
+        #     # Define our Two-Tier Thresholds
+        #     if timebase <= 5:
+        #         # thresh_direct = 0.8 * timebase
+        #         # thresh_calc = 1.5 * timebase  # 1.5 seconds for 1Hz
+        #         # --- WIDENED WINDOW FOR NETWORK LAG ---
+        #         thresh_direct = 4.0 
+        #         thresh_calc = 5.0 
+        #         # --------------------------------------
+        #     else:
+        #         thresh_direct = 0.7 * timebase
+        #         thresh_calc = 1.2 * timebase
+        # except Exception as e:
+        #     self.logger.error("index_time_monitor-init", extra={"reason": str(e)})
 
         try:
-            current_dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
-            self.logger.debug("index_time_monitor", extra={"current_dt": current_dt_period, "timebase": timebase})
-            last_dt_period = None
-            if timebase <= 5:
-                threshhold_direct = 0.75 * timebase
-                threshhold_final = 0.9 * timebase
-                update_threshhold = 0.8 * timebase
-            else:
-                threshhold_direct = 0.6 * timebase
-                threshhold_final = 0.75 * timebase
-                update_threshhold = 0.7 * timebase
+            # --- UNIVERSAL MATH (No more if/else limits) ---
+            # 1. The rounded time bucket mathematically finishes accumulating data at (timebase / 2.0)
+            bucket_close = timebase / 2.0
+            
+            # 2. Add our configurable grace period for network transit
+            thresh_direct = bucket_close + self.config.tick_delay_direct
+            thresh_calc = bucket_close + self.config.tick_delay_calc
+            # -----------------------------------------------
         except Exception as e:
-            self.logger.error("index_time_monitor-init", extra={"reason": e})
+            self.logger.error("index_time_monitor-init", extra={"reason": str(e)})
+
+
+        # Dictionary to track multiple overlapping time periods safely
+        active_periods = {}
 
         while True:
             try:
-                # create timestamp for current interval and save to index values
-                # self.logger.debug("index_time_monitor: here")
                 dt_period = round_to_nearest_N_seconds(dt=get_datetime(), Nsec=timebase)
-                # self.logger.debug("index_time_monitor", extra={"dt_period": dt_period})
+                period_str = datetime_to_string(dt_period)
 
-                # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "dt_period": dt_period, "last_dt": last_dt_period})
-                if dt_period != current_dt_period:
-                    # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
-                    last_dt_period = current_dt_period
-                    current_dt_period = dt_period
-                    # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
-                # await asyncio.sleep(1)
-                # continue
-                # # get list of vs from self.variablesets["indices"]["time"][timebase]
-                # get all? valid variable maps based on time?
-                # loop through list of vs in each valid vm and update if index_type and value match
+                # Register new time periods as they occur
+                if period_str not in active_periods:
+                    active_periods[period_str] = {
+                        "dt": dt_period,
+                        "direct_sent": False,
+                        "calculated_sent": False
+                    }
 
+                # Evaluate all active periods independently
+                for p_str, state in list(active_periods.items()):
+                    elapsed = seconds_elapsed(initial_dt=state["dt"])
 
-                # current_time_period = timestamp_to_string(current_dt_period)
-                # target_vm = await self.get_variablemap_by_revision_time(
-                #     variablemap=variablemap, target_time=current_time_period
-                # )
-
-                # if current_time_period not in self.platform_variablesets["maps"][variablemap]["indices"]["timebase"][timebase]:
-                # if current_time_period not in target_vm["indices"]["timebase"][timebase]:
-                #     # self.platform_variablesets["maps"][variablemap]["indices"]["timebase"][timebase].append(current_time_period)
-                #     target_vm["indices"]["timebase"][timebase].append(current_time_period)
-
-                # check if current time is greater than threshold to create previous interval variableset
-                #   e.g., if tb=1, wait for next second, if tb>1, wait for 0.6*tb to pass (tb=10, wait for 6sec to pass)
-                if last_dt_period:
-                    # self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
-                    if seconds_elapsed(initial_dt=last_dt_period) >= update_threshhold:
-                        self.logger.debug("index_time_monitor", extra={"timebase": timebase, "current_dt": current_dt_period, "last_dt": last_dt_period})
-                        last_time_period = datetime_to_string(last_dt_period)
+                    # TIER 1: Raw / Direct Data
+                    if elapsed >= thresh_direct and not state["direct_sent"]:
                         update = {
-                            # "variablemap": variablemap,
-                            # "variablemap_revision_time": target_vm["revision-time"],
                             "index_type": "time",
                             "index_value": timebase,
-                            "update_type": "update",
-                            "index_ready": last_time_period,
-                        }                   
-                        self.logger.debug("index_time_monitor", extra={"upate": update})
+                            "update_type": "direct",  # Flag as Tier 1
+                            "index_ready": p_str,
+                        }
                         await self.index_ready_buffer.put(update)
-                        last_dt_period = None
+                        state["direct_sent"] = True
 
-                    # if seconds_elapsed(initial_dt=last_dt_period) >= threshhold_direct:
-                    #     update = {
-                    #         # "variablemap": variablemap,
-                    #         # "variablemap_revision_time": target_vm["revision-time"],
-                    #         "index_type": "time",
-                    #         "index_value": timebase,
-                    #         "update_type": "direct",
-                    #         "index_ready": last_time_period,
-                    #     }
-                    #     # await self.direct_timebase_ready_buffer.put(last_time_period)
-                    #     await self.index_ready_buffer.put(update)
+                    # TIER 2: Calculated / Derived Data
+                    if elapsed >= thresh_calc and not state["calculated_sent"]:
+                        update = {
+                            "index_type": "time",
+                            "index_value": timebase,
+                            "update_type": "calculated", # Flag as Tier 2
+                            "index_ready": p_str,
+                        }
+                        await self.index_ready_buffer.put(update)
+                        state["calculated_sent"] = True
 
-                    # elif seconds_elapsed(initial_dt=last_dt_period) >= threshhold_final:
-                    #     update = {
-                    #         # "variablemap": variablemap,
-                    #         # "variablemap_revision_time": target_vm["revision-time"],
-                    #         "index_type": "time",
-                    #         "index_value": timebase,
-                    #         "update_type": "final",
-                    #         "index_ready": last_time_period,
-                    #     }
-                        # await self.direct_timebase_ready_buffer.put(last_time_period)
-                        # await self.index_ready_buffer.put(update)
+                    # Cleanup periods only after both tiers have fired
+                    if state["direct_sent"] and state["calculated_sent"]:
+                        del active_periods[p_str]
+                        
             except Exception as e:
-                self.logger.error("index_time_monitor", extra={"reason": e})
-        
-                # await asyncio.sleep(time_to_next(timebase))
+                self.logger.error("index_time_monitor", extra={"reason": str(e)})
+            
             await asyncio.sleep(0.1)
 
     # async def index_time_monitor_bak(self, variablemap: str, timebase: int):
@@ -1556,295 +2345,1502 @@ class SamplingSystem:
     #     except Exception as e:
     #         self.logger.error("update_timebase_variableset_by_index", extra={"reason": e})
 
-    async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict):
+    # async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict):
+    #     map_type = "direct"
+    #     try:
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"time_index": time_index})
+
+    #         index_type = time_index["index_type"]
+    #         index_value = time_index["index_value"]
+    #         update_type = time_index["update_type"]
+    #         target_time = time_index["index_ready"]
+
+    #         # for k,v in variablemap.items():
+    #         #     print(f"update_direct_variable_by_time_index: {k}: {v}")
+
+    #         # self.logger.debug("update_direct_variable_by_time_index", extra={"var_map": type(variablemap)})
+
+    #         # variableset = variablemap["variablesets"][variableset_name]
+    #         # indexed_data = variablemap["indexed"]["data"][time_index["index_ready"]][variableset_name]
+    #         indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][map_type][variableset_name][variable_name]
+            
+    #         # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type]})
+    #         # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type][index_value]})
+    #         # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type][index_value]["data"]})
+
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"indexed_data": indexed_data})
+            
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"variableset_record": variableset_record})
+
+
+    #         #TODO handle multi-d data
+    #         # if len(indexed_data) == 0:
+    #         #     if variableset_record["type"] in ["string", "str", "char"]:
+    #         #         val = ""
+    #         #     else:
+    #         #         val = None
+    #         # elif len(indexed_data) == 1:
+    #         #     val = indexed_data[0]
+    #         # else:
+    #         #     if variableset_record["type"] in ["string", "str", "char"]:
+    #         #         val = indexed_data[0]
+    #         #     else:
+    #         #         val = round(
+    #         #             sum(indexed_data)
+    #         #             / len(indexed_data),
+    #         #             3,
+    #         #         )
+
+    #         # variableset_record["variables"][variable_name]["data"] = val
+
+    #         if len(indexed_data) == 0:
+    #             # FIX: Check specific variable type
+    #             if variableset_record["variables"][variable_name]["type"] in ["string", "str", "char"]:
+    #                 val = ""
+    #             else:
+    #                 val = None
+    #         elif len(indexed_data) == 1:
+    #             val = indexed_data[0]
+    #         else:
+    #             # FIX: Check specific variable type
+    #             if variableset_record["variables"][variable_name]["type"] in ["string", "str", "char"]:
+    #                 val = indexed_data[0]
+    #             else:
+    #                 val = round(
+    #                     sum(indexed_data)
+    #                     / len(indexed_data),
+    #                     3,
+    #                 )
+
+    #         variableset_record["variables"][variable_name]["data"] = val
+
+
+    #     except Exception as e:
+    #         self.logger.error("update_direct_variable_by_time_index", extra={"reason": e})
+
+    #     return
+
+    # async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict):
+    #     map_type = "direct"
+    #     try:
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"time_index": time_index})
+
+    #         index_type = time_index["index_type"]
+    #         index_value = time_index["index_value"]
+    #         target_time = time_index["index_ready"]
+
+    #         indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][map_type][variableset_name][variable_name]
+            
+    #         # Fetch the target variable's details to determine its shape
+    #         var_record = variableset_record["variables"][variable_name]
+    #         v_type = var_record.get("type", "float")
+    #         shape = var_record.get("shape", ["time"])
+
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"indexed_data": indexed_data})
+    #         self.logger.debug("update_direct_variable_by_time_index", extra={"variableset_record": variableset_record})
+
+    #         if len(indexed_data) == 0:
+    #             if v_type in ["string", "str", "char"]:
+    #                 val = ""
+    #             else:
+    #                 val = None
+    #         elif len(indexed_data) == 1:
+    #             val = indexed_data[0]
+    #         else:
+    #             if v_type in ["string", "str", "char"]:
+    #                 val = indexed_data[0]
+    #             else:
+    #                 # Check if data is 2-dimensional (e.g., ["time", "diameter"])
+    #                 if len(shape) > 1:
+    #                     try:
+    #                         # Use zip(*...) to transpose the list of lists and perform element-wise averaging
+    #                         val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
+    #                     except Exception as e:
+    #                         self.logger.error("2D averaging error", extra={"reason": e})
+    #                         val = indexed_data[0] # Fallback to first array if averaging fails
+    #                 else:
+    #                     # Standard 1D average
+    #                     val = round(
+    #                         sum(indexed_data) / len(indexed_data),
+    #                         3,
+    #                     )
+
+    #         variableset_record["variables"][variable_name]["data"] = val
+
+    #     except Exception as e:
+    #         self.logger.error("update_direct_variable_by_time_index", extra={"reason": e})
+
+    #     return
+
+    # async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict, data_buffer: dict = None):
+    #     map_type = "direct"
+    #     try:
+    #         # Safely fetch the array of data that arrived. If none arrived, returns an empty list []
+    #         if data_buffer is not None:
+    #             indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
+    #         else:
+    #             indexed_data = []
+            
+    #         # Fetch the target variable's details
+    #         var_record = variableset_record["variables"][variable_name]
+    #         v_type = var_record.get("type", "float")
+    #         shape = var_record.get("shape", ["time"])
+            
+    #         # Determine the configured indexing method (Default to average)
+    #         index_method = var_record.get("attributes", {}).get("index_method", {}).get("data", "average").lower()
+
+    #         val = None
+            
+    #         if len(indexed_data) == 0:
+    #             if v_type in ["string", "str", "char"]:
+    #                 val = ""
+    #             else:
+    #                 val = None
+                    
+    #         elif len(indexed_data) == 1:
+    #             val = indexed_data[0]
+                
+    #         else:
+    #             if v_type in ["string", "str", "char"]:
+    #                 val = indexed_data[-1]  # Safest default for multiple string arrivals is the newest one
+    #             else:
+    #                 # Apply specific math based on index_method
+    #                 if index_method == "last":
+    #                     val = indexed_data[-1]
+    #                 elif index_method == "first":
+    #                     val = indexed_data[0]
+    #                 elif index_method == "max":
+    #                     val = max(indexed_data)
+    #                 elif index_method == "min":
+    #                     val = min(indexed_data)
+    #                 else: # average / mean
+    #                     if len(shape) > 1:
+    #                         try:
+    #                             # Element-wise averaging for 2D arrays (e.g., ["time", "diameter"])
+    #                             val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
+    #                         except Exception as e:
+    #                             self.logger.error("2D averaging error", extra={"reason": str(e)})
+    #                             val = indexed_data[-1]
+    #                     else:
+    #                         # Standard 1D average
+    #                         val = round(sum(indexed_data) / len(indexed_data), 3)
+
+    #         # Apply the evaluated value
+    #         variableset_record["variables"][variable_name]["data"] = val
+
+    #     except Exception as e:
+    #         self.logger.error("update_direct_variable_by_time_index", extra={"reason": str(e)})
+
+    #     return
+
+    def normalize_unit_string(self, unit_str: str) -> str:
+        """
+        Converts UDUNITS/CF style unit exponents (like cm3 min-1 or W m-2)
+        into Pint-compatible explicit exponent formats (cm**3 min**-1)
+        to prevent the parser from interpreting dashes as subtraction.
+        """
+        if not unit_str or not isinstance(unit_str, str):
+            return unit_str
+        import re
+        # return re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
+    
+        s = re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
+        
+        # ---> THE FIX: Map common string abbreviations that the strict Pint parser rejects <---
+        s = s.replace("kilometers/hour", "km/h")  # <-- Added Furuno exact match
+        s = s.replace("km/hr", "km/h")
+        s = s.replace("m/sec", "m/s")
+        s = s.replace("knots", "knot")
+        
+        return s
+    
+    # async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict, data_buffer: dict = None):
+    #     map_type = "direct"
+    #     try:
+    #         target_time = time_index["index_ready"]
+    #         var_record = variableset_record["variables"][variable_name]
+
+    #         # --- Coordinate Fast-Path ---
+    #         attr_var_type = var_record.get("attributes", {}).get("variable_type", {}).get("data", "")
+    #         if attr_var_type == "coordinate":
+    #             static_array = var_record.get("attributes", {}).get("static_data", {}).get("data", [])
+                
+    #             # --- APPLY UNIT CONVERSION TO COORDINATES ---
+    #             target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+    #             native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                
+    #             if static_array and target_unit and native_unit and target_unit != native_unit:
+    #                 try:
+    #                     norm_native = self.normalize_unit_string(native_unit)
+    #                     norm_target = self.normalize_unit_string(target_unit)
+                        
+    #                     data_quantity = ureg.Quantity(static_array, norm_native)
+    #                     converted = data_quantity.to(norm_target).magnitude
+                        
+    #                     if isinstance(static_array, list):
+    #                         if hasattr(converted, "tolist"):
+    #                             static_array = [round(float(v), 3) for v in converted.tolist()]
+    #                         else:
+    #                             static_array = [round(float(v), 3) for v in converted]
+    #                     else:
+    #                         static_array = round(float(converted), 3)
+    #                 except Exception as e:
+    #                     self.logger.error("Unit conversion failed for coordinate", extra={"variable": variable_name, "reason": str(e)})
+
+    #             # Instantly yield the static array we hydrated earlier and exit
+    #             variableset_record["variables"][variable_name]["data"] = static_array
+    #             self.logger.debug(f"EVALUATED [COORDINATE]: Clock={get_datetime_string()} BinTime={target_time} Var='{variableset_name}::{variable_name}' = {static_array}")
+    #             return
+
+    #         if data_buffer is not None:
+    #             indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
+    #         else:
+    #             indexed_data = []
+            
+    #         v_type = var_record.get("type", "float")
+    #         var_class = var_record.get("variable_type", "sensor") 
+    #         shape = var_record.get("shape", ["time"])
+            
+    #         raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
+            
+    #         idx_meth_raw = raw_var_def.get("index_method", "average")
+    #         if isinstance(idx_meth_raw, list) and len(idx_meth_raw) > 0:
+    #             index_method = idx_meth_raw[-1].lower()
+    #         elif isinstance(idx_meth_raw, str):
+    #             index_method = idx_meth_raw.lower()
+    #         else:
+    #             index_method = "average"
+
+    #         fill_strat = raw_var_def.get("fill_strategy", {})
+    #         fill_method = fill_strat.get("method", "forward_fill" if var_class == "setting" else "none")
+    #         max_age_seconds = fill_strat.get("max_age_seconds", 10)
+
+    #         varmap_name = variablemap.get("variablemap", {}).get("metadata", {}).get("name", "unknown")
+    #         cache_key = f"{varmap_name}::{variableset_name}::{variable_name}"
+
+    #         val = None
+            
+    #         # --- EVALUATION LOGIC ---
+    #         if len(indexed_data) == 0:
+    #             if fill_method == "forward_fill" and cache_key in self.forward_fill_cache:
+    #                 cached_record = self.forward_fill_cache[cache_key]
+    #                 cached_time_str = cached_record["timestamp"]
+                    
+    #                 try:
+    #                     target_dt = string_to_datetime(target_time)
+    #                     cached_dt = string_to_datetime(cached_time_str)
+    #                     age = (target_dt - cached_dt).total_seconds()
+                        
+    #                     if age <= max_age_seconds:
+    #                         val = cached_record["val"] 
+    #                     else:
+    #                         val = "" if v_type in ["string", "str", "char"] else None
+    #                 except Exception as e:
+    #                     self.logger.error("Error calculating cache age", extra={"reason": str(e)})
+    #                     val = "" if v_type in ["string", "str", "char"] else None
+    #             else:
+    #                 val = "" if v_type in ["string", "str", "char"] else None
+            
+    #         else:
+    #             if len(indexed_data) == 1:
+    #                 val = indexed_data[0]
+    #             else:
+    #                 if v_type in ["string", "str", "char"]:
+    #                     val = indexed_data[-1] 
+    #                 else:
+    #                     if index_method == "last":
+    #                         val = indexed_data[-1]
+    #                     elif index_method == "first":
+    #                         val = indexed_data[0]
+    #                     elif index_method == "max":
+    #                         val = max(indexed_data)
+    #                     elif index_method == "min":
+    #                         val = min(indexed_data)
+    #                     else: 
+    #                         if len(shape) > 1:
+    #                             try:
+    #                                 val = [round(sum(col) / len(col), 3) for col in zip(*indexed_data)]
+    #                             except Exception as e:
+    #                                 self.logger.error("2D averaging error", extra={"reason": str(e)})
+    #                                 val = indexed_data[-1]
+    #                         else:
+    #                             val = round(sum(indexed_data) / len(indexed_data), 3)
+
+    #         # --- UNIT CONVERSION LOGIC ---
+    #         if val is not None and val != "":
+    #             # 1. Enforce the data type defined in the hydrated schema
+    #             if v_type in ["float", "double"] and not isinstance(val, float):
+    #                 try:
+    #                     val = float(val)
+    #                 except (ValueError, TypeError):
+    #                     pass
+    #             elif v_type in ["int", "integer"] and not isinstance(val, int):
+    #                 try:
+    #                     val = int(float(val))
+    #                 except (ValueError, TypeError):
+    #                     pass
+                
+    #             target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+    #             native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                
+    #             # DEBUG: Print exactly what the conversion engine sees before doing anything
+    #             self.logger.info(
+    #                 f"CONVERSION CHECK [{variable_name}]: "
+    #                 f"val={val} (type={type(val).__name__}), "
+    #                 f"native={native_unit}, target={target_unit}"
+    #             )
+
+    #             # Coerce string representations of numbers (e.g. "14.2") into actual floats
+    #             if isinstance(val, str) and v_type not in ["string", "str", "char"]:
+    #                 try:
+    #                     val = float(val)
+    #                 except (ValueError, TypeError):
+    #                     pass
+                        
+    #             if isinstance(val, (int, float, list)):
+    #                 if target_unit and native_unit and target_unit != native_unit:
+    #                     try:
+    #                         norm_native = self.normalize_unit_string(native_unit)
+    #                         norm_target = self.normalize_unit_string(target_unit)
+                            
+    #                         data_quantity = ureg.Quantity(val, norm_native)
+    #                         converted = data_quantity.to(norm_target).magnitude
+                            
+    #                         if isinstance(val, list):
+    #                             if hasattr(converted, "tolist"):
+    #                                 val = [round(float(v), 3) for v in converted.tolist()]
+    #                             else:
+    #                                 val = [round(float(v), 3) for v in converted]
+    #                         else:
+    #                             val = round(float(converted), 3)
+                                
+    #                         self.logger.info(f"CONVERSION SUCCESS [{variable_name}]: {data_quantity.magnitude} {norm_native} -> {val} {norm_target}")
+    #                     except Exception as e:
+    #                         self.logger.error("Unit conversion failed", extra={"variable": variable_name, "native": native_unit, "target": target_unit, "reason": str(e)})
+
+    #                 # --- UPDATE CACHE ---
+    #                 self.forward_fill_cache[cache_key] = {
+    #                     "val": val,
+    #                     "timestamp": target_time
+    #                 }
+
+    #         variableset_record["variables"][variable_name]["data"] = val
+    #         self.logger.debug(f"EVALUATED [DIRECT]: Clock={get_datetime_string()} BinTime={target_time} Var='{variableset_name}::{variable_name}' = {val}")
+
+    #     except Exception as e:
+    #         self.logger.error("update_direct_variable_by_time_index", extra={"reason": str(e)})
+
+    #     return
+        
+    async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict, data_buffer: dict = None):
         map_type = "direct"
         try:
-            self.logger.debug("update_direct_variable_by_time_index", extra={"time_index": time_index})
-
-            index_type = time_index["index_type"]
-            index_value = time_index["index_value"]
-            update_type = time_index["update_type"]
             target_time = time_index["index_ready"]
+            var_record = variableset_record["variables"][variable_name]
 
-            for k,v in variablemap.items():
-                print(f"update_direct_variable_by_time_index: {k}: {v}")
+            # --- Coordinate Fast-Path ---
+            attr_var_type = var_record.get("attributes", {}).get("variable_type", {}).get("data", "")
+            if attr_var_type == "coordinate":
+                static_array = var_record.get("attributes", {}).get("static_data", {}).get("data", [])
+                
+                # --- APPLY UNIT CONVERSION TO COORDINATES ---
+                target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+                native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                
+                if static_array and target_unit and native_unit and target_unit != native_unit:
+                    try:
+                        norm_native = self.normalize_unit_string(native_unit)
+                        norm_target = self.normalize_unit_string(target_unit)
+                        
+                        data_quantity = ureg.Quantity(static_array, norm_native)
+                        converted = data_quantity.to(norm_target).magnitude
+                        
+                        if isinstance(static_array, list):
+                            if hasattr(converted, "tolist"):
+                                static_array = [round(float(v), 3) for v in converted.tolist()]
+                            else:
+                                static_array = [round(float(v), 3) for v in converted]
+                        else:
+                            static_array = round(float(converted), 3)
+                    except Exception as e:
+                        self.logger.error("Unit conversion failed for coordinate", extra={"variable": variable_name, "reason": str(e)})
 
-            self.logger.debug("update_direct_variable_by_time_index", extra={"var_map": type(variablemap)})
+                # Instantly yield the static array we hydrated earlier and exit
+                variableset_record["variables"][variable_name]["data"] = static_array
+                self.logger.debug(f"EVALUATED [COORDINATE]: Clock={get_datetime_string()} BinTime={target_time} Var='{variableset_name}::{variable_name}' = {static_array}")
+                return
 
-            # variableset = variablemap["variablesets"][variableset_name]
-            # indexed_data = variablemap["indexed"]["data"][time_index["index_ready"]][variableset_name]
-            indexed_data = variablemap["indexed"][index_type][index_value]["data"][target_time][map_type][variableset_name][variable_name]
-            
-            # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type]})
-            # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type][index_value]})
-            # self.logger.debug("update_direct_variable_by_time_index", extra={"variable_map": variablemap["indexed"][index_type][index_value]["data"]})
-
-            self.logger.debug("update_direct_variable_by_time_index", extra={"indexed_data": indexed_data})
-            
-            self.logger.debug("update_direct_variable_by_time_index", extra={"variableset_record": variableset_record})
-
-
-            #TODO handle multi-d data
-            if len(indexed_data) == 0:
-                if variableset_record["type"] in ["string", "str", "char"]:
-                    val = ""
-                else:
-                    val = None
-            elif len(indexed_data) == 1:
-                val = indexed_data[0]
+            if data_buffer is not None:
+                raw_indexed_data = data_buffer.get(map_type, {}).get(variableset_name, {}).get(variable_name, [])
             else:
-                if variableset_record["type"] in ["string", "str", "char"]:
+                raw_indexed_data = []
+            
+            v_type = var_record.get("type", "float")
+            var_class = var_record.get("variable_type", "sensor") 
+            shape = var_record.get("shape", ["time"])
+            
+            # --- PRE-PROCESS RAW DATA (Type Coercion & Array Deserialization) ---
+            indexed_data = []
+            for raw_val in raw_indexed_data:
+                if raw_val is None or raw_val == "":
+                    indexed_data.append(np.nan)
+                    continue
+
+                if isinstance(raw_val, str):
+                    val_s = raw_val.strip()
+                    if val_s.startswith("[") and val_s.endswith("]"):
+                        try:
+                            raw_val = json.loads(val_s)
+                        except Exception:
+                            pass
+                    elif "," in val_s:
+                        raw_val = val_s.split(",")
+
+                if isinstance(raw_val, list):
+                    clean_val = []
+                    for v in raw_val:
+                        if v is None or str(v).strip() == "":
+                            clean_val.append(np.nan)
+                        else:
+                            try:
+                                clean_val.append(float(v))
+                            except (ValueError, TypeError):
+                                clean_val.append(np.nan)
+                    indexed_data.append(clean_val)
+
+                elif not isinstance(raw_val, (list, np.ndarray)):
+                    if v_type in ["float", "double"] and not isinstance(raw_val, float):
+                        try:
+                            raw_val = float(raw_val)
+                        except (ValueError, TypeError):
+                            raw_val = np.nan
+                    elif v_type in ["int", "integer"] and not isinstance(raw_val, int):
+                        try:
+                            raw_val = int(float(raw_val))
+                        except (ValueError, TypeError):
+                            raw_val = np.nan
+                    indexed_data.append(raw_val)
+                else:
+                    indexed_data.append(raw_val)
+            # --------------------------------------------------------------------
+
+            raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
+            
+            idx_meth_raw = raw_var_def.get("index_method", "average")
+            if isinstance(idx_meth_raw, list) and len(idx_meth_raw) > 0:
+                index_method = idx_meth_raw[-1].lower()
+            elif isinstance(idx_meth_raw, str):
+                index_method = idx_meth_raw.lower()
+            else:
+                index_method = "average"
+
+            fill_strat = raw_var_def.get("fill_strategy", {})
+            fill_method = fill_strat.get("method", "forward_fill" if var_class == "setting" else "none")
+            max_age_seconds = fill_strat.get("max_age_seconds", 10)
+
+            varmap_name = variablemap.get("variablemap", {}).get("metadata", {}).get("name", "unknown")
+            cache_key = f"{varmap_name}::{variableset_name}::{variable_name}"
+
+            val = None
+            
+            # --- EVALUATION LOGIC ---
+            if len(indexed_data) == 0:
+                if fill_method == "forward_fill" and cache_key in self.forward_fill_cache:
+                    cached_record = self.forward_fill_cache[cache_key]
+                    cached_time_str = cached_record["timestamp"]
+                    
+                    try:
+                        target_dt = string_to_datetime(target_time)
+                        cached_dt = string_to_datetime(cached_time_str)
+                        age = (target_dt - cached_dt).total_seconds()
+                        
+                        if age <= max_age_seconds:
+                            val = cached_record["val"] 
+                        else:
+                            val = "" if v_type in ["string", "str", "char"] else None
+                    except Exception as e:
+                        self.logger.error("Error calculating cache age", extra={"reason": str(e)})
+                        val = "" if v_type in ["string", "str", "char"] else None
+                else:
+                    val = "" if v_type in ["string", "str", "char"] else None
+            
+            else:
+                if len(indexed_data) == 1:
                     val = indexed_data[0]
                 else:
-                    val = round(
-                        sum(indexed_data)
-                        / len(indexed_data),
-                        3,
-                    )
+                    if v_type in ["string", "str", "char"]:
+                        valid_strs = [s for s in indexed_data if not (isinstance(s, float) and np.isnan(s))]
+                        val = valid_strs[-1] if valid_strs else ""
+                    else:
+                        if index_method == "last":
+                            val = indexed_data[-1]
+                        elif index_method == "first":
+                            val = indexed_data[0]
+                        elif index_method == "max":
+                            with np.errstate(all='ignore'):
+                                val = float(np.nanmax(indexed_data))
+                        elif index_method == "min":
+                            with np.errstate(all='ignore'):
+                                val = float(np.nanmin(indexed_data))
+                        else: 
+                            if len(shape) > 1:
+                                try:
+                                    # Pad 2D arrays to identical lengths to prevent zip/numpy truncation
+                                    max_len = max([len(v) if isinstance(v, (list, np.ndarray)) else 1 for v in indexed_data])
+                                    padded = []
+                                    for v in indexed_data:
+                                        if isinstance(v, (list, np.ndarray)):
+                                            v_list = list(v) if isinstance(v, np.ndarray) else v
+                                            padded.append(v_list + [np.nan] * (max_len - len(v_list)))
+                                        else:
+                                            padded.append([v] + [np.nan] * (max_len - 1))
+                                    
+                                    arr = np.array(padded, dtype=np.float64)
+                                    with np.errstate(all='ignore'):
+                                        val_arr = np.nanmean(arr, axis=0)
+                                        
+                                    val = [round(float(x), 3) if not np.isnan(x) else None for x in val_arr]
+                                except Exception as e:
+                                    self.logger.error("2D averaging error", extra={"reason": str(e)})
+                                    val = indexed_data[-1]
+                            else:
+                                arr = np.array(indexed_data, dtype=np.float64)
+                                with np.errstate(all='ignore'):
+                                    mean_val = np.nanmean(arr)
+                                val = round(float(mean_val), 3) if not np.isnan(mean_val) else None
+
+            # JSON sanitization for lists/NaNs (if we fetched a single list or last element directly)
+            if isinstance(val, list):
+                val = [v if not (isinstance(v, float) and np.isnan(v)) else None for v in val]
+            elif isinstance(val, float) and np.isnan(val):
+                val = None
+
+            # --- UNIT CONVERSION LOGIC ---
+            if val is not None and val != "":
+                # 1. Enforce the data type defined in the hydrated schema
+                if v_type in ["float", "double"] and not isinstance(val, float):
+                    try:
+                        val = float(val)
+                    except (ValueError, TypeError):
+                        pass
+                elif v_type in ["int", "integer"] and not isinstance(val, int):
+                    try:
+                        val = int(float(val))
+                    except (ValueError, TypeError):
+                        pass
+                
+                target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+                native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+
+                # Coerce string representations of numbers (e.g. "14.2") into actual floats
+                if isinstance(val, str) and v_type not in ["string", "str", "char"]:
+                    try:
+                        val = float(val)
+                    except (ValueError, TypeError):
+                        pass
+                        
+                if isinstance(val, (int, float, list)):
+                    if target_unit and native_unit and target_unit != native_unit:
+                        try:
+                            norm_native = self.normalize_unit_string(native_unit)
+                            norm_target = self.normalize_unit_string(target_unit)
+                            
+                            data_quantity = ureg.Quantity(val, norm_native)
+                            converted = data_quantity.to(norm_target).magnitude
+                            
+                            if isinstance(val, list):
+                                if hasattr(converted, "tolist"):
+                                    val = [round(float(v), 3) if v is not None and not np.isnan(v) else None for v in converted.tolist()]
+                                else:
+                                    val = [round(float(v), 3) if v is not None and not np.isnan(v) else None for v in converted]
+                            else:
+                                val = round(float(converted), 3)
+                                
+                        except Exception as e:
+                            self.logger.error("Unit conversion failed", extra={"variable": variable_name, "native": native_unit, "target": target_unit, "reason": str(e)})
+
+                    # --- UPDATE CACHE ---
+                    self.forward_fill_cache[cache_key] = {
+                        "val": val,
+                        "timestamp": target_time
+                    }
 
             variableset_record["variables"][variable_name]["data"] = val
+            val_preview = str(val)[:200] + "..." if isinstance(val, list) and len(str(val)) > 200 else val
+            self.logger.debug(f"EVALUATED [DIRECT]: Clock={get_datetime_string()} BinTime={target_time} Var='{variableset_name}::{variable_name}' = {val_preview}")
+
         except Exception as e:
-            self.logger.error("update_direct_variable_by_time_index", extra={"reason": e})
+            self.logger.error("update_direct_variable_by_time_index", extra={"reason": str(e)})
 
         return
+    
+    # async def update_variablesets_by_time_index(self, variablemap: dict, time_index: dict):
+    #     variable_updates = {
+    #         "direct": self.update_direct_variable_by_time_index,
+    #     }
+        
+    #     index_type = time_index["index_type"]
+    #     index_value = time_index["index_value"]
+    #     update_type = time_index["update_type"] 
+    #     target_time = time_index["index_ready"]
 
-    async def update_variablesets_by_time_index(self, variablemap:dict, time_index: dict):
+    #     try:
+    #         indexed_dict = variablemap.get("indexed", {})
+    #         type_dict = indexed_dict.get(index_type, {})
+    #         val_dict = type_dict.get(index_value, {})
+            
+    #         # --- CLOCK SKEW AGGREGATOR ---
+    #         # Intercepts orphaned data caused by network jitter/clock skew
+    #         target_time_data_buffer = {}
+    #         idx_data = val_dict.get("data", {})
+            
+    #         # Find all buckets older than or equal to the current tick
+    #         valid_keys = sorted([t for t in idx_data.keys() if t <= target_time])
+            
+    #         for t_key in valid_keys:
+    #             bucket_data = idx_data[t_key]
+    #             for m_type, vs_dict in bucket_data.items():
+    #                 if m_type not in target_time_data_buffer:
+    #                     target_time_data_buffer[m_type] = {}
+    #                 for vs_name, v_dict in vs_dict.items():
+    #                     if vs_name not in target_time_data_buffer[m_type]:
+    #                         target_time_data_buffer[m_type][vs_name] = {}
+    #                     for v_name, val_list in v_dict.items():
+    #                         if v_name not in target_time_data_buffer[m_type][vs_name]:
+    #                             target_time_data_buffer[m_type][vs_name][v_name] = []
+    #                         # Combine the arrays
+    #                         target_time_data_buffer[m_type][vs_name][v_name].extend(val_list)
+    #         # -----------------------------
+            
+    #         vs_names = []
+    #         for vs_name, vs_def in variablemap.get("variablesets", {}).items():
+    #             vs_idx_type = str(vs_def.get("attributes", {}).get("index_type", {}).get("data", "")).lower()
+    #             vs_idx_val = str(vs_def.get("attributes", {}).get("index_value", {}).get("data", ""))
+                
+    #             # Match the timebase bucket
+    #             if vs_idx_type == str(index_type).lower() and vs_idx_val == str(index_value):
+    #                 vs_names.append(vs_name)
 
+    #         if not vs_names:
+    #             self.logger.debug(f"Tick bypassed: No {index_value}s variablesets found in this map.")
+    #             return
+            
+    #         # --- PHASE 1: Build evaluated state for ALL variablesets ---
+    #         evaluated_vsets = {}
+    #         for vs_name in vs_names:
+    #             variableset = json.loads(json.dumps(variablemap["variablesets"][vs_name]))
+                
+    #             # Evaluate raw data ALWAYS, so cross-variableset calculations can see it
+    #             for map_type in ["direct", "priority", "aggregate"]:
+    #                 for v_name, v_record in variableset["variables"].items():
+                        
+    #                     # FOOLPROOF EXTRACTION: Check root and attributes safely
+    #                     raw_mt = v_record.get("map_type")
+    #                     attr_mt = v_record.get("attributes", {}).get("map_type", {}).get("data")
+    #                     v_map_type = str(raw_mt or attr_mt or "").lower()
+                        
+    #                     if v_map_type == map_type and map_type in variable_updates:
+    #                         try:
+    #                             await variable_updates[map_type](
+    #                                 variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
+    #                                 variable_name=v_name, time_index=time_index, data_buffer=target_time_data_buffer 
+    #                             )
+    #                         except Exception as var_e:
+    #                             self.logger.error("variable update error", extra={"reason": str(var_e)})
+                
+    #             evaluated_vsets[vs_name] = variableset
+
+    #         # --- TIER FILTERING: Determine which variablesets publish this tick ---
+    #         active_vsets_this_tick = {}
+    #         for vs_name, variableset in evaluated_vsets.items():
+                
+    #             # Locate calculated variables safely
+    #             calc_vars = []
+    #             for v_name, v_record in variableset["variables"].items():
+    #                 raw_mt = v_record.get("map_type")
+    #                 attr_mt = v_record.get("attributes", {}).get("map_type", {}).get("data")
+    #                 record_map_type = str(raw_mt or attr_mt or "").lower()
+                    
+    #                 if record_map_type in ["calculate", "calculated", "calculation"]:
+    #                     calc_vars.append(v_name)
+                        
+    #             has_calculated = len(calc_vars) > 0
+
+    #             # --- JITTER & DELAY ROUTING (TIER 1 vs TIER 2) ---
+    #             if update_type == "direct" and has_calculated:
+    #                 self.logger.debug(f"ROUTING: Skipping {vs_name} (Waiting for Tier 2)")
+    #                 continue 
+    #             if update_type == "calculated" and not has_calculated:
+    #                 self.logger.debug(f"ROUTING: Skipping {vs_name} (Already sent in Tier 1)")
+    #                 continue 
+    #             # -------------------------------------------------
+                
+    #             active_vsets_this_tick[vs_name] = {
+    #                 "variableset": variableset,
+    #                 "calc_vars": calc_vars
+    #             }
+
+    #         # --- PHASE 2: CALCULATIONS (2-PASS SOLVER) ---
+    #         # Run twice to resolve cross-variableset dependencies (e.g., True Wind relies on Relative Wind)
+    #         if update_type == "calculated":
+    #             for pass_num in range(2):
+    #                 for vs_name, data in active_vsets_this_tick.items():
+    #                     variableset = data["variableset"]
+    #                     calc_vars = data["calc_vars"]
+                        
+    #                     for v_name in calc_vars:
+    #                         if pass_num == 0:
+    #                             self.logger.debug(f"ROUTING: Sending {v_name} to calculation method")
+    #                         try:
+    #                             await self.update_calculated_variable_by_time_index(
+    #                                 variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
+    #                                 variable_name=v_name, time_index=time_index, evaluated_vsets=evaluated_vsets
+    #                             )
+    #                         except Exception as var_e:
+    #                             self.logger.error("calculated variable update error", extra={"reason": str(var_e)})
+
+    #         # --- PHASE 3: PUBLISHING ---
+    #         for vs_name, data in active_vsets_this_tick.items():
+    #             variableset = data["variableset"]
+
+    #             if "time" not in variableset["variables"]:
+    #                 variableset["variables"]["time"] = {"shape": ["time"], "type": "string", "data": ""}
+    #             variableset["variables"]["time"]["data"] = target_time
+
+    #             # --- CULL EMPTY VARIABLESETS BEFORE PUBLISHING ---
+    #             has_active_data = False
+    #             for v_name, v_record in variableset["variables"].items():
+    #                 raw_type = v_record.get("variable_type")
+    #                 attr_type = v_record.get("attributes", {}).get("variable_type", {}).get("data")
+    #                 v_type = str(raw_type or attr_type or "").lower()
+                    
+    #                 if v_type != "coordinate" and v_record.get("data") is not None and v_record.get("data") != "":
+    #                     has_active_data = True
+    #                     break
+                        
+    #             if not has_active_data:
+    #                 self.logger.debug(f"CULLING: Variableset '{vs_name}' contains no active telemetry (only coordinates). Dropping payload.")
+    #                 continue  
+    #             # -------------------------------------------------
+                
+    #             dep_ref = self.resolve_context_for_varmap(variablemap, target_time)
+                
+    #             if "attributes" not in variableset:
+    #                 variableset["attributes"] = {}
+    #             variableset["attributes"]["deployment_ref"] = {"type": "string", "data": dep_ref}
+                
+    #             varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
+    #             # ---> THE FIX: Inject the namespace so the CloudEvent builder doesn't crash! <---
+    #             variableset["attributes"]["sampling_namespace"] = {"type": "string", "data": varmap_ns}
+    #             varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
+    #             varset_full_id = self.get_variableset_full_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
+    #             source_id = f"envds.{self.config.daq_id}.variableset.{varset_id}"
+    #             source_topic = source_id.replace(".", "/")
+
+    #             event = SamplingEvent.create_variableset_data_update(source=source_id, data=variableset)
+    #             event["destpath"] = f"{source_topic}/data/update"
+    #             event["samplingnamespace"] = varmap_ns
+    #             event["variablesetid"] = varset_id
+    #             event["variablesetfullid"] = varset_full_id
+    #             event["deploymentref"] = dep_ref
+                
+    #             await self.send_to_mqtt(event["destpath"], event)
+
+    #     except Exception as e:
+    #         self.logger.error("update_variablesets_by_time_index", extra={"reason": str(e)})
+            
+    #     finally:
+    #         if update_type == "calculated":
+    #             try:
+    #                 idx_data = variablemap.get("indexed", {}).get(index_type, {}).get(index_value, {}).get("data")
+    #                 if idx_data:
+    #                     stale_keys = [t for t in list(idx_data.keys()) if t <= target_time]
+    #                     for t in stale_keys:
+    #                         idx_data.pop(t, None)
+    #             except Exception as clean_e:
+    #                 self.logger.error("cleanup error", extra={"reason": str(clean_e)})
+
+    async def update_variablesets_by_time_index(self, variablemap: dict, time_index: dict):
         variable_updates = {
             "direct": self.update_direct_variable_by_time_index,
         }
+        
+        index_type = time_index["index_type"]
+        index_value = time_index["index_value"]
+        update_type = time_index["update_type"] 
+        target_time = time_index["index_ready"]
 
         try:
-            self.logger.debug("update_variablesets_by_time_index", extra={"time_index": time_index})
-            # self.logger.debug("update_variablesets_by_time_index", extra={"var_map": variablemap})
-            # print(f"update_variablesets_by_time_index: {variablemap}")
-            # vm_name = time_index["variablemap"]
-            # vm_cfg_time = time_index["variablemap_revision_time"]
-            # target_vm = self.variablesets["maps"][vm_name][vm_cfg_time]
-            # index_value = time_index["index_value"]
-            index_type = time_index["index_type"]
-            index_value = time_index["index_value"]
-            update_type = time_index["update_type"]
-            target_time = time_index["index_ready"]
+            indexed_dict = variablemap.get("indexed", {})
+            type_dict = indexed_dict.get(index_type, {})
+            val_dict = type_dict.get(index_value, {})
+            
+            # --- CLOCK SKEW AGGREGATOR ---
+            # Intercepts orphaned data caused by network jitter/clock skew
+            target_time_data_buffer = {}
+            idx_data = val_dict.get("data", {})
+            
+            # Find all buckets older than or equal to the current tick
+            valid_keys = sorted([t for t in idx_data.keys() if t <= target_time])
+            
+            for t_key in valid_keys:
+                bucket_data = idx_data[t_key]
+                for m_type, vs_dict in bucket_data.items():
+                    if m_type not in target_time_data_buffer:
+                        target_time_data_buffer[m_type] = {}
+                    for vs_name, v_dict in vs_dict.items():
+                        if vs_name not in target_time_data_buffer[m_type]:
+                            target_time_data_buffer[m_type][vs_name] = {}
+                        for v_name, val_list in v_dict.items():
+                            if v_name not in target_time_data_buffer[m_type][vs_name]:
+                                target_time_data_buffer[m_type][vs_name][v_name] = []
+                            # Combine the arrays
+                            target_time_data_buffer[m_type][vs_name][v_name].extend(val_list)
+            # -----------------------------
+            
+            vs_names = []
+            for vs_name, vs_def in variablemap.get("variablesets", {}).items():
+                vs_idx_type = str(vs_def.get("attributes", {}).get("index_type", {}).get("data", "")).lower()
+                vs_idx_val = str(vs_def.get("attributes", {}).get("index_value", {}).get("data", ""))
+                
+                # Match the timebase bucket
+                if vs_idx_type == str(index_type).lower() and vs_idx_val == str(index_value):
+                    vs_names.append(vs_name)
 
-            if target_time not in variablemap["indexed"][index_type][index_value]["data"]:
+            if not vs_names:
+                self.logger.debug(f"Tick bypassed: No {index_value}s variablesets found in this map.")
                 return
             
-            target_variablesets = variablemap["indexed"][index_type][index_value]["data"][target_time]
-
-            for map_type in ["direct", "priority", "aggregate", "calculated"]: #direct, calculated, priority and aggregate
-                if map_type not in target_variablesets:
-                    continue
-
-                self.logger.debug("update_variablesets_by_time_index", extra={"map_type": map_type})
-
-                for vs_name, vs_data in target_variablesets[map_type].items():
-                    variableset = variablemap["variablesets"][vs_name].copy()
-                    for v_name, v_data in vs_data.items():
-                        self.logger.debug("update_variablesets_by_time_index", extra={"vs_name": vs_name, "vset": variableset})
-                        self.logger.debug("update_variablesets_by_time_index", extra={"variable_updates": variable_updates})
-                        await variable_updates[map_type](
-                            variablemap=variablemap,
-                            variableset_name=vs_name,
-                            variableset_record=variableset,
-                            variable_name=v_name,
-                            time_index=time_index
-                            )
-                        self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
-                    
-                    if "time" not in variableset["variables"]:
-                        variableset["variables"]["time"] = {
-                            "shape": ["time"],
-                            "type": "string",
-                            "data": ""
-                        }
-                    variableset["variables"]["time"]["data"] = target_time
-
-            #         indexed_data = variablemap["indexed"]["data"][target_time][vs_name]
-            #         variableset = variablemap["variablesets"][vs_name].copy()
-
-            # for vs_name in variablemap["indexed"][index_type][index_value]:
-            #     if target_time not in variablemap["indexed"]["data"] or vs_name not in variablemap["indexed"]["data"][target_time]:
-            #         continue
-            #     indexed_data = variablemap["indexed"]["data"][target_time][vs_name]
-            #     variableset = variablemap["variablesets"][vs_name].copy()
-
-            #     for map_type in ["direct", "priority", "aggregate", "calculated"]: #direct, calculated, priority and aggregate
-            #         for v_name, v in variableset["variables"].items():
-            #             if v["map_type"] == map_type:
-            #                 variable_updates[map_type](variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset, variable_name=v_name, time_index=time_index)
-            #                 # if map_type == "direct":
-            #                 #     self.update_direct_variable_by_time_index(variableset=variableset, time_index=time_index)
-            #                 # elif map_type == "priority":
-            #                 #     continue
-            #                 # elif map_type == "aggregate":
-            #                 #     continue
-            #                 # elif map_type == "calulated":
-            #                 #     continue
-
-
-                    self.logger.debug("update_variablesets_by_time_index", extra={"vs_record": variableset})
-                    
-                    varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
-
-                    varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
-                    source_id = (
-                        f"envds.{self.config.daq_id}.variableset.{varset_id}"
-                    )
-                    self.logger.debug("update_variablesets_by_time_index", extra={"source_id": source_id})
-                    
-                    source_topic = source_id.replace(".", "/")
-                    if variableset:
-
-                        # if "time" not in variableset["variables"]:
-                        #     variableset["variables"]["time"] = dict()
-                        # variableset["variables"]["time"]["data"] = target_time
-                        # self.logger.debug("update_variablesets_by_time_index", extra={"vars": variableset["variables"]})
-
-
-                        event = SamplingEvent.create_variableset_data_update(
-                            # source="sensor.mockco-mock1-1234", data=record
-                            source=source_id,
-                            data=variableset,
-                        )
-                        destpath = f"{source_topic}/data/update"
-                        event["destpath"] = destpath
-                        event["samplingnamespace"] = varmap_ns
-                        self.logger.debug(
-                            "update_variablesets_by_time_index",
-                            extra={"data": event, "destpath": destpath},
-                        )
+            # --- PHASE 1: Build evaluated state for ALL variablesets ---
+            evaluated_vsets = {}
+            for vs_name in vs_names:
+                variableset = json.loads(json.dumps(variablemap["variablesets"][vs_name]))
+                
+                # Evaluate raw data ALWAYS, so cross-variableset calculations can see it
+                for map_type in ["direct", "priority", "aggregate"]:
+                    for v_name, v_record in variableset["variables"].items():
                         
-                        await self.send_event(event)
+                        # FOOLPROOF EXTRACTION: Check root and attributes safely
+                        raw_mt = v_record.get("map_type")
+                        attr_mt = v_record.get("attributes", {}).get("map_type", {}).get("data")
+                        v_map_type = str(raw_mt or attr_mt or "").lower()
+                        
+                        if v_map_type == map_type and map_type in variable_updates:
+                            try:
+                                await variable_updates[map_type](
+                                    variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
+                                    variable_name=v_name, time_index=time_index, data_buffer=target_time_data_buffer 
+                                )
+                            except Exception as var_e:
+                                self.logger.error("variable update error", extra={"reason": str(var_e)})
+                
+                evaluated_vsets[vs_name] = variableset
 
-            # Once processed, remove indexed data
-            self.logger.debug("update_variablesets_by_time_index", extra={"indexed_data": variablemap["indexed"][index_type][index_value]["data"]})
-            variablemap["indexed"][index_type][index_value]["data"].pop(target_time,None)
-            self.logger.debug("update_variablesets_by_time_index", extra={"indexed_data": variablemap["indexed"][index_type][index_value]["data"]})
+            # --- TIER FILTERING: Determine which variablesets publish this tick ---
+            active_vsets_this_tick = {}
+            for vs_name, variableset in evaluated_vsets.items():
+                
+                # Locate calculated variables safely
+                calc_vars = []
+                for v_name, v_record in variableset["variables"].items():
+                    raw_mt = v_record.get("map_type")
+                    attr_mt = v_record.get("attributes", {}).get("map_type", {}).get("data")
+                    record_map_type = str(raw_mt or attr_mt or "").lower()
+                    
+                    if record_map_type in ["calculate", "calculated", "calculation"]:
+                        calc_vars.append(v_name)
+                        
+                has_calculated = len(calc_vars) > 0
 
+                # --- JITTER & DELAY ROUTING (TIER 1 vs TIER 2) ---
+                if update_type == "direct" and has_calculated:
+                    self.logger.debug(f"ROUTING: Skipping {vs_name} (Waiting for Tier 2)")
+                    continue 
+                if update_type == "calculated" and not has_calculated:
+                    self.logger.debug(f"ROUTING: Skipping {vs_name} (Already sent in Tier 1)")
+                    continue 
+                # -------------------------------------------------
+                
+                active_vsets_this_tick[vs_name] = {
+                    "variableset": variableset,
+                    "calc_vars": calc_vars
+                }
 
-            #     if update_type == "direct" and update_type in indexed_data:
-            #         if v_name not in indexed_data[update_type]:
-            #             continue
+            # --- PHASE 2: CALCULATIONS (2-PASS SOLVER) ---
+            # Run twice to resolve cross-variableset dependencies (e.g., True Wind relies on Relative Wind)
+            if update_type == "calculated":
+                for pass_num in range(2):
+                    for vs_name, data in active_vsets_this_tick.items():
+                        variableset = data["variableset"]
+                        calc_vars = data["calc_vars"]
+                        
+                        for v_name in calc_vars:
+                            if pass_num == 0:
+                                self.logger.debug(f"ROUTING: Sending {v_name} to calculation method")
+                            try:
+                                await self.update_calculated_variable_by_time_index(
+                                    variablemap=variablemap, variableset_name=vs_name, variableset_record=variableset,
+                                    variable_name=v_name, time_index=time_index, evaluated_vsets=evaluated_vsets
+                                )
+                            except Exception as var_e:
+                                self.logger.error("calculated variable update error", extra={"reason": str(var_e)})
 
+            # --- PHASE 3: PUBLISHING ---
+            for vs_name, data in active_vsets_this_tick.items():
+                variableset = data["variableset"]
 
+                if "time" not in variableset["variables"]:
+                    variableset["variables"]["time"] = {"shape": ["time"], "type": "string", "data": ""}
+                variableset["variables"]["time"]["data"] = target_time
 
-            #         variablemap["indexed"]["data"][indexed_time][vs_name]["direct"][v_name].append(
-            #             source_data.data["variables"][source_v]["data"]
+                # --- CULL EMPTY VARIABLESETS BEFORE PUBLISHING ---
+                has_active_data = False
+                for v_name, v_record in variableset["variables"].items():
+                    raw_type = v_record.get("variable_type")
+                    attr_type = v_record.get("attributes", {}).get("variable_type", {}).get("data")
+                    v_type = str(raw_type or attr_type or "").lower()
+                    
+                    if v_type != "coordinate" and v_record.get("data") is not None and v_record.get("data") != "":
+                        has_active_data = True
+                        break
+                        
+                if not has_active_data:
+                    self.logger.debug(f"CULLING: Variableset '{vs_name}' contains no active telemetry (only coordinates). Dropping payload.")
+                    continue  
+                # -------------------------------------------------
+                
+                dep_ref = self.resolve_context_for_varmap(variablemap, target_time)
+                
+                if "attributes" not in variableset:
+                    variableset["attributes"] = {}
+                variableset["attributes"]["deployment_ref"] = {"type": "string", "data": dep_ref}
+                
+                varmap_ns = self.get_variablemap_namespace(variablemap=variablemap)
+                variableset["attributes"]["sampling_namespace"] = {"type": "string", "data": varmap_ns}
+                varset_id = self.get_variableset_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
+                varset_full_id = self.get_variableset_full_id(variablemap=variablemap, variableset_name=vs_name, variableset=variableset)
+                source_id = f"envds.{self.config.daq_id}.variableset.{varset_id}"
+                source_topic = source_id.replace(".", "/")
 
-            # # for vg in self.platform_variablesets["maps"][vm_name]["indices"][index_type][index_value]["variablegroups"]:
-            # for vg in target_vm["indices"][index_type][index_value]["variablegroups"]:
-            #     var_set = {
-            #         "attributes": {
-            #             "variablemap": {"type": "string", "data": vm_name},
-            #             "variablemap_revision_time": {
-            #                 "type": "string",
-            #                 "data": vm_cfg_time,
-            #             },
-            #             "variablegroup": {"type": "string", "data": vg},
-            #             "index_type": {"type": "string", "data": index_type},
-            #             "index_value": {"type": "int", "data": index_value},
-            #         },
-            #         "dimensions": {"time": 1},
-            #         "variables": {},
-            #     }
-
-            #     time_var = {
-            #         "type": "str",
-            #         "shape": ["time"],
-            #         "attributes": {
-            #             # how to make sure these are always using proper config?
-            #             "variablemap": {"type": "string", "data": vm_name},
-            #             "variablemap_revision_time": {
-            #                 "type": "string",
-            #                 "data": vm_cfg_time,
-            #             },
-            #             "variablegroup": {"type": "string", "data": vg},
-            #             "index_type": {"type": "string", "data": index_type},
-            #             "index_value": {"type": "int", "data": index_value},
-            #         },
-            #         "data": target_time,
-            #     }
-            #     var_set["variables"]["time"] = time_var
-
-            #     # for name, variable in self.platform_variablesets["maps"][vm_name]["indices"][index_type][index_value]["variablegroups"][vg]["variables"].items():
-            #     for name, variable in target_vm["indices"][index_type][index_value][
-            #         "variablegroups"
-            #     ][vg]["variables"].items():
-            #         map_type = variable["map_type"]
-            #         source = variable["source"]
-            #         index_method = variable["index_method"]
-            #         attributes = variable["attributes"]
-            #         if map_type == "direct":
-            #             source_variable = variable["direct_value"]["source_variable"]
-
-            #             mapped_var = {
-            #                 "type": "float",
-            #                 "shape": ["time"],
-            #                 "attributes": {
-            #                     # how to make sure these are always using proper config?
-            #                     "source_type": {
-            #                         "type": "string",
-            #                         "data": source[source_variable]["source_type"],
-            #                     },
-            #                     "source_id": {
-            #                         "type": "string",
-            #                         "data": source[source_variable]["source_id"],
-            #                     },
-            #                     "source_variable": {
-            #                         "type": "string",
-            #                         "data": source[source_variable]["source_variable"],
-            #                     },
-            #                 },
-            #             }
-
-            #             if len(variable["data"][index_value]) == 0:
-            #                 if variable["type"] in ["string", "str", "char"]:
-            #                     val = ""
-            #                 else:
-            #                     val = None
-            #             elif len(variable["data"][index_value]) == 1:
-            #                 val = variable["data"][index_value][0]
-            #             else:
-            #                 if variable["type"] in ["string", "str", "char"]:
-            #                     val = variable["data"][index_value][0]
-            #                 else:
-            #                     val = round(
-            #                         sum(variable["data"][index_value])
-            #                         / len(variable["data"][index_value]),
-            #                         3,
-            #                     )
-            #             mapped_var["data"] = val
-
-            #             var_set["variables"][name] = mapped_var
-
-            #             varset_id = f"{vm_name}::{vm_cfg_time}::{vg}"
-            #             source_id = (
-            #                 f"envds.{self.config.daq_id}.variableset::{varset_id}"
-            #             )
-            #             source_topic = source_id.replace(".", "/")
-            #             if var_set:
-            #                 event = SamplingEvent.create_variableset_update(
-            #                     # source="sensor.mockco-mock1-1234", data=record
-            #                     source=source_id,
-            #                     data=var_set,
-            #                 )
-            #                 destpath = f"{source_topic}/data/update"
-            #                 event["destpath"] = destpath
-            #                 self.logger.debug(
-            #                     "update_timebase_variableset_by_index",
-            #                     extra={"data": event, "destpath": destpath},
-            #                 )
-            #                 # message = Message(data=event, destpath=destpath)
-            #                 # message = event
-            #                 # self.logger.debug("default_data_loop", extra={"m": message})
-            #                 await self.send_event(event)
-
-            #         else:
-            #             continue  # TODO fill in for other types
+                event = SamplingEvent.create_variableset_data_update(source=source_id, data=variableset)
+                event["destpath"] = f"{source_topic}/data/update"
+                event["samplingnamespace"] = varmap_ns
+                event["variablesetid"] = varset_id
+                event["variablesetfullid"] = varset_full_id
+                event["deploymentref"] = dep_ref
+                
+                # --- NEW CACHING LOGIC TO AVOID MQTT ROUND TRIPS ---
+                if not hasattr(self, "foreign_vsets"):
+                    self.foreign_vsets = {}
+                self.foreign_vsets[varset_id] = variableset
+                # ---------------------------------------------------
+                
+                await self.send_to_mqtt(event["destpath"], event)
 
         except Exception as e:
-            self.logger.error("update_timebase_variableset_by_index", extra={"reason": e})
+            self.logger.error("update_variablesets_by_time_index", extra={"reason": str(e)})
+            
+        finally:
+            if update_type == "calculated":
+                try:
+                    idx_data = variablemap.get("indexed", {}).get(index_type, {}).get(index_value, {}).get("data")
+                    if idx_data:
+                        stale_keys = [t for t in list(idx_data.keys()) if t <= target_time]
+                        for t in stale_keys:
+                            idx_data.pop(t, None)
+                except Exception as clean_e:
+                    self.logger.error("cleanup error", extra={"reason": str(clean_e)})
+
+    # async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict):
+    #     import importlib
+    #     try:
+    #         var_record = variableset_record["variables"][variable_name]
+    #         calc_method = var_record.get("calculate_method", {})
+    #         if not calc_method:
+    #             self.logger.warning(f"Missing calculate_method for {variable_name}")
+    #             return
+
+    #         # Support 'action_module' / 'action_def' matching SamplingOperations pattern
+    #         # with fallbacks to 'service' / 'path' from older payload configs
+    #         module_name = calc_method.get("action_module", calc_method.get("service", "calculations.default"))
+    #         def_name = calc_method.get("action_def", calc_method.get("path", "").strip("/"))
+
+    #         if not def_name:
+    #             self.logger.error(f"No definition/function name provided for calculated variable: {variable_name}")
+    #             return
+
+    #         # Dynamically load the module and calculation function
+    #         try:
+    #             mod = importlib.import_module(module_name)
+    #             calc_func = getattr(mod, def_name)
+    #         except Exception as mod_err:
+    #             self.logger.error(f"Failed to load module '{module_name}' or def '{def_name}'", extra={"reason": mod_err})
+    #             return
+
+    #         # Prepare function arguments from defined parameter sources
+    #         kwargs = {}
+    #         parameters = calc_method.get("parameters", {})
+    #         sources = var_record.get("source", {})
+
+    #         for param_name, param_mapping in parameters.items():
+    #             src_var_key = param_mapping.get("source-variable")
+    #             val = None
+
+    #             if src_var_key and src_var_key in sources:
+    #                 # Look up the true variable name this alias targets
+    #                 real_src_var = sources[src_var_key].get("source_variable", src_var_key)
+                    
+    #                 # Extract the calculated/direct value mapped earlier in the pipeline 
+    #                 # for the same variableset
+    #                 if real_src_var in variableset_record["variables"]:
+    #                     val = variableset_record["variables"][real_src_var].get("data")
+
+    #             kwargs[param_name] = val
+
+    #         # Execute the custom calculation function
+    #         if asyncio.iscoroutinefunction(calc_func):
+    #             result = await calc_func(self, **kwargs)
+    #         else:
+    #             result = calc_func(self, **kwargs)
+
+    #         # Route the result back into the variableset
+    #         # (Accepts either a scalar value or a dict like {"true_wind_speed": 14.2})
+    #         if isinstance(result, dict) and variable_name in result:
+    #             final_val = result[variable_name]
+    #         else:
+    #             final_val = result
+
+    #         variableset_record["variables"][variable_name]["data"] = final_val
+
+    #     except Exception as e:
+    #         self.logger.error("update_calculated_variable_by_time_index", extra={"reason": e, "variable": variable_name})
+
+    # async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
+    #     import importlib
+    #     try:
+    #         var_record = variableset_record["variables"][variable_name]
+    #         calc_method = var_record.get("calculate_method", {})
+    #         if not calc_method:
+    #             self.logger.warning(f"Missing calculate_method for {variable_name}")
+    #             return
+
+    #         module_name = calc_method.get("action_module", calc_method.get("service", "calculations.default"))
+    #         def_name = calc_method.get("action_def", calc_method.get("path", "").strip("/"))
+
+    #         if not def_name:
+    #             self.logger.error(f"No definition/function name provided for calculated variable: {variable_name}")
+    #             return
+
+    #         try:
+    #             mod = importlib.import_module(module_name)
+    #             calc_func = getattr(mod, def_name)
+    #         except Exception as mod_err:
+    #             self.logger.error(f"Failed to load module '{module_name}' or def '{def_name}'", extra={"reason": str(mod_err)})
+    #             return
+
+    #         kwargs = {}
+    #         parameters = calc_method.get("parameters", {})
+    #         sources = var_record.get("source", {})
+
+    #         for param_name, param_mapping in parameters.items():
+    #             src_var_key = param_mapping.get("source-variable")
+    #             val = None
+
+    #             if src_var_key and src_var_key in sources:
+    #                 src_def = sources[src_var_key]
+    #                 real_src_var = src_def.get("source_variable", src_var_key)
+                    
+    #                 # Look for explicit cross-variableset targets in the Varmap source definition
+    #                 target_vset_name = src_def.get("variableset", variableset_name)
+
+    #                 # 1. Check the global cross-reference state first
+    #                 if evaluated_vsets and target_vset_name in evaluated_vsets:
+    #                     target_vset = evaluated_vsets[target_vset_name]
+    #                     if real_src_var in target_vset["variables"]:
+    #                         val = target_vset["variables"][real_src_var].get("data")
+                    
+    #                 # 2. Fallback to the local record
+    #                 elif real_src_var in variableset_record["variables"]:
+    #                     val = variableset_record["variables"][real_src_var].get("data")
+
+    #             kwargs[param_name] = val
+
+    #         if asyncio.iscoroutinefunction(calc_func):
+    #             result = await calc_func(self, **kwargs)
+    #         else:
+    #             result = calc_func(self, **kwargs)
+
+    #         if isinstance(result, dict) and variable_name in result:
+    #             final_val = result[variable_name]
+    #         else:
+    #             final_val = result
+
+    #         variableset_record["variables"][variable_name]["data"] = final_val
+
+    #     except Exception as e:
+    #         self.logger.error("update_calculated_variable_by_time_index", extra={"reason": str(e), "variable": variable_name})
+
+    # async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
+    #     import importlib
+        
+    #     self.logger.debug(f"ENTERED update_calculated_variable_by_time_index for {variable_name}")
+        
+    #     try:
+    #         raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
+            
+    #         calc_method = raw_var_def.get("calculate_method") or raw_var_def.get("calculation_method") or raw_var_def.get("action") or {}
+            
+    #         if not calc_method:
+    #             self.logger.warning(f"ABORT: Missing calculate/calculation_method for {variable_name} in raw definition.")
+    #             return
+
+    #         module_name = calc_method.get("action_module", calc_method.get("service", "calculations.default"))
+    #         def_name = calc_method.get("action_def", calc_method.get("path", "").strip("/"))
+
+    #         if not def_name:
+    #             self.logger.warning(f"ABORT: No definition/function name provided for calculated variable: {variable_name}")
+    #             return
+
+    #         try:
+    #             mod = importlib.import_module(module_name)
+    #             calc_func = getattr(mod, def_name)
+    #         except Exception as mod_err:
+    #             self.logger.error(f"ABORT: Failed to load module '{module_name}' or def '{def_name}'", extra={"reason": str(mod_err)})
+    #             return
+
+    #         kwargs = {}
+    #         parameters = calc_method.get("parameters", {})
+    #         sources = raw_var_def.get("source", {})
+
+    #         for param_name, param_mapping in parameters.items():
+    #             src_var_alias = param_mapping.get("source-variable")
+    #             val = None
+
+    #             if src_var_alias and src_var_alias in sources:
+    #                 src_def = sources[src_var_alias]
+                    
+    #                 # 1. Get the actual variable name (e.g., "relative_wind_speed")
+    #                 real_src_var = src_def.get("source_variable", src_var_alias)
+                    
+    #                 # 2. Get the target variableset (e.g., "main")
+    #                 target_vset_name = src_def.get("variableset", variableset_name)
+
+    #                 # 3. Hunt for the data in evaluated_vsets
+    #                 if evaluated_vsets and target_vset_name in evaluated_vsets:
+    #                     target_vset = evaluated_vsets[target_vset_name]
+    #                     if real_src_var in target_vset["variables"]:
+    #                         val = target_vset["variables"][real_src_var].get("data")
+                    
+    #                 # Fallback to local
+    #                 elif real_src_var in variableset_record["variables"]:
+    #                     val = variableset_record["variables"][real_src_var].get("data")
+
+    #             kwargs[param_name] = val
+                
+    #             # IMPORTANT DEBUG: Show exactly what was pulled for each parameter
+    #             self.logger.debug(f"CALC EXTRACT: {variable_name} -> param '{param_name}' got value: {val}")
+
+    #         self.logger.debug("update_calculated_variable_by_time_index EXECUTE", extra={"variable": variable_name, "kwargs": kwargs})
+            
+    #         # Execute with explicit exception catching around the user function
+    #         try:
+    #             if asyncio.iscoroutinefunction(calc_func):
+    #                 result = await calc_func(self, **kwargs)
+    #             else:
+    #                 result = calc_func(self, **kwargs)
+    #         except Exception as user_func_err:
+    #             self.logger.debug(f"USER FUNCTION CRASH: {def_name} failed.", extra={"reason": str(user_func_err)})
+    #             return
+                
+    #         self.logger.debug("update_calculated_variable_by_time_index SUCCESS", extra={"variable": variable_name, "result": result})
+ 
+    #         if isinstance(result, dict) and variable_name in result:
+    #             final_val = result[variable_name]
+    #         else:
+    #             final_val = result
+
+    #         variableset_record["variables"][variable_name]["data"] = final_val
+
+    #     except Exception as e:
+    #         self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
+
+
+    # async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
+    #     import importlib
+    #     try:
+    #         raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
+            
+    #         calc_method = raw_var_def.get("calculate_method") or raw_var_def.get("calculation_method") or raw_var_def.get("action") or {}
+            
+    #         if not calc_method:
+    #             return
+
+    #         module_name = calc_method.get("action_module", calc_method.get("service", "calculations.default"))
+    #         def_name = calc_method.get("action_def", calc_method.get("path", "").strip("/"))
+
+    #         if not def_name:
+    #             return
+
+    #         try:
+    #             mod = importlib.import_module(module_name)
+    #             calc_func = getattr(mod, def_name)
+    #         except Exception as mod_err:
+    #             self.logger.error(f"ABORT: Failed to load module '{module_name}' or def '{def_name}'", extra={"reason": str(mod_err)})
+    #             return
+
+    #         kwargs = {}
+    #         parameters = calc_method.get("parameters", {})
+    #         sources = raw_var_def.get("source", {})
+
+    #         for param_name, param_mapping in parameters.items():
+    #             src_var_alias = param_mapping.get("source_variable") or param_mapping.get("source-variable")
+    #             val = None
+
+    #             if src_var_alias:
+    #                 real_src_var = src_var_alias
+    #                 target_vset_name = variableset_name
+
+    #                 if src_var_alias in sources:
+    #                     src_def = sources[src_var_alias]
+    #                     real_src_var = src_def.get("source_variable", src_var_alias)
+    #                     target_vset_name = src_def.get("variableset", variableset_name)
+
+    #                 if evaluated_vsets and target_vset_name in evaluated_vsets:
+    #                     target_vset = evaluated_vsets[target_vset_name]
+    #                     if real_src_var in target_vset["variables"]:
+    #                         target_var_def = target_vset["variables"][real_src_var]
+    #                         var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+    #                         if var_type == "coordinate":
+    #                             val = target_var_def.get("attributes", {}).get("data", {}).get("data")
+    #                         else:
+    #                             val = target_var_def.get("data")
+                    
+    #                 elif hasattr(self, "foreign_vsets") and target_vset_name in self.foreign_vsets:
+    #                     target_vset = self.foreign_vsets[target_vset_name]
+    #                     if real_src_var in target_vset["variables"]:
+    #                         target_var_def = target_vset["variables"][real_src_var]
+    #                         var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+    #                         val = target_var_def.get("attributes", {}).get("data", {}).get("data") if var_type == "coordinate" else target_var_def.get("data")
+
+    #                 elif real_src_var in variableset_record["variables"]:
+    #                     target_var_def = variableset_record["variables"][real_src_var]
+    #                     var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+    #                     val = target_var_def.get("attributes", {}).get("data", {}).get("data") if var_type == "coordinate" else target_var_def.get("data")
+
+    #             kwargs[param_name] = val
+            
+    #         # ---> FIX 1: Prevent math crashes by safely aborting if required sensors drop a tick <---
+    #         if any(v is None or v == "" for v in kwargs.values()):
+    #             self.logger.debug(f"Skipping calculation for {variable_name}: Missing inputs {kwargs}")
+    #             variableset_record["variables"][variable_name]["data"] = None
+    #             return
+            
+    #         try:
+    #             if asyncio.iscoroutinefunction(calc_func):
+    #                 result = await calc_func(self, **kwargs)
+    #             else:
+    #                 result = calc_func(self, **kwargs)
+    #         except Exception as user_func_err:
+    #             self.logger.error(f"USER FUNCTION CRASH: {def_name} failed.", extra={"reason": str(user_func_err)})
+    #             return
+ 
+    #         if isinstance(result, dict) and variable_name in result:
+    #             final_val = result[variable_name]
+    #         else:
+    #             final_val = result
+
+    #         # ---> FIX 2: Apply Unit Conversion to Calculated Outputs! <---
+    #         if final_val is not None and isinstance(final_val, (int, float, list)):
+    #             var_record = variableset_record["variables"][variable_name]
+    #             target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+    #             native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                
+    #             if target_unit and native_unit and target_unit != native_unit:
+    #                 try:
+    #                     norm_native = self.normalize_unit_string(native_unit)
+    #                     norm_target = self.normalize_unit_string(target_unit)
+    #                     data_quantity = ureg.Quantity(final_val, norm_native)
+    #                     converted = data_quantity.to(norm_target).magnitude
+                        
+    #                     if isinstance(final_val, list):
+    #                         if hasattr(converted, "tolist"):
+    #                             final_val = [round(float(v), 3) for v in converted.tolist()]
+    #                         else:
+    #                             final_val = [round(float(v), 3) for v in converted]
+    #                     else:
+    #                         final_val = round(float(converted), 3)
+    #                 except Exception as e:
+    #                     self.logger.error("Unit conversion failed for calculated var", extra={"variable": variable_name, "reason": str(e)})
+
+    #         variableset_record["variables"][variable_name]["data"] = final_val
+            
+    #         # ---> ELEVATED TO INFO: Prints success visibly in terminal <---
+    #         self.logger.info(f"EVALUATED [CALCULATED]: Clock={get_datetime_string()} BinTime={time_index.get('index_ready')} Var='{variableset_name}::{variable_name}' = {final_val}")
+
+    #     except Exception as e:
+    #         self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
+
+    async def update_calculated_variable_by_time_index(self, variablemap: dict, variableset_name: str, variableset_record: dict, variable_name: str, time_index: dict, evaluated_vsets: dict = None):
+        import importlib
+        try:
+            raw_var_def = variablemap.get("variablemap", {}).get("data", {}).get("variables", {}).get(variable_name, {})
+            
+            calc_method = raw_var_def.get("calculate_method") or raw_var_def.get("calculation_method") or raw_var_def.get("action") or {}
+            
+            if not calc_method:
+                return
+
+            module_name = calc_method.get("action_module", calc_method.get("service", "calculations.default"))
+            def_name = calc_method.get("action_def", calc_method.get("path", "").strip("/"))
+
+            if not def_name:
+                return
+
+            try:
+                mod = importlib.import_module(module_name)
+                calc_func = getattr(mod, def_name)
+            except Exception as mod_err:
+                self.logger.error(f"ABORT: Failed to load module '{module_name}' or def '{def_name}'", extra={"reason": str(mod_err)})
+                return
+
+            kwargs = {}
+            parameters = calc_method.get("parameters", {})
+            sources = raw_var_def.get("source", {})
+
+            for param_name, param_mapping in parameters.items():
+                src_var_alias = param_mapping.get("source_variable") or param_mapping.get("source-variable")
+                val = None
+
+                if src_var_alias:
+                    real_src_var = src_var_alias
+                    target_vset_name = variableset_name
+
+                    if src_var_alias in sources:
+                        src_def = sources[src_var_alias]
+                        real_src_var = src_def.get("source_variable", src_var_alias)
+                        target_vset_name = src_def.get("variableset", variableset_name)
+
+                    if evaluated_vsets and target_vset_name in evaluated_vsets:
+                        target_vset = evaluated_vsets[target_vset_name]
+                        if real_src_var in target_vset["variables"]:
+                            target_var_def = target_vset["variables"][real_src_var]
+                            var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+                            if var_type == "coordinate":
+                                val = target_var_def.get("attributes", {}).get("data", {}).get("data")
+                            else:
+                                val = target_var_def.get("data")
+                    
+                    elif hasattr(self, "foreign_vsets") and target_vset_name in self.foreign_vsets:
+                        target_vset = self.foreign_vsets[target_vset_name]
+                        if real_src_var in target_vset["variables"]:
+                            target_var_def = target_vset["variables"][real_src_var]
+                            var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+                            val = target_var_def.get("attributes", {}).get("data", {}).get("data") if var_type == "coordinate" else target_var_def.get("data")
+
+                    elif real_src_var in variableset_record["variables"]:
+                        target_var_def = variableset_record["variables"][real_src_var]
+                        var_type = target_var_def.get("attributes", {}).get("variable_type", {}).get("data", "")
+                        val = target_var_def.get("attributes", {}).get("data", {}).get("data") if var_type == "coordinate" else target_var_def.get("data")
+
+                kwargs[param_name] = val
+            
+            # ---> FIX 1: Prevent math crashes by safely aborting if required sensors drop a tick <---
+            if any(v is None or v == "" for v in kwargs.values()):
+                self.logger.debug(f"Skipping calculation for {variable_name}: Missing inputs {kwargs}")
+                variableset_record["variables"][variable_name]["data"] = None
+                return
+            
+            try:
+                if asyncio.iscoroutinefunction(calc_func):
+                    result = await calc_func(self, **kwargs)
+                else:
+                    result = calc_func(self, **kwargs)
+            except Exception as user_func_err:
+                self.logger.error(f"USER FUNCTION CRASH: {def_name} failed.", extra={"reason": str(user_func_err)})
+                return
+ 
+            if isinstance(result, dict) and variable_name in result:
+                final_val = result[variable_name]
+            else:
+                final_val = result
+
+            # ---> FIX 2: Apply Unit Conversion to Calculated Outputs! <---
+            if final_val is not None and isinstance(final_val, (int, float, list, np.ndarray)):
+                var_record = variableset_record["variables"][variable_name]
+                target_unit = var_record.get("attributes", {}).get("units", {}).get("data")
+                native_unit = var_record.get("attributes", {}).get("native_units", {}).get("data")
+                
+                if target_unit and native_unit and target_unit != native_unit:
+                    try:
+                        norm_native = self.normalize_unit_string(native_unit)
+                        norm_target = self.normalize_unit_string(target_unit)
+                        data_quantity = ureg.Quantity(final_val, norm_native)
+                        converted = data_quantity.to(norm_target).magnitude
+                        
+                        if isinstance(final_val, (list, np.ndarray)):
+                            if hasattr(converted, "tolist"):
+                                final_val = [round(float(v), 3) for v in converted.tolist()]
+                            else:
+                                final_val = [round(float(v), 3) for v in converted]
+                        else:
+                            final_val = round(float(converted), 3)
+                    except Exception as e:
+                        self.logger.error("Unit conversion failed for calculated var", extra={"variable": variable_name, "reason": str(e)})
+
+            # --- PARITY FIX: JSON sanitization for arrays/NaNs before MQTT broadcast ---
+            if isinstance(final_val, np.ndarray):
+                final_val = final_val.tolist()
+
+            if isinstance(final_val, list):
+                final_val = [v if not (isinstance(v, float) and np.isnan(v)) else None for v in final_val]
+            elif isinstance(final_val, float) and np.isnan(final_val):
+                final_val = None
+            # -------------------------------------------------------------------------
+
+            variableset_record["variables"][variable_name]["data"] = final_val
+            
+            # ---> ELEVATED TO INFO: Prints success visibly in terminal <---
+            val_preview = str(final_val)[:200] + "..." if isinstance(final_val, list) and len(str(final_val)) > 200 else final_val
+            self.logger.info(f"EVALUATED [CALCULATED]: Clock={get_datetime_string()} BinTime={time_index.get('index_ready')} Var='{variableset_name}::{variable_name}' = {val_preview}")
+
+        except Exception as e:
+            self.logger.error("update_calculated_variable_by_time_index FATAL", extra={"reason": str(e), "variable": variable_name})
+
+    async def log_operational_event(self, event_type: str, description: str, subject: str = None):
+        """Generates and publishes an immutable operational log with mission context."""
+        try:
+            # 1. Resolve context (Edge fast-path or default to unknown if no specific varmap)
+            dep_ref = getattr(self, "active_deployment_ref", "unknown")
+            # proj_ref = getattr(self, "active_project_ref", "unknown")
+
+            payload = {
+                "event_type": event_type,
+                "description": description,
+                "deployment_ref": dep_ref,
+                # "project_ref": proj_ref
+            }
+
+            # 2. FIXED: Use the correct SamplingEvent factory wrapper class instead of its type registry
+            event = SamplingEvent.create_operations_log(
+                source=f"envds.{self.config.daq_id}.sampling-system",
+                data=payload
+            )
+            
+            if subject:
+                event["subject"] = subject
+                
+            event["destpath"] = f"envds/{self.config.daq_id}/operations/log"
+            
+            # Inject extensions for Knative routing
+            event["deploymentref"] = dep_ref
+            # event["projectref"] = proj_ref
+
+            # 3. Publish to the MQTT broker
+            await self.send_to_mqtt(event["destpath"], event)
+            self.logger.info(f"Operational event logged: {event_type}")
+
+        except Exception as e:
+            self.logger.error("Failed to log operational event", extra={"reason": str(e)})
 
     async def index_monitor(self):
         while True: 
@@ -1857,12 +3853,12 @@ class SamplingSystem:
                 target_time = update["index_ready"]
 
                 vm_list = await self.get_valid_variablemaps(target_time=target_time)
-                self.logger.debug("index_monitor", extra={"len": len(vm_list), "vm_list": vm_list})
+                # self.logger.debug("index_monitor", extra={"len": len(vm_list), "vm_list": vm_list})
                 for vm in vm_list:
                     # await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
-                    print(f"index_monitor:vm = {vm}")
+                    # print(f"index_monitor:vm = {vm}")
                     variablemap = vm["variablemap"]
-                    print(f"index_monitor: variablemap = {variablemap}")
+                    # print(f"index_monitor: variablemap = {variablemap}")
 
                     index_type = update["index_type"]
                     if index_type == "time":
@@ -1916,6 +3912,9 @@ class SamplingSystem:
 
             except Exception as e:
                 self.logger.error("index_monitor", extra={"reason": e})
+            finally:
+                self.index_ready_buffer.task_done()
+
 
     # async def device_data_get(self, query: DataStoreQuery):
     # async def device_data_get(self, query: DataRequest):
@@ -2322,14 +4321,19 @@ class SamplingSystem:
     #     return {"results": []}
 
 
-async def shutdown():
+async def shutdown(system_instance=None):
     print("shutting down")
     # for task in task_list:
     #     print(f"cancel: {task}")
     #     task.cancel()
-
+    if getattr(system_instance, 'http_client', None):
+        await system_instance.http_client.aclose()
 
 async def main(config):
+    # Pass our global sampling_system instance into the app state if needed, 
+    # but we can also just close it directly in the shutdown phase.
+    global sampling_system    
+    
     config = uvicorn.Config(
         "main:app",
         host=config.host,
@@ -2346,7 +4350,9 @@ async def main(config):
     await server.serve()
 
     print("starting shutdown...")
-    await shutdown()
+    # await shutdown()
+    from main import sampling_system as main_sys
+    await shutdown(main_sys)    
     print("done.")
 
 

@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     mqtt_broker: str = 'mosquitto.default'
     mqtt_port: int = 1883
     # mqtt_topic_filter: str = 'aws-id/acg-daq/+'
-    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#' #['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
+    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#', 'envds/+/+/status/#' #['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
     # mqtt_client_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     mqtt_client_id: str = Field(str(ULID()))
 
@@ -243,9 +243,70 @@ config = Settings()
 # task_map = {}
 
                         
+# class ConnectionManager:
+#     def __init__(self):
+#         # self.active_connections: list[WebSocket] = []
+#         self.active_connections = {}
+
+#     async def connect(self, websocket: WebSocket, client_type: str, client_id: str):
+#         print(f"{client_type}: {client_id}")
+#         await websocket.accept()
+#         if client_type not in self.active_connections:
+#             self.active_connections[client_type] = dict()
+#         if client_id not in self.active_connections[client_type]:
+#             # self.active_connections[source_type][source_id] = list[WebSocket]
+#             self.active_connections[client_type][client_id] = []
+#         print(f"active_connections: {self.active_connections}")
+#         self.active_connections[client_type][client_id].append(websocket)
+#         print(f"active_connections: {self.active_connections}")
+#         # self.active_connections.append(websocket)
+#         # print(f"active connections: {self.active_connections}")
+#         # await websocket.broadcast("test message")
+
+#     async def disconnect(self, websocket: WebSocket):
+#         for client_type, types in self.active_connections.items():
+#             for client_id, ws_list in types.items():
+#                 if websocket in ws_list:
+#                     ws_list.remove(websocket)
+#                     if websocket:
+#                         await websocket.close()
+#                     return
+#         # self.active_connections.remove(websocket)
+
+#     async def send_personal_message(
+#         self, message: str, websocket: WebSocket, client_type: str, client_id: str
+#     ):
+#         await websocket.send_text(message)
+
+#     async def broadcast(self, message: str, client_type: str, client_id: str):
+#         try:
+#             L.info(f"{client_type}/{client_id}")#: {message}")
+#             # L.info(f"{self.active_connections}")
+#             # L.info("check dictionary", extra={"type_in_ac": f"{client_type in self.active_connections}"})
+#             for connection in self.active_connections[client_type][client_id]:
+#                 L.info(f"broadcast: {connection}, {message}")
+#                 await connection.send_text(message)
+#                 # await asyncio.sleep(.1)
+#         except (KeyError, Exception) as e:
+#             L.info(f"broadcast error: {e}")
+#             pass
+
+#     async def broadcast_exclude_self(
+#         self, message: str, websocket: WebSocket, client_type: str, client_id: str
+#     ):
+#         # for connection in self.active_connections:
+#         #     if connection != websocket:
+#         #         await connection.send_text(message)
+#         try:
+#             for connection in self.active_connections[client_type][client_id]:
+#                 print(f"connection: {connection}\nws: {websocket}")
+#                 if connection != websocket:
+#                     await connection.send_text(message)
+#         except KeyError:
+#             pass
+
 class ConnectionManager:
     def __init__(self):
-        # self.active_connections: list[WebSocket] = []
         self.active_connections = {}
 
     async def connect(self, websocket: WebSocket, client_type: str, client_id: str):
@@ -254,14 +315,10 @@ class ConnectionManager:
         if client_type not in self.active_connections:
             self.active_connections[client_type] = dict()
         if client_id not in self.active_connections[client_type]:
-            # self.active_connections[source_type][source_id] = list[WebSocket]
             self.active_connections[client_type][client_id] = []
-        print(f"active_connections: {self.active_connections}")
+        
         self.active_connections[client_type][client_id].append(websocket)
         print(f"active_connections: {self.active_connections}")
-        # self.active_connections.append(websocket)
-        # print(f"active connections: {self.active_connections}")
-        # await websocket.broadcast("test message")
 
     async def disconnect(self, websocket: WebSocket):
         for client_type, types in self.active_connections.items():
@@ -271,7 +328,6 @@ class ConnectionManager:
                     if websocket:
                         await websocket.close()
                     return
-        # self.active_connections.remove(websocket)
 
     async def send_personal_message(
         self, message: str, websocket: WebSocket, client_type: str, client_id: str
@@ -280,30 +336,25 @@ class ConnectionManager:
 
     async def broadcast(self, message: str, client_type: str, client_id: str):
         try:
-            L.info(f"{client_type}/{client_id}")#: {message}")
-            # L.info(f"{self.active_connections}")
-            # L.info("check dictionary", extra={"type_in_ac": f"{client_type in self.active_connections}"})
-            for connection in self.active_connections[client_type][client_id]:
-                L.info(f"broadcast: {connection}, {message}")
-                await connection.send_text(message)
-                # await asyncio.sleep(.1)
-        except (KeyError, Exception) as e:
-            # L.info(f"broadcast error: {e}")
-            pass
+            # Safely check if the client_type and client_id exist before iterating
+            if client_type in self.active_connections and client_id in self.active_connections[client_type]:
+                for connection in self.active_connections[client_type][client_id]:
+                    # L.info(f"broadcast: {connection}, {message}")
+                    await connection.send_text(message)
+        except Exception as e:
+            L.error(f"broadcast error: {e}")
 
     async def broadcast_exclude_self(
         self, message: str, websocket: WebSocket, client_type: str, client_id: str
     ):
-        # for connection in self.active_connections:
-        #     if connection != websocket:
-        #         await connection.send_text(message)
         try:
-            for connection in self.active_connections[client_type][client_id]:
-                print(f"connection: {connection}\nws: {websocket}")
-                if connection != websocket:
-                    await connection.send_text(message)
-        except KeyError:
-            pass
+            # Safely check if the client_type and client_id exist before iterating
+            if client_type in self.active_connections and client_id in self.active_connections[client_type]:
+                for connection in self.active_connections[client_type][client_id]:
+                    if connection != websocket:
+                        await connection.send_text(message)
+        except Exception as e:
+            L.error(f"broadcast_exclude_self error: {e}")
 
 class WebInterfaceManager():
     def __init__(self, **kwargs):
@@ -450,35 +501,125 @@ async def get_from_mqtt_loop():
             await asyncio.sleep(0.0001)
 
 
+# async def handle_mqtt_buffer():
+#     while True:
+#         try:
+#             ce = await mqtt_buffer.get()
+#             L.debug("handle_mqtt_buffer", extra={"ce received": ce})
+
+#             if ce["type"] == "envds.data.update":
+#                 attributes = ce.data["attributes"]
+#                 make = attributes["make"]["data"]
+#                 model = attributes["model"]["data"]
+#                 serial_number = attributes["serial_number"]["data"]
+#                 sensor_id = "::".join([make, model, serial_number])
+
+#                 msg = {"data-update": ce.data}
+#                 # L.debug("handle_mqtt_buffer", extra={"msg": msg, "sensor_id": sensor_id})
+#                 await manager.broadcast(json.dumps(msg), "sensor", sensor_id)
+
+#             elif ce["type"] == "envds.controller.data.update":
+#                 attributes = ce.data["attributes"]
+#                 make = attributes["make"]["data"]
+#                 model = attributes["model"]["data"]
+#                 serial_number = attributes["serial_number"]["data"]
+#                 controller_id = "::".join([make, model, serial_number])
+
+#                 msg = {"data-update": ce.data}
+#                 # L.debug("handle_mqtt_buffer", extra={"msg": msg, "controller_id": controller_id})
+#                 await manager.broadcast(json.dumps(msg), "controller", controller_id)
+
+#             elif ce["type"] == "envds.variableset.data.update":
+#                 L.info(f"variableset ce: {ce}")
+#                 L.info(f"variableset ce attributes: {ce.data}")
+#                 # variableset_id = "raz1::main"
+#                 variableset_id = ce["variablesetid"]
+
+#                 msg = {"data-update": ce.data, "variablesetfullid": ce["variablesetfullid"]}
+#                 # msg = {"data-update": ce}
+#                 # L.debug("handle_mqtt_buffer", extra={"msg": msg, "controller_id": controller_id})
+#                 await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
+            
+#             elif ce["type"] == "envds.samplingstate.status.update":
+#                 L.info(f"sampling state ce: {ce}")
+#                 L.info(f"sampling state ce data: {ce.data}")
+#                 pass
+        
+#         except Exception as e:
+#             L.error("handle_mqtt_buffer", extra={"reason": e})
+        
+#         await asyncio.sleep(0.0001)
+
 async def handle_mqtt_buffer():
     while True:
         try:
             ce = await mqtt_buffer.get()
+            L.debug("handle_mqtt_buffer", extra={"ce received": ce})
 
-            if ce["type"] == "envds.data.update":
-                attributes = ce.data["attributes"]
-                make = attributes["make"]["data"]
-                model = attributes["model"]["data"]
-                serial_number = attributes["serial_number"]["data"]
-                sensor_id = "::".join([make, model, serial_number])
+            ce_type = ce.get("type", "")
+
+            # Broaden the type checks to catch any variations
+            if ce_type in ["envds.data.update", "envds.sensor.data.update", "sensor.data.update"]:
+                attributes = ce.data.get("attributes", {})
+                
+                # Safely extract and cast to string to prevent join/broadcast crashes
+                make = str(attributes.get("make", {}).get("data", "unknown") if "make" in attributes else "unknown")
+                model = str(attributes.get("model", {}).get("data", "unknown") if "model" in attributes else "unknown")
+                sn = str(attributes.get("serial_number", {}).get("data", "unknown") if "serial_number" in attributes else "unknown")
+                
+                sensor_id = f"{make}::{model}::{sn}"
 
                 msg = {"data-update": ce.data}
                 # L.debug("handle_mqtt_buffer", extra={"msg": msg, "sensor_id": sensor_id})
                 await manager.broadcast(json.dumps(msg), "sensor", sensor_id)
 
-            elif ce["type"] == "envds.controller.data.update":
-                attributes = ce.data["attributes"]
-                make = attributes["make"]["data"]
-                model = attributes["model"]["data"]
-                serial_number = attributes["serial_number"]["data"]
-                controller_id = "::".join([make, model, serial_number])
+            elif ce_type in ["envds.controller.data.update", "controller.data.update"]:
+                attributes = ce.data.get("attributes", {})
+                
+                make = str(attributes.get("make", {}).get("data", "unknown") if "make" in attributes else "unknown")
+                model = str(attributes.get("model", {}).get("data", "unknown") if "model" in attributes else "unknown")
+                sn = str(attributes.get("serial_number", {}).get("data", "unknown") if "serial_number" in attributes else "unknown")
+                
+                controller_id = f"{make}::{model}::{sn}"
 
                 msg = {"data-update": ce.data}
                 # L.debug("handle_mqtt_buffer", extra={"msg": msg, "controller_id": controller_id})
                 await manager.broadcast(json.dumps(msg), "controller", controller_id)
+
+            elif ce_type == "envds.variableset.data.update":
+                L.info(f"variableset ce: {ce}")
+                L.info(f"variableset ce attributes: {ce.data}")
+                
+                # Safely get the ID, falling back to variablesetfullid if variablesetid is missing
+                variableset_id = ce.get("variablesetid", "unknown")
+                if "variablesetid" not in ce and "variablesetfullid" in ce:
+                    variableset_id = ce["variablesetfullid"]
+
+                msg = {
+                    "data-update": ce.data, 
+                    "variablesetfullid": ce.get("variablesetfullid")
+                }
+                await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
+            
+            # elif ce_type == "envds.samplingstate.status.update":
+            #     L.info(f"sampling state ce: {ce}")
+            #     L.info(f"sampling state ce data: {ce.data}")
+            #     pass
         
+            # Broaden checks to catch plural/singular variations (e.g. systemmode vs systemmodes)
+            elif any(x in ce_type for x in ["systemmode", "samplingmode", "samplingstate", "samplingcondition"]):
+                L.info(f"system ops ce caught: {ce_type}")
+                msg = {
+                    "type": ce_type,
+                    "data": ce.data
+                }
+                # FIX: Broadcast to the generic pool (matching how the WS connects)
+                # If your manager.connect doesn't specify a client_id for system-ops, 
+                # you must broadcast to that same 'None' or empty ID.
+                await manager.broadcast(json.dumps(msg), "system-ops", "main")
+
         except Exception as e:
-            L.error("handle_mqtt_buffer", extra={"reason": e})
+            L.error("handle_mqtt_buffer", extra={"reason": str(e)})
         
         await asyncio.sleep(0.0001)
 
@@ -903,6 +1044,107 @@ async def controller_ws_endpoint(
         await asyncio.sleep(.1)
         # await manager.broadcast(f"Client left the chat")
 
+@app.websocket("/ws/controller-registry/{client_id}")
+async def controller_registry_ws_endpoint(
+    websocket: WebSocket,
+    client_id: str
+):
+    await manager.connect(websocket, client_type="controller-registry", client_id=client_id)
+    print(f"websocket_endpoint: {websocket}")
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            print(f"main data: {data}")
+            message = json.loads(data)
+            
+            if "client-request" in message:
+                if message['client-request'] == "start-updates":
+
+                    msg_type = "controller.registry.request"
+
+                    attributes = {
+                            "type": msg_type,
+                            "source": "uasdaq.dashboard",
+                            "id": str(ULID()),
+                            "datacontenttype": "application/json; charset=utf-8",
+                        }
+                    
+                    # Ask the datastore for controller definitions instead of sensor definitions
+                    reg_request = {"register-controller-request": "update-controller-definition-all"}
+                    ce = CloudEvent(attributes=attributes, data=reg_request)
+
+                    try:
+                        headers, body = to_structured(ce)
+                        # send to knative kafkabroker
+                        with httpx.Client() as client:
+                            r = client.post(
+                                config.knative_broker, headers=headers, data=body
+                            )
+                            L.info("register-request send", extra={"register-request": r.request.content})
+                    except InvalidStructuredJSON:
+                        L.error(f"INVALID MSG: {ce}")
+                    except httpx.HTTPError as e:
+                        L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+                        
+    except WebSocketDisconnect:
+        L.info(f"websocket disconnect: {websocket}")
+        await manager.disconnect(websocket)
+        await asyncio.sleep(.1)
+
+@app.websocket("/ws/variableset/{client_id}")
+# @app.websocket("/ws/{client_id}")
+async def variableset_ws_endpoint(
+    websocket: WebSocket,
+    client_id: str
+):
+    await manager.connect(websocket, client_type="variableset", client_id=client_id)
+    L.debug(f"websocket_endpoint: {websocket}")
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            L.debug(f"variableset data: {data}")
+            message = json.loads(data)
+
+            if "client-request" in message:
+                # await manager.broadcast(json.dumps(message), "sensor", client_id)
+                if message['client-request'] == "start-updates":
+
+                    msg_type = "sensor.registry.request"
+
+                    attributes = {
+                            "type": msg_type,
+                            "source": "uasdaq.dashboard",
+                            "id": str(ULID()),
+                            "datacontenttype": "application/json; charset=utf-8",
+                        }
+                    reg_request = {"register-sensor-request": "update-sensor-definition-all"}
+                    ce = CloudEvent(attributes=attributes, data=reg_request)
+
+                    try:
+                        headers, body = to_structured(ce)
+                        # send to knative kafkabroker
+                        # with httpx.Client() as client:
+                        async with httpx.AsyncClient() as client:
+                            # r = client.post(
+                            r = await client.post(
+                                config.knative_broker, headers=headers, data=body
+                                # config.knative_broker, headers=headers, data=body.decode()
+                            )
+                            L.info("register-request send", extra={"register-request": r.request.content})
+                            # r.raise_for_status()
+                    except InvalidStructuredJSON:
+                        L.error(f"INVALID MSG: {ce}")
+                    except httpx.HTTPError as e:
+                        L.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+    except WebSocketDisconnect:
+        L.info(f"websocket disconnect: {websocket}")
+        await manager.disconnect(websocket)
+        await asyncio.sleep(.1)
+
+
+
 @app.websocket("/ws/chat/{client_id}")
 # @app.websocket("/ws/{client_id}")
 async def chat_ws_endpoint(
@@ -1238,3 +1480,69 @@ async def controller_settings_update(request: Request):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
     # msg = {"result": "OK"}
     # return get_response_event(msg, 202)
+
+
+
+@app.post("/variableset/data/update/")
+async def variableset_data_update(request: Request):
+
+    L.info("variableset/data/update")
+    data = await request.body()
+    L.info(f"headers: {request.headers}, data: {data}")
+    headers = request.headers
+    # headers = dict(request.headers)
+
+    try:
+        ce = from_http(headers=headers, data=data)
+        # to support local testing...
+        if isinstance(ce.data, str):
+            ce.data = json.loads(ce.data)
+    except InvalidStructuredJSON:
+        L.error("not a valid cloudevent")
+        # return "not a valid cloudevent", 400
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        # msg = {"result": "NOTOK"}
+        # return get_response_event(msg, 500)
+    # parts = Path(ce["source"]).parts
+    L.info(
+        "dashboard variableset update",
+        extra={"ce-source": ce["source"], "ce-type": ce["type"], "ce-data": ce.data},
+    )
+
+    try:
+        # attributes = ce.data["attributes"]
+        # dimensions = ce.data["dimensions"]
+        # variables = ce.data["variables"]
+
+        # make = attributes["make"]["data"]
+        # model = attributes["model"]["data"]
+        # # TODO fix serial number in magic data record, tmp workaround for now
+        # serial_number = attributes["serial_number"]
+        # serial_number = attributes["serial_number"]["data"]
+        # sensor_id = "::".join([make, model, serial_number])
+        variableset_id = ce.data["variableset_id"]
+
+    except KeyError:
+        L.error("dashboard variableset update error", extra={"variableset": ce.data})
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+    msg = {"data-update": ce.data}
+    await manager.broadcast(json.dumps(msg), "variableset", variableset_id)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@app.websocket("/ws/system-ops/{client_id}")
+async def system_ops_ws_endpoint(websocket: WebSocket, client_id: str):
+    # Pass the actual client_id instead of hardcoding "main"
+    await manager.connect(websocket, client_type="system-ops", client_id="main")
+    L.debug(f"system-ops websocket connected: {client_id}")
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Broadcast back if needed, similar to sensor logic
+            await manager.broadcast(f"received: {data}", "system-ops", client_id)
+    except WebSocketDisconnect:
+        L.info(f"system-ops websocket disconnect: {client_id}")
+        await manager.disconnect(websocket)

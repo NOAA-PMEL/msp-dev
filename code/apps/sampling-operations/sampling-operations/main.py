@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 # import json
 import logging
 
-from fastapi import FastAPI, Request, Query, status  # , APIRouter
+from fastapi import FastAPI, Request, Query, status, Response  # , APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -114,13 +114,41 @@ L.debug("main: here:2")
 # datastore = Datastore()
 print("starting sampling_operations")
 # operations_conditions = OperationsConditions()
-manager = SamplingOperationsManager()
-print(f"sampling_operations started: {manager}")
+manager = None
 
+@app.on_event("startup")
+async def start_system():
+    global manager
+    manager = SamplingOperationsManager()
+    await manager.setup()
+    L.info("SamplingOperationsManager initialized and background tasks started.")
+
+@app.on_event("shutdown")
+async def shutdown_system():
+    global manager
+    if manager:
+        await manager.close_http_client()
+        L.info("SamplingOperationsManager HTTP client closed safely.")
 
 @app.get("/")
 async def root():
     return {"message": "Hello World from SamplingOperations"}
+
+# FIX: Add endpoint to toggle auto/manual control state
+@app.post("/system/control/update/")
+async def system_control_update(mode: str = Query(..., description="'auto' or 'manual'")):
+    if manager:
+        manager.set_system_control(mode.lower())
+        L.info(f"System control mode set to: {mode.lower()}")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+# FIX: Add endpoint for the dashboard/master to trigger manual actions
+@app.post("/action/manual_request/")
+async def manual_action_request(kind: str = Query(...), name: str = Query(...)):
+    if manager:
+        await manager.handle_manual_action(kind, name)
+        L.info(f"Manual action triggered: {kind} -> {name}")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @app.post("/variableset/data/update/", status_code=status.HTTP_202_ACCEPTED)
 async def variableset_data_update(request: Request):
@@ -146,6 +174,16 @@ async def requirement_status_update(request: Request):
         L.error("requirement_status_update", extra={"reason": e})
         return "", 204
 
+@app.post("/system/transition/remote_request/")
+async def remote_transition_request(
+    target_daq_id: str = Query(..., description="e.g., payload01"), 
+    kind: str = Query(..., description="SystemMode or SamplingMode"), 
+    name: str = Query(..., description="e.g., startup, normal")
+):
+    if manager:
+        await manager.send_remote_transition_request(target_daq_id, kind, name)
+        L.info(f"Remote transition requested for {target_daq_id}: {kind} -> {name}")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # @app.get("/device/data/get/")
 # # async def device_data_get(query: Annotated[DataStoreQuery, Query()]):

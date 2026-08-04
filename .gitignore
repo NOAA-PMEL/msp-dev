@@ -177,3 +177,10 @@ secrets/**
 !code/**/lib 
 certs/*
 bootstrap/**
+code/apps/datastore/tmp/**
+aerosoldynamics/**
+code/apps/sampling-operations/sampling-operations_bak/**
+
+code/apps/datasets/dataset-distribution/pnnl-sts/**
+
+presentation/**

@@ -17,6 +17,7 @@ dash.register_page(
     __name__,
     path="/controller-registry",
     title="Controller Registry",  # , prevent_initial_callbacks=True
+    order=3
 )
 
 
@@ -321,7 +322,7 @@ def get_layout():
                                         "filter": True,
                                     },
                                     {
-                                        "field": "sampling_sytem_id",
+                                        "field": "sampling_system_id",
                                         "headerName": "Sampling System ID",
                                         "filter": True,
                                         "cellRenderer": "markdown",
@@ -347,7 +348,7 @@ def get_layout():
             ws_send_buffer,
             dcc.Store(id="controller-defs-changes", data=[]),
             dcc.Store(id="active-controller-changes", data=[]),
-            dcc.Store(id="active-controller-table", storage_type="session"),
+            # dcc.Store(id="active-controller-table", storage_type="session"),
             # dcc.Interval(id="test-interval", interval=(10*1000)),
             dcc.Interval(
                 id="table-update-interval", interval=(5 * 1000), n_intervals=0
@@ -444,7 +445,8 @@ def update_controller_definitions(count, table_data):
         url = f"http://{datastore_url}/controller-definition/registry/ids/get/"
         print(f"controller-definition-get: {url}")
         # response = httpx.get(url, params=query)
-        response = httpx.get(url)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, timeout=timeout)
         results = response.json()
         print(f"controller definition results: {results}")
         if "results" in results and results["results"]:
@@ -564,13 +566,12 @@ def update_active_controllers(count, table_data):
         query = {"device_type": "controller"}
         url = f"http://{datastore_url}/controller-instance/registry/get/"
         print(f"controller-definition-get: {url}")
-        response = httpx.get(url, params=query)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
         print(f"results: {results}")
         if "results" in results and results["results"]:
-            print(f"update_active_controllers 1")
             for doc in results["results"]:
-                print(f"update_active_controllers 1.5: {doc}")
                 make = doc["make"]
                 model = doc["model"]
                 serial_number = doc["serial_number"]
@@ -589,25 +590,20 @@ def update_active_controllers(count, table_data):
                     "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/uasdaq/dashboard/dash/sampling-system/{sampling_system_id})",
                     # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
                 }
-                print(f"update_active_controllers 1.75: {controller}")
                 if table_data is None:
                     table_data = []
                 if controller not in table_data:
-                    print(f"update_active_controllers 2: {controller}")
                     table_data.append(controller)
-                    print(f"update_active_controllers 3: {table_data}")
                     update = True
                 new_data.append(controller)
 
         remove_data = []
         for index, data in enumerate(table_data):
-            print(f"update_active_controllers 4: {data}")
             if data not in new_data:
                 update = True
                 remove_data.insert(0, index)
         for index in remove_data:
             table_data.pop(index)
-            print(f"update_active_controllers 5: {table_data}")
 
         if update:
             return table_data

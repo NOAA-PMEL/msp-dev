@@ -1,0 +1,215 @@
+import dash
+from dash import html, dcc, callback, Input, Output
+import dash_bootstrap_components as dbc
+import dash_ag_grid as dag
+import httpx
+import logging
+from pydantic import BaseSettings
+
+L = logging.getLogger(__name__)
+
+dash.register_page(
+    __name__,
+    path="/assets",
+    name="Asset Management",
+    nav_bar=True,
+    order=2
+)
+
+# --- DYNAMIC CONFIGURATION ---
+class Settings(BaseSettings):
+    daq_id: str = "default"
+    class Config:
+        env_prefix = "ENVOPS_"
+        case_sensitive = False
+
+config = Settings()
+datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
+# -----------------------------
+
+def layout():
+    return html.Div([
+        # --- HEADER STRIP ---
+        dbc.Row([
+            dbc.Col([
+                html.H2([html.I(className="bi bi-server me-3 text-primary"), "Asset Registry"], className="fw-bold mb-0 text-dark"),
+                html.P("Fleet hardware, controllers, and platform inventory", className="text-muted small font-monospace mt-1 mb-0")
+            ], width=8, align="center"),
+            dbc.Col(
+                dbc.Button(
+                    [html.I(className="bi bi-arrow-clockwise me-2"), "Refresh Registry"], 
+                    id="asset-refresh-btn", 
+                    color="secondary", 
+                    outline=True,
+                    className="float-end fw-bold shadow-sm"
+                ), 
+                width=4, align="center"
+            )
+        ], className="mb-4 mt-3 border-bottom pb-3"),
+
+        # --- TABS ---
+        dbc.Tabs([
+            # --- TAB 1: HARDWARE (Sensors, Operational, Controllers) ---
+            dbc.Tab(
+                dbc.Card([
+                    dbc.CardHeader(html.H6([html.I(className="bi bi-cpu me-2"), "Hardware & Controllers"], className="mb-0 text-primary fw-bold"), className="p-2 bg-white border-bottom-0"),
+                    dbc.CardBody([
+                        dag.AgGrid(
+                            id="hardware-registry-grid",
+                            rowData=[],
+                            columnDefs=[
+                                {"field": "type", "headerName": "Type", "filter": True, "width": 130},
+                                {"field": "make", "headerName": "Make", "filter": True, "width": 150},
+                                {"field": "model", "headerName": "Model", "filter": True, "width": 160},
+                                {
+                                    "field": "serial_number", 
+                                    "headerName": "S/N", 
+                                    "width": 140,
+                                    "cellClass": "font-monospace text-muted"
+                                },
+                                {"field": "description", "headerName": "Description", "flex": 2},
+                                {"field": "action", "headerName": "Action", "cellRenderer": "markdown", "width": 200}
+                            ],
+                            dashGridOptions={"pagination": True, "paginationPageSize": 50},
+                            style={"height": "calc(100vh - 280px)", "width": "100%"},
+                            className="ag-theme-alpine shadow-sm border"
+                        )
+                    ], className="p-3 bg-light")
+                ], className="shadow-sm border-0 mt-3"),
+                label="Hardware & Controllers",
+                tab_id="tab-hardware",
+                label_class_name="fw-bold"
+            ),
+            
+            # --- TAB 2: PLATFORMS ---
+            dbc.Tab(
+                dbc.Card([
+                    dbc.CardHeader(html.H6([html.I(className="bi bi-hdd-network me-2"), "Registered Platforms"], className="mb-0 text-primary fw-bold"), className="p-2 bg-white border-bottom-0"),
+                    dbc.CardBody([
+                        dag.AgGrid(
+                            id="platform-registry-grid",
+                            rowData=[],
+                            columnDefs=[
+                                {
+                                    "field": "platform_id", 
+                                    "headerName": "Platform ID", 
+                                    "flex": 1, 
+                                    "filter": True,
+                                    "cellClass": "font-monospace text-muted"
+                                },
+                                {"field": "display_name", "headerName": "Display Name", "flex": 1, "filter": True},
+                                {"field": "description", "headerName": "Description", "flex": 2}
+                            ],
+                            dashGridOptions={"pagination": True, "paginationPageSize": 50},
+                            style={"height": "calc(100vh - 280px)", "width": "100%"},
+                            className="ag-theme-alpine shadow-sm border"
+                        )
+                    ], className="p-3 bg-light")
+                ], className="shadow-sm border-0 mt-3"),
+                label="Platforms",
+                tab_id="tab-platforms",
+                label_class_name="fw-bold"
+            )
+        ], id="assets-tabs", active_tab="tab-hardware", className="mt-2")
+    ])
+
+@callback(
+    Output("hardware-registry-grid", "rowData"),
+    Output("platform-registry-grid", "rowData"),
+    Input("asset-refresh-btn", "n_clicks"),
+    prevent_initial_call=False
+)
+def fetch_all_registries(n_clicks):
+    """Fetches devices, controllers, and platforms to populate the grids."""
+    hardware_data = []
+    platform_data = []
+    
+    timeout = httpx.Timeout(5.0)
+
+    # ==========================================
+    # 1. FETCH HARDWARE (Sensors & Operational)
+    # ==========================================
+    for dev_type in ["sensor", "operational"]:
+        try:
+            url = f"http://{datastore_url}/device-instance/registry/get/"
+            response = httpx.get(url, params={"device_type": dev_type}, timeout=timeout)
+            
+            if response.status_code == 200:
+                for doc in response.json().get("results", []):
+                    make = doc.get("make", "unknown")
+                    model = doc.get("model", "unknown")
+                    sn = doc.get("serial_number", "")
+                    device_id = f"{make}::{model}::{sn}"
+                    
+                    attrs = doc.get("attributes", {})
+                    description = attrs.get("description", {}).get("data", "N/A")
+                    
+                    hardware_data.append({
+                        "type": dev_type.capitalize(),
+                        "make": make,
+                        "model": model,
+                        "serial_number": sn,
+                        "description": description,
+                        "action": f"**[↗ Open Telemetry]({dash.get_relative_path(f'/sensor/{device_id}')})**" 
+                    })
+        except Exception as e:
+            L.error(f"Asset fetch failed for {dev_type}: {e}")
+
+    # ==========================================
+    # 2. FETCH CONTROLLERS
+    # ==========================================
+    try:
+        url = f"http://{datastore_url}/controller-instance/registry/get/"
+        response = httpx.get(url, timeout=timeout)
+        
+        if response.status_code == 200:
+            for doc in response.json().get("results", []):
+                make = doc.get("make", "unknown")
+                model = doc.get("model", "unknown")
+                sn = doc.get("serial_number", "")
+                device_id = f"{make}::{model}::{sn}"
+                
+                attrs = doc.get("attributes", {})
+                description = attrs.get("description", {}).get("data", "N/A")
+                
+                hardware_data.append({
+                    "type": "Controller",
+                    "make": make,
+                    "model": model,
+                    "serial_number": sn,
+                    "description": description,
+                    "action": f"**[↗ Open Controls]({dash.get_relative_path(f'/controller/{device_id}')})**" 
+                })
+    except Exception as e:
+        L.error(f"Controller fetch failed: {e}")
+
+    # ==========================================
+    # 3. FETCH PLATFORMS
+    # ==========================================
+    try:
+        id_url = f"http://{datastore_url}/platform-definition/registry/ids/get/"
+        id_response = httpx.get(id_url, timeout=timeout)
+        
+        if id_response.status_code == 200:
+            for p_id in id_response.json().get("results", []):
+                if not p_id: continue
+                
+                def_url = f"http://{datastore_url}/platform-definition/registry/get/"
+                def_response = httpx.get(def_url, params={"name": p_id}, timeout=timeout)
+                
+                if def_response.status_code == 200:
+                    docs = def_response.json().get("results", [])
+                    if docs:
+                        doc = docs[0]
+                        meta = doc.get("metadata", {})
+                        data = doc.get("data", {})
+                        
+                        platform_data.append({
+                            "platform_id": meta.get("name", p_id),
+                            "display_name": data.get("display_name", "N/A"),
+                            "description": data.get("description", "N/A")
+                        })
+    except Exception as e:
+        L.error(f"Platform fetch failed: {e}")
+
+    return hardware_data, platform_data

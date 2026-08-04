@@ -3,10 +3,10 @@ import json
 import logging
 import math
 import sys
+import time
 from time import sleep
 from typing import List
 
-# import numpy as np
 from ulid import ULID
 from pathlib import Path
 import os
@@ -14,18 +14,11 @@ import os
 import httpx
 from logfmter import Logfmter
 
-# from registry import registry
-# from flask import Flask, request
 from pydantic import BaseSettings, BaseModel, Field
 from cloudevents.http import CloudEvent, from_http, from_json, to_json
-from cloudevents.conversion import to_structured # , from_http
+from cloudevents.conversion import to_structured 
 from cloudevents.exceptions import InvalidStructuredJSON
 from aiomqtt import Client, MqttError
-
-
-# from cloudevents.http.conversion import from_http
-# from cloudevents.conversion import to_structured  # , from_http
-# from cloudevents.exceptions import InvalidStructuredJSON
 
 from datetime import datetime, timedelta, timezone
 from envds.util.util import (
@@ -39,8 +32,7 @@ from envds.util.util import (
 
 from envds.daq.event import DAQEvent
 from envds.daq.types import DAQEventType as det
-
-# import pymongo
+from envds.sampling.types import SamplingEventType as sampet
 
 import uvicorn
 
@@ -64,8 +56,9 @@ from datastore_requests import (
     VariableSetDefinitionUpdate,
     VariableSetDefinitionRequest,
     VariableMapDefinitionRequest,
-    VariableMapDefinitionUpdate
-
+    VariableMapDefinitionUpdate,
+    VariableSetInstanceUpdate,
+    VariableSetInstanceRequest
 )
 from db_client import DBClientManager, DBClientConfig
 
@@ -75,31 +68,12 @@ logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
 L.setLevel(logging.INFO)
 
-
-# test
-
-
 class DatastoreConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     debug: bool = True
-    # knative_broker: str = (
-    #     "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
-    # )
-    # mongodb_user_name: str = ""
-    # mongodb_user_password: str = ""
-    # mongodb_connection: str = (
-    #     "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/data?replicaSet=uasdaq-mongodb&ssl=false"
-    # )
-    # erddap_http_connection: str = (
-    #     "http://uasdaq.pmel.noaa.gov/uasdaq/dataserver/erddap"
-    # )
-    # erddap_https_connection: str = (
-    #     "https://uasdaq.pmel.noaa.gov/uasdaq/dataserver/erddap"
-    # )
-    # # erddap_author: str = "fake_author"
+    log_level: str = "INFO"
 
-    # TODO fix ns prefix
     daq_id: str | None = None
 
     db_client_type: str | None = None
@@ -111,25 +85,25 @@ class DatastoreConfig(BaseSettings):
     db_clear_db: bool | None = False
 
     db_data_ttl: int = 600  # seconds
-    db_reg_device_definition_ttl: int = 0  # permanent
+    db_reg_device_definition_ttl: int = 3600  # permanent
     db_reg_device_instance_ttl: int = 600  # seconds
-    db_reg_controller_definition_ttl: int = 0  # permanent
+    db_reg_controller_definition_ttl: int = 3600  # permanent
     db_reg_controller_instance_ttl: int = 600  # seconds
 
-    db_reg_variablemap_definition_ttl: int = 0  # permanent
-    db_reg_variableset_definition_ttl: int = 0  # permanent
+    db_reg_variablemap_definition_ttl: int = 3600  # permanent
+    db_reg_variableset_definition_ttl: int = 3600  # permanent
+    db_reg_variableset_instance_ttl: int = 600  # Added: 10 minute active timeout
     db_reg_platform_definition_ttl: int = 0  # permanent
 
+    db_reg_sampling_definition_ttl: int = 3600
+
     erddap_enable: bool = False
-    erddap_http_connection: str | None = None
     erddap_http_connection: str | None = None
     erddap_author: str = "fake_author"
 
     mqtt_broker: str = 'mosquitto.default'
     mqtt_port: int = 1883
-    # mqtt_topic_filter: str = 'aws-id/acg-daq/+'
-    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#' #['envds/+/+/+/data/#', 'envds/+/+/+/status/#', 'envds/+/+/+/setting/#', 'envds/+/+/+/control/#']
-    # mqtt_client_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    mqtt_topic_subscriptions: str = 'envds/+/+/+/data/#,envds/+/+/+/registry/#,envds/+/+/+/status/#' 
     mqtt_client_id: str = Field(str(ULID()))
 
     knative_broker: str | None = None
@@ -139,72 +113,76 @@ class DatastoreConfig(BaseSettings):
 
 
 class Datastore:
-    """docstring for TestClass."""
-
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.debug("TestClass instantiated")
-        self.logger.setLevel(logging.DEBUG)
         self.db_client = None
-        self.erddap_client = None
         self.config = DatastoreConfig()
-        self.configure()
+        level_str = self.config.log_level.upper()
+        self.logger.setLevel(level_str)
 
-        # self.mqtt_buffer = asyncio.Queue()
-        # asyncio.create_task(self.get_from_mqtt_loop())
-        # asyncio.create_task(self.handle_mqtt_buffer())
+        self.http_client = None
+        self._background_tasks = set()
+        self.configure()
 
     async def setup(self):
         self.logger.info("Running Datastore async setup...")
-        
-        # Start background tasks safely inside the event loop
-        self.mqtt_buffer = asyncio.Queue()
-        asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.handle_mqtt_buffer())
+        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        task1 = asyncio.create_task(self.get_from_mqtt_loop())
+        task2 = asyncio.create_task(self.handle_mqtt_buffer())
+        self._background_tasks.update({task1, task2})
 
-        # Build Redis indexes if the client supports it
         if hasattr(self.db_client, "build_indexes"):
             await self.db_client.build_indexes()
             self.logger.info("Redis indexes built successfully.")
             
     def configure(self):
-        # set clients
-
         self.logger.debug("configure", extra={"self.config": self.config})
         db_client_config = DBClientConfig(
             type=self.config.db_client_type,
             config={
+                "log_level": self.config.log_level,
                 "connection": self.config.db_client_connection,
                 "hostname": self.config.db_client_hostname,
                 "port": self.config.db_client_port,
                 "username": self.config.db_client_username,
                 "password": self.config.db_client_password,
-                "clear_db": self.config.db_clear_db
+                "clear_db": self.config.db_clear_db,
+                "db_data_ttl": self.config.db_data_ttl,
+                "erddap_enable": self.config.erddap_enable,
+                "erddap_http_connection": self.config.erddap_http_connection,
+                "erddap_author": self.config.erddap_author
             },
         )
         self.logger.debug("configure", extra={"db_client_config": db_client_config})
         self.db_client = DBClientManager.create(db_client_config)
+        self.erddap_client = None 
 
-        if self.config.erddap_enable:
-            # setup erddap client
-            pass
+    def open_http_client(self):
+        self.logger.debug("open_http_client")
+        self.http_client = httpx.AsyncClient()
+
+    async def close_http_client(self):
+        if self.http_client:
+            await self.http_client.aclose()
+            self.http_client = None
 
     async def send_event(self, ce):
         try:
-            self.logger.debug(ce)#, extra=template)
+            self.logger.debug(ce)
+            if not self.http_client:
+                self.open_http_client()
             try:
                 timeout = httpx.Timeout(5.0, read=0.1)
                 headers, body = to_structured(ce)
                 self.logger.debug("send_event", extra={"broker": self.config.knative_broker, "h": headers, "b": body})
-                # send to knative broker
-                async with httpx.AsyncClient() as client:
-                    r = await client.post(
-                        self.config.knative_broker,
-                        headers=headers,
-                        data=body,
-                        timeout=timeout
-                    )
-                    r.raise_for_status()
+                r = await self.http_client.post(
+                    self.config.knative_broker,
+                    headers=headers,
+                    data=body,
+                    timeout=timeout
+                )
+                r.raise_for_status()
             except InvalidStructuredJSON:
                 self.logger.error(f"INVALID MSG: {ce}")
             except httpx.TimeoutException:
@@ -215,366 +193,244 @@ class Datastore:
             print("error", e)
         await asyncio.sleep(0.01)
 
-    # have secondary path for datastore to recieve data updates - this should relieve some of the
-    #   pressure on the cpu. Will only be used if subscriptions are configured
     async def get_from_mqtt_loop(self):
         reconnect = 10
         while True:
             try:
-                L.debug("listen", extra={"config": self.config})
-                client_id=str(ULID())
-                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port,identifier=client_id) as self.client:
-                    # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+                self.logger.debug("listen", extra={"config": self.config})
+                client_id = str(ULID())
+                async with Client(
+                    self.config.mqtt_broker,
+                    port=self.config.mqtt_port,
+                    identifier=client_id,
+                ) as self.client:
                     for topic in self.config.mqtt_topic_subscriptions.split(","):
-                        # print(f"run - topic: {topic.strip()}")
-                        # L.debug("run", extra={"topic": topic})
                         if topic.strip():
-                            L.debug("subscribe", extra={"topic": topic.strip()})
+                            self.logger.debug("subscribe", extra={"topic": topic.strip()})
                             await self.client.subscribe(f"$share/datastore/{topic.strip()}")
 
-                        # await client.subscribe(config.mqtt_topic_subscription, qos=2)
-                    # async with client.messages() as messages:
-                    async for message in self.client.messages: #() as messages:
-
+                    async for message in self.client.messages: 
                         try:
                             ce = from_json(message.payload)
                             topic = message.topic.value
                             ce["sourcepath"] = topic
                             await self.mqtt_buffer.put(ce)
-                            L.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
+                            self.logger.debug("get_from_mqtt_loop", extra={"cetype": ce["type"], "topic": topic})
                         except Exception as e:
-                            L.error("get_from_mqtt_loop", extra={"reason": e})
-                        # try:
-                        #     L.debug("listen", extra={"payload_type": type(ce), "ce": ce})
-                        #     await self.send_to_knbroker(ce)
-                        # except Exception as e:
-                        #     L.error("Error sending to knbroker", extra={"reason": e})
+                            self.logger.error("get_from_mqtt_loop inner", extra={"reason": e})
+                            
             except MqttError as error:
-                L.error(
-                    f'{error}. Trying again in {reconnect} seconds',
-                    extra={ k: v for k, v in self.config.dict().items() if k.lower().startswith('mqtt_') }
-                )
+                self.logger.error(f"{error}. Trying again in {reconnect} seconds", extra={k: v for k, v in self.config.dict().items() if k.lower().startswith("mqtt_")})
                 await asyncio.sleep(reconnect)
             finally:
                 await asyncio.sleep(0.0001)
-
 
     async def handle_mqtt_buffer(self):
         while True:
             try:
                 ce = await self.mqtt_buffer.get()
-
+                if "variable" in ce["type"]:
+                    self.logger.debug("handle_mqtt_buffer", extra={"ce-type": ce["type"]})
+                
                 if ce["type"] == "envds.data.update":
                     await self.device_data_update(ce) 
                 elif ce["type"] == "envds.controller.data.update":
                     await self.controller_data_update(ce)
-            
+                elif ce["type"] == sampet.variableset_data_update():
+                    self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
+                    await self.variableset_data_update(ce)        
+                elif ce["type"] == "envds.operations.log":
+                    self.logger.debug("handle_mqtt_buffer: operations.log", extra={"source": ce.get("source")})
+                    await self.operations_log_update(ce)
+
+                self.mqtt_buffer.task_done()
+
             except Exception as e:
-                L.error("handle_mqtt_buffer", extra={"reason": e})
-            
-            await asyncio.sleep(0.0001)
+                self.logger.error("handle_mqtt_buffer", extra={"reason": e})
 
-    def find_one(self):  # , database: str, collection: str, query: dict):
-        # self.connect()
-        # if self.client:
-        #     db = self.client[database]
-        #     db_collection = db[collection]
-        #     result = db_collection.find_one(query)
-        #     if result:
-        #         update = {"last_update": datetime.now(tz=timezone.utc)}
-        #         db_client.update_one(database, collection, result, update)
-        #     return result
-        return None
-
-    def insert_one(self):  # , database: str, collection: str, document: dict):
-        # self.connect()
-        # if self.client:
-        #     db = self.client[database]
-        #     device_defs = db[collection]
-        #     result = device_defs.insert_one(document)
-        #     return result
-        return None
-
-    # def update_one(self, database: str, collection: str, document: dict, update: dict, upsert=False):
-    #     self.connect()
-    #     if self.client:
-    #         db = self.client[database]
-    #         device_defs = db[collection]
-    #         set_update = {"$set": update}
-    #         result = device_defs.update_one(document, set_update, upsert)
-    #         return result
-    #     return None
-
-    def update_one(self):
-        #     self,
-        #     database: str,
-        #     collection: str,
-        #     document: dict,
-        #     update: dict,
-        #     filter: dict = None,
-        #     upsert=False,
-        # ):
-        # self.connect()
-        # if self.client:
-        #     db = self.client[database]
-        #     device = db[collection]
-        #     if filter is None:
-        #         filter = document
-        #     set_update = {"$set": update}
-        #     if upsert:
-        #         set_update["$setOnInsert"] = document
-        #     result = device.update_one(filter=filter, update=set_update, upsert=upsert)
-        #     return result
-        return None
-
-    async def device_data_update(self, ce: CloudEvent):
-
+    async def operations_log_update(self, ce: CloudEvent):
         try:
-            # database = "data"
-            # collection = "device"
-            # self.logger.debug("data_device_update", extra={"ce": ce})
+            database = "data"
+            collection = "operations-log"
+            data = ce.data
+            timestamp = string_to_timestamp(ce.get("time"))
+            
+            if self.db_client:
+                document = data.copy()
+                document["timestamp"] = timestamp
+                document["source"] = ce.get("source")
+                key = f"{database}:{collection}:{ce.get('id')}"
+                await self.db_client.client.json().set(key, "$", {"record": document})
+                self.logger.debug("operations_log_update stored successfully", extra={"id": ce.get("id")})
+                
+        except Exception as e:
+            self.logger.error("operations_log_update", extra={"reason": str(e)})
+
+    # -------------------------------------------------------------------------------------
+    # DEVICES
+    # -------------------------------------------------------------------------------------
+    async def device_data_update(self, ce: CloudEvent):
+        try:
             database = "data"
             collection = "device"
-            attributes = ce.data["attributes"]
-            dimensions = ce.data["dimensions"]
-            variables = ce.data["variables"]
+            data = ce.data
+            
+            attributes = data.get("attributes", {})
+            variables = data.get("variables", {})
+            dimensions = data.get("dimensions", {}) 
 
-            make = attributes["make"]["data"]
-            model = attributes["model"]["data"]
-            serial_number = attributes["serial_number"]["data"]
+            ts_str = data.get("timestamp")
+            timestamp = string_to_timestamp(ts_str)
 
-            # TODO fix serial number in magic data record, tmp workaround for now
-            # serial_number = attributes["serial_number"]
+            make = attributes.get("make", {}).get("data", "unknown")
+            model = attributes.get("model", {}).get("data", "unknown")
+            sn = attributes.get("serial_number", {}).get("data", "unknown")
+            
+            format_ver = attributes.get("format_version", {}).get("data", "1.0.0")
+            version = str(format_ver)
 
-            format_version = attributes["format_version"]["data"]
-            parts = format_version.split(".")
-            self.logger.debug(f"parts: {parts}, {format_version}")
-            erddap_version = f"v{parts[0]}"
-            device_id = "::".join([make, model, serial_number])
-            self.logger.debug("device_data_update", extra={"device_id": device_id})
-            timestamp = string_to_timestamp(ce.data["timestamp"]) # change to an actual timestamp
-
-            self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
-
-            doc = {
-                # "_id": id,
-                "make": make,
-                "model": model,
-                "serial_number": serial_number,
-                "version": erddap_version,
-                "timestamp": timestamp,
-                "attributes": attributes,
-                "dimensions": dimensions,
-                "variables": variables,
-                # "last_update": datetime.now(tz=timezone.utc),
-            }
+            device_id = attributes.get("device_id", {}).get("data")
+            if not device_id:
+                device_id = f"{make}::{model}::{sn}"
 
             request = DataUpdate(
+                device_id=device_id,
                 make=make,
                 model=model,
-                serial_number=serial_number,
-                version=erddap_version,
-                timestamp=timestamp,
+                serial_number=sn,
+                version=version,     
+                timestamp=timestamp, 
                 attributes=attributes,
-                dimensions=dimensions,
+                dimensions=dimensions, 
                 variables=variables,
             )
 
-            self.logger.debug("device_data_update", extra={"request": request})
-            # request = DatastoreRequest(
-            #     database="data", collection="device", request=update
-            # )
-            # self.logger.debug("device_data_update", extra={"device-doc": doc})
-            # filter = {
-            #     "make": make,
-            #     "model": model,
-            #     "version": erddap_version,
-            #     "serial_number": serial_number,
-            #     "timestamp": timestamp,
-            # }
-            await self.db_client.device_data_update(
-                database=database,
-                collection=collection,
-                request=request,
-                ttl=self.config.db_data_ttl,
-            )
-            # await self.db_client.device_data_update(
-            #     document=doc, ttl=self.config.db_data_ttl
-            # )
-            # result = self.db_client.update_one(
-            #     database="data",
-            #     collection="device",
-            #     filter=filter,
-            #     # update=update,
-            #     document=doc,
-            #     # upsert=True,
-            #     ttl=self.config.db_data_ttl
-            # )
-            # L.info("device_data_update result", extra={"result": result})
+            if self.db_client:
+                await self.db_client.device_data_update(
+                    database=database, collection=collection, request=request, ttl=self.config.db_data_ttl
+                )
+                
+                device_type = attributes.get("device_type", {}).get("data", "sensor")
+                instance_request = DeviceInstanceUpdate(
+                    device_id=device_id,
+                    make=make,
+                    model=model,
+                    serial_number=sn,
+                    version=version,
+                    device_type=device_type,
+                    attributes=attributes,
+                )
+                await self.db_client.device_instance_registry_update(
+                    database="registry",
+                    collection="device-instance",
+                    request=instance_request,
+                    ttl=self.config.db_reg_device_instance_ttl,
+                )
 
         except Exception as e:
-            L.error("device_data_update", extra={"reason": e})
-        pass
+            L.error("device_data_update error", extra={"reason": str(e)})
 
-    # async def device_data_get(self, query: DataStoreQuery):
     async def device_data_get(self, query: DataRequest):
-
-        # fill in useful values based on user request
-
-        # why do we need to do this?
-        # # if not make,model,serial_number try to build from device_id
-        # self.logger.debug("device_data_get", extra={"query": query})
-        # if not query.make or not query.model or not query.serial_number:
-        #     if not query.device_id:
-        #         self.logger.debug("device_data_get:1", extra={"query": query})
-        #         return {"results": []}
-        #     parts = query.device_id.split("::")
-        #     query.make = parts[0]
-        #     query.model = parts[1]
-        #     query.serial_number = parts[2]
-        #     self.logger.debug("device_data_get:2", extra={"query": query})
-        # else:
-        #     query.device_id = "::".join([query.make,query.model,query.serial_number])
-
         self.logger.debug("device_data_get:3", extra={"query": query})
+        
         if query.start_time:
             query.start_timestamp = string_to_timestamp(query.start_time)
-
         if query.end_time:
             query.end_timestamp = string_to_timestamp(query.end_time)
-
-
         if query.last_n_seconds:
-            # this overrides explicit start,end times
             start_dt = get_datetime_with_delta(-(query.last_n_seconds))
-            # current_time = get_datetime()
-            # start_dt = current_time - timedelta(seconds=query.last_n_seconds)
             query.start_timestamp = start_dt.timestamp()
             query.end_timestamp = None
 
-        # TODO add in logic to get/sync from erddap if available
         if self.db_client:
-            self.logger.debug("device_data_get:4", extra={"query": query})
             return await self.db_client.device_data_get(query)
-
         return {"results": []}
 
     async def device_definition_registry_update(self, ce: CloudEvent):
-
         try:
             for definition_type, device_def in ce.data.items():
-                make = device_def["attributes"]["make"]["data"]
-                model = device_def["attributes"]["model"]["data"]
-                format_version = device_def["attributes"]["format_version"]["data"]
-                parts = format_version.split(".")
-                version = f"v{parts[0]}"
-                valid_time = device_def.get("valid_time", "2020-01-01T00:00:00Z")
+                if definition_type not in ["device-definition", "device-definition-update"]:
+                    continue
 
-                if definition_type == "device-definition":
-                    database = "registry"
-                    collection = "device-definition"
-                    attributes = device_def["attributes"]
-                    dimensions = device_def["dimensions"]
-                    variables = device_def["variables"]
+                make = device_def.get("make") or device_def.get("attributes", {}).get("make", {}).get("data", "unknown")
+                model = device_def.get("model") or device_def.get("attributes", {}).get("model", {}).get("data", "unknown")
+                
+                if "version" in device_def:
+                    version = str(device_def["version"]).strip()
+                else:
+                    version = str(device_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")).strip()
+                
+                device_definition_id = device_def.get("device_definition_id")
+                if not device_definition_id:
+                    device_definition_id = f"{make}::{model}::{version}"
+                    
+                device_type = device_def.get("device_type") or device_def.get("attributes", {}).get("device_type", {}).get("data", "sensor")
+                valid_time = (
+                    device_def.get("valid_time") or 
+                    device_def.get("attributes", {}).get("valid_time", {}).get("data") or 
+                    "2026-01-01T00:00:00Z"
+                )
+                attributes = device_def.get("attributes", {})
+                dimensions = device_def.get("dimensions", {})
+                variables = device_def.get("variables", {})
 
-                    if "device_type" in device_def["attributes"]:
-                        device_type = device_def["attributes"]["device_type"]["data"]
-                    else:
-                        # default for backward compatibility
-                        device_def["attributes"]["device_type"] = {
-                            "type": "string",
-                            "data": "sensor"
-                        }
-                        device_type = "sensor"
+                device_def["device_definition_id"] = device_definition_id
+                device_def["make"] = make
+                device_def["model"] = model
+                device_def["version"] = version
+                device_def["device_type"] = device_type
+                device_def["valid_time"] = valid_time
 
-                    device_definition_id = "::".join([make,model,format_version])
-                    request = DeviceDefinitionUpdate(
-                        device_definition_id=device_definition_id,
-                        make=make,
-                        model=model,
-                        version=format_version,
-                        device_type=device_type,
-                        valid_time=valid_time,
-                        attributes=attributes,
-                        dimensions=dimensions,
-                        variables=variables,
-                    )
-
-                    # request = DatastoreRequest(
-                    #     database="registry",
-                    #     collection="device-definition",
-                    #     request=update
-                    # )
-
-            self.logger.debug(
-                "device_definition_registry_update", extra={"request": request}
-            )
-            if self.db_client:
-                result = await self.db_client.device_definition_registry_update(
-                    database=database,
-                    collection=collection,
-                    request=request,
-                    ttl=self.config.db_reg_device_definition_ttl,
+                request = DeviceDefinitionUpdate(
+                    device_definition_id=device_definition_id,
+                    make=make,
+                    model=model,
+                    version=version,
+                    device_type=device_type,
+                    valid_time=valid_time,
+                    attributes=attributes,
+                    dimensions=dimensions,
+                    variables=variables
                 )
 
-                # stop sending ack for now
-                # if result:
-                #     self.logger.debug("configure", extra={"self.config": self.config})
-                #     ack = DAQEvent.create_device_definition_registry_ack(
-                #         source=f"envds.{self.config.daq_id}.datastore",
-                #         data={"device-definition": {"make": make, "model":model, "version": format_version}}
-
-                #     )
-                #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                #     ack["destpath"] = f"envds/{self.config.daq_id}/device/registry/ack"
-                #     await self.send_event(ack)
-
+                self.logger.debug("device_definition_registry_update", extra={"request": request.device_definition_id})
+                if self.db_client:
+                    await self.db_client.device_definition_registry_update(
+                        database="registry",
+                        collection="device-definition",
+                        request=request,
+                        ttl=self.config.db_reg_device_definition_ttl,
+                    )
         except Exception as e:
-            self.logger.error("device_definition_registry_update", extra={"reason": e})
-        pass
+            self.logger.error("device_definition_registry_update", extra={"reason": str(e)})
 
-    async def device_definition_registry_get_ids(self)->dict:
+    async def device_definition_registry_get_ids(self) -> dict:
         if self.db_client:
             self.logger.debug("device_definition_registry_get_ids")
             return await self.db_client.device_definition_registry_get_ids()
-        
         return {"results": []}
 
-
     async def device_definition_registry_get(self, query: DeviceDefinitionRequest) -> dict:
-        
-        # TODO add in logic to get/sync from erddap if available
         if self.db_client:
             return await self.db_client.device_definition_registry_get(query)
-        
         return {"results": []}
 
     async def device_instance_registry_update(self, ce: CloudEvent):
-
         try:
             self.logger.debug("device_instance_registry_update", extra={"ce": ce})
             for instance_type, instance_reg in ce.data.items():
                 request = None
                 self.logger.debug("device_instance_registry_update", extra={"instance_type": instance_type, "instance_reg": instance_reg})
                 try:
-                    # device_id = instance_reg.get("device_id", None)
                     make = instance_reg["make"]
                     model = instance_reg["model"]
                     serial_number = instance_reg["serial_number"]
-                    format_version = instance_reg["format_version"]
-                    parts = format_version.split(".")
-                    version = f"v{parts[0]}"
+                    version = str(instance_reg.get("format_version", "1.0.0"))
 
                     if make is None or model is None or serial_number is None:
-                        # if "device_id" in instance_reg and instance_reg["device_id"] is not None:
-                            # parts = instance_reg["device_id"].split("::")
-                            # make = parts[0]
-                            # model = parts[1]
-                            # serial_number = parts[2]
                         self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
                         return
                     
-                    # if device_id is None:
                     device_id = "::".join([make, model, serial_number])
 
                     if instance_type == "device-instance":
@@ -585,7 +441,6 @@ class Datastore:
                         if "device_type" in instance_reg["attributes"]:
                             device_type = instance_reg["attributes"]["device_type"]["data"]
                         else:
-                            # default for backward compatibility
                             device_type = "sensor"
 
                         request = DeviceInstanceUpdate(
@@ -593,7 +448,7 @@ class Datastore:
                             make=make,
                             model=model,
                             serial_number=serial_number,
-                            version=format_version,
+                            version=version,
                             device_type=device_type,
                             attributes=attributes,
                         )
@@ -602,13 +457,6 @@ class Datastore:
                         self.logger.error("datastore:device_instance_registry_update", extra={"reason": e})
                         continue
 
-                    # request = DatastoreRequest(
-                    #     database="registry",
-                    #     collection="device-instance",
-                    #     request=update,
-                    # )
-
-                self.logger.debug("datastore:device_instance_registry_update", extra={"request": request, "db_client": self.db_client})
                 if self.db_client and request:
                     await self.db_client.device_instance_registry_update(
                         database=database,
@@ -619,265 +467,178 @@ class Datastore:
 
         except Exception as e:
             L.error("device_instance_registry_update", extra={"reason": e})
-        pass
 
-    async def device_instance_registry_get(self, query: DeviceInstanceRequest) -> dict:
-        
-        # TODO add in logic to get/sync from erddap if available?
+    async def device_instance_registry_get_ids(self) -> dict:
         if self.db_client:
-            return await self.db_client.device_instance_registry_get(query)
-        
+            return await self.db_client.device_instance_registry_get_ids()
         return {"results": []}
 
-    # TODO Add controller_data_update
-    async def controller_data_update(self, ce: CloudEvent):
+    async def device_instance_registry_get(self, query: DeviceInstanceRequest) -> dict:
+        if self.db_client:
+            return await self.db_client.device_instance_registry_get(query)
+        return {"results": []}
 
+    # -------------------------------------------------------------------------------------
+    # CONTROLLERS
+    # -------------------------------------------------------------------------------------
+    async def controller_data_update(self, ce: CloudEvent):
         try:
-            # database = "data"
-            # collection = "device"
-            # self.logger.debug("data_device_update", extra={"ce": ce})
             database = "data"
             collection = "controller"
-            attributes = ce.data["attributes"]
-            dimensions = ce.data["dimensions"]
-            variables = ce.data["variables"]
+            data = ce.data
+            
+            attributes = data.get("attributes", {})
+            variables = data.get("variables", {})
+            dimensions = data.get("dimensions", {})
 
-            make = attributes["make"]["data"]
-            model = attributes["model"]["data"]
-            serial_number = attributes["serial_number"]["data"]
+            ts_str = data.get("timestamp")
+            timestamp = string_to_timestamp(ts_str)
 
-            # TODO fix serial number in magic data record, tmp workaround for now
-            # serial_number = attributes["serial_number"]
+            make = attributes.get("make", {}).get("data", "unknown")
+            model = attributes.get("model", {}).get("data", "unknown")
+            sn = attributes.get("serial_number", {}).get("data", "unknown")
+            
+            format_ver = attributes.get("format_version", {}).get("data", "1.0.0")
+            version = str(format_ver)
 
-            format_version = attributes["format_version"]["data"]
-            parts = format_version.split(".")
-            self.logger.debug(f"parts: {parts}, {format_version}")
-            erddap_version = f"v{parts[0]}"
-            controller_id = "::".join([make, model, serial_number])
-            self.logger.debug("controller_data_update", extra={"device_id": controller_id})
-            timestamp = string_to_timestamp(ce.data["timestamp"]) # change to an actual timestamp
-
-            self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
-
-            doc = {
-                # "_id": id,
-                "make": make,
-                "model": model,
-                "serial_number": serial_number,
-                "version": erddap_version,
-                "timestamp": timestamp,
-                "attributes": attributes,
-                "dimensions": dimensions,
-                "variables": variables,
-                # "last_update": datetime.now(tz=timezone.utc),
-            }
+            controller_id = attributes.get("controller_id", {}).get("data")
+            if not controller_id:
+                controller_id = f"{make}::{model}::{sn}"
 
             request = ControllerDataUpdate(
+                controller_id=controller_id,
                 make=make,
                 model=model,
-                serial_number=serial_number,
-                version=erddap_version,
+                serial_number=sn,
+                version=version,
                 timestamp=timestamp,
                 attributes=attributes,
                 dimensions=dimensions,
                 variables=variables,
             )
 
-            self.logger.debug("controller_data_update", extra={"request": request})
-            # request = DatastoreRequest(
-            #     database="data", collection="device", request=update
-            # )
-            # self.logger.debug("device_data_update", extra={"device-doc": doc})
-            # filter = {
-            #     "make": make,
-            #     "model": model,
-            #     "version": erddap_version,
-            #     "serial_number": serial_number,
-            #     "timestamp": timestamp,
-            # }
-            await self.db_client.controller_data_update(
-                database=database,
-                collection=collection,
-                request=request,
-                ttl=self.config.db_data_ttl,
-            )
-            # await self.db_client.device_data_update(
-            #     document=doc, ttl=self.config.db_data_ttl
-            # )
-            # result = self.db_client.update_one(
-            #     database="data",
-            #     collection="device",
-            #     filter=filter,
-            #     # update=update,
-            #     document=doc,
-            #     # upsert=True,
-            #     ttl=self.config.db_data_ttl
-            # )
-            # L.info("device_data_update result", extra={"result": result})
+            if self.db_client:
+                await self.db_client.controller_data_update(
+                    database=database, collection=collection, request=request, ttl=self.config.db_data_ttl
+                )
+                
+                instance_request = ControllerInstanceUpdate(
+                    controller_id=controller_id,
+                    make=make,
+                    model=model,
+                    serial_number=sn,
+                    version=version,
+                    attributes=attributes,
+                )
+                await self.db_client.controller_instance_registry_update(
+                    database="registry",
+                    collection="controller-instance",
+                    request=instance_request,
+                    ttl=self.config.db_reg_controller_instance_ttl,
+                )
 
         except Exception as e:
-            L.error("device_data_update", extra={"reason": e})
-        pass
-
+            L.error("controller_data_update error", extra={"reason": str(e)})
 
     async def controller_data_get(self, query: DataRequest):
-
-        # fill in useful values based on user request
-
-        # why do we need to do this?
-        # # if not make,model,serial_number try to build from controller_id
-        # self.logger.debug("controller_data_get", extra={"query": query})
-        # if not query.make or not query.model or not query.serial_number:
-        #     if not query.controller_id:
-        #         self.logger.debug("controller_data_get:1", extra={"query": query})
-        #         return {"results": []}
-        #     parts = query.controller_id.split("::")
-        #     query.make = parts[0]
-        #     query.model = parts[1]
-        #     query.serial_number = parts[2]
-        #     self.logger.debug("controller_data_get:2", extra={"query": query})
-        # else:
-        #     query.controller_id = "::".join([query.make,query.model,query.serial_number])
-
         self.logger.debug("controller_data_get:3", extra={"query": query})
+        
         if query.start_time:
             query.start_timestamp = string_to_timestamp(query.start_time)
-
         if query.end_time:
             query.end_timestamp = string_to_timestamp(query.end_time)
-
-
         if query.last_n_seconds:
-            # this overrides explicit start,end times
             start_dt = get_datetime_with_delta(-(query.last_n_seconds))
-            # current_time = get_datetime()
-            # start_dt = current_time - timedelta(seconds=query.last_n_seconds)
             query.start_timestamp = start_dt.timestamp()
             query.end_timestamp = None
 
-        # TODO add in logic to get/sync from erddap if available
         if self.db_client:
-            self.logger.debug("controller_data_get:4", extra={"query": query})
             return await self.db_client.controller_data_get(query)
-
         return {"results": []}
 
     async def controller_definition_registry_update(self, ce: CloudEvent):
-
         try:
             for definition_type, controller_def in ce.data.items():
-                make = controller_def["attributes"]["make"]["data"]
-                model = controller_def["attributes"]["model"]["data"]
-                format_version = controller_def["attributes"]["format_version"]["data"]
-                parts = format_version.split(".")
-                version = f"v{parts[0]}"
-                valid_time = controller_def.get("valid_time", "2020-01-01T00:00:00Z")
+                if definition_type not in ["controller-definition", "controller-definition-update"]:
+                    continue
 
-                if definition_type == "controller-definition":
-                    database = "registry"
-                    collection = "controller-definition"
-                    attributes = controller_def["attributes"]
-                    dimensions = controller_def["dimensions"]
-                    variables = controller_def["variables"]
+                make = controller_def.get("make") or controller_def.get("attributes", {}).get("make", {}).get("data", "unknown")
+                model = controller_def.get("model") or controller_def.get("attributes", {}).get("model", {}).get("data", "unknown")
+                
+                if "version" in controller_def:
+                    version = str(controller_def["version"]).strip()
+                else:
+                    version = str(controller_def.get("attributes", {}).get("format_version", {}).get("data", "1.0.0")).strip()
+                
+                controller_definition_id = controller_def.get("controller_definition_id")
+                if not controller_definition_id:
+                    controller_definition_id = f"{make}::{model}::{version}"
 
-                    # if "controller_type" in controller_def["attributes"]:
-                    #     controller_type = controller_def["attributes"]["controller_type"]["data"]
-                    # else:
-                    #     # default for backward compatibility
-                    #     controller_def["attributes"]["controller_type"] = {
-                    #         "type": "string",
-                    #         "data": "sensor"
-                    #     }
-                    #     controller_type = "sensor"
+                valid_time = (
+                    controller_def.get("valid_time") or 
+                    controller_def.get("attributes", {}).get("valid_time", {}).get("data") or 
+                    "2026-01-01T00:00:00Z"
+                )
+                attributes = controller_def.get("attributes", {})
+                dimensions = controller_def.get("dimensions", {})
+                variables = controller_def.get("variables", {})
 
-                    controller_definition_id = "::".join([make,model,format_version])
-                    request = ControllerDefinitionUpdate(
-                        controller_definition_id=controller_definition_id,
-                        make=make,
-                        model=model,
-                        version=format_version,
-                        # controller_type=controller_type,
-                        valid_time=valid_time,
-                        attributes=attributes,
-                        dimensions=dimensions,
-                        variables=variables,
-                    )
+                controller_def["controller_definition_id"] = controller_definition_id
+                controller_def["make"] = make
+                controller_def["model"] = model
+                controller_def["version"] = version
+                controller_def["valid_time"] = valid_time
 
-                    # request = DatastoreRequest(
-                    #     database="registry",
-                    #     collection="controller-definition",
-                    #     request=update
-                    # )
-
-            self.logger.debug(
-                "controller_definition_registry_update", extra={"request": request}
-            )
-            if self.db_client:
-                result = await self.db_client.controller_definition_registry_update(
-                    database=database,
-                    collection=collection,
-                    request=request,
-                    ttl=self.config.db_reg_controller_definition_ttl,
-                    # ttl=self.config.db_reg_device_definition_ttl
+                request = ControllerDefinitionUpdate(
+                    controller_definition_id=controller_definition_id,
+                    make=make,
+                    model=model,
+                    version=version,
+                    valid_time=valid_time,
+                    attributes=attributes,
+                    dimensions=dimensions,
+                    variables=variables
                 )
 
-                # stop sending ack for now
-                # if result:
-                #     self.logger.debug("configure", extra={"self.config": self.config})
-                #     ack = DAQEvent.create_controller_definition_registry_ack(
-                #         source=f"envds.{self.config.daq_id}.datastore",
-                #         data={"controller-definition": {"make": make, "model":model, "version": format_version}}
-
-                #     )
-                #     # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
-                #     ack["destpath"] = f"envds/{self.config.daq_id}/controller/registry/ack"
-                #     await self.send_event(ack)
-
+                self.logger.debug("controller_definition_registry_update", extra={"request": request.controller_definition_id})
+                
+                if self.db_client:
+                    await self.db_client.controller_definition_registry_update(
+                        database="registry",
+                        collection="controller-definition",
+                        request=request,
+                        ttl=self.config.db_reg_controller_definition_ttl,
+                    )
         except Exception as e:
-            self.logger.error("controller_definition_registry_update", extra={"reason": e})
-        pass
+            self.logger.error("controller_definition_registry_update", extra={"reason": str(e)})
 
-    async def controller_definition_registry_get_ids(self)->dict:
+    async def controller_definition_registry_get_ids(self) -> dict:
         if self.db_client:
             self.logger.debug("controller_definition_registry_get_ids")
             return await self.db_client.controller_definition_registry_get_ids()
-        
         return {"results": []}
 
     async def controller_definition_registry_get(self, query: ControllerDefinitionRequest) -> dict:
-        
-        # TODO add in logic to get/sync from erddap if available
         if self.db_client:
             return await self.db_client.controller_definition_registry_get(query)
-        
         return {"results": []}
 
     async def controller_instance_registry_update(self, ce: CloudEvent):
-
         try:
             self.logger.debug("controller_instance_registry_update", extra={"ce": ce})
             for instance_type, instance_reg in ce.data.items():
                 request = None
                 self.logger.debug("controller_instance_registry_update", extra={"instance_type": instance_type, "instance_reg": instance_reg})
                 try:
-                    # controller_id = instance_reg.get("controller_id", None)
                     make = instance_reg["make"]
                     model = instance_reg["model"]
                     serial_number = instance_reg["serial_number"]
-                    format_version = instance_reg["format_version"]
-                    parts = format_version.split(".")
-                    version = f"v{parts[0]}"
+                    version = str(instance_reg.get("format_version", "1.0.0"))
 
                     if make is None or model is None or serial_number is None:
-                        # if "controller_id" in instance_reg and instance_reg["controller_id"] is not None:
-                            # parts = instance_reg["controller_id"].split("::")
-                            # make = parts[0]
-                            # model = parts[1]
-                            # serial_number = parts[2]
                         self.logger.error("couldn't register instance - missing value", extra={"make": make, "model": model, "serial_number": serial_number})
                         return
                     
-                    # if controller_id is None:
                     controller_id = "::".join([make, model, serial_number])
 
                     if instance_type == "controller-instance":
@@ -885,19 +646,12 @@ class Datastore:
                         collection = "controller-instance"
                         attributes = instance_reg["attributes"]
 
-                        # if "controller_type" in instance_reg["attributes"]:
-                        #     controller_type = instance_reg["attributes"]["controller_type"]["data"]
-                        # else:
-                        #     # default for backward compatibility
-                        #     controller_type = "sensor"
-
                         request = ControllerInstanceUpdate(
                             controller_id=controller_id,
                             make=make,
                             model=model,
                             serial_number=serial_number,
-                            version=format_version,
-                            # controller_type=controller_type,
+                            version=version,
                             attributes=attributes,
                         )
 
@@ -905,13 +659,6 @@ class Datastore:
                         self.logger.error("datastore:controller_instance_registry_update", extra={"reason": e})
                         continue
 
-                    # request = DatastoreRequest(
-                    #     database="registry",
-                    #     collection="controller-instance",
-                    #     request=update,
-                    # )
-
-                self.logger.debug("datastore:controller_instance_registry_update", extra={"request": request, "db_client": self.db_client})
                 if self.db_client and request:
                     await self.db_client.controller_instance_registry_update(
                         database=database,
@@ -922,309 +669,305 @@ class Datastore:
 
         except Exception as e:
             L.error("controller_instance_registry_update", extra={"reason": e})
-        pass
 
-    async def controller_instance_registry_get(self, query: ControllerInstanceRequest) -> dict:
-        
-        # TODO add in logic to get/sync from erddap if available?
+    async def controller_instance_registry_get_ids(self) -> dict:
         if self.db_client:
-            return await self.db_client.controller_instance_registry_get(query)
-        
+            return await self.db_client.controller_instance_registry_get_ids()
         return {"results": []}
 
-    # async def variablemap_definition_registry_update(self, ce: CloudEvent):
+    async def controller_instance_registry_get(self, query: ControllerInstanceRequest) -> dict:
+        if self.db_client:
+            return await self.db_client.controller_instance_registry_get(query)
+        return {"results": []}
 
-    #     try:
-    #         # database = "data"
-    #         # collection = "device"
-    #         # self.logger.debug("data_device_update", extra={"ce": ce})
-    #         database = "registry"
-    #         collection = "variablemap"
-    #         attributes = ce.data["attributes"]
-    #         dimensions = ce.data["dimensions"]
-    #         variables = ce.data["variables"]
+    # -------------------------------------------------------------------------------------
+    # VARIABLE MAPS & SETS
+    # -------------------------------------------------------------------------------------
+    async def variablemap_definition_registry_get_ids(self) -> dict:
+        if self.db_client:
+            return await self.db_client.variablemap_definition_registry_get_ids()
+        return {"results": []}
 
-    #         variablemap = attributes["variablemap"]["data"]
-    #         variablemap_revision_time = attributes["variablemap_revision_time"]["data"]
-    #         variablegroup = attributes["variablegroup"]["data"]
-    #         index_type = attributes["index_type"]["data"]
-    #         index_value = attributes["index_value"]["data"]
-
-    #         # TODO fix serial number in magic data record, tmp workaround for now
-    #         # serial_number = attributes["serial_number"]
-
-    #         format_version = attributes["format_version"]["data"]
-    #         parts = format_version.split(".")
-    #         self.logger.debug(f"parts: {parts}, {format_version}")
-    #         erddap_version = f"v{parts[0]}"
-    #         device_id = "::".join([make, model, serial_number])
-    #         self.logger.debug("device_data_update", extra={"device_id": device_id})
-    #         timestamp = string_to_timestamp(ce.data["timestamp"]) # change to an actual timestamp
-
-    #         self.logger.debug("device_data_update", extra={"timestamp": timestamp, "ce-timestamp": ce.data["timestamp"]})
-
-    #         doc = {
-    #             # "_id": id,
-    #             "make": make,
-    #             "model": model,
-    #             "serial_number": serial_number,
-    #             "version": erddap_version,
-    #             "timestamp": timestamp,
-    #             "attributes": attributes,
-    #             "dimensions": dimensions,
-    #             "variables": variables,
-    #             # "last_update": datetime.now(tz=timezone.utc),
-    #         }
-
-    #         request = DataUpdate(
-    #             make=make,
-    #             model=model,
-    #             serial_number=serial_number,
-    #             version=erddap_version,
-    #             timestamp=timestamp,
-    #             attributes=attributes,
-    #             dimensions=dimensions,
-    #             variables=variables,
-    #         )
-
-    #         self.logger.debug("device_data_update", extra={"request": request})
-    #         # request = DatastoreRequest(
-    #         #     database="data", collection="device", request=update
-    #         # )
-    #         # self.logger.debug("device_data_update", extra={"device-doc": doc})
-    #         # filter = {
-    #         #     "make": make,
-    #         #     "model": model,
-    #         #     "version": erddap_version,
-    #         #     "serial_number": serial_number,
-    #         #     "timestamp": timestamp,
-    #         # }
-    #         await self.db_client.device_data_update(
-    #             database=database,
-    #             collection=collection,
-    #             request=request,
-    #             ttl=self.config.db_data_ttl,
-    #         )
-    #         # await self.db_client.device_data_update(
-    #         #     document=doc, ttl=self.config.db_data_ttl
-    #         # )
-    #         # result = self.db_client.update_one(
-    #         #     database="data",
-    #         #     collection="device",
-    #         #     filter=filter,
-    #         #     # update=update,
-    #         #     document=doc,
-    #         #     # upsert=True,
-    #         #     ttl=self.config.db_data_ttl
-    #         # )
-    #         # L.info("device_data_update result", extra={"result": result})
-
-    #     except Exception as e:
-    #         L.error("device_data_update", extra={"reason": e})
-    #     pass
-
-    # # async def device_data_get(self, query: DataStoreQuery):
-    # async def device_data_get(self, query: DataRequest):
-
-    #     # fill in useful values based on user request
-
-    #     # why do we need to do this?
-    #     # # if not make,model,serial_number try to build from device_id
-    #     # self.logger.debug("device_data_get", extra={"query": query})
-    #     # if not query.make or not query.model or not query.serial_number:
-    #     #     if not query.device_id:
-    #     #         self.logger.debug("device_data_get:1", extra={"query": query})
-    #     #         return {"results": []}
-    #     #     parts = query.device_id.split("::")
-    #     #     query.make = parts[0]
-    #     #     query.model = parts[1]
-    #     #     query.serial_number = parts[2]
-    #     #     self.logger.debug("device_data_get:2", extra={"query": query})
-    #     # else:
-    #     #     query.device_id = "::".join([query.make,query.model,query.serial_number])
-
-    #     self.logger.debug("device_data_get:3", extra={"query": query})
-    #     if query.start_time:
-    #         query.start_timestamp = string_to_timestamp(query.start_time)
-
-    #     if query.end_time:
-    #         query.end_timestamp = string_to_timestamp(query.end_time)
-
-
-    #     if query.last_n_seconds:
-    #         # this overrides explicit start,end times
-    #         start_dt = get_datetime_with_delta(-(query.last_n_seconds))
-    #         # current_time = get_datetime()
-    #         # start_dt = current_time - timedelta(seconds=query.last_n_seconds)
-    #         query.start_timestamp = start_dt.timestamp()
-    #         query.end_timestamp = None
-
-    #     # TODO add in logic to get/sync from erddap if available
-    #     if self.db_client:
-    #         self.logger.debug("device_data_get:4", extra={"query": query})
-    #         return await self.db_client.device_data_get(query)
-
-    #     return {"results": []}
-
+    def _extract_val(self, obj: dict, key: str, default: any):
+        if not isinstance(obj, dict): return default
+        val = obj.get(key)
+        if val is None: return default
+        if isinstance(val, dict) and "data" in val:
+            return val.get("data", default)
+        return val
+    
     async def variablemap_definition_registry_update(self, ce: CloudEvent):
-
         try:
             for definition_type, vm_def in ce.data.items():
-                # platform = vm_def["metadata"]["platform"]
-                variablemap = vm_def["metadata"]["name"]
-                attributes = vm_def["data"]["attributes"]
-                variablemap_type = attributes["variablemap_type"]
-                if variablemap_type == "Platform":
-                    variablemap_type_id = attributes["platform"]
+                if "variablemap_definition_id" in vm_def:
+                    request = VariableMapDefinitionUpdate(**vm_def)
                 else:
-                    L.error("variablemap_definition_registry_update", extra={"reason": f"unknown variablemap_type-{variablemap_type}"})
-                    return
-                
-                valid_config_time = attributes["valid_config_time"]
+                    metadata = vm_def.get("metadata", {})
+                    variablemap = metadata.get("name", "unknown")
+                    variablemap_type_id = metadata.get("platform", "unknown")
+                    valid_config_time = metadata.get("valid_config_time", "2020-01-01T00:00:00Z")
 
-                database = "registry"
-                collection = "variablemap-definition"
-                variablesets = vm_def["data"]["variablesets"]
-                variables = vm_def["data"]["variables"]
+                    data = vm_def.get("data", {})
+                    attributes = data.get("attributes", {})
+                    
+                    variablemap_type = self._extract_val(attributes, "variablemap_type", "Platform")
+                    variablemap_definition_id = "::".join([variablemap_type_id, variablemap, valid_config_time])
+                    
+                    request = VariableMapDefinitionUpdate(
+                        variablemap_definition_id=variablemap_definition_id,
+                        variablemap_type=variablemap_type,
+                        variablemap_type_id=variablemap_type_id,
+                        variablemap=variablemap,
+                        valid_config_time=valid_config_time,
+                        attributes=attributes,
+                        variablesets=data.get("variablesets", {}),
+                        variables=data.get("variables", {}),
+                    )
 
-                variablemap_definition_id = "::".join([variablemap_type_id,variablemap,valid_config_time])
-                request = VariableMapDefinitionUpdate(
-                    variablemap_definition_id=variablemap_definition_id,
-                    variablemap_type=variablemap_type,
-                    variablemap_type_id=variablemap_type_id,
-                    variablemap=variablemap,
-                    valid_config_time=valid_config_time,
-                    attributes=attributes,
-                    variablesets=variablesets,
-                    variables=variables,
-                )
-
-            self.logger.debug(
-                "variablemap_definition_registry_update", extra={"request": request}
-            )
-            if self.db_client:
-                result = await self.db_client.variablemap_definition_registry_update(
-                    database=database,
-                    collection=collection,
-                    request=request,
-                    ttl=self.config.db_reg_variablemap_definition_ttl,
-                )
-
-                # stop sending ack for now
-                # if result:
-                #     self.logger.debug("configure", extra={"self.config": self.config})
-                #     ack = DAQEvent.create_device_definition_registry_ack(
-                #         source=f"envds.{self.config.daq_id}.datastore",
-                #         data={"device-definition": {"make": make, "model":model, "version": format_version}}
-
-                #     )
-                #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                #     ack["destpath"] = f"envds/{self.config.daq_id}/device/registry/ack"
-                #     await self.send_event(ack)
-
+                self.logger.debug("variablemap_definition_registry_update", extra={"request": request})
+                if self.db_client:
+                    await self.db_client.variablemap_definition_registry_update(
+                        database="registry",
+                        collection="variablemap-definition",
+                        request=request,
+                        ttl=self.config.db_reg_variablemap_definition_ttl,
+                    )
         except Exception as e:
-            self.logger.error("device_definition_registry_update", extra={"reason": e})
-        pass
+            self.logger.error("variablemap_definition_registry_update", extra={"reason": repr(e)})
 
     async def variablemap_definition_registry_get(self, query: VariableMapDefinitionRequest) -> dict:
-        
-        # TODO add in logic to get/sync from erddap if available
         if self.db_client:
             return await self.db_client.variablemap_definition_registry_get(query)
-        
+        return {"results": []}
+
+    async def variableset_definition_registry_get_ids(self) -> dict:
+        if self.db_client:
+            return await self.db_client.variableset_definition_registry_get_ids()
         return {"results": []}
 
     async def variableset_definition_registry_update(self, ce: CloudEvent):
-
         try:
-            for definition_type, vm_def in ce.data.items():
-                # platform = vm_def["metadata"]["platform"]
-                variable = vm_def["metadata"]["name"]
-                attributes = vm_def["data"]["attributes"]
-                variablemap_type = attributes["variablemap_type"]
-                if variablemap_type == "Platform":
-                    variablemap_type_id = attributes["platform"]
+            for definition_type, vs_payload in ce.data.items():
+                if definition_type != "variableset-definition":
+                    continue
+
+                if "variableset_definition_id" in vs_payload:
+                    request = VariableSetDefinitionUpdate(**vs_payload)
                 else:
-                    L.error("variablemap_definition_registry_update", extra={"reason": f"unknown variablemap_type-{variablemap_type}"})
-                    return
+                    vs_name = vs_payload.get("metadata", {}).get("name", "unknown")
+                    data = vs_payload.get("data", {})
+                    attributes = data.get("attributes", {})
+                    
+                    variablemap_name = self._extract_val(attributes, "variablemap_id", "unknown")
+                    platform = self._extract_val(attributes, "platform", "unknown")
+                    valid_config_time = self._extract_val(attributes, "valid_config_time", "2020-01-01T00:00:00Z")
+                    
+                    index_type = self._extract_val(data, "index_type", self._extract_val(attributes, "index_type", "unknown"))
+                    index_value = self._extract_val(data, "index_value", self._extract_val(attributes, "index_value", 0))
+
+                    variablemap_definition_id = "::".join([platform, variablemap_name, valid_config_time])
+                    
+                    request = VariableSetDefinitionUpdate(
+                        variableset_definition_id=f"{variablemap_definition_id}::{vs_name}",
+                        variablemap_definition_id=variablemap_definition_id,
+                        variableset=vs_name,
+                        index_type=index_type,
+                        index_value=index_value,
+                        attributes=attributes,
+                        dimensions=data.get("dimensions", {}),
+                        variables=data.get("variables", {})
+                    )
+
+                self.logger.debug("variableset_definition_registry_update", extra={"request": request})
+                if self.db_client:
+                    await self.db_client.variableset_definition_registry_update(
+                        database="registry",
+                        collection="variableset-definition", 
+                        request=request,
+                        ttl=self.config.db_reg_variableset_definition_ttl,
+                    )
+        except Exception as e:
+            self.logger.error("variableset_definition_registry_update", extra={"reason": str(e)})
+
+    async def variableset_definition_registry_get(self, query: VariableSetDefinitionRequest) -> dict:
+        if self.db_client:
+            return await self.db_client.variableset_definition_registry_get(query)
+        return {"results": []}
+
+    # -------------------------------------------------------------------------------------
+    # SAMPLING DEFINITIONS (DYNAMIC)
+    # -------------------------------------------------------------------------------------
+    async def sampling_definition_registry_update(self, ce: CloudEvent, resource: str):
+        try:   
+            self.logger.debug("sampling_definition_registry_update", extra={"cd-data": ce.data})
+            for definition_type, resource_def in ce.data.items():
+                if definition_type not in [f"{resource}", f"{resource}-definition", f"{resource}-definition-update"]:
+                    continue
                 
-                valid_config_time = attributes["valid_config_time"]
+                metadata = resource_def.get("metadata", {})
+                data_block = resource_def.get("data", {})
+                attributes = data_block.get("attributes", {})
 
-                database = "registry"
-                collection = "variablemap-definition"
-                variablesets = vm_def["data"]["variablesets"]
-                variables = vm_def["data"]["variables"]
+                if "metadata" not in resource_def:
+                    resource_def["metadata"] = {}
 
-                variablemap_definition_id = "::".join([variablemap_type_id,variablemap,valid_config_time])
-                request = VariableMapDefinitionUpdate(
-                    variablemap_definition_id=variablemap_definition_id,
-                    variablemap_type=variablemap_type,
-                    variablemap_type_id=variablemap_type_id,
-                    variablemap=variablemap,
-                    valid_config_time=valid_config_time,
-                    attributes=attributes,
-                    variablesets=variablesets,
-                    variables=variables,
+                name = (
+                    self._extract_val(resource_def, "name", None) or 
+                    self._extract_val(metadata, "name", None) or 
+                    self._extract_val(attributes, "name", "unknown")
                 )
 
-            self.logger.debug(
-                "variablemap_definition_registry_update", extra={"request": request}
+                valid_time = (
+                    self._extract_val(resource_def, "revision-time", None) or
+                    self._extract_val(metadata, "revision-time", None) or
+                    self._extract_val(resource_def, "valid_config_time", None) or 
+                    self._extract_val(metadata, "valid_config_time", None) or 
+                    self._extract_val(attributes, "valid_config_time", "2020-01-01T00:00:00Z")
+                )
+
+                resource_def["metadata"]["name"] = name
+                resource_def["metadata"]["valid_config_time"] = valid_time
+
+                if self.db_client:
+                    # Make Structural Definitions Permanent (TTL = 0)
+                    ttl = self.config.db_reg_sampling_definition_ttl
+                    if resource in ["deployment", "project", "platform", "projectallocation", "contact"]:
+                        ttl = 0 
+
+                    await self.db_client.sampling_definition_registry_update(
+                        resource=resource,
+                        database="registry",
+                        collection=f"{resource}-definition",
+                        request=resource_def,
+                        ttl=ttl
+                    )
+        except Exception as e:
+            self.logger.error(f"sampling_definition_registry_update:{resource}", extra={"reason": str(e)})
+
+    async def sampling_definition_registry_get_ids(self, resource: str) -> dict:
+        if self.db_client:
+            return await self.db_client.sampling_definition_registry_get_ids(resource)
+        return {"results": []}
+
+    async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
+        if self.db_client:
+            return await self.db_client.sampling_definition_registry_get(resource, query)
+        return {"results": []}
+
+    # -------------------------------------------------------------------------------------
+    # VARIABLE SET TELEMETRY DATA
+    # -------------------------------------------------------------------------------------
+    async def variableset_data_update(self, ce: CloudEvent):
+        try:
+            database = "data"
+            collection = "variableset"
+            
+            self.logger.debug("variableset_data_update")
+            data = ce.data
+            attributes = data.get("attributes", {})
+            dimensions = data.get("dimensions", {})
+            variables = data.get("variables", {})
+            
+            platform = attributes.get("platform", {}).get("data", "unknown")
+            vmap_name = attributes.get("variablemap_id", {}).get("data") or attributes.get("variablemap", {}).get("data", "unknown")
+            vmap_time = attributes.get("valid_config_time", {}).get("data", "2020-01-01T00:00:00Z")
+
+            variablemap_id = f"{platform}::{vmap_name}::{vmap_time}"
+            
+            time_data = variables.get("time", {}).get("data")
+            
+            if isinstance(time_data, list) and len(time_data) > 0:
+                ts_str = time_data[-1] 
+            else:
+                ts_str = time_data
+
+            if not ts_str:
+                raise ValueError("Missing or empty variables.time.data. Cannot index VariableSet without a valid measurement time.")
+                
+            timestamp = string_to_timestamp(str(ts_str))
+            
+            vs_name = attributes.get("variableset_id", {}).get("data") or attributes.get("variableset", {}).get("data")
+            if not vs_name:
+                source_parts = ce.get("source", "").split(".")
+                raw_source = source_parts[-1] if len(source_parts) > 0 else "unknown"
+                vs_name = raw_source.split("::")[-1] if "::" in raw_source else raw_source
+
+            variableset_id = f"{vmap_name}::{vs_name}"
+
+            request = VariableSetDataUpdate(
+                variableset_id=variableset_id,
+                variablemap_id=variablemap_id,
+                variableset=vs_name,
+                timestamp=timestamp, 
+                attributes=attributes,
+                dimensions=dimensions,
+                variables=variables,
             )
+            
+            self.logger.debug("variableset_data_update", extra={"req": request})
             if self.db_client:
-                result = await self.db_client.variablemap_definition_registry_update(
+                await self.db_client.variableset_data_update(
                     database=database,
                     collection=collection,
                     request=request,
-                    ttl=self.config.db_reg_variablemap_definition_ttl,
+                    ttl=self.config.db_data_ttl,
                 )
-
-                # stop sending ack for now
-                # if result:
-                #     self.logger.debug("configure", extra={"self.config": self.config})
-                #     ack = DAQEvent.create_device_definition_registry_ack(
-                #         source=f"envds.{self.config.daq_id}.datastore",
-                #         data={"device-definition": {"make": make, "model":model, "version": format_version}}
-
-                #     )
-                #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
-                #     ack["destpath"] = f"envds/{self.config.daq_id}/device/registry/ack"
-                #     await self.send_event(ack)
-
+            
+                instance_request = VariableSetInstanceUpdate(
+                    variableset_id=request.variableset_id,
+                    variablemap_id=request.variablemap_id,
+                    variableset=request.variableset,
+                    attributes=attributes,
+                )
+                
+                await self.db_client.variableset_instance_registry_update(
+                    database="registry",
+                    collection="variableset-instance",
+                    request=instance_request,
+                    ttl=self.config.db_reg_variableset_instance_ttl,
+                )
+                
         except Exception as e:
-            self.logger.error("device_definition_registry_update", extra={"reason": e})
-        pass
+            self.logger.error("variableset_data_update", extra={"reason": str(e)})
 
-    async def variablemap_definition_registry_get(self, query: VariableMapDefinitionRequest) -> dict:
+    async def variableset_data_get(self, query: VariableSetDataRequest):
+        self.logger.debug("variableset_data_get:3", extra={"query": query})
         
-        # TODO add in logic to get/sync from erddap if available
+        if query.start_time:
+            query.start_timestamp = string_to_timestamp(query.start_time)
+        if query.end_time:
+            query.end_timestamp = string_to_timestamp(query.end_time)
+        if query.last_n_seconds:
+            start_dt = get_datetime_with_delta(-(query.last_n_seconds))
+            query.start_timestamp = start_dt.timestamp()
+            query.end_timestamp = None
+
         if self.db_client:
-            return await self.db_client.variablemap_definition_registry_get(query)
-        
+            return await self.db_client.variableset_data_get(query)
+        return {"results": []}
+    
+    async def variableset_instance_registry_get_ids(self) -> dict:
+        if self.db_client:
+            return await self.db_client.variableset_instance_registry_get_ids()
         return {"results": []}
 
-
-
+    async def variableset_instance_registry_get(self, query: VariableSetInstanceRequest) -> dict:
+        if self.db_client:
+            return await self.db_client.variableset_instance_registry_get(query)
+        return {"results": []}
 
 async def shutdown():
     print("shutting down")
-    # for task in task_list:
-    #     print(f"cancel: {task}")
-    #     task.cancel()
-
 
 async def main(config):
     config = uvicorn.Config(
         "main:app",
         host=config.host,
         port=config.port,
-        # log_level=server_config.log_level,
         root_path="/msp/datastore",
-        # log_config=dict_config,
     )
 
     server = uvicorn.Server(config)
-    # test = logging.getLogger()
-    # test.info("test")
     L.info(f"server: {server}")
     await server.serve()
 
@@ -1232,12 +975,8 @@ async def main(config):
     await shutdown()
     print("done.")
 
-
 if __name__ == "__main__":
-    # app.run(debug=config.debug, host=config.host, port=config.port)
-    # app.run()
     config = DatastoreConfig()
-    # asyncio.run(main(config))
 
     try:
         index = sys.argv.index("--host")

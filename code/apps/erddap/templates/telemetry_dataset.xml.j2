@@ -1,0 +1,122 @@
+<dataset type="EDDTableFromHttpGet" datasetID="{{ dataset_id }}" active="true">
+     <reloadEveryNMinutes>1440</reloadEveryNMinutes>
+     <updateEveryNMillis>-1</updateEveryNMillis>
+     
+     <fileDir>/erddapData/telemetry/{{ dataset_id }}/</fileDir>
+     <fileNameRegex>.*\.jsonl</fileNameRegex>
+     <recursive>true</recursive>
+     <pathRegex>.*</pathRegex>
+     <metadataFrom>last</metadataFrom>
+     <fileTableInMemory>true</fileTableInMemory>
+     <accessibleViaFiles>true</accessibleViaFiles>
+     <addAttributes>
+         <att name="cdm_data_type">Other</att>
+         <att name="Conventions">COARDS, CF-1.6, ACDD-1.3</att>
+         <att name="httpGetDirectoryStructure">serial_number/1year/1day</att>
+         <att name="httpGetKeys">{{ author }}_{{ password }}</att>
+         <att name="httpGetRequiredVariables">{{ req_vars }}</att>
+         <att name="infoUrl">https://pmel.noaa.gov</att>
+         <att name="institution">NOAA/PMEL</att>
+         <att name="sourceUrl">(local files)</att>
+         <att name="subsetVariables">make,model</att>
+         <att name="summary">{{ make }} {{ model }} Telemetry Dataset</att>
+         <att name="title">{{ make }} {{ model }} Telemetry</att>
+     </addAttributes>
+     <dataVariable>
+         <sourceName>make</sourceName>
+         <destinationName>make</destinationName>
+         <dataType>String</dataType>
+         <addAttributes>
+             <att name="ioos_category">Unknown</att>
+             <att name="long_name">Make</att>
+         </addAttributes>
+     </dataVariable>
+     <dataVariable>
+         <sourceName>model</sourceName>
+         <destinationName>model</destinationName>
+         <dataType>String</dataType>
+         <addAttributes>
+             <att name="ioos_category">Unknown</att>
+             <att name="long_name">Model</att>
+         </addAttributes>
+     </dataVariable>
+     <dataVariable>
+         <sourceName>format_version</sourceName>
+         <destinationName>format_version</destinationName>
+         <dataType>String</dataType>
+         <addAttributes>
+             <att name="ioos_category">Unknown</att>
+             <att name="long_name">Dataset Format Version</att>
+         </addAttributes>
+     </dataVariable>
+     <dataVariable>
+         <sourceName>serial_number</sourceName>
+         <destinationName>serial_number</destinationName>
+         <dataType>String</dataType>
+         <addAttributes>
+             <att name="ioos_category">Identifier</att>
+             <att name="long_name">Serial Number</att>
+         </addAttributes>
+     </dataVariable>
+     
+     <dataVariable>
+         <sourceName>time</sourceName>
+         <destinationName>time</destinationName>
+         <dataType>String</dataType>
+         <addAttributes>
+             <att name="ioos_category">Time</att>
+             <att name="long_name">Time</att>
+             <att name="standard_name">time</att>
+             <att name="time_precision">1970-01-01T00:00:00.000000Z</att>
+             <att name="units">yyyy-MM-dd&#39;T&#39;HH:mm:ss.SSSSSS&#39;Z&#39;</att>
+         </addAttributes>
+     </dataVariable>
+     {% for col in columns %}
+     {% if col.name != 'time' %}
+     <dataVariable>
+         <sourceName>{{ col.name }}</sourceName>
+         <destinationName>{{ col.name }}</destinationName>
+         <dataType>{{ col.type | default('float', true) }}</dataType>
+         <addAttributes>
+             <att name="ioos_category">Unknown</att>
+             <att name="long_name">{{ col.long_name | default(col.name, true) }}</att>
+             {% if col.units %}<att name="units">{{ col.units }}</att>{% endif %}
+             {% if col.type == 'int' %}<att name="_FillValue" type="int">2147483647</att>{% endif %}
+             {% if col.type == 'long' %}<att name="_FillValue" type="long">9223372036854775807</att>{% endif %}
+         </addAttributes>
+     </dataVariable>
+     {% endif %}
+     {% endfor %}
+     <dataVariable>
+         <sourceName>timestamp</sourceName>
+         <destinationName>timestamp</destinationName>
+         <dataType>double</dataType>
+         <addAttributes>
+             <att name="ioos_category">Time</att>
+             <att name="long_name">Timestamp</att>
+             <att name="time_precision">1970-01-01T00:00:00.000Z</att>
+             <att name="units">seconds since 1970-01-01T00:00:00Z</att>
+         </addAttributes>
+     </dataVariable>
+     <dataVariable>
+         <sourceName>author</sourceName>
+         <destinationName>author</destinationName>
+         <dataType>String</dataType>
+         <addAttributes>
+             <att name="ioos_category">Unknown</att>
+             <att name="long_name">Author</att>
+         </addAttributes>
+     </dataVariable>
+     <dataVariable>
+         <sourceName>command</sourceName>
+         <destinationName>command</destinationName>
+         <dataType>byte</dataType>
+         <addAttributes>
+             <att name="flag_meanings">insert delete</att>
+             <att name="flag_values" type="byteList">0 1</att>
+             <att name="ioos_category">Unknown</att>
+             <att name="long_name">Command</att>
+             <att name="missing_value" type="byte">127</att>
+         </addAttributes>
+     </dataVariable>
+</dataset>

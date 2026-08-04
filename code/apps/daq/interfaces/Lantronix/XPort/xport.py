@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import signal
 import sys
 import os
@@ -10,7 +11,6 @@ from envds.daq.interface import Interface, InterfaceConfig #, InterfacePath
 from envds.daq.event import DAQEvent
 
 from pydantic import BaseModel
-
 
 task_list = []
 
@@ -50,7 +50,9 @@ class XPort(Interface):
         self.default_client_module = "envds.daq.clients.tcp_client"
         self.default_client_class = "TCPClient"
 
-        self.metadata = self.metadata
+        # self.metadata = self.metadata
+        # FIX: Deepcopy the class metadata into the instance metadata
+        self.metadata = copy.deepcopy(XPort.metadata)
 
         self.data_loop_task = None
 
@@ -136,47 +138,114 @@ class XPort(Interface):
                 extra={"conf": conf, "self.config": self.config},
             )
         except Exception as e:
-            self.logger.debug("USCDR301:configure", extra={"error": e})
+            self.logger.debug("XPort:configure", extra={"error": e})
  
         
-    async def recv_data_loop(self, client_id: str):
+    # async def recv_data_loop(self, client_id: str):
         
-        # self.logger.debug("recv_data_loop", extra={"client_id": client_id})
+    #     # self.logger.debug("recv_data_loop", extra={"client_id": client_id})
+    #     while True:
+    #         try:
+    #             # client = self.config.paths[client_id]["client"]
+    #             client = self.client_map[client_id]["client"]
+    #             # while client is not None:
+    #             if client:
+    #                 self.logger.debug("recv_data_loop", extra={"client": client})
+    #                 data = await client.recv()
+    #                 self.logger.debug("recv_data", extra={"client_id": client_id, "data": data})
+
+    #                 await self.update_recv_data(client_id=client_id, data=data)
+    #                 # await asyncio.sleep(self.min_recv_delay)
+    #             else:
+    #                 await asyncio.sleep(1)
+    #         except (KeyError, Exception) as e:
+    #             self.logger.error("recv_data_loop", extra={"error": e})
+    #             await asyncio.sleep(1)
+
+    #         # await asyncio.sleep(self.min_recv_delay)
+    #         await asyncio.sleep(0.001)
+
+    async def recv_data_loop(self, client_id: str):
+        self.logger.debug("recv_data_loop starting", extra={"client_id": client_id})
+        
         while True:
             try:
-                # client = self.config.paths[client_id]["client"]
                 client = self.client_map[client_id]["client"]
-                # while client is not None:
                 if client:
-                    self.logger.debug("recv_data_loop", extra={"client": client})
                     data = await client.recv()
-                    self.logger.debug("recv_data", extra={"client_id": client_id, "data": data})
-
-                    await self.update_recv_data(client_id=client_id, data=data)
-                    # await asyncio.sleep(self.min_recv_delay)
+                    
+                    # FIX: Only process if data exists. Prevent tight CPU spin on None.
+                    # if data is not None:
+                    if data:
+                        self.logger.debug("recv_data", extra={"client_id": client_id, "data": data})
+                        await self.update_recv_data(client_id=client_id, data=data)
+                    else:
+                        await asyncio.sleep(0.1) 
                 else:
-                    await asyncio.sleep(1)
-            except (KeyError, Exception) as e:
-                self.logger.error("recv_data_loop", extra={"error": e})
-                await asyncio.sleep(1)
-
-            # await asyncio.sleep(self.min_recv_delay)
-            await asyncio.sleep(0.001)
+                    await asyncio.sleep(1.0)
+                    
+            except KeyError:
+                self.logger.error("recv_data_loop: client not found", extra={"client_id": client_id})
+                await asyncio.sleep(1.0)
+            except Exception as e:
+                self.logger.error("recv_data_loop exception", extra={"error": e})
+                await asyncio.sleep(1.0)
 
     async def wait_for_ok(self, timeout=0):
-        pass
+        # If a timeout is provided, sleep for that duration.
+        # Otherwise, default to a 0.1s rest to prevent CPU spin.
+        await asyncio.sleep(timeout if timeout > 0 else 0.1)
+        
+    # async def send_data(self, event: DAQEvent):
+    #         print(f"here:1 {event}")
+    #         try:
+    #             print(f"send_data:1 - {event}")
+    #             client_id = event["path_id"]
+    #             client = self.client_map[client_id]["client"]
+    #             data = event.data["data"]
+
+    #             await client.send(data)
+    #         except KeyError:
+    #             pass
 
     async def send_data(self, event: DAQEvent):
-            print(f"here:1 {event}")
-            try:
-                print(f"send_data:1 - {event}")
-                client_id = event["path_id"]
-                client = self.client_map[client_id]["client"]
+        try:
+            client_id = event["path_id"]
+            client = self.client_map[client_id]["client"]
+            
+            # Ensure the client exists and is connected before sending
+            if client is not None:
                 data = event.data["data"]
-
                 await client.send(data)
-            except KeyError:
-                pass
+            else:
+                # Optionally log that the command was dropped because it's unconnected
+                self.logger.debug("Interface unconnected; dropping outgoing command.", extra={"client_id": client_id})
+                
+        except KeyError:
+            pass
+        except Exception as e:
+            # Catch all other exceptions (like AttributeError or network errors) to prevent crash loops
+            self.logger.error("send_data exception", extra={"error": str(e)})
+
+    async def shutdown(self):
+        self.logger.info("XPort Interface starting shutdown sequence...")
+        
+        # Cancel all client background tasks and receiver loops
+        if hasattr(self, 'client_map'):
+            for client_id, client_info in self.client_map.items():
+                client = client_info.get("client")
+                if client and hasattr(client, "shutdown"):
+                    await client.shutdown()
+                    
+                recv_task = client_info.get("recv_task")
+                if recv_task and not recv_task.done():
+                    recv_task.cancel()
+
+        # Call the base Interface shutdown
+        if hasattr(super(), "shutdown"):
+            await super().shutdown()
+            
+        self.logger.info("XPort Interface shutdown complete.")
 
 class ServerConfig(BaseModel):
     host: str = "localhost"

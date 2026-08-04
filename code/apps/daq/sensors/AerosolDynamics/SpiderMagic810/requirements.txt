@@ -10,3 +10,4 @@ pyyaml
 redis
 redis-om
 numpy
+scipy

@@ -695,55 +695,158 @@ class _StreamClient(_BaseClient):
     #     except envdsRunTransitionException:
     #         raise
 
+    # async def readline(self, decode_errors="strict"):
+    #     if self.reader:
+    #         msg = await self.reader.readline()
+    #         return msg.decode(errors=decode_errors)
+
     async def readline(self, decode_errors="strict"):
         if self.reader:
-            msg = await self.reader.readline()
-            return msg.decode(errors=decode_errors)
+            try:
+                msg = await self.reader.readline()
+                if not msg:
+                    await self.disconnect()
+                    return None
+                return msg.decode(errors=decode_errors)
+            except Exception as e:
+                self.logger.error("readline error", extra={"error": str(e)})
+                await self.disconnect()
+                return None
+
+    # async def readuntil(self, terminator="\n", decode_errors="strict"):
+    #     if self.reader:
+    #         print(f"readuntil: terminator = {terminator}, {terminator.encode()}")
+    #         msg = await self.reader.readuntil(terminator.encode())
+    #         return msg.decode(errors=decode_errors)
 
     async def readuntil(self, terminator="\n", decode_errors="strict"):
         if self.reader:
             print(f"readuntil: terminator = {terminator}, {terminator.encode()}")
-            msg = await self.reader.readuntil(terminator.encode())
-            return msg.decode(errors=decode_errors)
+            try:
+                msg = await self.reader.readuntil(terminator.encode())
+                if not msg:
+                    await self.disconnect()
+                    return None
+                return msg.decode(errors=decode_errors)
+            except asyncio.exceptions.IncompleteReadError:
+                await self.disconnect()
+                return None
+            except Exception as e:
+                self.logger.error("readuntil error", extra={"error": str(e)})
+                await self.disconnect()
+                return None
+            
+    # async def read(self, num_bytes=1, decode_errors="strict"):
+    #     if self.reader:
+    #         msg = await self.reader.read(num_bytes)
+    #         return msg.decode(errors=decode_errors)
 
     async def read(self, num_bytes=1, decode_errors="strict"):
         if self.reader:
-            msg = await self.reader.read(num_bytes)
-            return msg.decode(errors=decode_errors)
+            try:
+                msg = await self.reader.read(num_bytes)
+                if not msg:
+                    await self.disconnect()
+                    return None
+                return msg.decode(errors=decode_errors)
+            except Exception as e:
+                self.logger.error("read error", extra={"error": str(e)})
+                await self.disconnect()
+                return None
+
+    
+    # async def readbinary(self, num_bytes=1, decode_errors="strict"):
+    #     print(f"readbinary: {num_bytes}, {decode_errors}")
+    #     if self.reader:
+    #         print(f"readbinary: {self.reader}")
+    #         msg = await self.reader.read(num_bytes)
+    #         print(f"readbinary: {msg}")
+    #         binmsg = binascii.hexlify(msg).decode()
+    #         print(f"readbinary: {binmsg}")
+    #         return binmsg
 
     async def readbinary(self, num_bytes=1, decode_errors="strict"):
         print(f"readbinary: {num_bytes}, {decode_errors}")
         if self.reader:
             print(f"readbinary: {self.reader}")
-            msg = await self.reader.read(num_bytes)
-            print(f"readbinary: {msg}")
-            binmsg = binascii.hexlify(msg).decode()
-            print(f"readbinary: {binmsg}")
-            return binmsg
+            try:
+                msg = await self.reader.read(num_bytes)
+                if not msg:
+                    await self.disconnect()
+                    return None
+                print(f"readbinary: {msg}")
+                binmsg = binascii.hexlify(msg).decode()
+                print(f"readbinary: {binmsg}")
+                return binmsg
+            except Exception as e:
+                self.logger.error("readbinary error", extra={"error": str(e)})
+                await self.disconnect()
+                return None
+            
+    # async def write(self, msg):
+    #     if self.writer:
+    #         self.logger.debug("write", extra={"data": msg.encode()})
+    #         self.writer.write(msg.encode())
+    #         await self.writer.drain()
 
     async def write(self, msg):
         if self.writer:
-            self.logger.debug("write", extra={"data": msg.encode()})
-            self.writer.write(msg.encode())
-            await self.writer.drain()
+            try:
+                self.logger.debug("write", extra={"data": msg.encode()})
+                self.writer.write(msg.encode())
+                await self.writer.drain()
+            except Exception as e:
+                self.logger.error("write error", extra={"error": str(e)})
+                await self.disconnect()
+
+    # async def writebinary(self, msg):
+    #     print(f"writebinary: {msg}")
+    #     if self.writer:
+    #         print(f"writebinary: {self.writer}")
+    #         binmsg = binascii.unhexlify(msg.encode())
+    #         print(f"writebinary: {binmsg}")
+    #         # sent_bytes = self.writer.write(msg)
+    #         sent_bytes = self.writer.write(binmsg)
+    #         print(f"writebinary: {sent_bytes}")
+    #         await self.writer.drain()
+    #         print(f"writebinary:")
 
     async def writebinary(self, msg):
         print(f"writebinary: {msg}")
         if self.writer:
             print(f"writebinary: {self.writer}")
-            binmsg = binascii.unhexlify(msg.encode())
-            print(f"writebinary: {binmsg}")
-            # sent_bytes = self.writer.write(msg)
-            sent_bytes = self.writer.write(binmsg)
-            print(f"writebinary: {sent_bytes}")
-            await self.writer.drain()
-            print(f"writebinary:")
+            try:
+                binmsg = binascii.unhexlify(msg.encode())
+                print(f"writebinary: {binmsg}")
+                sent_bytes = self.writer.write(binmsg)
+                print(f"writebinary: {sent_bytes}")
+                await self.writer.drain()
+                print(f"writebinary:")
+            except Exception as e:
+                self.logger.error("writebinary error", extra={"error": str(e)})
+                await self.disconnect()
 
     async def get_return_packet_size(self):
 
         while len(self.return_packet_bytes) == 0:
             await asyncio.sleep(0.1)
         return self.return_packet_bytes.popleft()
+
+    # async def disconnect(self):
+    #     # self.connect_state = ClientConnection.CLOSED
+    #     if (
+    #         self.connection_state == self.DISCONNECTING
+    #         or self.connection_state == self.DISCONNECTED
+    #     ):
+    #         return
+
+    #     self.connection_state = self.DISCONNECTING
+    #     if self.writer:
+    #         self.logger.debug("disconnect", extra={"writer": self.writer})
+    #         self.writer.close()
+    #         await self.writer.wait_closed()
+    #     self.connection_state = self.DISCONNECTED
+    #     # self.status.set_actual(envdsStatus.ENABLED, envdsStatus.FALSE)
 
     async def disconnect(self):
         # self.connect_state = ClientConnection.CLOSED
@@ -756,8 +859,14 @@ class _StreamClient(_BaseClient):
         self.connection_state = self.DISCONNECTING
         if self.writer:
             self.logger.debug("disconnect", extra={"writer": self.writer})
-            self.writer.close()
-            await self.writer.wait_closed()
+            try:
+                self.writer.close()
+                await self.writer.wait_closed()
+            except Exception as e:
+                self.logger.error("disconnect exception ignored", extra={"error": str(e)})
+        
+        self.reader = None
+        self.writer = None
         self.connection_state = self.DISCONNECTED
         # self.status.set_actual(envdsStatus.ENABLED, envdsStatus.FALSE)
 

@@ -3,14 +3,12 @@ from datetime import datetime, timezone
 import json
 import logging
 
-from fastapi import FastAPI, Request, Query, status, Response  # , APIRouter
+from fastapi import FastAPI, Request, Query, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-# from cloudevents.http import from_http
 from cloudevents.http import CloudEvent, from_http, from_json
-from cloudevents.conversion import to_structured, to_json  # , from_http
+from cloudevents.conversion import to_structured, to_json
 from cloudevents.exceptions import InvalidStructuredJSON
-from cloudevents.pydantic import CloudEvent
 
 import httpx
 from logfmter import Logfmter
@@ -21,100 +19,44 @@ import traceback
 
 from datastore import Datastore
 from datastore_requests import (
-    # DataStoreQuery,
     DataRequest,
     DeviceDefinitionRequest,
     DeviceInstanceRequest,
-    # ControllerDataUpdate,
     ControllerDataRequest,
     ControllerDefinitionRequest,
-    # ControllerDefinitionUpdate,
     ControllerInstanceRequest,
-    # ControllerInstanceUpdate,
-    # VariableSetDataUpdate,
     VariableSetDataRequest,
-    # VariableSetDefinitionUpdate,
     VariableSetDefinitionRequest,
     VariableMapDefinitionRequest,
+    VariableSetInstanceRequest,
 )
-
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger(__name__)
-L.setLevel(logging.DEBUG)
+# L.setLevel(logging.DEBUG)
 
 
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = False
-    # knative_broker: str = (
-    #     "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
-    # )
-    # mongodb_user_name: str = ""
-    # mongodb_user_password: str = ""
-    # mongodb_connection: str = (
-    #     "mongodb://uasdaq:password@uasdaq-mongodb-0.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-1.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017,uasdaq-mongodb-2.uasdaq-mongodb-svc.mongodb.svc.cluster.local:27017/data?replicaSet=uasdaq-mongodb&ssl=false"
-    # )
-    # erddap_http_connection: str = (
-    #     "http://uasdaq.pmel.noaa.gov/uasdaq/dataserver/erddap"
-    # )
-    # erddap_https_connection: str = (
-    #     "https://uasdaq.pmel.noaa.gov/uasdaq/dataserver/erddap"
-    # )
-    # # erddap_author: str = "fake_author"
-
     dry_run: bool = False
+    log_level: str = "INFO"
 
     class Config:
         env_prefix = "DATASTORE_"
         case_sensitive = False
 
 
-# from apis.router import api_router
-
 app = FastAPI()
 
-# origins = ["*"]  # dev
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=origins,
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+config = Settings()
 
-# router = APIRouter()
-# home_router = APIRouter()
+# Pass the uppercase string directly!
+L.setLevel(config.log_level.upper())
 
-# @home_router.get("/")
-# async def home():
-#     return {"message": "Hello World"}
-
-# home_router.include_router(api_router)
-# router.include_router(home_router)#, prefix="/envds/home")
-
-# app.include_router(api_router)#, prefix="/envds/home")
-# app.include_router(router)
-
-# @app.on_event("startup")
-# async def start_system():
-#     print("starting system")
-
-
-# @app.on_event("shutdown")
-# async def start_system():
-#     print("stopping system")
-
-# class DeviceDataSearch(BaseModel):
-
-#     start_time: str | None = None
-#     end_time: str | None = None
-#     custom: dict | None = None
-
-# datastore = Datastore()
 datastore = None
 
 @app.on_event("startup")
@@ -124,10 +66,15 @@ async def start_system():
     await datastore.setup()
     L.info("Datastore initialized and background tasks started.")
 
+@app.on_event("shutdown")
+async def shutdown_system():
+    global datastore
+    if datastore:
+        await datastore.close_http_client()
+        L.info("Datastore HTTP client closed safely.")
+        
 def get_response_event(msg, status):
-    # response_data = {"processed_data": event.data}
     try:
-        # Construct the response CloudEvent
         response_event = CloudEvent({
             "source": "envds.datastore",
             "type": "envds.response.event",
@@ -135,9 +82,7 @@ def get_response_event(msg, status):
             "datacontenttype": "application/json"
         }, msg)
 
-        # Return the CloudEvent as a structured HTTP response
         headers, body = to_structured(response_event)
-        # return jsonify(body), 200, headers
         return body, status, headers
     except Exception as e:
         L.error("get_response_event", extra={"reason": e})
@@ -149,158 +94,78 @@ async def root():
     return {"message": "Hello World from Datastore"}
 
 
-# @app.post("/device/settings/update/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/device/settings/update/")
 async def device_settings_update(request: Request):
-
-    # attributes = {
-    #     # "type": "envds.controller.control.request",
-    #     "type": "message.ack",
-    #     "source": "datastore",
-    #     "id": str(ULID()),
-    #     "datacontenttype": "application/json; charset=utf-8",
-    # }
-    # response = {"message": "ok"}
     try:
-        # ce = from_json(await request.json())
-        # print(ce)
-        # pass
-        # print("sensor_settings_update")
         ce = from_http(request.headers, await request.body())
-        # print(ce)
-        # L.debug(request.headers,)
-        L.debug(
-            "device_settings_update", extra={"ce": ce}
-        )  # , "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
-        # await datastore.data_sensor_update(ce)
+        L.debug("device_settings_update", extra={"ce": ce})
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "OK"}
-        # return get_response_event(msg, 202)
     except Exception as e:
-        # print(e)
         L.error("send", extra={"reason": e})
-        # return "", 204
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
-    
-    # return {"message": "OK"}
-
-    # return '', 204
-    # return "",204
 
 
-# @app.post("/status/update/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/status/update/")
 async def status_update(request: Request):
-
-    # attributes = {
-    #     # "type": "envds.controller.control.request",
-    #     "type": "message.ack",
-    #     "source": "datastore",
-    #     "id": str(ULID()),
-    #     "datacontenttype": "application/json; charset=utf-8",
-    # }
-    # response = {"message": "ok"}
     try:
-        # ce = from_json(await request.json())
-        # print(ce)
         L.debug(await request.body())
-        # pass
-        # print("sensor_settings_update")
         ce = from_http(request.headers, await request.body())
-        # print(ce)
-        # L.debug(request.headers,)
-        L.debug("status_update", extra={"ce": ce})  # , "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
-        # await datastore.data_sensor_update(ce)
+        L.debug("status_update", extra={"ce": ce}) 
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "OK"}
-        # return get_response_event(msg, 202)
     except Exception as e:
-        # print(e)
         L.error("status_update", extra={"reason": e})
-        # pass
-        # return "", 204
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
 
 
-# @app.post("/device/data/update/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/device/data/update/")
 async def device_data_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(request.headers)
         L.debug("device_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
         await datastore.device_data_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "OK"}
-        # return get_response_event(msg, 202)
     except Exception as e:
         L.error("device_data_update", extra={"reason": e})
-        # return "", 204
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
 
 
 @app.get("/device/data/get/")
-# async def device_data_get(query: Annotated[DataStoreQuery, Query()]):
 async def device_data_get(
     device_id: str | None = None,
     make: str | None = None,
     model: str | None = None,
     serial_number: str | None = None,
-    version: str | None = None,
-    device_type: str | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
     last_n_seconds: int | None = None,
-    variable: List[str] | None = None,
+    force_archive: bool = False  # <--- ADDED
 ):
-    L.debug("main:device_data_get", extra={"device_id": device_id})
     query = DataRequest(
         device_id=device_id,
         make=make,
         model=model,
         serial_number=serial_number,
-        version=version,
-        device_type=device_type,
         start_time=start_time,
         end_time=end_time,
         last_n_seconds=last_n_seconds,
-        variable=variable,
+        force_archive=force_archive  # <--- ADDED
     )
-    L.debug("main:device_data_get", extra={"query": query})
     return await datastore.device_data_get(query)
 
-
-# @app.post("/device/registry/update/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/device/registry/update/")
-async def device_registry_update(request: Request):
+@app.post("/device-instance/registry/update/")
+async def device_instance_registry_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(request.headers)
-        L.debug("device_registry_update", extra={"ce": ce, "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
+        L.debug("device_instance_registry_update", extra={"ce": ce, "destpath": ce["destpath"]})
         await datastore.device_instance_registry_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "OK"}
-        # return get_response_event(msg, 202)
     except Exception as e:
-        # L.error("send", extra={"reason": e})
-        # pass
-        # return "", 204
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
 
 
-# @app.post("/device-definition/registry/update/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/device-definition/registry/update/")
 async def device_definition_registry_update(request: Request):
     try:
@@ -310,30 +175,21 @@ async def device_definition_registry_update(request: Request):
             "device_definition_registry_update",
             extra={"ce": ce, "destpath": ce["destpath"]},
         )
-        # await adapter.send_to_mqtt(ce)
         await datastore.device_definition_registry_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "OK"}
-        # return get_response_event(msg, 202)
     except Exception as e:
-        # L.error("send", extra={"reason": e})
-        # pass
-        # return "", 204
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
 
 
 @app.get("/device-definition/registry/ids/get/")
-# async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
 async def device_definition_get_ids():
     L.debug("device_definition_get_ids")
     result = await datastore.device_definition_registry_get_ids()
     L.debug("device_definition_get_ids", extra={"result": result})
     return result
 
+
 @app.get("/device-definition/registry/get/")
-# async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
 async def device_definition_registry_get(
     device_definition_id: str | None = None,
     make: str | None = None,
@@ -342,7 +198,6 @@ async def device_definition_registry_get(
     device_type: str | None = None,
     valid_time: str | None = None,
 ):
-
     query = DeviceDefinitionRequest(
         device_definition_id=device_definition_id,
         make=make,
@@ -353,9 +208,16 @@ async def device_definition_registry_get(
     )
     return await datastore.device_definition_registry_get(query)
 
+
+@app.get("/device-instance/registry/ids/get/")
+async def device_instance_get_ids():
+    L.debug("device_instance_get_ids")
+    result = await datastore.device_instance_registry_get_ids()
+    L.debug("device_instance_get_ids", extra={"result": result})
+    return result
+
+
 @app.get("/device-instance/registry/get/")
-# async def device_definition_registry_get(query: Annotated[DeviceInstanceRequest, Query()]):
-# async def device_definition_registry_get(
 async def device_instance_registry_get(
     device_id: str | None = None,
     make: str | None = None,
@@ -364,7 +226,6 @@ async def device_instance_registry_get(
     version: str | None = None,
     device_type: str | None = None,
 ):
-
     query = DeviceInstanceRequest(
         device_id=device_id,
         make=make,
@@ -373,113 +234,66 @@ async def device_instance_registry_get(
         version=version,
         device_type=device_type,
     )
-
     L.debug("device_instance_registry_get", extra={"query": query})
     results = await datastore.device_instance_registry_get(query)
     L.debug("device_instance_registry_get", extra={"results": results})
-    # return await datastore.device_instance_registry_get(query)
     return results
 
-# from fastapi import FastAPI, Request, Response
-# from starlette import status
-# import logging
 
-# app = FastAPI()
-
-# @app.post("/")
-# async def handle_event(request: Request):
-#     try:
-#         event_data = await request.json()
-#         logging.info(f"Received CloudEvent: {event_data}")
-#         # Process the event data here
-#         return Response(status_code=status.HTTP_204_NO_CONTENT)
-#     except Exception as e:
-#         logging.error(f"Error processing event: {e}")
-#         return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-# @app.post("/controller/data/update/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/controller/data/update/")
 async def controller_data_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(request.headers)
         L.debug("controller_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
         await datastore.controller_data_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "OK"}
-        # return get_response_event(msg, 202)
     except Exception as e:
         L.error("controller_data_update", extra={"reason": e})
-        # return "", 204
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
 
 
 @app.get("/controller/data/get/")
-# async def controller_data_get(query: Annotated[DataStoreQuery, Query()]):
 async def controller_data_get(
     controller_id: str | None = None,
     make: str | None = None,
     model: str | None = None,
     serial_number: str | None = None,
-    version: str | None = None,
-    # device_type: str | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
     last_n_seconds: int | None = None,
-    variable: List[str] | None = None,
+    force_archive: bool = False  # <--- ADDED
 ):
-    L.debug("main:controller_data_get", extra={"controller_id": controller_id})
     query = ControllerDataRequest(
         controller_id=controller_id,
         make=make,
         model=model,
         serial_number=serial_number,
-        version=version,
-        # device_type=device_type,
         start_time=start_time,
         end_time=end_time,
         last_n_seconds=last_n_seconds,
-        variable=variable,
+        force_archive=force_archive  # <--- ADDED
     )
-    L.debug("main:controller_data_get", extra={"query": query})
     return await datastore.controller_data_get(query)
 
-
-# @app.post("/controller/registry/update/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/controller/registry/update/")
-async def controller_registry_update(request: Request):
+@app.post("/controller-instance/registry/update/")
+async def controller_instance_registry_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(request.headers)
         L.debug(
-            "controller_registry_update", extra={"ce": ce, "destpath": ce["destpath"]}
+            "controller_instance_registry_update", extra={"ce": ce, "destpath": ce["destpath"]}
         )
-        # await adapter.send_to_mqtt(ce)
         await datastore.controller_instance_registry_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "OK"}
-        # return get_response_event(msg, 202)
-
     except Exception as e:
-        # L.error("send", extra={"reason": e})
-        L.error("controller_registry_update", extra={"reason": e})
+        L.error("controller_instance_registry_update", extra={"reason": e})
         print(traceback.format_exc())
-        pass
-        # return "", 204
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
 
 
-# @app.post(
-#     "/controller-definition/registry/update/", status_code=status.HTTP_202_ACCEPTED
-# )
-@app.post(
-    "/controller-definition/registry/update/"
-)
+@app.post("/controller-definition/registry/update/")
 async def controller_definition_registry_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
@@ -488,28 +302,21 @@ async def controller_definition_registry_update(request: Request):
             "controller_definition_registry_update",
             extra={"ce": ce, "destpath": ce["destpath"]},
         )
-        # await adapter.send_to_mqtt(ce)
         await datastore.controller_definition_registry_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "OK"}
-        # return get_response_event(msg, 202)
     except Exception as e:
-        # L.error("send", extra={"reason": e})
         L.error("datastore_register_controller_definition", extra={"reason": e})
         print(traceback.format_exc())
-        # pass
-        # return "", 204
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
+
 
 @app.get("/controller-definition/registry/ids/get/")
-# async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
-async def device_definition_get_ids():
+async def controller_definition_get_ids():
     L.debug("controller_definition_get_ids")
     result = await datastore.controller_definition_registry_get_ids()
     L.debug("controller_definition_get_ids", extra={"result": result})
     return result
+
 
 @app.get("/controller-definition/registry/get/")
 async def controller_definition_registry_get(
@@ -517,94 +324,81 @@ async def controller_definition_registry_get(
     make: str | None = None,
     model: str | None = None,
     version: str | None = None,
-    # device_type: str | None = None,
     valid_time: str | None = None,
 ):
-
     query = ControllerDefinitionRequest(
         controller_definition_id=controller_definition_id,
         make=make,
         model=model,
         version=version,
-        # device_type=device_type,
         valid_time=valid_time,
     )
     return await datastore.controller_definition_registry_get(query)
     
 
+@app.get("/controller-instance/registry/ids/get/")
+async def controller_instance_get_ids():
+    L.debug("controller_instance_get_ids")
+    result = await datastore.controller_instance_registry_get_ids()
+    L.debug("controller_instance_get_ids", extra={"result": result})
+    return result
+
+
 @app.get("/controller-instance/registry/get/")
-# async def controller_definition_registry_get(
 async def controller_instance_registry_get(
     controller_id: str | None = None,
     make: str | None = None,
     model: str | None = None,
     serial_number: str | None = None,
     version: str | None = None,
-    # device_type: str | None = None
 ):
-
     query = ControllerInstanceRequest(
         controller_id=controller_id,
         make=make,
         model=model,
         serial_number=serial_number,
         version=version,
-        # controller_type=device_type
     )
-
     L.debug("controller_instance_registry_get", extra={"query": query})
     results = await datastore.controller_instance_registry_get(query)
     L.debug("controller_instance_registry_get", extra={"results": results})
-    # return await datastore.controller_instance_registry_get(query)
     return results
 
-# @app.post("/device/data/update/", status_code=status.HTTP_202_ACCEPTED)
+
 @app.post("/variableset/data/update/")
 async def variableset_data_update(request: Request):
     try:
         ce = from_http(request.headers, await request.body())
         L.debug(request.headers)
         L.debug("variableset_data_update", extra={"ce": ce, "destpath": ce["destpath"]})
-        # await adapter.send_to_mqtt(ce)
         await datastore.variableset_data_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "OK"}
-        # return get_response_event(msg, 202)
     except Exception as e:
         L.error("variableset_data_update", extra={"reason": e})
-        # return "", 204
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
 
 
 @app.get("/variableset/data/get/")
-# async def device_data_get(query: Annotated[DataStoreQuery, Query()]):
 async def variableset_data_get(
     variableset_id: str | None = None,
-    variablemap_definition_id: str | None = None,
+    variablemap_id: str | None = None,
     variableset: str | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
-    start_timestamp: float | None = None,
-    end_timestamp: float | None = None,
     last_n_seconds: int | None = None,
-    variable: List[str] | None = None
+    force_archive: bool = False  # <--- ADDED
 ):
-    L.debug("main:variableset_data_get", extra={"device_id": variableset_id})
     query = VariableSetDataRequest(
         variableset_id=variableset_id,
-        variablemap_definition_id=variablemap_definition_id,
+        variablemap_id=variablemap_id,
         variableset=variableset,
         start_time=start_time,
         end_time=end_time,
-        start_timestamp=start_timestamp,
-        end_timestamp=end_timestamp,
         last_n_seconds=last_n_seconds,
-        variable=variable,
+        force_archive=force_archive  # <--- ADDED
     )
-    L.debug("main:variableset_data_get", extra={"query": query})
     return await datastore.variableset_data_get(query)
+
 
 @app.post("/variableset-definition/registry/update/")
 async def variableset_definition_registry_update(request: Request):
@@ -612,33 +406,23 @@ async def variableset_definition_registry_update(request: Request):
         ce = from_http(request.headers, await request.body())
         L.debug(request.headers)
         L.debug(
-            "device_definition_registry_update",
+            "variableset_definition_registry_update",
             extra={"ce": ce, "destpath": ce["destpath"]},
         )
-        # await adapter.send_to_mqtt(ce)
         await datastore.variableset_definition_registry_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "OK"}
-        # return get_response_event(msg, 202)
     except Exception as e:
-        # L.error("send", extra={"reason": e})
-        # pass
-        # return "", 204
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
 
 
 @app.get("/variableset-definition/registry/get/")
-# async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
 async def variableset_definition_registry_get(
     variableset_definition_id: str | None = None,
     variablemap_definition_id: str | None = None,
     variableset: str | None = None,
     index_type: str | None = None,
-    index_value: Any | None = None
+    index_value: str | None = None
 ):
-
     query = VariableSetDefinitionRequest(
         variableset_definition_id=variableset_definition_id,
         variablemap_definition_id=variablemap_definition_id,
@@ -647,6 +431,7 @@ async def variableset_definition_registry_get(
         index_value=index_value
     )
     return await datastore.variableset_definition_registry_get(query)
+
 
 @app.post("/variablemap-definition/registry/update/")
 async def variablemap_definition_registry_update(request: Request):
@@ -657,22 +442,13 @@ async def variablemap_definition_registry_update(request: Request):
             "variablemap_definition_registry_update",
             extra={"ce": ce, "destpath": ce["destpath"]},
         )
-        # await adapter.send_to_mqtt(ce)
         await datastore.variablemap_definition_registry_update(ce)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "OK"}
-        # return get_response_event(msg, 202)
     except Exception as e:
-        # L.error("send", extra={"reason": e})
-        # pass
-        # return "", 204
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        # msg = {"result": "NOTOK"}
-        # return get_response_event(msg, 500)
 
 
 @app.get("/variablemap-definition/registry/get/")
-# async def device_definition_registry_get(query: Annotated[DeviceDefinitionRequest, Query()]):
 async def variablemap_definition_registry_get(
     variablemap_definition_id: str | None = None,
     variablemap_type: str | None = None,
@@ -680,12 +456,82 @@ async def variablemap_definition_registry_get(
     variablemap: str | None = None,
     valid_config_time: str | None = None,
 ):
-
-    query = DeviceDefinitionRequest(
-        variablemap_defnition_id=variablemap_definition_id,
-        variable_map_type=variablemap_type,
-        variable_map_type_id=variablemap_type_id,
+    query = VariableMapDefinitionRequest(
+        variablemap_definition_id=variablemap_definition_id,
+        variablemap_type=variablemap_type,
+        variablemap_type_id=variablemap_type_id,
         variablemap=variablemap,
         valid_config_time=valid_config_time,
     )
     return await datastore.variablemap_definition_registry_get(query)
+
+
+@app.get("/variableset-definition/registry/ids/get/")
+async def variableset_definition_get_ids():
+    return await datastore.variableset_definition_registry_get_ids()
+
+
+@app.get("/variablemap-definition/registry/ids/get/")
+async def variablemap_definition_get_ids():
+    return await datastore.variablemap_definition_registry_get_ids()
+
+@app.get("/variableset-instance/registry/ids/get/")
+async def variableset_instance_get_ids():
+    L.debug("variableset_instance_get_ids")
+    result = await datastore.variableset_instance_registry_get_ids()
+    L.debug("variableset_instance_get_ids", extra={"result": result})
+    return result
+
+
+@app.get("/variableset-instance/registry/get/")
+async def variableset_instance_registry_get(
+    variableset_id: str | None = None,
+    variablemap_id: str | None = None,
+    variableset: str | None = None,
+):
+    query = VariableSetInstanceRequest(
+        variableset_id=variableset_id,
+        variablemap_id=variablemap_id,
+        variableset=variableset
+    )
+    L.debug("variableset_instance_registry_get", extra={"query": query})
+    results = await datastore.variableset_instance_registry_get(query)
+    L.debug("variableset_instance_registry_get", extra={"results": results})
+    return results
+
+# SAMPLING_RESOURCE_TYPES = [
+#     "platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"
+# ]
+SAMPLING_RESOURCE_TYPES = [
+    "platform", "project", "deployment", "contact", "projectallocation", 
+    "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"
+]
+def create_sampling_routes(resource: str):
+    @app.get(f"/{resource}-definition/registry/ids/get/")
+    async def get_ids():
+        return await datastore.sampling_definition_registry_get_ids(resource=resource)
+
+    @app.get(f"/{resource}-definition/registry/get/")
+    # async def get_def(name: str | None = None):
+    async def get_def(request: Request):
+        # query = {"name": name}
+        query = dict(request.query_params)
+        return await datastore.sampling_definition_registry_get(resource=resource, query=query)
+
+    @app.post(f"/{resource}-definition/registry/update/")
+    async def update_def(request: Request):
+        try:
+            L.debug(f"{resource}-definition_update: RECEIVED REQUEST")
+            body = await request.body()
+            ce = from_http(request.headers, body)
+            L.debug(f"{resource}-definition_update: PARSED EVENT", extra={"cevent_type": ce.get("type")})
+            await datastore.sampling_definition_registry_update(resource=resource, ce=ce)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            # ACTUALLY LOG THE ERROR!
+            L.error(f"{resource}-definition_update: CRITICAL FAILURE", extra={"reason": str(e), "traceback": traceback.format_exc()})
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+for res in SAMPLING_RESOURCE_TYPES:
+    create_sampling_routes(res)
+

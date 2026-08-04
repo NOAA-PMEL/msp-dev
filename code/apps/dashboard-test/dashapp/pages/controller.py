@@ -41,6 +41,7 @@ dash.register_page(
     __name__,
     path_template="/controller/<controller_id>",
     title="Controllers",  # , prevent_initial_callbacks=True
+    nav_bar=False
 )
 
 
@@ -250,7 +251,7 @@ config = Settings()
 # db_data_client = DBClient(connection=config.mongodb_data_connection)
 # db_registry_client = DBClient(connection=config.mongodb_registry_connection)
 
-datastore_url = f"datastore.{config.daq_id}-system"
+datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 # link_url_base = f"http://{config.ws_hostname}/msp/dashboardtest"
 
 http_url_base = f"http://{config.external_hostname}:{config.http_port}"
@@ -624,7 +625,8 @@ def get_controller_data(controller_id: str):
     url = f"http://{datastore_url}/controller/data/get/"
     print(f"controller-data-get: {url}, query: {query}")
     try:
-        response = httpx.get(url, params=query)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
         # print(f"results: {results}")
         if "results" in results and results["results"]:
@@ -639,8 +641,9 @@ def get_controller_instance(controller_id: str, device_type: str = "controller")
     query = {"controller_id": controller_id}
     url = f"http://{datastore_url}/controller-instance/registry/get/"
     L.debug("get_controller_instance", extra={"url": url, "query": query})
+    timeout = httpx.Timeout(30.0, read=None)
     try:
-        response = httpx.get(url, params=query)
+        response = httpx.get(url, params=query,timeout=timeout)
         results = response.json()
         # print(f"controller_instance results: {results}")
         L.debug("get_controller_instance", extra={"results": results})
@@ -676,8 +679,9 @@ def get_controller_definition(controller_definition_id: str):
     query = {"controller_definition_id": controller_definition_id}
     url = f"http://{datastore_url}/controller-definition/registry/get/"
     print(f"controller-definition-get: {url}")
+    timeout = httpx.Timeout(30.0, read=None)
     try:
-        response = httpx.get(url, params=query)
+        response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
         print(f"controller_definition results: {results}")
         if "results" in results and results["results"]:
@@ -1192,11 +1196,95 @@ def layout(controller_id=None):
 #         return dash.no_update
 
 
+# @callback(
+#     # [Output({"type": "graph-1d", "index": MATCH}, "figure"), Output("graph-axes", "data")],
+#     Output(
+#         {"type": "controller-graph-1d", "index": MATCH}, "figure"
+#     ),  # Output("graph-axes", "data")],
+#     Input({"type": "controller-graph-1d-dropdown", "index": MATCH}, "value"),
+#     [
+#         State("controller-meta", "data"),
+#         State("controller-graph-axes", "data"),
+#         State("controller-definition", "data"),
+#         State({"type": "controller-graph-1d-dropdown", "index": MATCH}, "id"),
+#     ],
+# )
+# def select_graph_1d(
+#     y_axis, controller_meta, graph_axes, controller_definition, graph_id
+# ):
+#     print(f"select_graph_1d: {y_axis}, {controller_meta}, {graph_axes}")
+#     # print(f"current_fig: {current_fig}")
+#     try:
+#         if "controller-graph-1d" not in graph_axes:
+#             graph_axes["controller-graph-1d"] = dict()
+#         graph_axes["controller-graph-1d"][graph_id["index"]] = {
+#             "x-axis": "time",
+#             "y-axis": y_axis,
+#         }
+#         print(f"select_graph_1d: {graph_axes}")
+
+#         x = []
+#         y = []
+#         query = {
+#             "controller_id": controller_meta["controller_id"],
+#             # "make": sensor_meta["make"],
+#             # "model": sensor_meta["model"],
+#             # "serial_number": sensor_meta["serial_number"],
+#         }
+#         # sort = {"variables.time.data": 1}
+#         results = get_controller_data(controller_id=controller_meta["controller_id"])
+#         # results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
+#         # # results = db_data_client.find("data", "sensor", query, sort)
+#         print(f"***results: {results}")
+#         if results is None or len(results) == 0:
+#             print("results = None")
+#             # return [{"x": [], "y": [], "type": "scatter"}, graph_axes]
+#             return {"x": [], "y": [], "type": "scatter"}  # , graph_axes]
+#         if results and len(results) > 0:
+#             print("results = good")
+#             for doc in results:
+#                 try:
+#                     x.append(doc["variables"]["time"]["data"])
+#                     y.append(doc["variables"][y_axis]["data"])
+#                 except KeyError:
+#                     continue
+
+#         # print(f"x,y: {x}, {y}")
+#         # # fig = go.Figure(data=[go.Scatter(x=x, y=y)])
+#         # print(f"go fig: {fig}")
+#         # fig = dict(data=[{'x': x, 'y': y}])
+#         units = ""
+#         try:
+#             units = f'({controller_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
+#         except KeyError:
+#             pass
+
+#         # fig = {
+#         #     "data": [{"x": x, "y": y, "type": "scatter"}],
+#         #     "layout": {
+#         #         "xaxis": {"title": "Time"},
+#         #         "yaxis": {"title": f"{y_axis} {units}"},
+#         #     },
+#         # }
+#         fig = go.Figure(
+#             data=go.Scatter(x=x, y=y, type="scatter"),
+#             layout={
+#                 "xaxis": {"title": "Time"},
+#                 "yaxis": {"title": f"{y_axis} {units}"},
+#             },
+#         )
+#         # print(f"go fig: {fig}")
+#         # return [fig, graph_axes]
+#         return fig  # , graph_axes]
+#     except Exception as e:
+#         print(f"select_graph_1d error: {e}")
+#         # return [dash.no_update, dash.no_update]
+#         return dash.no_update  # , dash.no_update]
+
 @callback(
-    # [Output({"type": "graph-1d", "index": MATCH}, "figure"), Output("graph-axes", "data")],
     Output(
         {"type": "controller-graph-1d", "index": MATCH}, "figure"
-    ),  # Output("graph-axes", "data")],
+    ), 
     Input({"type": "controller-graph-1d-dropdown", "index": MATCH}, "value"),
     [
         State("controller-meta", "data"),
@@ -1205,39 +1293,33 @@ def layout(controller_id=None):
         State({"type": "controller-graph-1d-dropdown", "index": MATCH}, "id"),
     ],
 )
-def select_graph_1d(
-    y_axis, controller_meta, graph_axes, controller_definition, graph_id
-):
-    print(f"select_graph_1d: {y_axis}, {controller_meta}, {graph_axes}")
-    # print(f"current_fig: {current_fig}")
+def select_graph_1d(y_axis, controller_meta, graph_axes, controller_definition, graph_id):
+    
+    # 1. Provide a default valid Figure
+    default_fig = go.Figure(
+        data=go.Scatter(x=[], y=[], type="scatter", mode="lines+markers"),
+        layout={"xaxis": {"title": "Time"}, "yaxis": {"title": "Value"}}
+    )
+    
+    if not y_axis:
+        return default_fig
+    
     try:
+        if graph_axes is None:
+            graph_axes = {}
         if "controller-graph-1d" not in graph_axes:
             graph_axes["controller-graph-1d"] = dict()
+            
         graph_axes["controller-graph-1d"][graph_id["index"]] = {
             "x-axis": "time",
             "y-axis": y_axis,
         }
-        print(f"select_graph_1d: {graph_axes}")
 
         x = []
         y = []
-        query = {
-            "controller_id": controller_meta["controller_id"],
-            # "make": sensor_meta["make"],
-            # "model": sensor_meta["model"],
-            # "serial_number": sensor_meta["serial_number"],
-        }
-        # sort = {"variables.time.data": 1}
         results = get_controller_data(controller_id=controller_meta["controller_id"])
-        # results = httpx.get(f"{datastore_url}/sensor/data/get", params=query)
-        # # results = db_data_client.find("data", "sensor", query, sort)
-        print(f"***results: {results}")
-        if results is None or len(results) == 0:
-            print("results = None")
-            # return [{"x": [], "y": [], "type": "scatter"}, graph_axes]
-            return {"x": [], "y": [], "type": "scatter"}  # , graph_axes]
+        
         if results and len(results) > 0:
-            print("results = good")
             for doc in results:
                 try:
                     x.append(doc["variables"]["time"]["data"])
@@ -1245,38 +1327,26 @@ def select_graph_1d(
                 except KeyError:
                     continue
 
-        # print(f"x,y: {x}, {y}")
-        # # fig = go.Figure(data=[go.Scatter(x=x, y=y)])
-        # print(f"go fig: {fig}")
-        # fig = dict(data=[{'x': x, 'y': y}])
         units = ""
         try:
             units = f'({controller_definition["variables"][y_axis]["attributes"]["units"]["data"]})'
-        except KeyError:
+        except Exception:
             pass
 
-        # fig = {
-        #     "data": [{"x": x, "y": y, "type": "scatter"}],
-        #     "layout": {
-        #         "xaxis": {"title": "Time"},
-        #         "yaxis": {"title": f"{y_axis} {units}"},
-        #     },
-        # }
+        # 2. Return the populated figure with lines+markers
         fig = go.Figure(
-            data=go.Scatter(x=x, y=y, type="scatter"),
+            data=go.Scatter(x=x, y=y, type="scatter", mode="lines+markers"),
             layout={
                 "xaxis": {"title": "Time"},
-                "yaxis": {"title": f"{y_axis} {units}"},
+                "yaxis": {"title": f"{y_axis} {units}".strip()},
             },
         )
-        # print(f"go fig: {fig}")
-        # return [fig, graph_axes]
-        return fig  # , graph_axes]
+        return fig
+        
     except Exception as e:
         print(f"select_graph_1d error: {e}")
-        # return [dash.no_update, dash.no_update]
-        return dash.no_update  # , dash.no_update]
-
+        L.error(traceback.format_exc())
+        return default_fig
 
 # @callback(
 #     # [Output({"type": "graph-1d", "index": MATCH}, "figure"), Output("graph-axes", "data")],
@@ -1446,48 +1516,97 @@ def update_controller_buffers(event):
     return [dash.no_update, dash.no_update]
 
 
+# @callback(
+#     Output({"type": "controller-graph-1d", "index": ALL}, "extendData"),
+#     Input("controller-data-buffer", "data"),
+#     [
+#         State({"type": "controller-graph-1d-dropdown", "index": ALL}, "value"),
+#         State("controller-graph-axes", "data"),
+#         State({"type": "controller-graph-1d", "index": ALL}, "figure"),
+#     ],
+# )
+# def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
+
+#     # # may need this later with multiple plots but I think it will still loop through drop downs
+#     # if "graph-1d" not in graph_axes:
+#     #     return dash.no_update
+
+#     # axes = graph_axes["graph-1d"]# = {"x-axis": "time", "y-axis": y_axis}
+#     try:
+#         figs = []
+#         if controller_data:
+#             print(f"controller_data: {controller_data}")
+#             for y_axis in y_axis_list:
+#                 if (
+#                     "time" not in controller_data["variables"]
+#                     or y_axis not in controller_data["variables"]
+#                 ):
+#                     return dash.no_update
+
+#                 x = [controller_data["variables"]["time"]["data"]]
+#                 y = [controller_data["variables"][y_axis]["data"]]
+#                 print(f"update: {[x]}, {[y]}")
+#                 figs.append({"x": [x], "y": [y]})
+#             # return {"x": [x], "y": [y]}
+#             return figs
+
+#     except Exception as e:
+#         print(f"data update error: {e}")
+#         # return dash.no_update
+#         # return dash.no_update
+#     raise PreventUpdate
+#     # return dash.no_update
+
 @callback(
     Output({"type": "controller-graph-1d", "index": ALL}, "extendData"),
     Input("controller-data-buffer", "data"),
     [
         State({"type": "controller-graph-1d-dropdown", "index": ALL}, "value"),
-        State("controller-graph-axes", "data"),
-        State({"type": "controller-graph-1d", "index": ALL}, "figure"),
     ],
+    prevent_initial_call=True,
 )
-def update_graph_1d(controller_data, y_axis_list, graph_axes, current_figs):
+def update_graph_1d(controller_data, y_axis_list):
+    if not controller_data:
+        raise PreventUpdate
 
-    # # may need this later with multiple plots but I think it will still loop through drop downs
-    # if "graph-1d" not in graph_axes:
-    #     return dash.no_update
-
-    # axes = graph_axes["graph-1d"]# = {"x-axis": "time", "y-axis": y_axis}
     try:
         figs = []
-        if controller_data:
-            print(f"controller_data: {controller_data}")
-            for y_axis in y_axis_list:
-                if (
-                    "time" not in controller_data["variables"]
-                    or y_axis not in controller_data["variables"]
-                ):
-                    return dash.no_update
+        for y_axis in y_axis_list:
+            if not y_axis:
+                figs.append(dash.no_update)
+                continue
 
-                x = [controller_data["variables"]["time"]["data"]]
-                y = [controller_data["variables"][y_axis]["data"]]
-                print(f"update: {[x]}, {[y]}")
-                figs.append({"x": [x], "y": [y]})
-            # return {"x": [x], "y": [y]}
-            return figs
+            variables = controller_data.get("variables", {})
+            if "time" not in variables or y_axis not in variables:
+                figs.append(dash.no_update)
+                continue
+
+            x_val = variables["time"].get("data")
+            y_val = variables[y_axis].get("data")
+
+            # Missing value check
+            if x_val is None or y_val is None:
+                figs.append(dash.no_update)
+                continue
+
+            # Ensure single values
+            if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[-1]
+            if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[-1]
+
+            # Dash extendData requires a tuple: ( {dict}, [traces], maxPoints )
+            figs.append( ({"x": [[x_val]], "y": [[y_val]]}, [0], 1000) )
+
+        # Abort cleanly if there's nothing to update
+        if not any(f != dash.no_update for f in figs):
+            raise PreventUpdate
+
+        return figs
 
     except Exception as e:
-        print(f"data update error: {e}")
-        # return dash.no_update
-        # return dash.no_update
-    raise PreventUpdate
-    # return dash.no_update
-
-
+        print(f"data update error graph: {e}")
+        L.error(traceback.format_exc())
+        raise PreventUpdate
+    
 # @callback(
 #     # Output({"type": "graph-2d-heatmap", "index": ALL}, "extendData"),
 #     Output({"type": "graph-2d-heatmap", "index": ALL}, "figure", allow_duplicate=True),
@@ -1864,83 +1983,118 @@ def update_settings_table(controller_settings, row_data_list, col_defs_list, con
 
 
 
+# @callback(
+#     Output(
+#         {"type": "controller-data-table-1d", "index": ALL}, "rowData"
+#     ),  # , Output("active-sensor-changes", "data")],
+#     Input("controller-data-buffer", "data"),
+#     # Input("ws-sensor-instance", "message"),
+#     [
+#         State({"type": "controller-data-table-1d", "index": ALL}, "rowData"),
+#         State({"type": "controller-data-table-1d", "index": ALL}, "columnDefs"),
+#     ],  # , dcc.Store("sensor-definition", "data")],
+#     # prevent_initial_call=True,
+# )
+# def update_table_1d(
+#     controller_data, row_data_list, col_defs_list
+# ):  # , sensor_definition):
+#     # sensor_def_data_changes = []
+#     # active_sensor_data_changes = []
+#     # # print(f"message data: {e}")
+#     # print(f"sensor_def_data: {sensor_def_data}")
+#     # print(f"row_data: {type(row_data)}, {row_data}, col_defs: {col_defs}")
+#     # if e is not None and "data" in e:
+#     if controller_data:
+#         print('controller data', controller_data)
+#         new_row_data_list = []
+#         try:
+#             # sensor_data = json.loads(e["data"])
+#             for row_data, col_defs in zip(row_data_list, col_defs_list):
+#                 print('col-defs', col_defs)
+#                 data = {}
+#                 # print(f"row, col: {row_data}, {col_defs}")
+#                 for col in col_defs:
+#                     name = col["field"]
+#                     # print(f"name: {name}")
+#                     if name in controller_data["variables"]:
+#                         # print(f"variable: {msg["variables"][name]["data"]}")
+#                         data[name] = controller_data["variables"][name]["data"]
+#                         # print(f"data: {data}")
+#                     else:
+#                         data[name] = ""
+#                 # if row_data is None:
+#                 #     row_data = []
+#                 # print(f"row_data1: {type(row_data), {row_data}}")
+#                 row_data.insert(0, data)
+#                 # print(f"row_data2: {type(row_data), {row_data}}")
+#                 # row_data = row_data.append(data)
+#                 # test_row_data = []
+#                 # test_row_data.append(data)
+#                 # print(f"row-data: {test_row_data}")
+
+#                 # limit size of table to 30 rows
+#                 if len(row_data) > 30:
+#                     # return row_data[:30]
+#                     new_row_data_list.append(row_data[:30])
+#                 else:
+#                     # return row_data
+#                     new_row_data_list.append(row_data)
+#                 # return dash.no_update
+#             # row_data_list.append(row_data)
+#             # print(f"row_data_list: {row_data_list}")
+#             if len(new_row_data_list) == 0:
+#                 raise PreventUpdate
+#             print('row data', new_row_data_list)
+#             return new_row_data_list
+
+#         except Exception as e:
+#             print(f"data update error: {e}")
+#             # return dash.no_update
+#         raise PreventUpdate
+#         # return [dash.no_update for i in range(0,len(col_defs_list))]
+#         # return row_data
+#     else:
+#         # return dash.no_update
+#         raise PreventUpdate
+#         # return [dash.no_update for i in range(0,len(col_defs_list))]
+#         # return dash.no_update
+
 @callback(
-    Output(
-        {"type": "controller-data-table-1d", "index": ALL}, "rowData"
-    ),  # , Output("active-sensor-changes", "data")],
+    Output({"type": "controller-data-table-1d", "index": ALL}, "rowTransaction"),
     Input("controller-data-buffer", "data"),
-    # Input("ws-sensor-instance", "message"),
     [
-        State({"type": "controller-data-table-1d", "index": ALL}, "rowData"),
         State({"type": "controller-data-table-1d", "index": ALL}, "columnDefs"),
-    ],  # , dcc.Store("sensor-definition", "data")],
-    # prevent_initial_call=True,
+    ],
 )
-def update_table_1d(
-    controller_data, row_data_list, col_defs_list
-):  # , sensor_definition):
-    # sensor_def_data_changes = []
-    # active_sensor_data_changes = []
-    # # print(f"message data: {e}")
-    # print(f"sensor_def_data: {sensor_def_data}")
-    # print(f"row_data: {type(row_data)}, {row_data}, col_defs: {col_defs}")
-    # if e is not None and "data" in e:
-    if controller_data:
-        print('controller data', controller_data)
-        new_row_data_list = []
-        try:
-            # sensor_data = json.loads(e["data"])
-            for row_data, col_defs in zip(row_data_list, col_defs_list):
-                print('col-defs', col_defs)
-                data = {}
-                # print(f"row, col: {row_data}, {col_defs}")
-                for col in col_defs:
-                    name = col["field"]
-                    # print(f"name: {name}")
-                    if name in controller_data["variables"]:
-                        # print(f"variable: {msg["variables"][name]["data"]}")
-                        data[name] = controller_data["variables"][name]["data"]
-                        # print(f"data: {data}")
-                    else:
-                        data[name] = ""
-                # if row_data is None:
-                #     row_data = []
-                # print(f"row_data1: {type(row_data), {row_data}}")
-                row_data.insert(0, data)
-                # print(f"row_data2: {type(row_data), {row_data}}")
-                # row_data = row_data.append(data)
-                # test_row_data = []
-                # test_row_data.append(data)
-                # print(f"row-data: {test_row_data}")
+def update_table_1d(controller_data, col_defs_list):
+    if not controller_data:
+        raise PreventUpdate
 
-                # limit size of table to 30 rows
-                if len(row_data) > 30:
-                    # return row_data[:30]
-                    new_row_data_list.append(row_data[:30])
+    transactions = []
+    try:
+        for col_defs in col_defs_list:
+            data = {}
+            for col in col_defs:
+                name = col["field"]
+                if name in controller_data.get("variables", {}):
+                    # Safely extract data
+                    data[name] = controller_data["variables"][name].get("data", "")
                 else:
-                    # return row_data
-                    new_row_data_list.append(row_data)
-                # return dash.no_update
-            # row_data_list.append(row_data)
-            # print(f"row_data_list: {row_data_list}")
-            if len(new_row_data_list) == 0:
-                raise PreventUpdate
-            print('row data', new_row_data_list)
-            return new_row_data_list
+                    data[name] = ""
 
-        except Exception as e:
-            print(f"data update error: {e}")
-            # return dash.no_update
+            # Inject row safely at the top using rowTransaction
+            transactions.append({"add": [data], "addIndex": 0})
+
+        if len(transactions) == 0:
+            raise PreventUpdate
+            
+        return transactions
+
+    except Exception as e:
+        print(f"data update error table: {e}")
+        print(traceback.format_exc())
         raise PreventUpdate
-        # return [dash.no_update for i in range(0,len(col_defs_list))]
-        # return row_data
-    else:
-        # return dash.no_update
-        raise PreventUpdate
-        # return [dash.no_update for i in range(0,len(col_defs_list))]
-        # return dash.no_update
-
-
+    
 # @callback(
 #     Output(
 #         {"type": "controller-data-table-2d", "index": ALL}, "rowData"

@@ -2,9 +2,9 @@ import importlib
 import json
 import logging
 import math
+import time
 from time import sleep
 
-# import numpy as np
 from ulid import ULID
 from pathlib import Path
 import os
@@ -14,9 +14,7 @@ from logfmter import Logfmter
 
 from pydantic import BaseModel, BaseSettings
 from cloudevents.http import CloudEvent, from_http
-
-# from cloudevents.http.conversion import from_http
-from cloudevents.conversion import to_structured  # , from_http
+from cloudevents.conversion import to_structured 
 from cloudevents.exceptions import InvalidStructuredJSON
 
 from datetime import datetime, timezone
@@ -41,25 +39,379 @@ from datastore_requests import (
     VariableSetDefinitionUpdate,
     VariableSetDataRequest,
     VariableSetDataUpdate,
+    VariableSetInstanceRequest,
+    VariableSetInstanceUpdate,
 )
 
 class DBClientConfig(BaseModel):
     type: str | None = "redis"
-    # config: dict | None = {"hostname": "localhost", "port": 1883}
     config: dict | None = {
         "hostname": "", 
         "port": None,
         "username": "",
         "password": "",
-        "clear_db": False
+        "clear_db": False,
+        "db_data_ttl": 600,
+        "erddap_enable": False,
+        "erddap_http_connection": None,
+        "erddap_author": None,
+        "log_level": "INFO"
     }
 
 
-class DBClientManager:
-    """MessageClientManager.
+class DBClient:
+    """Base class for Database Clients."""
+    def __init__(self, config: DBClientConfig) -> None:
+        if config is None:
+            config = DBClientConfig()
+        self.config = config.config
+        self.client = None
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
+        level_str = self.config.get("log_level", "INFO").upper()
+        self.logger.setLevel(level_str)
+        self.logger.debug("DBClient initialized", extra={"config": self.config})
 
-    Factory class to create MessageClients
+    def connect(self):
+        pass
+
+    def find_one(self, database: str, collection: str, query: dict):
+        pass
+
+    def insert_one(self, database: str, collection: str, document: dict):
+        pass
+
+    # Method stubs required by the Datastore interface
+    async def device_data_update(self, database: str, collection: str, request: DataUpdate, ttl: int = 300): return None
+    async def device_data_get(self, query: DataRequest): return None
+    async def device_definition_registry_update(self, database: str, collection: str, request: DeviceDefinitionUpdate, ttl: int = 0) -> bool: return False
+    async def device_definition_registry_get_ids(self) -> dict: return {"results": []}
+    async def device_definition_registry_get(self, request: DeviceDefinitionRequest) -> dict: return {"results": []}
+    async def device_instance_registry_update(self, database: str, collection: str, request: DeviceInstanceUpdate, ttl: int = 0) -> bool: return False
+    async def device_instance_registry_get_ids(self) -> dict: return {"results": []}
+    async def device_instance_registry_get(self, request: DeviceInstanceRequest) -> dict: return {"results": []}
+    
+    async def controller_data_update(self, database: str, collection: str, request: ControllerDataUpdate, ttl: int = 300): return None
+    async def controller_data_get(self, query: ControllerDataRequest): return None
+    async def controller_definition_registry_update(self, database: str, collection: str, request: ControllerDefinitionUpdate, ttl: int = 0) -> bool: return False
+    async def controller_definition_registry_get_ids(self) -> dict: return {"results": []}
+    async def controller_definition_registry_get(self, request: ControllerDefinitionRequest) -> dict: return {"results": []}
+    async def controller_instance_registry_update(self, database: str, collection: str, request: ControllerInstanceUpdate, ttl: int = 0) -> bool: return False
+    async def controller_instance_registry_get_ids(self) -> dict: return {"results": []}
+    async def controller_instance_registry_get(self, request: ControllerInstanceRequest) -> dict: return {"results": []}
+
+    async def variablemap_definition_registry_update(self, database: str, collection: str, request: VariableMapDefinitionUpdate, ttl: int = 0) -> bool: return False
+    async def variablemap_definition_registry_get_ids(self) -> dict: return {"results": []}
+    async def variablemap_definition_registry_get(self, request: VariableMapDefinitionRequest) -> dict: return {"results": []}
+    async def variableset_definition_registry_update(self, database: str, collection: str, request: VariableSetDefinitionUpdate, ttl: int = 0) -> bool: return False
+    async def variableset_definition_registry_get_ids(self) -> dict: return {"results": []}
+    async def variableset_definition_registry_get(self, request: VariableSetDefinitionRequest) -> dict: return {"results": []}
+    
+    async def variableset_data_update(self, database: str, collection: str, request: VariableSetDataUpdate, ttl: int = 0) -> bool: return False
+    async def variableset_data_get(self, request: VariableSetDataRequest) -> dict: return {"results": []}
+    
+    async def sampling_definition_registry_get_ids(self, resource: str) -> dict: return {"results": []}
+    async def sampling_definition_registry_update(self, resource: str, database: str, collection: str, request: dict, ttl: int = 0) -> bool: return False
+    async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict: return {"results": []}
+    
+    async def variableset_instance_registry_update(self, database: str, collection: str, request: VariableSetInstanceUpdate, ttl: int = 0) -> bool: return False
+    async def variableset_instance_registry_get_ids(self) -> dict: return {"results": []}
+    async def variableset_instance_registry_get(self, request: VariableSetInstanceRequest) -> dict: return {"results": []}
+    
+    async def project_definition_registry_get_ids(self) -> dict: return {"results": []}
+    async def platform_definition_registry_get_ids(self) -> dict: return {"results": []}
+
+
+class CompositeDBClient(DBClient):
     """
+    Federated router. Handles the tiered storage architecture:
+    - Live Telemetry (< TTL): Routes to Redis
+    - Historical Telemetry (> TTL): Routes to ERDDAP
+    - Definitions: Uses Redis as a Read-Through cache for ERDDAP
+    """
+    def __init__(self, config: DBClientConfig):
+        super().__init__(config)
+        
+        import redis_client
+        self.redis = redis_client.RedisClient(config)
+        
+        self.live_window_seconds = self.config.get("db_data_ttl", 600)
+
+        if self.config.get("erddap_enable"):
+            import erddap_client
+            self.erddap = erddap_client.ErddapClient(config)
+            self.logger.info("Composite Router: ERDDAP historical backend enabled.")
+        else:
+            self.erddap = None
+            self.logger.info("Composite Router: ERDDAP disabled. Operating in Edge/Cache-only mode.")
+
+    async def build_indexes(self):
+        """Pass through index building to Redis."""
+        if hasattr(self.redis, "build_indexes"):
+            await self.redis.build_indexes()
+
+    # ---------------------------------------------------------
+    # TELEMETRY ROUTING (Federated)
+    # ---------------------------------------------------------
+    def _is_live_query(self, start_timestamp: float = None, end_timestamp: float = None) -> bool:
+        now = time.time()
+        
+        if not start_timestamp and not end_timestamp:
+            return True
+            
+        safe_redis_window = self.live_window_seconds - 60
+        
+        if start_timestamp and (now - start_timestamp) <= safe_redis_window:
+            return True
+            
+        return False
+
+    async def device_data_get(self, request: DataRequest) -> dict:
+        if getattr(request, "force_archive", False) and self.erddap:
+            self.logger.debug("Routing device_data_get to ERDDAP (Forced Archive Mode)")
+            return await self.erddap.device_data_get(request)
+
+        if not self.erddap or self._is_live_query(request.start_timestamp, request.end_timestamp):
+            self.logger.debug("Routing device_data_get to REDIS (Live Window or Edge-Only Mode)")
+            return await self.redis.device_data_get(request)
+        else:
+            self.logger.debug("Routing device_data_get to ERDDAP (Historical Window)")
+            return await self.erddap.device_data_get(request)
+
+    async def controller_data_get(self, request: ControllerDataRequest) -> dict:
+        if getattr(request, "force_archive", False) and self.erddap and hasattr(self.erddap, "controller_data_get"):
+            self.logger.debug("Routing controller_data_get to ERDDAP (Forced Archive Mode)")
+            return await self.erddap.controller_data_get(request)
+
+        if not self.erddap or self._is_live_query(request.start_timestamp, request.end_timestamp):
+            self.logger.debug("Routing controller_data_get to REDIS")
+            return await self.redis.controller_data_get(request)
+        else:
+            self.logger.debug("Routing controller_data_get to ERDDAP")
+            if hasattr(self.erddap, "controller_data_get"):
+                return await self.erddap.controller_data_get(request)
+            return {"results": []}
+
+    async def variableset_data_get(self, request: VariableSetDataRequest) -> dict:
+        if getattr(request, "force_archive", False) and self.erddap:
+            self.logger.debug("Routing variableset_data_get to ERDDAP (Forced Archive Mode)")
+            return await self.erddap.variableset_data_get(request)
+
+        if not self.erddap or self._is_live_query(request.start_timestamp, request.end_timestamp):
+            self.logger.debug("Routing variableset_data_get to REDIS")
+            return await self.redis.variableset_data_get(request)
+        else:
+            self.logger.debug("Routing variableset_data_get to ERDDAP")
+            return await self.erddap.variableset_data_get(request)
+
+    # ---------------------------------------------------------
+    # DEFINITIONS (Read-Through Cache)
+    # ---------------------------------------------------------
+    async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
+        redis_result = await self.redis.sampling_definition_registry_get(resource, query)
+        
+        is_specific_query = "name" in query and bool(query["name"])
+        
+        # Trigger ERDDAP on a specific cache miss OR a generic list-all query
+        if not redis_result.get("results") or not is_specific_query:
+            if self.erddap:
+                self.logger.info(f"Cache miss/Sync for {resource} (Specific={is_specific_query}). Fetching from ERDDAP...")
+                erddap_result = await self.erddap.sampling_definition_registry_get(resource, query)
+                
+                if erddap_result.get("results"):
+                    merged_dict = {}
+                    
+                    # Make physical hierarchy and GitOps definitions permanent (TTL=0)
+                    ttl = 3600
+                    if resource in ["deployment", "project", "platform", "projectallocation", "contact"]:
+                        ttl = 0
+                        
+                    # 1. Load ERDDAP baseline and re-hydrate Redis
+                    for definition in erddap_result["results"]:
+                        name = definition.get("metadata", {}).get("name")
+                        if name:
+                            merged_dict[name] = definition
+                            # Re-hydrate the cache so the next query is instant
+                            await self.redis.sampling_definition_registry_update(
+                                resource=resource,
+                                database="registry",
+                                collection=f"{resource}-definition",
+                                request=definition,
+                                ttl=ttl
+                            )
+                            
+                    # 2. Overwrite with live Redis results (Redis is always fresher if it exists)
+                    for definition in redis_result.get("results", []):
+                        name = definition.get("metadata", {}).get("name")
+                        if name:
+                            merged_dict[name] = definition
+                            
+                    return {"results": list(merged_dict.values())}
+                    
+        return redis_result
+
+    # ---------------------------------------------------------
+    # WRITE PASS-THROUGHS 
+    # ---------------------------------------------------------
+    async def device_data_update(self, database: str, collection: str, request: DataUpdate, ttl: int = 300):
+        return await self.redis.device_data_update(database, collection, request, ttl)
+
+    async def controller_data_update(self, database: str, collection: str, request: ControllerDataUpdate, ttl: int = 300):
+        return await self.redis.controller_data_update(database, collection, request, ttl)
+
+    async def variableset_data_update(self, database: str, collection: str, request: VariableSetDataUpdate, ttl: int = 0) -> bool:
+        return await self.redis.variableset_data_update(database, collection, request, ttl)
+
+    async def sampling_definition_registry_update(self, resource: str, database: str, collection: str, request: dict, ttl: int = 0) -> bool:
+        return await self.redis.sampling_definition_registry_update(resource, database, collection, request, ttl)
+
+    # ---------------------------------------------------------
+    # FEDERATED DEFINITION PASS-THROUGHS TO REDIS
+    # ---------------------------------------------------------
+    async def device_definition_registry_update(self, database: str, collection: str, request: DeviceDefinitionUpdate, ttl: int = 0) -> bool:
+        return await self.redis.device_definition_registry_update(database, collection, request, ttl)
+        
+    async def device_definition_registry_get_ids(self) -> dict:
+        return await self.redis.device_definition_registry_get_ids()
+        
+    async def device_definition_registry_get(self, request: DeviceDefinitionRequest) -> dict:
+        result = await self.redis.device_definition_registry_get(request)
+        if not result.get("results") and self.erddap and hasattr(self.erddap, "device_definition_registry_get"):
+            self.logger.info("Cache miss for device definition. Fetching from ERDDAP...")
+            result = await self.erddap.device_definition_registry_get(request)
+            if result.get("results"):
+                for definition in result["results"]:
+                    if isinstance(definition, dict):
+                        data_dict = definition.get("registration", definition)
+                        
+                        # ---> UNWRAP THE POLYMORPHIC ERDDAP PAYLOAD <---
+                        if "device-definition" in data_dict:
+                            data_dict = data_dict["device-definition"]
+                        # -----------------------------------------------
+                        
+                        request_model = DeviceDefinitionUpdate(**data_dict)
+                    else:
+                        request_model = definition
+
+                    await self.redis.device_definition_registry_update(
+                        database="registry", 
+                        collection="device-definition", 
+                        request=request_model, 
+                        ttl=3600
+                    )
+        return result
+
+    async def device_instance_registry_update(self, database: str, collection: str, request: DeviceInstanceUpdate, ttl: int = 0) -> bool:
+        return await self.redis.device_instance_registry_update(database, collection, request, ttl)
+        
+    async def device_instance_registry_get_ids(self) -> dict:
+        return await self.redis.device_instance_registry_get_ids()
+        
+    async def device_instance_registry_get(self, request: DeviceInstanceRequest) -> dict:
+        return await self.redis.device_instance_registry_get(request)
+
+    async def controller_definition_registry_update(self, database: str, collection: str, request: ControllerDefinitionUpdate, ttl: int = 0) -> bool:
+        return await self.redis.controller_definition_registry_update(database, collection, request, ttl)
+        
+    async def controller_definition_registry_get_ids(self) -> dict:
+        return await self.redis.controller_definition_registry_get_ids()
+        
+    async def controller_definition_registry_get(self, request: ControllerDefinitionRequest) -> dict:
+        result = await self.redis.controller_definition_registry_get(request)
+        if not result.get("results") and self.erddap and hasattr(self.erddap, "controller_definition_registry_get"):
+            self.logger.info("Cache miss for controller definition. Fetching from ERDDAP...")
+            result = await self.erddap.controller_definition_registry_get(request)
+            if result.get("results"):
+                for definition in result["results"]:
+                    if isinstance(definition, dict):
+                        data_dict = definition.get("registration", definition)
+                        
+                        # ---> UNWRAP THE POLYMORPHIC ERDDAP PAYLOAD <---
+                        if "controller-definition" in data_dict:
+                            data_dict = data_dict["controller-definition"]
+                        # -----------------------------------------------
+                        
+                        request_model = ControllerDefinitionUpdate(**data_dict)
+                    else:
+                        request_model = definition
+
+                    await self.redis.controller_definition_registry_update(
+                        database="registry", 
+                        collection="controller-definition", 
+                        request=request_model, 
+                        ttl=3600
+                    )
+        return result
+
+    async def controller_instance_registry_update(self, database: str, collection: str, request: ControllerInstanceUpdate, ttl: int = 0) -> bool:
+        return await self.redis.controller_instance_registry_update(database, collection, request, ttl)
+        
+    async def controller_instance_registry_get_ids(self) -> dict:
+        return await self.redis.controller_instance_registry_get_ids()
+        
+    async def controller_instance_registry_get(self, request: ControllerInstanceRequest) -> dict:
+        return await self.redis.controller_instance_registry_get(request)
+
+    async def variablemap_definition_registry_update(self, database: str, collection: str, request: VariableMapDefinitionUpdate, ttl: int = 0) -> bool:
+        return await self.redis.variablemap_definition_registry_update(database, collection, request, ttl)
+        
+    async def variablemap_definition_registry_get_ids(self) -> dict:
+        return await self.redis.variablemap_definition_registry_get_ids()
+        
+    async def variablemap_definition_registry_get(self, request: VariableMapDefinitionRequest) -> dict:
+        result = await self.redis.variablemap_definition_registry_get(request)
+        if not result.get("results") and self.erddap and hasattr(self.erddap, "variablemap_definition_registry_get"):
+            self.logger.info("Cache miss for variablemap definition. Fetching from ERDDAP...")
+            result = await self.erddap.variablemap_definition_registry_get(request)
+            if result.get("results"):
+                for definition in result["results"]:
+                    await self.redis.variablemap_definition_registry_update(
+                        database="registry", 
+                        collection="variablemap-definition", 
+                        request=definition, 
+                        ttl=3600
+                    )
+        return result
+
+    async def variableset_definition_registry_update(self, database: str, collection: str, request: VariableSetDefinitionUpdate, ttl: int = 0) -> bool:
+        return await self.redis.variableset_definition_registry_update(database, collection, request, ttl)
+        
+    async def variableset_definition_registry_get_ids(self) -> dict:
+        return await self.redis.variableset_definition_registry_get_ids()
+        
+    async def variableset_definition_registry_get(self, request: VariableSetDefinitionRequest) -> dict:
+        result = await self.redis.variableset_definition_registry_get(request)
+        if not result.get("results") and self.erddap and hasattr(self.erddap, "variableset_definition_registry_get"):
+            self.logger.info("Cache miss for variableset definition. Fetching from ERDDAP...")
+            result = await self.erddap.variableset_definition_registry_get(request)
+            if result.get("results"):
+                for definition in result["results"]:
+                    await self.redis.variableset_definition_registry_update(
+                        database="registry", 
+                        collection="variableset-definition", 
+                        request=definition, 
+                        ttl=3600
+                    )
+        return result
+
+    async def variableset_instance_registry_update(self, database: str, collection: str, request: VariableSetInstanceUpdate, ttl: int = 0) -> bool:
+        return await self.redis.variableset_instance_registry_update(database, collection, request, ttl)
+        
+    async def variableset_instance_registry_get_ids(self) -> dict:
+        return await self.redis.variableset_instance_registry_get_ids()
+        
+    async def variableset_instance_registry_get(self, request: VariableSetInstanceRequest) -> dict:
+        return await self.redis.variableset_instance_registry_get(request)
+
+    async def sampling_definition_registry_get_ids(self, resource: str) -> dict:
+        return await self.redis.sampling_definition_registry_get_ids(resource)
+    async def project_definition_registry_get_ids(self) -> dict:
+        return await self.redis.project_definition_registry_get_ids()
+    async def platform_definition_registry_get_ids(self) -> dict:
+        return await self.redis.platform_definition_registry_get_ids()
+
+class DBClientManager:
+    """Factory class to create Database Clients"""
 
     @staticmethod
     def create(config: DBClientConfig = None):
@@ -67,222 +419,11 @@ class DBClientManager:
             config = DBClientConfig()
 
         if config.type == "redis":
-
-            client_mod = "redis_client"
-            client_class = "redis_class"
-            mod_ = importlib.import_module("redis_client")
-            # print(f"mod_: {"redis_client"}")
-            client = getattr(mod_, "RedisClient")(config)
+            client = CompositeDBClient(config)
             print(f"client: {client}, {config}")
             return client
-            # return RedisClient(config)
-            # pass
         elif config.type == "mongoDB":
-            # return mongoDBClient
             return None
-            pass
         else:
-            print("unknown messageclient reqest")
+            print("unknown dbclient reqest")
             return None
-
-
-
-class DBClient:
-    def __init__(self, config: DBClientConfig) -> None:
-        # self.db_type = db_type
-        # self.config = config
-        if config is None:
-            config = DBClientConfig()
-        self.config = config.config
-        self.client = None
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
-        self.logger.debug(config, self.config)
-        # self.connection = connection
-
-    def connect(self):
-        pass
-        # if self.db_type == "mongodb":
-        #     self.connect_mongo()
-        # return self.client
-
-    # def connect_mongo(self):
-    #     if not self.client:
-    #         try:
-    #             self.client = pymongo.MongoClient(
-    #                 self.connection,
-    #                 # tls=True,
-    #                 # tlsAllowInvalidCertificates=True
-    #             )
-    #         except pymongo.errors.ConnectionError:
-    #             self.client = None
-    #         L.info("mongo client", extra={"connection": self.connection, "client": self.client})
-    #     # return self.client
-
-    def find_one(self, database: str, collection: str, query: dict):
-        self.connect()
-        if self.client:
-            db = self.client[database]
-            db_collection = db[collection]
-            result = db_collection.find_one(query)
-            if result:
-                update = {"last_update": datetime.now(tz=timezone.utc)}
-                self.client.update_one(database, collection, result, update)
-            return result
-        return None
-
-    def insert_one(self, database: str, collection: str, document: dict):
-        self.connect()
-        if self.client:
-            db = self.client[database]
-            device_defs = db[collection]
-            result = device_defs.insert_one(document)
-            return result
-        return None
-
-    async def device_data_update(
-        self,
-        database: str,
-        collection: str,
-        # document: dict,
-        request: DataUpdate,
-        # update: dict,
-        # filter: dict = None,
-        # upsert=False,
-        ttl: int = 300
-    ):
-        return None
-
-    async def device_data_get(self, query: DataRequest):
-        return None
-
-    async def device_definition_registry_update(
-        self,
-        database: str,
-        collection: str,
-        request: DeviceDefinitionUpdate,
-        ttl: int = 0
-    ) -> bool:
-        return False
-
-    async def device_definition_registry_get_ids(
-            self,
-    ) -> dict:
-        return {"results": []}
-
-    async def device_definition_registry_get(
-            self,
-            request: DeviceDefinitionRequest
-    ) -> dict:
-        return {"results": []}
-
-    async def device_instance_registry_update(
-        self,
-        database: str,
-        collection: str,
-        request: DeviceInstanceUpdate,
-        ttl: int = 0
-    ) -> bool:
-        return False
-
-    async def device_instance_registry_get(
-        self,
-        request: DeviceInstanceRequest
-    ) -> dict:
-        return {"results": []}
-
-    async def controller_data_update(
-        self,
-        database: str,
-        collection: str,
-        # document: dict,
-        request: ControllerDataUpdate,
-        # update: dict,
-        # filter: dict = None,
-        # upsert=False,
-        ttl: int = 300
-    ):
-        return None
-
-    async def controller_data_get(self, query: ControllerDataRequest):
-        return None
-
-    async def controller_definition_registry_update(
-        self,
-        database: str,
-        collection: str,
-        request: ControllerDefinitionUpdate,
-        ttl: int = 0
-    ) -> bool:
-        return False
-
-    async def controller_definition_registry_get_ids(
-            self,
-    ) -> dict:
-        return {"results": []}
-
-    async def controller_definition_registry_get(
-            self,
-            request: ControllerDefinitionRequest
-    ) -> dict:
-        return {"results": []}
-
-    async def controller_instance_registry_update(
-        self,
-        database: str,
-        collection: str,
-        request: ControllerInstanceUpdate,
-        ttl: int = 0
-    ) -> bool:
-        return False
-
-    async def controller_instance_registry_get(
-        self,
-        request: ControllerInstanceRequest
-    ) -> dict:
-        return {"results": []}
-
-    async def variablemap_definition_registry_update(
-        self,
-        database: str,
-        collection: str,
-        request: VariableMapDefinitionUpdate,
-        ttl: int = 0
-    ) -> bool:
-        return False
-
-    async def variablemap_definition_registry_get(
-            self,
-            request: VariableMapDefinitionRequest
-    ) -> dict:
-        return {"results": []}
-
-    async def variableset_definition_registry_update(
-        self,
-        database: str,
-        collection: str,
-        request: VariableSetDefinitionUpdate,
-        ttl: int = 0
-    ) -> bool:
-        return False
-
-    async def variableset_definition_registry_get(
-            self,
-            request: VariableSetDefinitionRequest
-    ) -> dict:
-        return {"results": []}
-
-    async def variableset_data_update(
-        self,
-        database: str,
-        collection: str,
-        request: VariableSetDataUpdate,
-        ttl: int = 0
-    ) -> bool:
-        return False
-
-    async def variableset_data_get(
-            self,
-            request: VariableSetDataRequest
-    ) -> dict:
-        return {"results": []}

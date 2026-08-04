@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+httpx
+python-multipart
+cloudevents>=1.2.0,<2.0.0
+logfmter
+pydantic
+pydantic-settings
+logfmter

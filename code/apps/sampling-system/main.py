@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 # import json
 import logging
 
-from fastapi import FastAPI, Request, Query, status  # , APIRouter
+from fastapi import FastAPI, Request, Query, status, Response  # , APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # from cloudevents.http import from_http
@@ -111,10 +111,39 @@ L.debug("main: here:2")
 #     custom: dict | None = None
 
 # datastore = Datastore()
-print("starting sampling_system")
-sampling_system = SamplingSystem()
-print(f"sampling_system started: {sampling_system}")
+# print("starting sampling_system")
+# sampling_system = SamplingSystem()
+# print(f"sampling_system started: {sampling_system}")
 
+sampling_system = None
+
+@app.on_event("startup")
+async def start_system():
+    global sampling_system
+    sampling_system = SamplingSystem()
+    await sampling_system.setup()
+
+    # 2. Fire the operational log (if you didn't already put this inside setup())
+    await sampling_system.log_operational_event(
+        event_type="system_startup",
+        description="Sampling system booted and loaded GitOps context."
+    )
+    L.info("SamplingSystem initialized and background tasks started.")
+
+# FIX: Add graceful shutdown handler to close HTTP/MQTT clients
+@app.on_event("shutdown")
+async def shutdown_system():
+    global sampling_system
+    
+    # 1. Fire the operational log BEFORE tearing down the MQTT connection!
+    await sampling_system.log_operational_event(
+        event_type="system_shutdown",
+        description="Sampling system gracefully shutting down."
+    )
+
+    if sampling_system:
+        await sampling_system.close_http_client()
+        L.info("SamplingSystem HTTP client closed safely.")
 
 @app.get("/")
 async def root():

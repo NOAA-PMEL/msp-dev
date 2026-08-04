@@ -248,46 +248,33 @@ class SCX21(Sensor):
 
     def __init__(self, config=None, **kwargs):
         super(SCX21, self).__init__(config=config, **kwargs)
-        self.data_task = None
-        self.data_rate = 1
-        # self.configure()
+        super(SCX21, self).__init__(config=config, **kwargs)
+        self.default_data_buffer = asyncio.Queue(maxsize=100)
+        
         self.first_record = 'ZDA'
         self.last_record = 'GPhve'
         self.array_buffer = []
 
-        self.default_data_buffer = asyncio.Queue()
+        self.sensor_definition_file = "Furuno_SCX21_sensor_definition.json"
 
-        # self.sensor_definition_file = "Furuno_SCX21_sensor_definition.json"
+        try:            
+            with open(self.sensor_definition_file, "r") as f:
+                self.metadata = json.load(f)
+        except FileNotFoundError:
+            self.logger.error("sensor_definition not found. Exiting")            
+            sys.exit(1)
 
-        # try:            
-        #     with open(self.sensor_definition_file, "r") as f:
-        #         self.metadata = json.load(f)
-        # except FileNotFoundError:
-        #     self.logger.error("sensor_definition not found. Exiting")            
-        #     sys.exit(1)
-
-        # os.environ["REDIS_OM_URL"] = "redis://redis.default"
-
-        # self.data_loop_task = None
-
-        # all handled in run_setup ----
-        # self.configure()
-
-        # # self.logger = logging.getLogger(f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.logger = logging.getLogger(self.build_app_uid())
-
-        # # self.update_id("app_uid", f"{self.config.make}-{self.config.model}-{self.config.serial_number}")
-        # self.update_id("app_uid", self.build_app_uid())
-
-        # self.logger.debug("id", extra={"self.id": self.id})
-        # print(f"config: {self.config}")
-        # ----
-
-        # self.sampling_task_list.append(self.data_loop())
         self.enable_task_list.append(self.default_data_loop())
-        # self.enable_task_list.append(self.sampling_monitor())
-        # self.enable_task_list.append(self.register_sensor())
-        # asyncio.create_task(self.sampling_monitor())
+        self.enable_task_list.append(self.sampling_monitor())
+        
+        self.nmea_map = {
+            'HDT': ['heading'],
+            'GPatt': ['yaw', 'pitch', 'roll'],
+            'GPhve': ['heave'],
+            'ZDA': ['scx21_timestamp'],
+            'VTG': ['speed'],
+            'GNS': ['lat', 'lat_dir', 'lon', 'lon_dir', 'mode', 'sv_num']
+        }
         self.collecting = False
 
     def configure(self):
@@ -342,8 +329,9 @@ class SCX21(Sensor):
         for name, setting in settings_def["variables"].items():
         
             requested = setting["attributes"]["default_value"]["data"]
-            if "settings" in config and name in config["settings"]:
-                requested = config["settings"][name]
+            # if "settings" in config and name in config["settings"]:
+            if "settings" in conf and name in conf["settings"]:
+                requested = conf["settings"][name]
 
             self.settings.set_setting(name, requested=requested)
 
@@ -367,7 +355,7 @@ class SCX21(Sensor):
         print(f"self.config: {self.config}")
 
         try:
-            self.sensor_format_version = self.config.metadata.attributes[
+            self.device_format_version = self.config.metadata.attributes[
                 "format_version"
             ].data
         except KeyError:
@@ -396,38 +384,24 @@ class SCX21(Sensor):
     # async def handle_interface_data(self, message: Message):
     async def handle_interface_data(self, message: CloudEvent):
         await super(SCX21, self).handle_interface_data(message)
-
-        # self.logger.debug("interface_recv_data", extra={"data": message})
-        # if message.data["type"] == det.interface_data_recv():
         if message["type"] == det.interface_data_recv():
             try:
-                # path_id = message.data["path_id"]
                 path_id = message["path_id"]
                 iface_path = self.config.interfaces["default"]["path"]
-                # if path_id == "default":
                 if path_id == iface_path:
-                    self.logger.debug(
-                        # "interface_recv_data", extra={"data": message.data.data}
-                        "interface_recv_data", extra={"data": message.data}
-                    )
-                    # await self.default_data_buffer.put(message.data)
                     await self.default_data_buffer.put(message)
             except KeyError:
                 pass
 
     async def settings_check(self):
         await super().settings_check()
-
-        if not self.settings.get_health():  # something has changed
+        if not self.settings.get_health(): 
             for name in self.settings.get_settings().keys():
                 if not self.settings.get_health_setting(name):
-                    self.logger.debug(
-                        "settings_check - set setting",
-                        extra={
-                            "setting-name": name,
-                            "setting": self.settings.get_setting(name),
-                        },
-                    )
+                    setting_obj = self.settings.get_setting(name)
+                    target_val = setting_obj.get("requested") if isinstance(setting_obj, dict) else setting_obj
+                    if name in ["sampling_state"]:
+                        self.settings.set_actual(name, target_val)
 
     # async def register_sensor(self):
     #     try:
@@ -448,63 +422,85 @@ class SCX21(Sensor):
     #         self.logger.error("sensor_reg error", extra={"e": e})
 
     async def sampling_monitor(self):
-
-        # start_command = f"Log,{self.sampling_interval}\n"
-        start_command = "Log,1\n"
-        stop_command = "Log,0\n"
-
-        need_start = True
-        start_requested = False
-        # wait to see if data is already streaming
+        """SCX21 streams continuously. This monitor just updates the UI state."""
         await asyncio.sleep(2)
-        # # if self.collecting:
-        # await self.interface_send_data(data={"data": stop_command})
-        # await asyncio.sleep(2)
-        # self.collecting = False
-        # init to stopped
-        # await self.stop_command()
-
         while True:
             try:
+                state_obj = self.settings.get_setting("sampling_state")
+                state = state_obj.get("requested", "idle") if isinstance(state_obj, dict) else "idle"
+                state_str = str(state).lower()
 
-                if self.sampling():
-
-                    if need_start:
-                        if self.collecting:
-                            await self.interface_send_data(data={"data": stop_command})
-                            await asyncio.sleep(2)
-                            self.collecting = False
-                            continue
-                        else:
-                            await self.interface_send_data(data={"data": start_command})
-                            # await self.interface_send_data(data={"data": "\n"})
-                            need_start = False
-                            start_requested = True
-                            await asyncio.sleep(2)
-                            continue
-                    elif start_requested:
-                        if self.collecting:
-                            start_requested = False
-                        else:
-                            await self.interface_send_data(data={"data": start_command})
-                            # await self.interface_send_data(data={"data": "\n"})
-                            await asyncio.sleep(2)
-                            continue
+                if self.sampling() and state_str == "sampling":
+                    pass # Hardware streams on its own, do nothing
                 else:
-                    if self.collecting:
-                        await self.interface_send_data(data={"data": stop_command})
-                        await asyncio.sleep(2)
-                        self.collecting = False
-
-                await asyncio.sleep(0.1)
-
+                    pass # We just drop packets in default_data_loop, no hardware stop command
+                    
             except Exception as e:
-                print(f"sampling monitor error: {e}")
+                self.logger.error("sampling monitor error", extra={"error": str(e)})
 
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(1)
 
+    # async def default_data_loop(self):
+
+    #     while True:
+    #         try:
+    #             data = await self.default_data_buffer.get()
+    #             if data:
+    #                 self.collecting = True
+
+    #             if self.first_record in data.data['data']:
+    #                 record1 = self.default_parse(data)
+    #                 # self.record_counter += 1
+    #                 continue
+
+    #             elif self.last_record in data.data['data']:
+    #                 record2 = self.default_parse(data)
+    #                 for var in record2["variables"]:
+    #                     if var != 'time':
+    #                         if record2["variables"][var]["data"] is not None:
+    #                             record1["variables"][var]["data"] = record2["variables"][var]["data"]
+
+    #             else:
+    #                 record2 = self.default_parse(data)
+    #                 if not record2:
+    #                     continue
+    #                 else:
+    #                     for var in record2["variables"]:
+    #                         if var != 'time':
+    #                             if record2["variables"][var]["data"] is not None:
+    #                                 record1["variables"][var]["data"] = record2["variables"][var]["data"]
+    #                     continue
+    #             record = record1
+    #             # record = self.default_parse(data)
+    #             if record:
+    #                 self.collecting = True
+
+
+    #             if record and self.sampling():
+    #                 event = DAQEvent.create_data_update(
+    #                     # source="sensor.mockco-mock1-1234", data=record
+    #                     source=self.get_id_as_source(),
+    #                     data=record,
+    #                 )
+    #                 destpath = f"{self.get_id_as_topic()}/data/update"
+    #                 event["destpath"] = destpath
+    #                 self.logger.debug(
+    #                     "default_data_loop",
+    #                     extra={"data": event, "destpath": destpath},
+    #                 )
+    #                 # message = Message(data=event, destpath=destpath)
+    #                 message = event
+    #                 # self.logger.debug("default_data_loop", extra={"m": message})
+    #                 await self.send_message(message)
+
+    #             self.logger.debug("default_data_loop", extra={"record": record})
+    #         except Exception as e:
+    #             print(f"default_data_loop error: {e}")
+    #             print(traceback.format_exc())
+    #         await asyncio.sleep(0.001)
 
     async def default_data_loop(self):
+        record_buffer = None  # FIX: Pre-initialize
 
         while True:
             try:
@@ -512,148 +508,230 @@ class SCX21(Sensor):
                 if data:
                     self.collecting = True
 
-                if self.first_record in data.data['data']:
-                    record1 = self.default_parse(data)
-                    # self.record_counter += 1
+                # Handle dict vs CloudEvent safely
+                raw_data = data.data if isinstance(data.data, dict) else {}
+                raw_str = raw_data.get('data', '')
+
+                # Start of a new aggregate record
+                if self.first_record in raw_str:
+                    record_buffer = self.default_parse(data)
                     continue
 
-                elif self.last_record in data.data['data']:
-                    record2 = self.default_parse(data)
-                    for var in record2["variables"]:
-                        if var != 'time':
-                            if record2["variables"][var]["data"] is not None:
-                                record1["variables"][var]["data"] = record2["variables"][var]["data"]
+                # Discard fragments if we don't have a starting record
+                if record_buffer is None:
+                    continue
 
-                else:
-                    record2 = self.default_parse(data)
-                    if not record2:
-                        continue
-                    else:
-                        for var in record2["variables"]:
-                            if var != 'time':
-                                if record2["variables"][var]["data"] is not None:
-                                    record1["variables"][var]["data"] = record2["variables"][var]["data"]
-                        continue
-                record = record1
-                # record = self.default_parse(data)
-                if record:
-                    self.collecting = True
+                # Parse intermediate/end records
+                parsed_fragment = self.default_parse(data)
+                if parsed_fragment:
+                    for var, val_dict in parsed_fragment["variables"].items():
+                        if var != 'time' and val_dict["data"] is not None:
+                            record_buffer["variables"][var]["data"] = val_dict["data"]
 
-
-                if record and self.sampling():
+                # If it's the last string in the sequence, emit the event
+                if self.last_record in raw_str and self.sampling():
                     event = DAQEvent.create_data_update(
-                        # source="sensor.mockco-mock1-1234", data=record
                         source=self.get_id_as_source(),
-                        data=record,
+                        data=record_buffer,
                     )
                     destpath = f"{self.get_id_as_topic()}/data/update"
                     event["destpath"] = destpath
-                    self.logger.debug(
-                        "default_data_loop",
-                        extra={"data": event, "destpath": destpath},
-                    )
-                    # message = Message(data=event, destpath=destpath)
-                    message = event
-                    # self.logger.debug("default_data_loop", extra={"m": message})
-                    await self.send_message(message)
+                    
+                    self.logger.debug("default_data_loop", extra={"destpath": destpath})
+                    await self.send_message(event)
+                    
+                    # Reset buffer for the next cycle
+                    record_buffer = None 
 
-                self.logger.debug("default_data_loop", extra={"record": record})
             except Exception as e:
-                print(f"default_data_loop error: {e}")
-                print(traceback.format_exc())
-            await asyncio.sleep(0.001)
+                self.logger.error(f"default_data_loop error: {e}")
+                record_buffer = None  # Reset on error to prevent corrupted data
+
+    # def default_parse(self, data):
+    #     if data:
+    #         try:
+    #             variables = list(self.config.metadata.variables.keys())
+    #             variables.remove("time")
+    #             print(f"variables: \n{variables}")
+
+    #             record = self.build_data_record(meta=self.include_metadata)
+    #             self.include_metadata = False
+
+    #             try:
+    #                 record["timestamp"] = data.data["timestamp"]
+    #                 record["variables"]["time"]["data"] = data.data["timestamp"]
+    #                 parts = data.data["data"].split(",")
+
+    #                 if (datavar := 'HDT') in data.data["data"]:
+    #                     parts = parts[1:2]
+    #                 elif (datavar := 'GPatt') in data.data["data"]:
+    #                     parts = parts[2:5]
+    #                     parts = [x.split("*")[0] for x in parts]
+    #                 elif (datavar := 'GPhve') in data.data["data"]:
+    #                     parts = parts[2:3]
+    #                 elif (datavar := 'ZDA') in data.data["data"]:
+    #                     parts = parts[1:2]
+    #                 elif (datavar := 'VTG') in data.data["data"]:
+    #                     parts = parts[7:8]
+    #                 elif (datavar := 'GNS') in data.data["data"]:
+    #                     parts = parts[2:8]
+    #                 else:
+    #                     return None
+                                        
+    #                 self.var_name = []
+    #                 for key, value in self.config.metadata.variables.items():
+    #                     try:
+    #                         if value.attributes["description"].data:
+    #                             if datavar in value.attributes["description"].data:
+    #                                 self.var_name.append(key)
+    #                     except Exception as e:
+    #                         continue
+
+    #                 for index, name in enumerate(self.var_name):
+    #                     if name in record["variables"]:
+    #                         instvar = self.config.metadata.variables[name]
+    #                         try:
+    #                             if instvar.type == "int":
+    #                                 if isinstance(parts[index], list):
+    #                                     record["variables"][name]["data"] = [int(item) for item in parts[index]]
+    #                                 else:
+    #                                     record["variables"][name]["data"] = int(parts[index])
+
+    #                             elif instvar.type == "float":
+    #                                 if isinstance(parts[index], list):
+    #                                     record["variables"][name]["data"] = [float(item) for item in parts[index]]
+    #                                 else:
+    #                                     record["variables"][name]["data"] = float(parts[index])
+                                        
+    #                             else:
+    #                                 record["variables"][name]["data"] = parts[index]
+
+    #                         except ValueError:
+    #                             if instvar.type == "str" or instvar.type == "char":
+    #                                 record["variables"][name]["data"] = ""
+    #                             else:
+    #                                 record["variables"][name]["data"] = None
+
+    #                 # convert lat/lon to decimal
+    #                 if record["variables"]["lat"]["data"]:
+    #                     deg = int(record["variables"]["lat"]["data"]/100)
+    #                     mm_mm = ((record["variables"]["lat"]["data"]/100) - deg)*100.0
+    #                     dec_deg = deg + (mm_mm/60.0)
+    #                     if record["variables"]["lat_dir"]["data"] == "S":
+    #                         dec_deg *= -1.0
+    #                     record["variables"]["lat"]["data"] = round(dec_deg, 5)
+
+    #                 if record["variables"]["lon"]["data"]:
+    #                     deg = int(record["variables"]["lon"]["data"]/100)
+    #                     mm_mm = ((record["variables"]["lon"]["data"]/100) - deg)*100.0
+    #                     dec_deg = deg + (mm_mm/60.0)
+    #                     if record["variables"]["lon_dir"]["data"] == "W":
+    #                         dec_deg *= -1.0
+    #                     record["variables"]["lon"]["data"] = round(dec_deg, 5)
+
+    #                 return record
+    #             except KeyError:
+    #                 pass
+    #         except Exception as e:
+    #             print(f"default_parse error: {e}")
+    #             print(traceback.format_exc())
+    #     # else:
+    #     return None
 
     def default_parse(self, data):
-        if data:
-            try:
-                variables = list(self.config.metadata.variables.keys())
-                variables.remove("time")
-                print(f"variables: \n{variables}")
+        if not data:
+            return None
 
-                record = self.build_data_record(meta=self.include_metadata)
-                self.include_metadata = False
+        try:
+            record = self.build_data_record(meta=self.include_metadata)
+            self.include_metadata = False
 
+            # Safely handle dict vs CloudEvent
+            raw_payload = data.data if isinstance(data.data, dict) else {}
+            record["timestamp"] = raw_payload.get("timestamp")
+            record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+            raw_str = raw_payload.get("data", "")
+            
+            parts = raw_str.split(",")
+
+            # Fast O(1) lookup using the map initialized in __init__
+            datavar = None
+            for key in self.nmea_map.keys():
+                if key in raw_str:
+                    datavar = key
+                    break
+
+            if not datavar:
+                return None
+
+            # Slice the parts array depending on the NMEA sentence type
+            if datavar == 'HDT':
+                parts = parts[1:2]
+            elif datavar == 'GPatt':
+                parts = parts[2:5]
+                parts = [x.split("*")[0] for x in parts]
+            elif datavar == 'GPhve':
+                parts = parts[2:3]
+            elif datavar == 'ZDA':
+                parts = parts[1:2]
+            elif datavar == 'VTG':
+                parts = parts[7:8]
+            elif datavar == 'GNS':
+                parts = parts[2:8]
+
+            # Map parts to variables directly based on our lookup table
+            var_names = self.nmea_map[datavar]
+            for index, name in enumerate(var_names):
+                if name in record["variables"] and index < len(parts):
+                    instvar = self.config.metadata.variables[name]
+                    val = parts[index]
+                    try:
+                        if instvar.type == "int":
+                            if isinstance(val, list):
+                                record["variables"][name]["data"] = [int(item) for item in val]
+                            else:
+                                record["variables"][name]["data"] = int(val)
+                        elif instvar.type == "float":
+                            if isinstance(val, list):
+                                record["variables"][name]["data"] = [float(item) for item in val]
+                            else:
+                                record["variables"][name]["data"] = float(val)
+                        else:
+                            record["variables"][name]["data"] = val
+                    except ValueError:
+                        # Handle empty strings converting to int/float when no fix is available
+                        record["variables"][name]["data"] = "" if instvar.type in ("str", "char") else None
+
+            # Convert lat/lon to decimal
+            lat_data = record["variables"]["lat"]["data"]
+            if lat_data is not None and lat_data != "":
                 try:
-                    record["timestamp"] = data.data["timestamp"]
-                    record["variables"]["time"]["data"] = data.data["timestamp"]
-                    parts = data.data["data"].split(",")
+                    deg = int(lat_data / 100)
+                    mm_mm = ((lat_data / 100) - deg) * 100.0
+                    dec_deg = deg + (mm_mm / 60.0)
+                    if record["variables"]["lat_dir"]["data"] == "S":
+                        dec_deg *= -1.0
+                    record["variables"]["lat"]["data"] = round(dec_deg, 5)
+                except Exception as e:
+                    self.logger.debug(f"Lat conversion warning: {e}")
 
-                    if (datavar := 'HDT') in data.data["data"]:
-                        parts = parts[1:2]
-                    elif (datavar := 'GPatt') in data.data["data"]:
-                        parts = parts[2:5]
-                        parts = [x.split("*")[0] for x in parts]
-                    elif (datavar := 'GPhve') in data.data["data"]:
-                        parts = parts[2:3]
-                    elif (datavar := 'ZDA') in data.data["data"]:
-                        parts = parts[1:2]
-                    elif (datavar := 'VTG') in data.data["data"]:
-                        parts = parts[7:8]
-                    elif (datavar := 'GNS') in data.data["data"]:
-                        parts = parts[2:8]
-                    else:
-                        return None
-                                        
-                    self.var_name = []
-                    for key, value in self.config.metadata.variables.items():
-                        try:
-                            if value.attributes["description"].data:
-                                if datavar in value.attributes["description"].data:
-                                    self.var_name.append(key)
-                        except Exception as e:
-                            continue
+            lon_data = record["variables"]["lon"]["data"]
+            if lon_data is not None and lon_data != "":
+                try:
+                    deg = int(lon_data / 100)
+                    mm_mm = ((lon_data / 100) - deg) * 100.0
+                    dec_deg = deg + (mm_mm / 60.0)
+                    if record["variables"]["lon_dir"]["data"] == "W":
+                        dec_deg *= -1.0
+                    record["variables"]["lon"]["data"] = round(dec_deg, 5)
+                except Exception as e:
+                    self.logger.debug(f"Lon conversion warning: {e}")
 
-                    for index, name in enumerate(self.var_name):
-                        if name in record["variables"]:
-                            instvar = self.config.metadata.variables[name]
-                            try:
-                                if instvar.type == "int":
-                                    if isinstance(parts[index], list):
-                                        record["variables"][name]["data"] = [int(item) for item in parts[index]]
-                                    else:
-                                        record["variables"][name]["data"] = int(parts[index])
-
-                                elif instvar.type == "float":
-                                    if isinstance(parts[index], list):
-                                        record["variables"][name]["data"] = [float(item) for item in parts[index]]
-                                    else:
-                                        record["variables"][name]["data"] = float(parts[index])
-                                        
-                                else:
-                                    record["variables"][name]["data"] = parts[index]
-
-                            except ValueError:
-                                if instvar.type == "str" or instvar.type == "char":
-                                    record["variables"][name]["data"] = ""
-                                else:
-                                    record["variables"][name]["data"] = None
-
-                    # convert lat/lon to decimal
-                    if record["variables"]["lat"]["data"]:
-                        deg = int(record["variables"]["lat"]["data"]/100)
-                        mm_mm = ((record["variables"]["lat"]["data"]/100) - deg)*100.0
-                        dec_deg = deg + (mm_mm/60.0)
-                        if record["variables"]["lat_dir"]["data"] == "S":
-                            dec_deg *= -1.0
-                        record["variables"]["lat"]["data"] = round(dec_deg, 5)
-
-                    if record["variables"]["lon"]["data"]:
-                        deg = int(record["variables"]["lon"]["data"]/100)
-                        mm_mm = ((record["variables"]["lon"]["data"]/100) - deg)*100.0
-                        dec_deg = deg + (mm_mm/60.0)
-                        if record["variables"]["lon_dir"]["data"] == "W":
-                            dec_deg *= -1.0
-                        record["variables"]["lon"]["data"] = round(dec_deg, 5)
-
-                    return record
-                except KeyError:
-                    pass
-            except Exception as e:
-                print(f"default_parse error: {e}")
-                print(traceback.format_exc())
-        # else:
-        return None
-
+            return record
+            
+        except Exception as e:
+            self.logger.error(f"default_parse error: {e}")
+            return None
 
 class ServerConfig(BaseModel):
     host: str = "localhost"

@@ -15,8 +15,16 @@ from envds.sampling.types import SamplingEventType as et
 
 class SamplingEvent(envdsEvent):
     """docstring for DAQEvent."""
-    def __init__(self,):
+    def __init__(self):
         super(SamplingEvent, self).__init__()
+
+    @staticmethod
+    def create_definition_registry_update(resource: str, source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.definition_registry_update(resource), source=source, data=data, extra_header=extra_header)
+
+    @staticmethod
+    def create_definition_registry_request(resource: str, source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.definition_registry_request(resource), source=source, data=data, extra_header=extra_header)
 
     @staticmethod
     def create_variablemap_definition_registry_request(source: str, data: dict = {}, extra_header: dict = None):
@@ -98,7 +106,40 @@ class SamplingEvent(envdsEvent):
     def create_sampling_mode_status_update(source: str, data: dict = {}, extra_header: dict = None):
         return SamplingEvent.create(type=et.sampling_mode_status_update(), source=source, data=data, extra_header=extra_header)
 
+    # ---> ADD THESE TWO METHODS <---
+    @staticmethod
+    def create_system_mode_status_request(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.system_mode_status_request(), source=source, data=data, extra_header=extra_header)
 
+    @staticmethod
+    def create_system_mode_status_update(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.system_mode_status_update(), source=source, data=data, extra_header=extra_header)
+    
+    @staticmethod
+    def create_system_control_request(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.system_control_request(), source=source, data=data, extra_header=extra_header)
+
+    @staticmethod
+    def create_system_control_update(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.system_control_update(), source=source, data=data, extra_header=extra_header)
+    
+    @staticmethod
+    def create_dataset_definition_registry_request(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.dataset_definition_registry_request(), source=source, data=data, extra_header=extra_header)
+
+    @staticmethod
+    def create_dataset_definition_registry_update(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.dataset_definition_registry_update(), source=source, data=data, extra_header=extra_header)
+
+    @staticmethod
+    def create_dataset_generate_request(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.dataset_generate_request(), source=source, data=data, extra_header=extra_header)
+    
+    @staticmethod
+    def create_operations_log(source: str, data: dict = {}, extra_header: dict = None):
+        """Assembles a standardized operational log CloudEvent."""
+        return SamplingEvent.create(type="envds.operations.log", source=source, data=data, extra_header=extra_header)
+    
     # @staticmethod
     # def create_interface_connect_request(source: str, data: dict = {}, extra_header: dict = None):
     #     return DAQEvent.create(type=et.interface_connect_request(), source=source, data=data, extra_header=extra_header)

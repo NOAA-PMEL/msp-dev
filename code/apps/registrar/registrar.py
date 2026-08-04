@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 
 from envds.daq.event import DAQEvent
 from envds.daq.types import DAQEventType as det
+from envds.sampling.event import SamplingEvent
 
 handler = logging.StreamHandler()
 handler.setFormatter(Logfmter())
@@ -63,7 +64,8 @@ class Settings(BaseSettings):
     knative_broker: str = (
         "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/default"
     )
-
+    # NEW: Comma-separated list of allowed sources (e.g., "payload01,payload02,raz1")
+    allowed_sync_sources: str | None = None
     class Config:
         env_prefix = "REGISTRAR_"
         case_sensitive = False
@@ -71,7 +73,6 @@ class Settings(BaseSettings):
 
 # app = Flask(__name__)
 config = Settings()
-
 
 class Registrar:
     """docstring for Registrar."""
@@ -82,7 +83,7 @@ class Registrar:
         self.logger.setLevel(logging.DEBUG)
         self.config = Settings()
 
-        self.datastore_url = f"datastore.{self.config.daq_id}-system"
+        self.datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
 
         self.task_list = []
         self.task_list.append(self.get_device_definitions_loop())
@@ -90,19 +91,31 @@ class Registrar:
         self.task_list.append(self.get_controller_definitions_loop())
         self.task_list.append(self.get_controller_instances_loop())
         self.task_list.append(self.handle_registry_sync_loop())
+        # self.task_list.append(self.get_platform_definitions_loop())
+        # self.task_list.append(self.get_project_definitions_loop())
+        self.task_list.append(self.get_variablemap_definitions_loop())        
+        self.task_list.append(self.get_variableset_definitions_loop())
+        for resource in [
+            "platform", "project", "deployment", "contact", 
+            "systemmode", "samplingmode", "samplingstate", 
+            "samplingcondition", "action",
+            "projectallocation"
+        ]:
+            self.task_list.append(self.create_sampling_sync_loop(resource))
         for task in self.task_list:
             asyncio.create_task(task)
 
         self.current_device_definition_list = []
         self.current_controller_definition_list = []
 
-        self.sync_bcast_buffer = asyncio.Queue(maxsize=100)
+        self.sync_bcast_buffer = asyncio.Queue(maxsize=1000)
 
         self.http_client = None
 
     def open_http_client(self):
         # create a new client for each request
-        self.http_client = httpx.AsyncClient()
+        limits = httpx.Limits(max_keepalive_connections=50, max_connections=200)
+        self.http_client = httpx.AsyncClient(limits=limits)
 
     async def close_http_client(self):
         if self.http_client:
@@ -137,7 +150,8 @@ class Registrar:
                 r = await self.http_client.post(
                     self.config.knative_broker,
                     headers=headers,
-                    data=body,
+                    # data=body,
+                    content=body,
                     timeout=timeout,
                 )
                 r.raise_for_status()
@@ -152,46 +166,102 @@ class Registrar:
             self.logger.error("send_event", extra={"reason": e})
         await asyncio.sleep(0.1)
 
+    # async def submit_get(self, path: str):
+    #     try:
+    #         self.logger.debug("submit_request", extra={"path": path})
+    #         timeout = httpx.Timeout(10.0, read=15.0)
+    #         if not self.http_client:
+    #             self.open_http_client()            # if query is None:
+    #         #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+    #         #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+    #         #     self.logger.debug("submit_request", extra={"results": results})
+    #         #     # return results
+    #         # else:
+    #         self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+    #         results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+    #         self.logger.debug("submit_request", extra={"results": results.json()})
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_request", extra={"reason": e})
+    #         return {}
+
+
+    # async def submit_request(self, path: str, query: dict):
+    #     try:
+    #         self.logger.debug("submit_request", extra={"path": path, "query": query})
+    #         timeout = httpx.Timeout(10.0, read=15.0)
+    #         if not self.http_client:
+    #             self.open_http_client()            # if query is None:
+    #         # if query is None:
+    #         #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
+    #         #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
+    #         #     self.logger.debug("submit_request", extra={"results": results})
+    #         #     # return results
+    #         # else:
+    #         self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/", "query": query})
+    #         results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
+    #         self.logger.debug("submit_request", extra={"results": results.json()})
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_request", extra={"reason": e})
+    #         return {}
+
     async def submit_get(self, path: str):
         try:
             self.logger.debug("submit_request", extra={"path": path})
-            timeout = httpx.Timeout(10.0, read=None)
+            timeout = httpx.Timeout(10.0, read=15.0)
             if not self.http_client:
-                self.open_http_client()            # if query is None:
-            #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
-            #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
-            #     self.logger.debug("submit_request", extra={"results": results})
-            #     # return results
-            # else:
-            self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
-            results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
-            self.logger.debug("submit_request", extra={"results": results.json()})
+                self.open_http_client()            
+            
+            url = f"http://{self.datastore_url}/{path}/"
+            self.logger.debug("submit_request", extra={"url": url})
+            
+            results = await self.http_client.get(url, timeout=timeout)
+            
+            # Catch 404s and 500s before trying to parse JSON!
+            results.raise_for_status() 
+            
             return results.json()
         except Exception as e:
-            self.logger.error("submit_request", extra={"reason": e})
+            # repr(e) forces the exception to print as a string so it isn't blank!
+            self.logger.error("submit_get_error", extra={"reason": repr(e), "path": path})
             return {}
-
 
     async def submit_request(self, path: str, query: dict):
         try:
             self.logger.debug("submit_request", extra={"path": path, "query": query})
-            timeout = httpx.Timeout(10.0, read=None)
+            timeout = httpx.Timeout(10.0, read=15.0)
             if not self.http_client:
-                self.open_http_client()            # if query is None:
-            # if query is None:
-            #     self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/"})
-            #     results = httpx.get(f"http://{self.datastore_url}/{path}/", timeout=timeout)
-            #     self.logger.debug("submit_request", extra={"results": results})
-            #     # return results
-            # else:
-            self.logger.debug("submit_request", extra={"url": f"http://{self.datastore_url}/{path}/", "query": query})
-            results = await self.http_client.get(f"http://{self.datastore_url}/{path}/", params=query, timeout=timeout)
-            self.logger.debug("submit_request", extra={"results": results.json()})
+                self.open_http_client()            
+            
+            url = f"http://{self.datastore_url}/{path}/"
+            self.logger.debug("submit_request", extra={"url": url, "query": query})
+            
+            results = await self.http_client.get(url, params=query, timeout=timeout)
+            
+            # Catch 404s and 500s before trying to parse JSON!
+            results.raise_for_status()
+            
             return results.json()
         except Exception as e:
-            self.logger.error("submit_request", extra={"reason": e})
+            # repr(e) forces the exception to print as a string so it isn't blank!
+            self.logger.error("submit_request_error", extra={"reason": repr(e), "path": path})
             return {}
 
+    def is_sync_allowed(self, source: str) -> bool:
+        """
+        Checks if the incoming sync message source is allowed based on the 
+        REGISTRAR_ALLOWED_SYNC_SOURCES configuration.
+        """
+        if not self.config.allowed_sync_sources:
+            return True
+        
+        allowed_list = [s.strip() for s in self.config.allowed_sync_sources.split(",") if s.strip()]
+        if not allowed_list:
+            return True
+            
+        return any(a in source for a in allowed_list)
+    
     async def get_device_definitions_loop(self):
 
         while True:
@@ -208,7 +278,8 @@ class Registrar:
                 # results = httpx.get(f"http://{self.datastore_url}/device-definition/registry/get/", parmams=query)
                 self.logger.debug("get_device_definitions_loop", extra={"results": results})
 
-                if "results" in results and results["results"]:
+                # if "results" in results and results["results"]:
+                if "results" in results:
                     def_list = []
                     # for device_def in results["results"]:
                     for id in results["results"]:
@@ -238,7 +309,7 @@ class Registrar:
             except Exception as e:
                 self.logger.error("get_device_definitions_loop", extra={"reason": e})
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(60)
 
     async def get_device_instance(self, devices: list[str]) -> list:
         pass
@@ -262,7 +333,8 @@ class Registrar:
                 # results = httpx.get(f"http://{self.datastore_url}/controller-definition/registry/get/", parmams=query)
                 self.logger.debug("get_controller_definitions_loop", extra={"results": results})
 
-                if "results" in results and results["results"]:
+                # if "results" in results and results["results"]:
+                if "results" in results:
                     def_list = []
                     # for controller_def in results["results"]:
                     for id in results["results"]:
@@ -292,7 +364,7 @@ class Registrar:
             except Exception as e:
                 self.logger.error("get_controller_definitions_loop", extra={"reason": e})
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(60)
 
     async def get_controller_instance(self, controllers: list[str]) -> list:
         pass
@@ -302,74 +374,247 @@ class Registrar:
 
             await asyncio.sleep(5)
 
+    # async def get_platform_definitions_loop(self):
+    #     while True:
+    #         try:
+    #             results = await self.submit_get(path="platform-definition/registry/ids/get")
+    #             if "results" in results and results["results"]:
+    #                 def_list = results["results"]
+    #                 self.current_platform_definition_list = def_list
+                    
+    #                 # Create sync broadcast event (similar to DAQEvent.create_registry_sync_bcast)
+    #                 # Use SamplingEvent from envds if available
+    #                 bcast = {
+    #                     "type": "sampling.platform.registry.sync",
+    #                     "source": f"envds.{self.config.daq_id}.registrar",
+    #                     "data": {"platform-definition-list": def_list}
+    #                 }
+    #                 destpath = f"envds/{self.config.daq_id}/registry/sync-bcast"
+    #                 bcast["destpath"] = destpath
+    #                 await self.send_event(bcast)
+    #         except Exception as e:
+    #             self.logger.error("get_platform_definitions_loop", extra={"reason": e})
+    #         await asyncio.sleep(60) # Sampling definitions change less frequently
+
+    async def get_variablemap_definitions_loop(self):
+        while True:
+            try:
+                results = await self.submit_get(path="variablemap-definition/registry/ids/get")
+                # if "results" in results and results["results"]:
+                if "results" in results:
+                    self.current_variablemap_definition_list = results["results"]
+                    # bcast = {
+                    #     "type": "sampling.variablemap.registry.sync",
+                    #     "source": f"envds.{self.config.daq_id}.registrar",
+                    #     "data": {"variablemap-definition-list": results["results"]}
+                    # }
+                    # FIX: Use DAQEvent to create a valid CloudEvent
+                    bcast = DAQEvent.create_registry_sync_bcast(
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={"variablemap-definition-list": results["results"]}
+                    )
+                    destpath = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    if self.config.mqtt_bridge_prefix:
+                        destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                    bcast["destpath"] = destpath
+
+                    await self.send_event(bcast)
+            except Exception as e:
+                self.logger.error("get_variablemap_definitions_loop", extra={"reason": e})
+            await asyncio.sleep(60)
     async def handle_registry_sync_loop(self):
         while True:
             try:
                 message = await self.sync_bcast_buffer.get()
-                await self.handle_registry_sync(message)
+                # await self.handle_registry_sync(message)
+                asyncio.create_task(self.handle_registry_sync(message))
+                self.logger.debug("handle_registry_sync_loop", extra={"mesg": message})
                 await asyncio.sleep(0.001)
             except Exception as e:
                 self.logger.error("handle_registry_sync_loop", extra={"reason": e})
 
-    async def handle_registry_sync(self, message: CloudEvent):
+    # async def handle_registry_sync(self, message: CloudEvent):
 
+    #     # Extract the source of the CloudEvent
+    #     source = message.get("source", "")
+    #     self.logger.debug("handle_registry_sync", extra={"ce-type": message["type"], "ce-source": source})
+    #     if message["type"] == det.registry_sync_bcast():
+
+    #         # Drop broadcasts from unallowed sources (e.g., servers pushing down to raz1)
+    #         if not self.is_sync_allowed(source):
+    #             self.logger.debug("handle_registry_sync: dropping bcast from unallowed source", extra={"source": source})
+    #             return
+
+    #         self.logger.debug(
+    #             "handle_registry_sync",
+    #             extra={"ce-type": message["type"], "data": message.data},
+    #         )
+    #         # compare with local registry and request updates for any changes
+    #         await self.registry_compare_bcast(message)
+
+    #     elif message["type"] == det.registry_sync_update():
+
+    #         # Drop proactive updates from unallowed sources
+    #         if not self.is_sync_allowed(source):
+    #             self.logger.debug("handle_registry_sync: dropping update from unallowed source", extra={"source": source})
+    #             return
+
+    #         self.logger.debug(
+    #             "handle_registry_sync",
+    #             extra={"ce-type": message["type"], "data": message.data},
+    #         )
+    #         # add to registry if needed
+    #         await self.registry_do_update(message)
+    #     elif message["type"] == det.registry_sync_request():
+    #         self.logger.debug(
+    #             "handle_registry_sync",
+    #             extra={"ce-type": message["type"], "data": message.data},
+    #         )
+    #         # respond with requested information
+    #         await self.registry_send_update(message)
+
+    async def handle_registry_sync(self, message: CloudEvent):
+        source = message.get("source", "")
+        self.logger.debug("handle_registry_sync", extra={"ce-type": message["type"], "ce-source": source})
+        
         if message["type"] == det.registry_sync_bcast():
+            # REMOVED: Do not drop broadcasts from unallowed sources here.
+            # We MUST process broadcasts to see what they are missing so we can push our updates!
             self.logger.debug(
                 "handle_registry_sync",
                 extra={"ce-type": message["type"], "data": message.data},
             )
-            # compare with local registry and request updates for any changes
             await self.registry_compare_bcast(message)
 
         elif message["type"] == det.registry_sync_update():
+            # KEEP: Drop proactive updates from unallowed sources
+            if not self.is_sync_allowed(source):
+                self.logger.debug("handle_registry_sync: dropping update from unallowed source", extra={"source": source})
+                return
+
             self.logger.debug(
                 "handle_registry_sync",
                 extra={"ce-type": message["type"], "data": message.data},
             )
-            # add to registry if needed
             await self.registry_do_update(message)
+            
         elif message["type"] == det.registry_sync_request():
             self.logger.debug(
                 "handle_registry_sync",
                 extra={"ce-type": message["type"], "data": message.data},
             )
-            # respond with requested information
+            # Anyone is allowed to ask us for definitions we have
             await self.registry_send_update(message)
+
+    # async def registry_do_update(self, message: CloudEvent):
+    #     try:
+
+    #         data = message.data
+    #         for update_type, update in data.items():
+    #             if update_type == "device-definition-update":
+
+    #                 event = DAQEvent.create_device_definition_registry_update(
+    #                     # source="device.mockco-mock1-1234", data=record
+    #                     source=f"envds.{self.config.daq_id}.registrar",
+    #                     data={"device-definition": update},
+    #                 )
+    #                 destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+    #                 self.logger.debug(
+    #                     "register_device_definition", extra={"data": event, "destpath": destpath}
+    #                 )
+    #                 event["destpath"] = destpath
+    #                 await self.send_event(event)
+    #             elif update_type == "controller-definition-update":
+
+    #                 event = DAQEvent.create_controller_definition_registry_update(
+    #                     # source="device.mockco-mock1-1234", data=record
+    #                     source=f"envds.{self.config.daq_id}.registrar",
+    #                     data={"controller-definition": update},
+    #                 )
+    #                 destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+                    
+    #                 self.logger.debug(
+    #                     "register_device_definition", extra={"data": event, "destpath": destpath}
+    #                 )
+    #                 event["destpath"] = destpath
+    #                 await self.send_event(event)
+
+    #             # Dynamic catch-all utilizing the SamplingEvent factory
+    #             elif update_type.endswith("-definition-update"):
+    #                 resource_type = update_type.replace("-update", "") # Leaves "-definition"
+                    
+    #                 event = SamplingEvent.create_definition_registry_update(
+    #                     resource=resource_type,
+    #                     source=f"envds.{self.config.daq_id}.registrar",
+    #                     data={resource_type: update}
+    #                 )
+                    
+    #                 # destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+    #                 destpath = f"envds/{self.config.daq_id}/{resource_type}/registry/update"
+    #                 event["destpath"] = destpath
+    #                 await self.send_event(event)
+
+    #     except Exception as e:
+    #         self.logger.error("register_device_definition", extra={"reason": e})
 
     async def registry_do_update(self, message: CloudEvent):
         try:
-
             data = message.data
             for update_type, update in data.items():
+                
+                # 1. Fix Device Routing
                 if update_type == "device-definition-update":
-
                     event = DAQEvent.create_device_definition_registry_update(
-                        # source="device.mockco-mock1-1234", data=record
                         source=f"envds.{self.config.daq_id}.registrar",
                         data={"device-definition": update},
                     )
-                    destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+                    # Route directly to the device-definition datastore topic
+                    destpath = f"envds/{self.config.daq_id}/device-definition/registry/update"
+                    
                     self.logger.debug(
                         "register_device_definition", extra={"data": event, "destpath": destpath}
                     )
                     event["destpath"] = destpath
                     await self.send_event(event)
+                    
+                # 2. Fix Controller Routing
                 elif update_type == "controller-definition-update":
-
                     event = DAQEvent.create_controller_definition_registry_update(
-                        # source="device.mockco-mock1-1234", data=record
                         source=f"envds.{self.config.daq_id}.registrar",
                         data={"controller-definition": update},
                     )
-                    destpath = f"envds/{self.config.daq_id}/registrar/envds::{self.config.daq_id}::registrar/registry/update"
+                    # Route directly to the controller-definition datastore topic
+                    destpath = f"envds/{self.config.daq_id}/controller-definition/registry/update"
+                    
                     self.logger.debug(
-                        "register_device_definition", extra={"data": event, "destpath": destpath}
+                        "register_controller_definition", extra={"data": event, "destpath": destpath}
                     )
                     event["destpath"] = destpath
                     await self.send_event(event)
-        except Exception as e:
-            self.logger.error("register_device_definition", extra={"reason": e})
 
+                # 3. Dynamic catch-all for Sampling definitions
+                elif update_type.endswith("-definition-update"):
+                    # FIX: Strip the full suffix to get the clean resource name (e.g. 'samplingcondition')
+                    resource_type = update_type.replace("-definition-update", "") 
+                    
+                    event = SamplingEvent.create_definition_registry_update(
+                        resource=resource_type,
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        # Explicitly format the data key to match datastore expectations
+                        data={f"{resource_type}-definition": update} 
+                    )
+                    
+                    # FIX: Manually append the singular '-definition' suffix for the routing topic
+                    destpath = f"envds/{self.config.daq_id}/{resource_type}-definition/registry/update"
+                    event["destpath"] = destpath
+                    
+                    self.logger.debug(
+                        "register_sampling_definition", extra={"resource": resource_type, "destpath": destpath}
+                    )
+                    await self.send_event(event)
+
+        except Exception as e:
+            self.logger.error("registry_do_update", extra={"reason": str(e)})
 
     async def registry_send_update(self, message: CloudEvent):
 
@@ -415,6 +660,18 @@ class Registrar:
                         #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
                         #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
                         #     await self.send_event(update)
+                except Exception as e:
+                    self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
+
+            # FIX: Dynamic catch-all for any sampling definition requests 
+            # (e.g., 'variablemap', 'variableset', 'platform', 'project')
+            elif request_type.endswith("-definition-request"):
+                try:
+                    resource = request_type.replace("-definition-request", "")
+                    for id in request_list:
+                        self.logger.debug("registry_send_update", extra={"resource": resource, "definition_id": id})
+                        await self.send_sampling_update(resource, id)
+
                 except Exception as e:
                     self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
 
@@ -476,139 +733,566 @@ class Registrar:
         except Exception as e:
             self.logger.error("send_controller_definition_update", extra={"reason": e})
 
-    async def registry_compare_bcast(self, message: CloudEvent):
+    # async def registry_compare_bcast(self, message: CloudEvent):
 
-        data = message.data
-        for bcast_type, bcast_list in data.items():
-            if bcast_type == "device-definition-list":
+    #     data = message.data
+    #     for bcast_type, bcast_list in data.items():
+    #         if bcast_type == "device-definition-list":
 
-                # send updates for items remote is missing
-                missing_remote = [
-                    item
-                    for item in self.current_device_definition_list
-                    if item not in bcast_list
-                ]
-                self.logger.debug("missing_remote", extra={"missing": missing_remote})
-                try:
-                    if len(missing_remote) > 0:
-                        for id in missing_remote:
-                            await self.send_device_definition_update(id)
-                            # query = {"device_definition_id": id}
-                            # results = await self.submit_request(
-                            #     path="device-definition/registry/get", query=query
-                            # )
-                            # if results:
-                            #     update = DAQEvent.create_registry_sync_update(
-                            #         source=f"envds.{self.config.daq_id}.registrar",
-                            #         data={
-                            #             "device-definition-update": results[0]
-                            #         },  # just send the dict
-                            #     )
-                            #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+    #             # send updates for items remote is missing
+    #             missing_remote = [
+    #                 item
+    #                 for item in self.current_device_definition_list
+    #                 if item not in bcast_list
+    #             ]
+    #             self.logger.debug("missing_remote", extra={"missing": missing_remote})
+    #             try:
+    #                 if len(missing_remote) > 0:
+    #                     for id in missing_remote:
+    #                         await self.send_device_definition_update(id)
+    #                         # query = {"device_definition_id": id}
+    #                         # results = await self.submit_request(
+    #                         #     path="device-definition/registry/get", query=query
+    #                         # )
+    #                         # if results:
+    #                         #     update = DAQEvent.create_registry_sync_update(
+    #                         #         source=f"envds.{self.config.daq_id}.registrar",
+    #                         #         data={
+    #                         #             "device-definition-update": results[0]
+    #                         #         },  # just send the dict
+    #                         #     )
+    #                         #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
 
-                            #     # update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
-                            #     destpath = f"envds/{self.config.daq_id}/registry/sync-update"
-                            #     if self.config.mqtt_bridge_prefix:
-                            #         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+    #                         #     # update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+    #                         #     destpath = f"envds/{self.config.daq_id}/registry/sync-update"
+    #                         #     if self.config.mqtt_bridge_prefix:
+    #                         #         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
                                 
-                            #     # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
-                            #     update["destpath"] = destpath
+    #                         #     # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+    #                         #     update["destpath"] = destpath
 
-                            #     await self.send_event(update)
-                except Exception as e:
-                    self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
+    #                         #     await self.send_event(update)
+    #             except Exception as e:
+    #                 self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
 
-                missing_local = [
-                    item
-                    for item in bcast_list
-                    if item not in self.current_device_definition_list
-                ]
-                self.logger.debug("missing_local", extra={"missing": missing_local})
-                try:
-                    if len(missing_local) > 0:
-                        request = DAQEvent.create_registry_sync_request(
-                            source=f"envds.{self.config.daq_id}.registrar",
-                            data={
-                                "device-definition-request": missing_local
-                            },  # just send the dict
-                        )
-                        # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+    #             missing_local = [
+    #                 item
+    #                 for item in bcast_list
+    #                 if item not in self.current_device_definition_list
+    #             ]
+    #             self.logger.debug("missing_local", extra={"missing": missing_local})
+    #             try:
+    #                 if len(missing_local) > 0:
+    #                     request = DAQEvent.create_registry_sync_request(
+    #                         source=f"envds.{self.config.daq_id}.registrar",
+    #                         data={
+    #                             "device-definition-request": missing_local
+    #                         },  # just send the dict
+    #                     )
+    #                     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
 
-                        # request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
-                        destpath = f"envds/{self.config.daq_id}/registry/sync-request"
-                        if self.config.mqtt_bridge_prefix:
-                            destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+    #                     # request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     if self.config.mqtt_bridge_prefix:
+    #                         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
                         
-                        # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
-                        request["destpath"] = destpath
+    #                     # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+    #                     request["destpath"] = destpath
 
-                        await self.send_event(request)
-                except Exception as e:
-                    self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
+    #                     await self.send_event(request)
+    #             except Exception as e:
+    #                 self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
 
-            elif bcast_type == "device-instance-list":
-                pass
+    #         elif bcast_type == "device-instance-list":
+    #             pass
 
-            elif bcast_type == "controller-definition-list":
+    #         elif bcast_type == "controller-definition-list":
 
-                # send updates for items remote is missing
-                missing_remote = [
-                    item
-                    for item in self.current_controller_definition_list
-                    if item not in bcast_list
-                ]
-                self.logger.debug("missing_remote", extra={"missing": missing_remote})
-                try:
-                    if len(missing_remote) > 0:
-                        for id in missing_remote:
-                            await self.send_controller_definition_update(id)
-                            # query = {"controller_definition_id": id}
-                            # results = await self.submit_request(
-                            #     path="controller-definition/registry/get", query=query
-                            # )
-                            # if results:
-                            #     update = DAQEvent.create_registry_sync_update(
-                            #         source=f"envds.{self.config.daq_id}.registrar",
-                            #         data={
-                            #             "controller-definition-update": results[0]
-                            #         },  # just send the dict
-                            #     )
-                            #     # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
-                            #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
-                            #     await self.send_event(update)
-                except Exception as e:
-                    self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
+    #             # send updates for items remote is missing
+    #             missing_remote = [
+    #                 item
+    #                 for item in self.current_controller_definition_list
+    #                 if item not in bcast_list
+    #             ]
+    #             self.logger.debug("missing_remote", extra={"missing": missing_remote})
+    #             try:
+    #                 if len(missing_remote) > 0:
+    #                     for id in missing_remote:
+    #                         await self.send_controller_definition_update(id)
+    #                         # query = {"controller_definition_id": id}
+    #                         # results = await self.submit_request(
+    #                         #     path="controller-definition/registry/get", query=query
+    #                         # )
+    #                         # if results:
+    #                         #     update = DAQEvent.create_registry_sync_update(
+    #                         #         source=f"envds.{self.config.daq_id}.registrar",
+    #                         #         data={
+    #                         #             "controller-definition-update": results[0]
+    #                         #         },  # just send the dict
+    #                         #     )
+    #                         #     # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+    #                         #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+    #                         #     await self.send_event(update)
+    #             except Exception as e:
+    #                 self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
 
-                missing_local = [
-                    item
-                    for item in bcast_list
-                    if item not in self.current_controller_definition_list
-                ]
-                self.logger.debug("missing_local", extra={"missing": missing_local})
-                try:
-                    if len(missing_local) > 0:
-                        request = DAQEvent.create_registry_sync_request(
-                            source=f"envds.{self.config.daq_id}.registrar",
-                            data={
-                                "controller-definition-request": missing_local
-                            },  # just send the dict
-                        )
-                        # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+    #             missing_local = [
+    #                 item
+    #                 for item in bcast_list
+    #                 if item not in self.current_controller_definition_list
+    #             ]
+    #             self.logger.debug("missing_local", extra={"missing": missing_local})
+    #             try:
+    #                 if len(missing_local) > 0:
+    #                     request = DAQEvent.create_registry_sync_request(
+    #                         source=f"envds.{self.config.daq_id}.registrar",
+    #                         data={
+    #                             "controller-definition-request": missing_local
+    #                         },  # just send the dict
+    #                     )
+    #                     # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
 
-                        # request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
-                        destpath = f"envds/{self.config.daq_id}/registry/sync-request"
-                        if self.config.mqtt_bridge_prefix:
-                            destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+    #                     # request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     if self.config.mqtt_bridge_prefix:
+    #                         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
                         
-                        # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
-                        request["destpath"] = destpath
+    #                     # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+    #                     request["destpath"] = destpath
 
-                        await self.send_event(request)
-                except Exception as e:
-                    self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
+    #                     await self.send_event(request)
+    #             except Exception as e:
+    #                 self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
             
-            elif bcast_type == "controller-instance-list":
-                pass
+    #         elif bcast_type == "controller-instance-list":
+    #             pass
+
+    # async def registry_compare_bcast(self, message: CloudEvent):
+    #     data = message.data
+        
+    #     for bcast_type, bcast_list in data.items():
+    #         if bcast_type.endswith("-definition-list"):
+    #             # Extract the base resource name (e.g., 'device', 'variablemap', 'platform')
+    #             resource = bcast_type.replace("-definition-list", "")
+                
+    #             # Fetch the corresponding local state list dynamically
+    #             local_list_name = f"current_{resource.replace('-', '_')}_definition_list"
+    #             local_list = getattr(self, local_list_name, [])
+                
+    #             # 1. Identify what the remote node is missing and send it
+    #             missing_remote = [item for item in local_list if item not in bcast_list]
+    #             if missing_remote:
+    #                 self.logger.debug(f"missing_remote ({resource})", extra={"missing": missing_remote})
+    #                 for definition_id in missing_remote:
+    #                     # Route to the appropriate update sender
+    #                     if resource == "device":
+    #                         await self.send_device_definition_update(definition_id)
+    #                     elif resource == "controller":
+    #                         await self.send_controller_definition_update(definition_id)
+    #                     else:
+    #                         await self.send_sampling_update(resource, definition_id)
+                            
+    #             # 2. Identify what we are missing and request it
+    #             missing_local = [item for item in bcast_list if item not in local_list]
+    #             if missing_local:
+    #                 self.logger.debug(f"missing_local ({resource})", extra={"missing": missing_local})
+                    
+    #                 if resource == "device":
+    #                     request = DAQEvent.create_registry_sync_request(
+    #                         source=f"envds.{self.config.daq_id}.registrar",
+    #                         data={"device-definition-request": missing_local},
+    #                     )
+    #                     destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     if self.config.mqtt_bridge_prefix:
+    #                         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+    #                     request["destpath"] = destpath
+    #                     await self.send_event(request)
+                        
+    #                 elif resource == "controller":
+    #                     request = DAQEvent.create_registry_sync_request(
+    #                         source=f"envds.{self.config.daq_id}.registrar",
+    #                         data={"controller-definition-request": missing_local},
+    #                     )
+    #                     destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     if self.config.mqtt_bridge_prefix:
+    #                         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+    #                     request["destpath"] = destpath
+    #                     await self.send_event(request)
+                        
+    #                 else:
+    #                     await self.request_sampling_definitions(resource, missing_local)
+                        
+    #         elif bcast_type.endswith("-instance-list"):
+    #             pass  # Instance syncing logic
+
+    async def registry_compare_bcast(self, message: CloudEvent):
+        # data = message.data
+        data = message.data or {}
+        source = message.get("source", "")
+        
+        # Determine if we are allowed to request/pull updates from this node
+        can_accept_updates = self.is_sync_allowed(source)
+        
+        for bcast_type, bcast_list in data.items():
+            if bcast_type.endswith("-definition-list"):
+                # Extract the base resource name (e.g., 'device', 'variablemap', 'platform')
+                resource = bcast_type.replace("-definition-list", "")
+                
+                # Fetch the corresponding local state list dynamically
+                local_list_name = f"current_{resource.replace('-', '_')}_definition_list"
+                local_list = getattr(self, local_list_name, [])
+                
+                # # -------------------------------------------------------------
+                # # 1. Identify what the remote node is missing and send it
+                # #    (Always execute this, even for unallowed sources)
+                # # -------------------------------------------------------------
+                # missing_remote = [item for item in local_list if item not in bcast_list]
+                # if missing_remote:
+                #     self.logger.debug(f"missing_remote ({resource})", extra={"missing": missing_remote})
+                #     for definition_id in missing_remote:
+                #         if resource == "device":
+                #             await self.send_device_definition_update(definition_id)
+                #         elif resource == "controller":
+                #             await self.send_controller_definition_update(definition_id)
+                #         else:
+                #             await self.send_sampling_update(resource, definition_id)
+                            
+                # -------------------------------------------------------------
+                # 2. Identify what we are missing and request it 
+                #    (ONLY IF ALLOWED SOURCE)
+                # -------------------------------------------------------------
+                if can_accept_updates:
+                    missing_local = [item for item in bcast_list if item not in local_list]
+                    if missing_local:
+                        self.logger.debug(f"missing_local ({resource})", extra={"missing": missing_local})
+                        
+                        if resource == "device":
+                            request = DAQEvent.create_registry_sync_request(
+                                source=f"envds.{self.config.daq_id}.registrar",
+                                data={"device-definition-request": missing_local},
+                            )
+                            destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+                            if self.config.mqtt_bridge_prefix:
+                                destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                            request["destpath"] = destpath
+                            await self.send_event(request)
+                            
+                        elif resource == "controller":
+                            request = DAQEvent.create_registry_sync_request(
+                                source=f"envds.{self.config.daq_id}.registrar",
+                                data={"controller-definition-request": missing_local},
+                            )
+                            destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+                            if self.config.mqtt_bridge_prefix:
+                                destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                            request["destpath"] = destpath
+                            await self.send_event(request)
+                            
+                        else:
+                            await self.request_sampling_definitions(resource, missing_local)
+                else:
+                    self.logger.debug(f"registry_compare_bcast: skipping missing_local request for unallowed source", extra={"source": source})
+                        
+            elif bcast_type.endswith("-instance-list"):
+                pass  # Instance syncing logic
+
+    async def get_variableset_definitions_loop(self):
+        while True:
+            try:
+                results = await self.submit_get(path="variableset-definition/registry/ids/get")
+                # if "results" in results and results["results"]:
+                if "results" in results:
+                    self.current_variableset_definition_list = results["results"]
+                    # bcast = {
+                    #     "type": "sampling.variableset.registry.sync",
+                    #     "source": f"envds.{self.config.daq_id}.registrar",
+                    #     "data": {"variableset-definition-list": results["results"]}
+                    # }
+
+                    # FIX: Use DAQEvent to create a valid CloudEvent
+                    bcast = DAQEvent.create_registry_sync_bcast(
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={"variableset-definition-list": results["results"]}
+                    )
+                    
+                    destpath = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    if self.config.mqtt_bridge_prefix:
+                        destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                    bcast["destpath"] = destpath
+
+                    await self.send_event(bcast)
+            except Exception as e:
+                self.logger.error("get_variableset_definitions_loop", extra={"reason": e})
+            await asyncio.sleep(60)
+
+    # async def get_project_definitions_loop(self):
+    #     while True:
+    #         try:
+    #             results = await self.submit_get(path="project-definition/registry/ids/get")
+    #             if "results" in results and results["results"]:
+    #                 self.current_project_definition_list = results["results"]
+    #                 # Broadcast to trigger registry_compare_bcast on other nodes
+    #                 bcast = {
+    #                     "type": "sampling.project.registry.sync",
+    #                     "source": f"envds.{self.config.daq_id}.registrar",
+    #                     "data": {"project-definition-list": results["results"]}
+    #                 }
+    #                 await self.send_event(bcast)
+    #         except Exception as e:
+    #             self.logger.error("get_project_definitions_loop", extra={"reason": e})
+    #         await asyncio.sleep(300) # Projects change very rarely
+
+    # async def registry_compare_bcast(self, message: CloudEvent):
+    #     data = message.data
+    #     # ... existing device/controller logic ...
+
+    # async def registry_compare_bcast(self, message: CloudEvent):
+
+    #     data = message.data
+    #     for bcast_type, bcast_list in data.items():
+    #         if bcast_type == "device-definition-list":
+
+    #             # send updates for items remote is missing
+    #             missing_remote = [
+    #                 item
+    #                 for item in self.current_device_definition_list
+    #                 if item not in bcast_list
+    #             ]
+    #             self.logger.debug("missing_remote", extra={"missing": missing_remote})
+    #             try:
+    #                 if len(missing_remote) > 0:
+    #                     for id in missing_remote:
+    #                         await self.send_device_definition_update(id)
+    #                         # query = {"device_definition_id": id}
+    #                         # results = await self.submit_request(
+    #                         #     path="device-definition/registry/get", query=query
+    #                         # )
+    #                         # if results:
+    #                         #     update = DAQEvent.create_registry_sync_update(
+    #                         #         source=f"envds.{self.config.daq_id}.registrar",
+    #                         #         data={
+    #                         #             "device-definition-update": results[0]
+    #                         #         },  # just send the dict
+    #                         #     )
+    #                         #     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+
+    #                         #     # update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+    #                         #     destpath = f"envds/{self.config.daq_id}/registry/sync-update"
+    #                         #     if self.config.mqtt_bridge_prefix:
+    #                         #         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                                
+    #                         #     # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+    #                         #     update["destpath"] = destpath
+
+    #                         #     await self.send_event(update)
+    #             except Exception as e:
+    #                 self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
+
+    #             missing_local = [
+    #                 item
+    #                 for item in bcast_list
+    #                 if item not in self.current_device_definition_list
+    #             ]
+    #             self.logger.debug("missing_local", extra={"missing": missing_local})
+    #             try:
+    #                 if len(missing_local) > 0:
+    #                     request = DAQEvent.create_registry_sync_request(
+    #                         source=f"envds.{self.config.daq_id}.registrar",
+    #                         data={
+    #                             "device-definition-request": missing_local
+    #                         },  # just send the dict
+    #                     )
+    #                     # f"envds/{self.core_settings.namespace_prefix}/device/registry/ack"
+
+    #                     # request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     if self.config.mqtt_bridge_prefix:
+    #                         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                        
+    #                     # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+    #                     request["destpath"] = destpath
+
+    #                     await self.send_event(request)
+    #             except Exception as e:
+    #                 self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
+
+    #         elif bcast_type == "device-instance-list":
+    #             pass
+
+    #         elif bcast_type == "controller-definition-list":
+
+    #             # send updates for items remote is missing
+    #             missing_remote = [
+    #                 item
+    #                 for item in self.current_controller_definition_list
+    #                 if item not in bcast_list
+    #             ]
+    #             self.logger.debug("missing_remote", extra={"missing": missing_remote})
+    #             try:
+    #                 if len(missing_remote) > 0:
+    #                     for id in missing_remote:
+    #                         await self.send_controller_definition_update(id)
+    #                         # query = {"controller_definition_id": id}
+    #                         # results = await self.submit_request(
+    #                         #     path="controller-definition/registry/get", query=query
+    #                         # )
+    #                         # if results:
+    #                         #     update = DAQEvent.create_registry_sync_update(
+    #                         #         source=f"envds.{self.config.daq_id}.registrar",
+    #                         #         data={
+    #                         #             "controller-definition-update": results[0]
+    #                         #         },  # just send the dict
+    #                         #     )
+    #                         #     # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+    #                         #     update["destpath"] = f"envds/{self.config.daq_id}/registry/sync-update"
+    #                         #     await self.send_event(update)
+    #             except Exception as e:
+    #                 self.logger.error("registry_compare_bcast:missing_remote", extra={"reason": e})
+
+    #             missing_local = [
+    #                 item
+    #                 for item in bcast_list
+    #                 if item not in self.current_controller_definition_list
+    #             ]
+    #             self.logger.debug("missing_local", extra={"missing": missing_local})
+    #             try:
+    #                 if len(missing_local) > 0:
+    #                     request = DAQEvent.create_registry_sync_request(
+    #                         source=f"envds.{self.config.daq_id}.registrar",
+    #                         data={
+    #                             "controller-definition-request": missing_local
+    #                         },  # just send the dict
+    #                     )
+    #                     # f"envds/{self.core_settings.namespace_prefix}/controller/registry/ack"
+
+    #                     # request["destpath"] = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+    #                     if self.config.mqtt_bridge_prefix:
+    #                         destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                        
+    #                     # bcast["destpath"] = f"envds/{self.config.daq_id}/registry/sync-bcast"
+    #                     request["destpath"] = destpath
+
+    #                     await self.send_event(request)
+    #             except Exception as e:
+    #                 self.logger.error("registry_compare_bcast:missing_local", extra={"reason": e})
+            
+    #         elif bcast_type == "controller-instance-list":
+    #             pass
+
+
+    #     # VariableMap Sync
+    #     if "variablemap-definition-list" in data:
+    #         remote_list = data["variablemap-definition-list"]
+    #         missing_remote = [item for item in self.current_variablemap_definition_list if item not in remote_list]
+    #         for id in missing_remote:
+    #             await self.send_sampling_update("variablemap", id)
+                
+    #         missing_local = [item for item in remote_list if item not in self.current_variablemap_definition_list]
+    #         if missing_local:
+    #             await self.request_sampling_definitions("variablemap", missing_local)
+
+    #     # VariableSet Sync
+    #     if "variableset-definition-list" in data:
+    #         remote_list = data["variableset-definition-list"]
+    #         missing_remote = [item for item in self.current_variableset_definition_list if item not in remote_list]
+    #         for id in missing_remote:
+    #             await self.send_sampling_update("variableset", id)
+
+    #         missing_local = [item for item in remote_list if item not in self.current_variableset_definition_list]
+    #         if missing_local:
+    #             await self.request_sampling_definitions("variableset", missing_local)
+
+    #     RESOURCES_TO_SYNC = ["platform", "project", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]
+
+    #     for res in RESOURCES_TO_SYNC:
+    #         list_key = f"{res}-definition-list"
+    #         if list_key in data:
+    #             remote_list = data[list_key]
+    #             local_list = getattr(self, f"current_{res}_definition_list", [])
+                
+    #             # Identify what remote needs
+    #             missing_remote = [item for item in local_list if item not in remote_list]
+    #             for id in missing_remote:
+    #                 await self.send_sampling_update(res, id)
+                    
+    #             # Identify what we need
+    #             missing_local = [item for item in remote_list if item not in local_list]
+    #             if missing_local:
+    #                 await self.request_sampling_definitions(res, missing_local)
+
+    async def send_sampling_update(self, resource_type: str, definition_id: str):
+        try:
+            path = f"{resource_type}-definition/registry/get"
+            
+            # FIX: Map the definition_id to the exact query parameter the Datastore API expects
+            if resource_type == "variablemap":
+                query = {"variablemap_definition_id": definition_id}
+            elif resource_type == "variableset":
+                query = {"variableset_definition_id": definition_id}
+            else:
+                query = {"name": definition_id} 
+            
+            results = await self.submit_request(path=path, query=query)
+            print(f"send_sampling_update: {results}")
+            if "results" in results and results["results"]:
+                update = DAQEvent.create_registry_sync_update(
+                    source=f"envds.{self.config.daq_id}.registrar",
+                    data={f"{resource_type}-definition-update": results["results"][0]}
+                )
+                destpath = f"envds/{self.config.daq_id}/registry/sync-update"
+                if self.config.mqtt_bridge_prefix:
+                    destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                update["destpath"] = destpath
+                await self.send_event(update)
+        except Exception as e:
+            self.logger.error(f"send_{resource_type}_update", extra={"reason": e})
+
+    async def request_sampling_definitions(self, resource_type: str, ids: list):
+        try:
+            # Reuse existing DAQEvent.create_registry_sync_request
+            request = DAQEvent.create_registry_sync_request(
+                source=f"envds.{self.config.daq_id}.registrar",
+                data={f"{resource_type}-definition-request": ids}
+            )
+            destpath = f"envds/{self.config.daq_id}/registry/sync-request"
+            if self.config.mqtt_bridge_prefix:
+                destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+            request["destpath"] = destpath
+            await self.send_event(request)
+        except Exception as e:
+            self.logger.error(f"request_{resource_type}_definitions", extra={"reason": e})
+
+    async def create_sampling_sync_loop(self, resource: str):
+        while True:
+            try:
+                path = f"{resource}-definition/registry/ids/get"
+                results = await self.submit_get(path=path)
+                
+                # FIX: Check that 'results' exists AND is not empty
+                # if "results" in results and results["results"]:
+                if "results" in results:
+                    
+                    # FIX: Save the current state so registry_compare_bcast can track it
+                    setattr(self, f"current_{resource}_definition_list", results["results"])
+
+                    bcast = DAQEvent.create_registry_sync_bcast(
+                        source=f"envds.{self.config.daq_id}.registrar",
+                        data={f"{resource}-definition-list": results["results"]}
+                    )
+                    
+                    destpath = f"envds/{self.config.daq_id}/registry/sync-bcast"
+                    if self.config.mqtt_bridge_prefix:
+                        destpath = f"{self.config.mqtt_bridge_prefix}/{destpath}"
+                    
+                    bcast["destpath"] = destpath
+                    await self.send_event(bcast)
+                    
+            except Exception as e:
+                self.logger.error(f"sync_loop_{resource}", extra={"reason": e})
+                
+            await asyncio.sleep(60)
+
 
 # def build_sensor_registry_document(sensor_def: dict):
 #     L.debug("build_sensor_registry_document", extra={"sd": sensor_def})

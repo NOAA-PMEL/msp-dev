@@ -23,6 +23,7 @@ RUN pip3 install -r requirements.txt
 # without fastapi/uvicorn
 # COPY ./AerosolDynamics_MAGIC250_sensor_definition.json .
 COPY ./spidermagic810.py .
+COPY ./inversion.py ./inversion.py
 
 # WORKDIR $APP_HOME/envds
 # COPY ./apis ./apis

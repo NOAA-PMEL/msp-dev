@@ -66,6 +66,8 @@ class SamplingStatesManagerConfig(BaseSettings):
     # TODO fix ns prefix
     daq_id: str | None = None
 
+    deployment_ref: str = "unknown"
+
     mqtt_broker: str = "mosquitto.default"
     mqtt_port: int = 1883
     # mqtt_topic_filter: str = 'aws-id/acg-daq/+'
@@ -90,7 +92,7 @@ class SamplingState:
 
     def __init__(self, config, status_buffer):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
         self.logger.debug("SamplingState instantiated")
 
         self.config = config
@@ -98,7 +100,7 @@ class SamplingState:
 
 
         # self.data_buffer = data_buffer
-        self.update_buffer = asyncio.Queue(maxsize=60)
+        self.update_buffer = asyncio.Queue(maxsize=500)
         self.status_buffer = status_buffer
         # self.source_map = {"source_id": dict(), "source_name": dict()}
         self.source_map = dict()
@@ -110,13 +112,14 @@ class SamplingState:
         )
 
         self.current_status = False
-
+        self.last_status_time = 0
+        self._tasks = [] # ADD THIS to track tasks
         self.criterion_tasks = []
         
         self.configure()
-        asyncio.create_task(self.update_monitor())
-        asyncio.create_task(self.requirement_monitor())
-        asyncio.create_task(self.data_gc())
+        self._tasks.append(asyncio.create_task(self.update_monitor()))
+        self._tasks.append(asyncio.create_task(self.requirement_monitor()))
+        self._tasks.append(asyncio.create_task(self.data_gc()))
 
     def configure(self):
 
@@ -135,10 +138,21 @@ class SamplingState:
                 "data": dict()
             }
 
+    def stop(self):
+        """Cancels all background tasks associated with this state instance."""
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+
     async def update(self, status):
         self.logger.debug("update", extra={"update_status": status})
-        await self.update_buffer.put(status)
-        self.logger.debug("update", extra={"update_buffer": self.update_buffer.qsize()})
+        try:
+            self.update_buffer.put_nowait(status)
+        except asyncio.QueueFull:
+            self.logger.warning(f"State {self.config['metadata']['name']} buffer full. Dropping oldest.")
+            self.update_buffer.get_nowait()
+            self.update_buffer.task_done()
+            self.update_buffer.put_nowait(status)
 
     async def update_monitor(self):
 
@@ -156,90 +170,336 @@ class SamplingState:
             await asyncio.sleep(0.001)
             self.update_buffer.task_done()
 
-    async def requirement_monitor(self):
+    # async def requirement_monitor(self):
 
+    #     while True:
+    #         try:
+    #             state_status = []
+    #             current_dt = get_datetime().replace(tzinfo=timezone.utc)
+    #             for req_type, req_kind in self.requirements.items():
+    #                 for req_name, req in req_kind.items():
+    #                     current_status = req["status"]
+    #                     transition_time = req["transition_time"]["to_become_false"]
+    #                     if current_status is False:
+    #                         transition_time = req["transition_time"]["to_become_true"]
+    #                     # delta = timedelta(seconds=(transition_time * -1))
+    #                     transition_dt = get_datetime_with_delta(delta=(-(transition_time)), dt=current_dt)
+
+    #                     req_status = []
+    #                     self.logger.debug("requirement_monitor", extra={"reqs": self.requirements})
+    #                     for ts, st in req["data"].items():
+    #                         if string_to_datetime(ts).replace(tzinfo=timezone.utc) > transition_dt:
+    #                             req_status.append(st)
+
+    #                     # req["status"] = all(req_status)
+
+    #                     # FIX: Prevent the all([]) == True bug
+    #                     if not req_status:
+    #                         req["status"] = False
+    #                     else:
+    #                         req["status"] = all(req_status)
+
+    #                     state_status.append(req["status"])
+    #                     self.logger.debug("requirement_monitor", extra={"state_status": state_status, "req_status": req_status})
+    #             # current_dt = get_datetime()
+    #             current_secs = current_dt.second
+    #             # if self.current_status:
+    #             #     latest_status = any(state_status)
+    #             # else:
+    #             #     latest_status = all(state_status)
+    #             latest_status = all(state_status)
+    #             # latest_status = all(state_status)
+    #             if self.current_status != latest_status or (current_secs % 30) == 0:
+    #                 self.logger.info("status change", extra={"old_status": self.current_status, "new_status": latest_status})
+    #                 self.current_status = latest_status
+
+    #                 state_name = self.config["metadata"]["name"]
+    #                 state_ns = self.config["metadata"]["sampling_namespace"]
+    #                 state_valid_time = self.config["metadata"]["valid_config_time"]
+
+    #                 # status = {
+    #                 #     "status": {
+    #                 #         "kind": "SamplingState",
+    #                 #         "time": get_datetime_string(),
+    #                 #         "name": state_name,
+    #                 #         "sampling_namespace": state_ns,
+    #                 #         "valid_config_time": state_valid_time,
+    #                 #         "status": self.current_status
+    #                 #     }
+    #                 # }
+
+    #                 # --- NEW envds-COMPLIANT STATUS BLOCK ---
+    #                 status_str = "true" if self.current_status else "false"
+
+    #                 status = {
+    #                     "id": {
+    #                         "app_group": "state",
+    #                         "app_uid": state_name,
+    #                         "sampling_namespace": state_ns,
+    #                         "valid_config_time": state_valid_time
+    #                     },
+    #                     "state": {
+    #                         "state_active": {
+    #                             "requested": "true", 
+    #                             "actual": status_str
+    #                         }
+    #                     },
+    #                     "timestamp": get_datetime_string()
+    #                 }
+    #                 # ----------------------------------------
+    #                 await self.status_buffer.put(status)
+    #         except Exception as e:
+    #             self.logger.error("requirement_monitor", extra={"reason": e})
+
+    #         await asyncio.sleep(time_to_next(1))
+
+    # async def requirement_monitor(self):
+    #     """
+    #     Monitors requirements for state transitions. 
+    #     Triggers update immediately on change or every 30s as a heartbeat.
+    #     """
+    #     while True:
+    #         try:
+    #             state_status = []
+    #             current_dt = get_datetime().replace(tzinfo=timezone.utc)
+                
+    #             # 1. Evaluate each requirement kind/name
+    #             for req_type, req_kind in self.requirements.items():
+    #                 for req_name, req in req_kind.items():
+    #                     current_status = req["status"]
+                        
+    #                     # Determine transition window
+    #                     transition_time = req["transition_time"]["to_become_false"]
+    #                     if current_status is False:
+    #                         transition_time = req["transition_time"]["to_become_true"]
+                        
+    #                     transition_dt = get_datetime_with_delta(delta=(-(transition_time)), dt=current_dt)
+
+    #                     req_status = []
+    #                     for ts, st in req["data"].items():
+    #                         if string_to_datetime(ts).replace(tzinfo=timezone.utc) > transition_dt:
+    #                             req_status.append(st)
+
+    #                     # FIX: Prevent the all([]) == True bug
+    #                     if not req_status:
+    #                         req["status"] = False
+    #                     else:
+    #                         req["status"] = all(req_status)
+
+    #                     state_status.append(req["status"])
+
+    #             # 2. Determine aggregate state
+    #             latest_status = all(state_status) if state_status else False
+                
+    #             # 3. Check for triggers: State Change OR 30s Heartbeat
+    #             now = current_dt.timestamp()
+    #             is_changed = (latest_status != self.current_status)
+    #             is_heartbeat = (now - self.last_status_time >= 30)
+
+    #             if is_changed or is_heartbeat:
+    #                 self.logger.info(
+    #                     "state evaluation trigger", 
+    #                     extra={"state_name": self.config["metadata"]["name"], "change": is_changed, "hb": is_heartbeat}
+    #                 )
+                    
+    #                 # Update internal state and reset heartbeat timer
+    #                 self.current_status = latest_status
+    #                 self.last_status_time = now
+
+    #                 state_name = self.config["metadata"]["name"]
+    #                 state_ns = self.config["metadata"]["sampling_namespace"]
+    #                 state_valid_time = self.config["metadata"]["valid_config_time"]
+
+    #                 # 4. Build the envds-compliant status block
+    #                 status_str = "true" if self.current_status else "false"
+
+    #                 status = {
+    #                     "id": {
+    #                         "app_group": "state",
+    #                         "app_uid": state_name,
+    #                         "sampling_namespace": state_ns,
+    #                         "valid_config_time": state_valid_time
+    #                     },
+    #                     "state": {
+    #                         "state_active": {
+    #                             "requested": "true", 
+    #                             "actual": status_str
+    #                         }
+    #                     },
+    #                     "timestamp": get_datetime_string()
+    #                 }
+                    
+    #                 # 5. Push to buffer for status_status_monitor to broadcast
+    #                 await self.status_buffer.put(status)
+
+    #         except Exception as e:
+    #             self.logger.error("requirement_monitor error", extra={"reason": str(e)})
+
+    #         # Sleep until the next integer second
+    #         await asyncio.sleep(time_to_next(1))
+
+    async def requirement_monitor(self):
+        """
+        Monitors requirements for state transitions using contiguous streak tracking. 
+        Triggers update immediately on change or every 30s as a heartbeat.
+        """
         while True:
             try:
                 state_status = []
                 current_dt = get_datetime().replace(tzinfo=timezone.utc)
+                
+                # 1. Evaluate each requirement kind/name
                 for req_type, req_kind in self.requirements.items():
                     for req_name, req in req_kind.items():
                         current_status = req["status"]
-                        transition_time = req["transition_time"]["to_become_false"]
-                        if current_status is False:
-                            transition_time = req["transition_time"]["to_become_true"]
-                        # delta = timedelta(seconds=(transition_time * -1))
-                        transition_dt = get_datetime_with_delta(delta=(-(transition_time)), dt=current_dt)
+                        target_status = not current_status
+                        
+                        # Determine transition window
+                        transition_time = req["transition_time"]["to_become_true"] if not current_status else req["transition_time"]["to_become_false"]
+                        transition_dt = get_datetime_with_delta(delta=(-transition_time), dt=current_dt)
+                        
+                        # --- CPU OPTIMIZATION ---
+                        transition_str = datetime_to_string(transition_dt)
 
-                        req_status = []
-                        self.logger.debug("requirement_monitor", extra={"reqs": self.requirements})
-                        for ts, st in req["data"].items():
-                            if string_to_datetime(ts).replace(tzinfo=timezone.utc) > transition_dt:
-                                req_status.append(st)
-                        req["status"] = all(req_status)
+                        timestamps = sorted(req["data"].keys())
+                        
+                        if timestamps:
+                            # Is the latest reading pointing towards our target transition?
+                            latest_ts = timestamps[-1]
+                            if req["data"][latest_ts] == target_status:
+                                # We are on a streak. Traverse backwards to see how far back it goes.
+                                streak_start_ts = latest_ts
+                                for ts in reversed(timestamps):
+                                    if req["data"][ts] == target_status:
+                                        streak_start_ts = ts
+                                    else:
+                                        break
+                                
+                                # If the streak started before or exactly at the required time boundary, transition!
+                                if streak_start_ts <= transition_str:
+                                    req["status"] = target_status
+
                         state_status.append(req["status"])
-                        self.logger.debug("requirement_monitor", extra={"state_status": state_status, "req_status": req_status})
-                # current_dt = get_datetime()
-                current_secs = current_dt.second
-                # if self.current_status:
-                #     latest_status = any(state_status)
-                # else:
-                #     latest_status = all(state_status)
-                latest_status = all(state_status)
-                # latest_status = all(state_status)
-                if self.current_status != latest_status or (current_secs % 30) == 0:
-                    self.logger.info("status change", extra={"old_status": self.current_status, "new_status": latest_status})
+
+                # 2. Determine aggregate state
+                latest_status = all(state_status) if state_status else False
+                
+                # 3. Check for triggers: State Change OR 30s Heartbeat
+                now = current_dt.timestamp()
+                is_changed = (latest_status != self.current_status)
+                is_heartbeat = (now - self.last_status_time >= 30)
+
+                if is_changed or is_heartbeat:
+                    self.logger.info(
+                        "state evaluation trigger", 
+                        extra={"state_name": self.config.get("metadata", {}).get("name"), "change": is_changed, "hb": is_heartbeat, "new_status": latest_status}
+                    )
+                    
+                    # Update internal state and reset heartbeat timer
                     self.current_status = latest_status
+                    self.last_status_time = now
 
                     state_name = self.config["metadata"]["name"]
                     state_ns = self.config["metadata"]["sampling_namespace"]
                     state_valid_time = self.config["metadata"]["valid_config_time"]
 
-                    status = {
-                        "status": {
-                            "kind": "SamplingState",
-                            "time": get_datetime_string(),
-                            "name": state_name,
-                            "sampling_namespace": state_ns,
-                            "valid_config_time": state_valid_time,
-                            "status": self.current_status
-                        }
-                    }
-                    await self.status_buffer.put(status)
-            except Exception as e:
-                self.logger.error("requirement_monitor", extra={"reason": e})
+                    # 4. Build the envds-compliant status block
+                    status_str = "true" if self.current_status else "false"
 
+                    status = {
+                        "id": {
+                            "app_group": "state",
+                            "app_uid": state_name,
+                            "sampling_namespace": state_ns,
+                            "valid_config_time": state_valid_time
+                        },
+                        "state": {
+                            "state_active": {
+                                "requested": "true", 
+                                "actual": status_str
+                            }
+                        },
+                        "timestamp": get_datetime_string()
+                    }
+                    
+                    # 5. Push to buffer for status_status_monitor to broadcast
+                    await self.status_buffer.put(status)
+
+            except Exception as e:
+                self.logger.error("requirement_monitor error", extra={"reason": str(e)})
+
+            # Sleep until the next integer second
             await asyncio.sleep(time_to_next(1))
 
+    # async def data_gc(self):
+    #     while True:
+    #         try:
+    #             for req_type, req_kind in self.requirements.items():
+    #                 for req_name, req in req_kind.items():
+    #                     gc_time = req["transition_time"]["to_become_false"]
+    #                     if req["transition_time"]["to_become_true"] > gc_time:
+    #                         gc_time = req["transition_time"]["to_become_true"]
+    #                     # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "req": req})
+    #                     # delta = timedelta(seconds=(gc_time * -1))
+    #                     # gc_dt = get_datetime_with_delta(delta)
+    #                     dt_now = get_datetime().replace(tzinfo=timezone.utc)
+    #                     gc_dt = get_datetime_with_delta(delta=(-(gc_time)), dt=dt_now)
+    #                     # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "now": get_datetime_string(), "gc_dt": gc_dt})
+    #                     keys = list(req["data"].keys())
+    #                     # self.logger.debug("data_gc", extra={"keys": keys, "gc_dt": gc_dt})
+    #                     del_list = []
+    #                     for k in keys:
+    #                         # self.logger.debug("data_gc2", extra={"key": string_to_datetime(k).replace(tzinfo=timezone.utc), "gc_dt": gc_dt, "dt_now": get_datetime()})
+    #                         # self.logger.debug("data_gc2", extra={"diff": string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt})
+    #                         if string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt:
+    #                             # self.logger.debug("data_gc-pop", extra={"keys": k})
+    #                             # del self.requirements[req_type][req_name]["data"][k]
+    #                             req["data"].pop(k)
+    #             self.logger.debug("data_gc", extra={"self.req": self.requirements[req_type][req_name]["data"]})
+    #         except Exception as e:
+    #             self.logger.error("data_gc", extra={"reason": e})
+    #         await asyncio.sleep(time_to_next(30))
+            
     async def data_gc(self):
+        """
+        Garbage collector to purge stale requirement data.
+        Runs every 30 seconds to keep memory lean.
+        """
         while True:
             try:
                 for req_type, req_kind in self.requirements.items():
                     for req_name, req in req_kind.items():
-                        gc_time = req["transition_time"]["to_become_false"]
-                        if req["transition_time"]["to_become_true"] > gc_time:
-                            gc_time = req["transition_time"]["to_become_true"]
-                        # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "req": req})
-                        # delta = timedelta(seconds=(gc_time * -1))
-                        # gc_dt = get_datetime_with_delta(delta)
+                        # Determine the maximum time we need to hold data for this specific requirement
+                        gc_time = max(
+                            req["transition_time"]["to_become_false"], 
+                            req["transition_time"]["to_become_true"]
+                        )
+                        
                         dt_now = get_datetime().replace(tzinfo=timezone.utc)
-                        gc_dt = get_datetime_with_delta(delta=(-(gc_time)), dt=dt_now)
-                        # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "now": get_datetime_string(), "gc_dt": gc_dt})
+                        
+                        # --- FIX: Padding GC by 60 seconds ---
+                        # We MUST pad the GC time. If we delete exactly at the boundary, 
+                        # the requirement_monitor can't prove a streak started before the window.
+                        gc_dt = get_datetime_with_delta(delta=(-(gc_time + 60)), dt=dt_now)
+                        
+                        # --- CPU OPTIMIZATION ---
+                        gc_str = datetime_to_string(gc_dt)
+                        
                         keys = list(req["data"].keys())
-                        # self.logger.debug("data_gc", extra={"keys": keys, "gc_dt": gc_dt})
-                        del_list = []
+                        
                         for k in keys:
-                            # self.logger.debug("data_gc2", extra={"key": string_to_datetime(k).replace(tzinfo=timezone.utc), "gc_dt": gc_dt, "dt_now": get_datetime()})
-                            # self.logger.debug("data_gc2", extra={"diff": string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt})
-                            if string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt:
-                                # self.logger.debug("data_gc-pop", extra={"keys": k})
-                                # del self.requirements[req_type][req_name]["data"][k]
-                                req["data"].pop(k)
-                self.logger.debug("data_gc", extra={"self.req": self.requirements[req_type][req_name]["data"]})
+                            # Fast lexicographical string comparison (O(N) in C)
+                            if k < gc_str:
+                                req["data"].pop(k, None) 
+                                
+                self.logger.debug("data_gc complete", extra={"state_name": self.config.get("metadata", {}).get("name")})
+                
             except Exception as e:
-                self.logger.error("data_gc", extra={"reason": e})
+                self.logger.error("data_gc error", extra={"reason": str(e)})
+                
+            # Align to a 30-second boundary
             await asyncio.sleep(time_to_next(30))
-            
+
     # async def update_status(self, status):
 
     #     cond_name = status["condition"]["name"]
@@ -272,103 +532,103 @@ class SamplingState:
 
 
 
-    async def evaluate_criteria(self, timestamp):
+    # async def evaluate_criteria(self, timestamp):
 
-        try:
-            crit_states = []
-            for group_type, group in self.criteria_map.items():
-                group_states = []
-                for criterion in group["criteria"]:
-                    data = {"time": timestamp}
-                    for src_name in criterion.get_sources():
-                        # self.logger.debug("evaluate_criteria", extra={"src_name": src_name})
-                        if (
-                            timestamp not in self.source_map[src_name]
-                            or self.source_map[src_name][timestamp] is None
-                        ):
-                            # missing source data, can't evaluate
-                            self.logger.info(
-                                "evaluate_criteria",
-                                extra={
-                                    "src_name": src_name,
-                                    "ts": timestamp,
-                                    "success": False,
-                                    "reason": "missing source value",
-                                },
-                            )
-                            return
-                        data[src_name] = self.source_map[src_name][timestamp]["data"]
-                    self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
-                    try:
-                        group_states.append(await criterion.evaluate(sources=data))
-                    except Exception as e:
-                        # what to do on error?
-                        group_states.append(False)
-                    # group_states.append(res)
-                if group_type == "all":
-                    crit_states.append(all(group_states))
-                elif group_type == "any":
-                    crit_states.append(any(group_states))
-                elif group_type == "none":
-                    crit_states.append(not any(group_states))
+    #     try:
+    #         crit_states = []
+    #         for group_type, group in self.criteria_map.items():
+    #             group_states = []
+    #             for criterion in group["criteria"]:
+    #                 data = {"time": timestamp}
+    #                 for src_name in criterion.get_sources():
+    #                     # self.logger.debug("evaluate_criteria", extra={"src_name": src_name})
+    #                     if (
+    #                         timestamp not in self.source_map[src_name]
+    #                         or self.source_map[src_name][timestamp] is None
+    #                     ):
+    #                         # missing source data, can't evaluate
+    #                         self.logger.info(
+    #                             "evaluate_criteria",
+    #                             extra={
+    #                                 "src_name": src_name,
+    #                                 "ts": timestamp,
+    #                                 "success": False,
+    #                                 "reason": "missing source value",
+    #                             },
+    #                         )
+    #                         return
+    #                     data[src_name] = self.source_map[src_name][timestamp]["data"]
+    #                 self.logger.debug("evaluate_criteria", extra={"criterion": criterion, "data_for_eval": data})
+    #                 try:
+    #                     group_states.append(await criterion.evaluate(sources=data))
+    #                 except Exception as e:
+    #                     # what to do on error?
+    #                     group_states.append(False)
+    #                 # group_states.append(res)
+    #             if group_type == "all":
+    #                 crit_states.append(all(group_states))
+    #             elif group_type == "any":
+    #                 crit_states.append(any(group_states))
+    #             elif group_type == "none":
+    #                 crit_states.append(not any(group_states))
             
-            state = all(crit_states)
-            self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
-            if state != self.current_state:
-                # send event with updated condition state
-                self.logger.debug("evaluate_criteria - send update with new state")
+    #         state = all(crit_states)
+    #         self.logger.debug("evaluate_criteria", extra={"current_state": self.current_state, "new_state": state})
+    #         if state != self.current_state:
+    #             # send event with updated condition state
+    #             self.logger.debug("evaluate_criteria - send update with new state")
         
-                cond_name = self.config["metadata"]["name"]
-                cond_ns = self.config["metadata"]["sampling_namespace"]
-                cond_valid_time = self.config["metadata"]["valid_config_time"]
+    #             cond_name = self.config["metadata"]["name"]
+    #             cond_ns = self.config["metadata"]["sampling_namespace"]
+    #             cond_valid_time = self.config["metadata"]["valid_config_time"]
 
-                self.current_state = state
+    #             self.current_state = state
 
-                status = {
-                    "condition": {
-                        "kind": "SamplingState",
-                        "name": cond_name,
-                        "sampling_namespace": cond_ns,
-                        "valid_config_time": cond_valid_time,
-                        "status": self.current_state
-                    }
-                }
-                await self.status_buffer.put(status)
+    #             status = {
+    #                 "condition": {
+    #                     "kind": "SamplingState",
+    #                     "name": cond_name,
+    #                     "sampling_namespace": cond_ns,
+    #                     "valid_config_time": cond_valid_time,
+    #                     "status": self.current_state
+    #                 }
+    #             }
+    #             await self.status_buffer.put(status)
 
-                # await self.update_status(status)
+    #             # await self.update_status(status)
 
 
-            for src_name, _ in self.source_map.items():
-                # self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
-                # src_data.pop(timestamp)
-                self.source_map[src_name].pop(timestamp)
+    #         for src_name, _ in self.source_map.items():
+    #             # self.logger.debug("evaluate_criteria", extra={"src_name": src_name, "src_data": src_data})
+    #             # src_data.pop(timestamp)
+    #             self.source_map[src_name].pop(timestamp)
 
-        except Exception as e:
-            self.logger.error("evaluate_criteria", extra={"reason": e})
+    #     except Exception as e:
+    #         self.logger.error("evaluate_criteria", extra={"reason": e})
 
-    async def update_status_loop(self):
-        while True:
-            self.logger.debug("update_state_loop - send update")
+    # async def update_status_loop(self):
+    #     while True:
+    #         self.logger.debug("update_state_loop - send update")
 
-            cond_name = self.config["metadata"]["name"]
-            cond_ns = self.config["metadata"]["sampling_namespace"]
-            cond_valid_time = self.config["metadata"]["valid_config_time"]
+    #         cond_name = self.config["metadata"]["name"]
+    #         cond_ns = self.config["metadata"]["sampling_namespace"]
+    #         cond_valid_time = self.config["metadata"]["valid_config_time"]
 
-            status = {
-                "status": {
-                    "kind": "SamplingState",
-                    "time": get_datetime_string(),
-                    "name": cond_name,
-                    "sampling_namespace": cond_ns,
-                    "valid_config_time": cond_valid_time,
-                    "status": self.current_state
-                }
-            }
-            await self.status_buffer.put(status)
+    #         status = {
+    #             "status": {
+    #                 "kind": "SamplingState",
+    #                 "time": get_datetime_string(),
+    #                 "name": cond_name,
+    #                 "sampling_namespace": cond_ns,
+    #                 "valid_config_time": cond_valid_time,
+    #                 "status": self.current_state
+    #             }
+    #         }
+    #         await self.status_buffer.put(status)
 
-            # await self.update_status(status)
+    #         # await self.update_status(status)
 
-            await asyncio.sleep(10)
+    #         await asyncio.sleep(10)
 
 
 
@@ -377,7 +637,7 @@ class SamplingStatesManager:
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
         self.logger.debug("SamplingStatesManager instantiated")
 
         # self.sampling_mode_control = True
@@ -385,91 +645,336 @@ class SamplingStatesManager:
         # self.sampling_states = dict()
         self.sampling_states = {"states": dict(), "requirement_map": {}}
 
-        self.status_buffer = asyncio.Queue(maxsize=60)
-        # self.sampling_actions = dict()
-
+        # self.status_buffer = asyncio.Queue(maxsize=60)
+        # # self.sampling_actions = dict()
 
         self.config = SamplingStatesManagerConfig()
+        self.http_client = None
+
+        self._background_tasks = set()
+
+        # # Initialize as None, will be set in setup()
+        # self.status_buffer = None
+        # self.mqtt_buffer = None
+        # self.publish_queue = None
+
+        # 1. CRITICAL FIX: Initialize buffers BEFORE configure() is called
+        self.status_buffer = asyncio.Queue(maxsize=2000)
+        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        self.publish_queue = asyncio.Queue(maxsize=2000)
+
         self.configure()
         # print("here:7")
 
-        self.http_client = None
 
-        self.mqtt_buffer = asyncio.Queue()
-        asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.handle_mqtt_buffer())
-        asyncio.create_task(self.state_status_monitor())
+        # self.mqtt_buffer = asyncio.Queue()
+        # asyncio.create_task(self.get_from_mqtt_loop())
+        # asyncio.create_task(self.handle_mqtt_buffer())
+        # asyncio.create_task(self.state_status_monitor())
 
         # print("SamplingStatesManager: init: here:8")
 
-    def configure(self):
-        # set clients
+    async def setup(self):
+        """Asynchronously initialize buffers, clients, and loops."""
+        self.logger.info("Running SamplingStatesManager async setup...")
+        
+        # self.status_buffer = asyncio.Queue(maxsize=2000)
+        # self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        # self.publish_queue = asyncio.Queue(maxsize=2000) # Added outbound queue
+        
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
 
-        self.logger.debug("configure", extra={"self.config": self.config})
-
-        try:
-
-            # load sampling conditions
-            with open("/app/config/sampling_states.json", "r") as f:
-                states = json.load(f)
-
-                for state in states:
-
-                    if state["kind"] != "SamplingState":
-                        continue
-                   
-                    state_name = f'{state["metadata"]["name"]}'
-                    # data_buffer = asyncio.Queue(maxsize=60)
-                    if state_name not in self.sampling_states["states"]:
-                        self.sampling_states["states"][state_name] = {
-                            "config": None,
-                            "state": None,
-                        }
-                    self.sampling_states["states"][state_name]["config"] = state
-                    self.sampling_states["states"][state_name]["state"] = SamplingState(state, self.status_buffer)
-                    # build list to send status updates for each req to all affected states
-                    for req in state["requirements"]:
-                        if req["kind"] not in self.sampling_states["requirement_map"]:
-                           self.sampling_states["requirement_map"][req["kind"]] = dict()
-                        if req["name"] not in self.sampling_states["requirement_map"][req["kind"]]:
-                            self.sampling_states["requirement_map"][req["kind"]][req["name"]] = []
-                        self.sampling_states["requirement_map"][req["kind"]][req["name"]].append(state_name)
-
-            self.logger.debug(
-                "configure", extra={"sampling_states": self.sampling_states}
-            )
-
-        except Exception as e:
-            self.logger.error("configure error", extra={"reason": e})
+        task1 = asyncio.create_task(self.get_from_mqtt_loop())
+        task2 = asyncio.create_task(self.handle_mqtt_buffer())
+        task3 = asyncio.create_task(self.state_status_monitor())
+        task4 = asyncio.create_task(self.publish_local_definitions())
+        task5 = asyncio.create_task(self.sync_sampling_definitions_loop())
+        task6 = asyncio.create_task(self.mqtt_publish_loop())
+        self._background_tasks.update({task1, task2, task3, task4, task5, task6})
 
     def open_http_client(self):
-        # create a new client for each request
-        self.http_client = httpx.AsyncClient()
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
+
+    async def close_http_client(self):
+        if getattr(self, 'http_client', None):
+            await self.http_client.aclose()
+            self.http_client = None
+
+    # def configure(self):
+    #     # set clients
+
+    #     self.logger.debug("configure", extra={"self.config": self.config})
+
+    #     try:
+
+    #         # load sampling conditions
+    #         with open("/app/config/sampling_states.json", "r") as f:
+    #             states = json.load(f)
+
+    #             for state in states:
+
+    #                 if state["kind"] != "SamplingState":
+    #                     continue
+                   
+    #                 state_name = f'{state["metadata"]["name"]}'
+    #                 # data_buffer = asyncio.Queue(maxsize=60)
+    #                 if state_name not in self.sampling_states["states"]:
+    #                     self.sampling_states["states"][state_name] = {
+    #                         "config": None,
+    #                         "state": None,
+    #                     }
+    #                 self.sampling_states["states"][state_name]["config"] = state
+    #                 self.sampling_states["states"][state_name]["state"] = SamplingState(state, self.status_buffer)
+    #                 # build list to send status updates for each req to all affected states
+    #                 for req in state["requirements"]:
+    #                     if req["kind"] not in self.sampling_states["requirement_map"]:
+    #                        self.sampling_states["requirement_map"][req["kind"]] = dict()
+    #                     if req["name"] not in self.sampling_states["requirement_map"][req["kind"]]:
+    #                         self.sampling_states["requirement_map"][req["kind"]][req["name"]] = []
+    #                     self.sampling_states["requirement_map"][req["kind"]][req["name"]].append(state_name)
+
+    #         self.logger.debug(
+    #             "configure", extra={"sampling_states": self.sampling_states}
+    #         )
+
+    #     except Exception as e:
+    #         self.logger.error("configure error", extra={"reason": e})
+
+    def _load_json_dir(self, dir_path_str: str) -> list:
+        """Scans a directory for JSON files, injects env vars, and returns the parsed list."""
+        results = []
+        dir_path = Path(dir_path_str)
+        
+        if dir_path.exists() and dir_path.is_dir():
+            for file_path in dir_path.glob("*.json"):
+                try:
+                    with open(file_path, "r") as f:
+                        raw_content = f.read()
+                        
+                        # ---> INJECT VARIABLES BEFORE PARSING <---
+                        expanded_content = os.path.expandvars(raw_content)
+                        
+                        data = json.loads(expanded_content)
+                        if isinstance(data, list):
+                            results.extend(data)
+                        else:
+                            results.append(data)
+                            
+                    self.logger.info(f"Loaded and expanded file: {file_path.name}")
+                except Exception as e:
+                    self.logger.error(f"Failed to parse {file_path.name}", extra={"reason": str(e)})
+        else:
+            self.logger.info(f"{dir_path_str} not found or empty. Skipping local load.")
+            
+        return results
+    
+    # def configure(self):
+    #     self.logger.debug("configure", extra={"self.config": self.config})
+    #     try:
+    #         states_path = "/app/config/sampling_states.json"
+    #         if os.path.exists(states_path):
+    #             with open(states_path, "r") as f:
+    #                 states = json.load(f)
+                    
+    #                 # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+    #                 if states and (self.config.deployment_ref == "unknown" or not self.config.deployment_ref):
+    #                     first_ns = states[0].get("metadata", {}).get("sampling_namespace", "")
+    #                     if "/" in first_ns:
+    #                         self.config.deployment_ref = first_ns.split("/")[-1]
+    #                         self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+    #                 # -------------------------------------
+                    
+    #                 for state in states:
+    #                     self.load_state(state)
+    #         else:
+    #             self.logger.info(f"{states_path} not found. Skipping local load.")
+    #     except Exception as e:
+    #         self.logger.error("configure error", extra={"reason": e})
+    
+    def configure(self):
+        self.logger.debug("configure", extra={"self.config": self.config})
+        try:
+            # ---> LOAD FROM THE STATES DIRECTORY <---
+            states = self._load_json_dir("/app/config/states")
+            
+            if states:
+                # --- IMMUTABLE IDENTITY BOOTSTRAP ---
+                if self.config.deployment_ref == "unknown" or not self.config.deployment_ref:
+                    first_ns = states[0].get("metadata", {}).get("sampling_namespace", "")
+                    if "/" in first_ns:
+                        self.config.deployment_ref = first_ns.split("/")[-1]
+                        self.logger.info(f"Immutable boot-strapped deployment_ref: {self.config.deployment_ref}")
+                # -------------------------------------
+                
+                for state in states:
+                    self.load_state(state)
+            else:
+                self.logger.info("No local states found in /app/config/states. Skipping.")
+                
+        except Exception as e:
+            self.logger.error("configure error", extra={"reason": str(e)})
+
+    async def submit_get(self, path: str):
+        """Standard helper to fetch from local datastore with logging."""
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): 
+                self.open_http_client()
+                
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            url = f"http://{datastore_url}/{path}/"
+            
+            resp = await self.http_client.get(url, timeout=timeout)
+            
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                self.logger.warning("datastore_get_failed", extra={"path": path, "status": resp.status_code})
+                return {}
+        except Exception as e:
+            self.logger.error("datastore_get_error", extra={"path": path, "reason": str(e)})
+            return {}
+
+    async def submit_request(self, path: str, query: dict):
+        """Standard helper to fetch specific definitions with logging."""
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): 
+                self.open_http_client()
+                
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            url = f"http://{datastore_url}/{path}/"
+            
+            resp = await self.http_client.get(url, params=query, timeout=timeout)
+            
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                self.logger.warning("datastore_request_failed", extra={"path": path, "status": resp.status_code})
+                return {}
+        except Exception as e:
+            self.logger.error("datastore_request_error", extra={"path": path, "reason": str(e)})
+            return {}
+        
+    def load_state(self, state: dict):
+        """Helper to process definitions from either local files or Datastore API using a composite key."""
+        if state.get("kind") != "SamplingState":
+            return
+            
+        state_name = state["metadata"]["name"]
+        state_ns = state.get("metadata", {}).get("sampling_namespace", "")
+
+        # Create the compound tuple key to completely isolate platform domains
+        composite_key = (state_name, state_ns)
+        
+        new_time_str = state.get("metadata", {}).get("valid_config_time", "")
+        new_time = string_to_datetime(new_time_str)
+
+        # Ensure status_buffer exists if loaded during sync loop
+        if not getattr(self, "status_buffer", None):
+            self.status_buffer = asyncio.Queue(maxsize=2000)
+
+        # --- FIX: Prevent Amnesia / Memory Wipes & Time-Gating ---
+        existing_entry = self.sampling_states["states"].get(composite_key)
+        if existing_entry:
+            existing_config = existing_entry.get("config", {})
+            existing_time_str = existing_config.get("metadata", {}).get("valid_config_time", "")
+            existing_time = string_to_datetime(existing_time_str)
+
+            # --- TIME-GATING FIX: Reject stale configs from Datastore ---
+            if new_time and existing_time:
+                if new_time < existing_time:
+                    self.logger.warning(f"REJECTED STALE CONFIG: {state_name} ({new_time_str} is older than active {existing_time_str})")
+                    return
+                if new_time == existing_time:
+                    if existing_config == state:
+                        return # Config hasn't changed and timestamp is the same, do not restart!
+            # ------------------------------------------------------------
+                
+            old_state = existing_entry.get("state")
+            if old_state:
+                old_state.stop()
+
+        if composite_key not in self.sampling_states["states"]:
+            self.sampling_states["states"][composite_key] = {"config": None, "state": None}
+            
+        self.sampling_states["states"][composite_key]["config"] = state
+        self.sampling_states["states"][composite_key]["state"] = SamplingState(state, self.status_buffer)
+        
+        # SUCCESS LOG: Explicit verification
+        self.logger.info("state_instance_created", extra={
+            "res_name": state_name, 
+            "namespace": state_ns,
+            "req_count": len(state.get("requirements", []))
+        })
+        
+        for req in state.get("requirements", []):
+            req_kind = req["kind"]
+            req_name = req["name"]
+            
+            if req_kind not in self.sampling_states["requirement_map"]:
+                self.sampling_states["requirement_map"][req_kind] = dict()
+            if req_name not in self.sampling_states["requirement_map"][req_kind]:
+                self.sampling_states["requirement_map"][req_kind][req_name] = []
+                
+            # Map the composite key tuple to track cross-references cleanly
+            if composite_key not in self.sampling_states["requirement_map"][req_kind][req_name]:
+                self.sampling_states["requirement_map"][req_kind][req_name].append(composite_key)
+
+    async def submit_get(self, path: str):
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): self.open_http_client()
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", timeout=timeout)
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_get", extra={"reason": e})
+            return {}
+
+    async def submit_request(self, path: str, query: dict):
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): self.open_http_client()
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", params=query, timeout=timeout)
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_request", extra={"reason": e})
+            return {}
+
+    # async def send_event(self, ce):
+    #     try:
+    #         if not getattr(self, 'http_client', None): self.open_http_client()
+    #         timeout = httpx.Timeout(5.0, read=10.0)
+    #         headers, body = to_structured(ce)
+    #         r = await self.http_client.post(self.config.knative_broker, headers=headers, data=body, timeout=timeout)
+    #         r.raise_for_status()
+    #     except Exception as e:
+    #         self.logger.error("send_event error", extra={"reason": e})
 
     async def send_event(self, ce):
+        """Routes registry definitions to the Datastore via Knative HTTP Broker."""
         try:
-            self.logger.debug(ce)  # , extra=template)
-            if not self.http_client:
+            self.logger.debug("send_event (HTTP)", extra={"ce": ce})
+            if not getattr(self, 'http_client', None):
                 self.open_http_client()
             try:
-                timeout = httpx.Timeout(5.0, read=0.1)
+                timeout = httpx.Timeout(5.0, read=10.0)
+                
+                # Generates HTTP headers and JSON body for the Knative broker
                 headers, body = to_structured(ce)
-                self.logger.debug(
-                    "send_event",
-                    extra={
-                        "broker": self.config.knative_broker,
-                        "h": headers,
-                        "b": body,
-                    },
-                )
-
+                
                 r = await self.http_client.post(
                     self.config.knative_broker,
                     headers=headers,
                     data=body,
                     timeout=timeout,
                 )
-
                 r.raise_for_status()
             except InvalidStructuredJSON:
                 self.logger.error(f"INVALID MSG: {ce}")
@@ -478,159 +983,410 @@ class SamplingStatesManager:
             except httpx.HTTPError as e:
                 self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
         except Exception as e:
-            print("error", e)
-        await asyncio.sleep(0.01)
+            self.logger.error("send_event failed", extra={"reason": str(e)})
 
-    async def submit_request(self, path: str, query: dict):
+
+    async def send_to_mqtt(self, topic: str, ce):
+        """Routes high-volume telemetry and status updates to the MQTT broker."""
         try:
-            self.logger.debug("submit_request", extra={"path": path, "query": query})
-            # results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
-            results = await self.http_client.get(
-                f"http://{self.datastore_url}/{path}/", params=query
-            )
-            self.logger.debug("submit_request", extra={"results": results.json()})
-            return results.json()
+            self.logger.debug("send_to_mqtt (MQTT)", extra={"topic": topic})
+            payload = to_json(ce)
+            await self.publish_queue.put((topic, payload))
         except Exception as e:
-            self.logger.error("submit_request", extra={"reason": e})
-            return {}
+            self.logger.error("send_to_mqtt failed", extra={"reason": str(e)})
 
-    async def state_status_monitor(self):
+    async def publish_local_definitions(self):
+        await asyncio.sleep(5)
         while True:
             try:
-                status = await self.status_buffer.get()
-
-                state_name = status["status"]["name"]
-                state_ns = status["status"]["sampling_namespace"]
-                state_valid_time = status["status"]["valid_config_time"]
-
-                source_id = (
-                    # f"envds.{self.config.daq_id}.sampling-state.{state_name}"
-                    f"envds.{self.config.daq_id}.sampling-states"
-                )
-                self.logger.debug("state_status_monitor", extra={"source_id": source_id})
-                
-                source_topic = source_id.replace(".", "/")
-
-                event = SamplingEvent.create_sampling_state_status_update(
-                    # source="sensor.mockco-mock1-1234", data=record
-                    source=source_id,
-                    data=status,
-                )
-                destpath = f"{source_topic}/status/update"
-                event["destpath"] = destpath
-                event["samplingnamespace"] = state_ns
-                event["validconfigtime"] = state_valid_time
-                self.logger.debug(
-                    "state_status_monitor",
-                    extra={"data": event, "destpath": destpath},
-                )
-
-                await self.send_event(event)
+                # Unpack the composite tuple key structure from memory
+                for composite_key, state_data in self.sampling_states["states"].items():
+                    state_name, state_ns = composite_key
+                    
+                    # Only re-publish profiles that genuinely belong to our node namespace
+                    if self.config.deployment_ref not in state_ns and state_ns != "":
+                        continue
+                        
+                    config = state_data["config"]
+                    if not config: continue
+                    
+                    event = SamplingEvent.create_definition_registry_update(
+                        resource="samplingstate-definition",
+                        source=f"envds.{self.config.daq_id}.sampling-states",
+                        data={"samplingstate": config}
+                    )
+                    event["destpath"] = f"envds/{self.config.daq_id}/samplingstate-definition/registry/update"
+                    await self.send_event(event)
             except Exception as e:
-                self.logger.error("state_status_monitor", extra={"reason": e})
-            
-            await asyncio.sleep(0.001)
-            self.status_buffer.task_done()
+                self.logger.error("publish_local_definitions", extra={"reason": str(e)})
+            await asyncio.sleep(60)
+
+    async def sync_sampling_definitions_loop(self):
+        """Syncs SamplingState definitions dynamically from the local Datastore."""
+        resource = "samplingstate"
+        while True:
+            try:
+                # 1. Fetch available SamplingState IDs
+                ids_resp = await self.submit_get(path=f"{resource}-definition/registry/ids/get")
+                
+                if ids_resp and "results" in ids_resp:
+                    ids = ids_resp["results"]
+                    self.logger.debug("definitions_ids_received", extra={"resource": resource, "count": len(ids), "ids": ids})
+                    
+                    if ids:
+                        async def fetch_def(def_id):
+                            return await self.submit_request(
+                                path=f"{resource}-definition/registry/get", 
+                                query={"name": def_id}
+                            )
+
+                        # 2. Concurrently fetch all bodies
+                        responses = await asyncio.gather(*(fetch_def(did) for did in ids))
+
+                        for idx, resp in enumerate(responses):
+                            if resp and "results" in resp and resp["results"]:
+                                config = resp["results"][0]
+                                did = ids[idx]
+                                self.logger.info("definition_received", extra={"resource": resource, "res_name": did})
+                                
+                                # 3. Load into memory
+                                self.load_state(config)
+                            else:
+                                self.logger.warning("definition_body_missing", extra={"resource": resource, "res_name": ids[idx]})
+                else:
+                    self.logger.debug("no_definitions_found", extra={"resource": resource})
+
+            except Exception as e:
+                self.logger.error("sync_loop_failed", extra={"reason": str(e)})
+                
+            await asyncio.sleep(60)
 
     async def get_from_mqtt_loop(self):
         reconnect = 10
         while True:
             try:
-                self.logger.debug("listen", extra={"config": self.config})
                 client_id = str(ULID())
-                async with Client(
-                    self.config.mqtt_broker,
-                    port=self.config.mqtt_port,
-                    identifier=client_id,
-                ) as self.client:
-                    # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as self.client:
                     for topic in self.config.mqtt_topic_subscriptions.split(","):
-                        # print(f"run - topic: {topic.strip()}")
-                        # self.logger.debug("run", extra={"topic": topic})
                         if topic.strip():
-                            self.logger.debug(
-                                "subscribe", extra={"topic": topic.strip()}
-                            )
-                            await self.client.subscribe(
-                                f"$share/sampling-states/{topic.strip()}"
-                            )
+                            await self.client.subscribe(f"$share/sampling-states/{topic.strip()}")
 
-                        # await client.subscribe(config.mqtt_topic_subscription, qos=2)
-                    # async with client.messages() as messages:
-                    async for message in self.client.messages:  # () as messages:
-
+                    async for message in self.client.messages:
+                        topic = message.topic.value
+                        
+                        # FIX: Discard reflection loop waste
+                        if "sampling-states" in topic:
+                            continue
+                            
                         try:
                             ce = from_json(message.payload)
-                            topic = message.topic.value
                             ce["sourcepath"] = topic
                             await self.mqtt_buffer.put(ce)
-                            self.logger.debug(
-                                "get_from_mqtt_loop",
-                                extra={"cetype": ce["type"], "topic": topic},
-                            )
                         except Exception as e:
-                            self.logger.error("get_from_mqtt_loop", extra={"reason": e})
-                        # try:
-                        #     self.logger.debug("listen", extra={"payload_type": type(ce), "ce": ce})
-                        #     await self.send_to_knbroker(ce)
-                        # except Exception as e:
-                        #     self.logger.error("Error sending to knbroker", extra={"reason": e})
+                            self.logger.error("get_from_mqtt_loop JSON error", extra={"reason": e})
             except MqttError as error:
-                self.logger.error(
-                    f"{error}. Trying again in {reconnect} seconds",
-                    extra={
-                        k: v
-                        for k, v in self.config.dict().items()
-                        if k.lower().startswith("mqtt_")
-                    },
-                )
                 await asyncio.sleep(reconnect)
+
+    # async def state_status_monitor(self):
+    #     while True:
+    #         try:
+    #             status = await self.status_buffer.get()
+
+    #             state_name = status["status"]["name"]
+    #             state_ns = status["status"]["sampling_namespace"]
+    #             state_valid_time = status["status"]["valid_config_time"]
+
+    #             source_id = (
+    #                 # f"envds.{self.config.daq_id}.sampling-state.{state_name}"
+    #                 f"envds.{self.config.daq_id}.sampling-states"
+    #             )
+    #             self.logger.debug("state_status_monitor", extra={"source_id": source_id})
+                
+    #             source_topic = source_id.replace(".", "/")
+
+    #             event = SamplingEvent.create_sampling_state_status_update(
+    #                 # source="sensor.mockco-mock1-1234", data=record
+    #                 source=source_id,
+    #                 data=status,
+    #             )
+    #             destpath = f"{source_topic}/status/update"
+    #             event["destpath"] = destpath
+    #             event["samplingnamespace"] = state_ns
+    #             event["validconfigtime"] = state_valid_time
+    #             self.logger.debug(
+    #                 "state_status_monitor",
+    #                 extra={"data": event, "destpath": destpath},
+    #             )
+
+    #             await self.send_event(event)
+
+    #         except Exception as e:
+    #             self.logger.error("state_status_monitor", extra={"reason": e})
+            
+    #         await asyncio.sleep(0.001)
+    #         self.status_buffer.task_done()
+
+    # async def state_status_monitor(self):
+    #     while True:
+    #         try:
+    #             status = await self.status_buffer.get()
+
+    #             # Parse from the new envdsStatus format
+    #             id_block = status.get("id", {})
+    #             state_name = id_block.get("app_uid")
+    #             state_ns = id_block.get("sampling_namespace")
+    #             state_valid_time = id_block.get("valid_config_time")
+
+    #             source_id = f"envds.{self.config.daq_id}.sampling-states"
+    #             self.logger.debug("state_status_monitor", extra={"source_id": source_id})
+                
+    #             source_topic = source_id.replace(".", "/")
+
+    #             event = SamplingEvent.create_sampling_state_status_update(
+    #                 source=source_id,
+    #                 data=status,
+    #             )
+    #             destpath = f"{source_topic}/status/update"
+    #             event["destpath"] = destpath
+    #             event["samplingnamespace"] = state_ns
+    #             event["validconfigtime"] = state_valid_time
+                
+    #             self.logger.debug("state_status_monitor", extra={"data": event, "destpath": destpath})
+
+    #             await self.send_event(event)
+
+    #         except Exception as e:
+    #             self.logger.error("state_status_monitor", extra={"reason": str(e)})
+            
+    #         await asyncio.sleep(0.001)
+    #         self.status_buffer.task_done()
+
+    async def state_status_monitor(self):
+        while True:
+            try:
+                status_data = await self.status_buffer.get()
+
+                # Parse from the new envdsStatus format
+                id_block = status_data.get("id", {})
+                state_name = id_block.get("app_uid")
+                state_ns = id_block.get("sampling_namespace", "")
+                state_valid_time = id_block.get("valid_config_time")
+
+                source_id = f"envds.{self.config.daq_id}.sampling-states"
+                
+                # Build standard CloudEvent wrapper using your existing factory method
+                event = SamplingEvent.create_sampling_state_status_update(
+                    source=source_id,
+                    data=status_data,
+                )
+                
+                destpath = f"envds/{self.config.daq_id}/sampling-states/status/update"
+                event["destpath"] = destpath
+                event["samplingnamespace"] = state_ns
+                event["validconfigtime"] = state_valid_time
+                
+                # --- DYNAMIC ROUTING PATCH ---
+                if "/" in state_ns:
+                    dep_ref = state_ns.split("/")[-1]
+                else:
+                    dep_ref = self.config.deployment_ref if self.config.deployment_ref else "unknown"
+                    
+                event["deploymentref"] = dep_ref
+                # -----------------------------
+                
+                self.logger.debug("state_status_monitor", extra={"event-type": event["type"], "destpath": destpath})
+
+                await self.send_to_mqtt(destpath, event)
+
+            except Exception as e:
+                self.logger.error("state_status_monitor", extra={"reason": str(e)})
+            
             finally:
-                await asyncio.sleep(0.0001)
+                if 'status_data' in locals():
+                    self.status_buffer.task_done()
+                    
+            await asyncio.sleep(0.001)
+
+    # async def get_from_mqtt_loop(self):
+    #     reconnect = 10
+    #     while True:
+    #         try:
+    #             self.logger.debug("listen", extra={"config": self.config})
+    #             client_id = str(ULID())
+    #             async with Client(
+    #                 self.config.mqtt_broker,
+    #                 port=self.config.mqtt_port,
+    #                 identifier=client_id,
+    #             ) as self.client:
+    #                 # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+    #                 for topic in self.config.mqtt_topic_subscriptions.split(","):
+    #                     # print(f"run - topic: {topic.strip()}")
+    #                     # self.logger.debug("run", extra={"topic": topic})
+    #                     if topic.strip():
+    #                         self.logger.debug(
+    #                             "subscribe", extra={"topic": topic.strip()}
+    #                         )
+    #                         await self.client.subscribe(
+    #                             f"$share/sampling-states/{topic.strip()}"
+    #                         )
+
+    #                     # await client.subscribe(config.mqtt_topic_subscription, qos=2)
+    #                 # async with client.messages() as messages:
+    #                 async for message in self.client.messages:  # () as messages:
+
+    #                     try:
+    #                         ce = from_json(message.payload)
+    #                         topic = message.topic.value
+    #                         ce["sourcepath"] = topic
+    #                         await self.mqtt_buffer.put(ce)
+    #                         self.logger.debug(
+    #                             "get_from_mqtt_loop",
+    #                             extra={"cetype": ce["type"], "topic": topic},
+    #                         )
+    #                     except Exception as e:
+    #                         self.logger.error("get_from_mqtt_loop", extra={"reason": e})
+    #                     # try:
+    #                     #     self.logger.debug("listen", extra={"payload_type": type(ce), "ce": ce})
+    #                     #     await self.send_to_knbroker(ce)
+    #                     # except Exception as e:
+    #                     #     self.logger.error("Error sending to knbroker", extra={"reason": e})
+    #         except MqttError as error:
+    #             self.logger.error(
+    #                 f"{error}. Trying again in {reconnect} seconds",
+    #                 extra={
+    #                     k: v
+    #                     for k, v in self.config.dict().items()
+    #                     if k.lower().startswith("mqtt_")
+    #                 },
+    #             )
+    #             await asyncio.sleep(reconnect)
+    #         finally:
+    #             await asyncio.sleep(0.0001)
+
+    # async def handle_mqtt_buffer(self):
+    #     while True:
+    #         try:
+    #             ce = await self.mqtt_buffer.get()
+    #             self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
+    #             if ce["type"] == sampet.variableset_data_update():
+    #                 self.logger.debug(
+    #                     "handle_mqtt_buffer", extra={"ce-type": ce["type"]}
+    #                 )
+    #                 # await self.condition_status_update(ce)
+    #                 await self.requirement_status_update(ce)
+    #             # elif ce["type"] == "envds.controller.data.update":
+    #             #     await self.controller_data_update(ce)
+
+    #         except Exception as e:
+    #             self.logger.error("handle_mqtt_buffer", extra={"reason": e})
+
+    #         await asyncio.sleep(0.0001)
+    #         self.mqtt_buffer.task_done()
 
     async def handle_mqtt_buffer(self):
         while True:
             try:
                 ce = await self.mqtt_buffer.get()
-                self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
-                if ce["type"] == sampet.variableset_data_update():
-                    self.logger.debug(
-                        "handle_mqtt_buffer", extra={"ce-type": ce["type"]}
-                    )
-                    # await self.condition_status_update(ce)
+                
+                # FIX: Check for the proper status update type, NOT variableset_data_update
+                if "status.update" in ce["type"] or "status" in getattr(ce, "data", {}):
+                    self.logger.debug("handle_mqtt_buffer routing to requirement_status_update", extra={"ce-type": ce["type"]})
                     await self.requirement_status_update(ce)
-                # elif ce["type"] == "envds.controller.data.update":
-                #     await self.controller_data_update(ce)
 
+                self.mqtt_buffer.task_done()
             except Exception as e:
                 self.logger.error("handle_mqtt_buffer", extra={"reason": e})
-
-            await asyncio.sleep(0.0001)
-            self.mqtt_buffer.task_done()
-
-    async def requirement_status_update(self, ce: CloudEvent):
-
-        try:
-            
-            self.logger.debug("requirement_status_update", extra={"ce": ce})
-
-            # for req_type, status in ce.data.items():
+    
+    async def mqtt_publish_loop(self):
+        """Maintains a persistent MQTT connection strictly for outbound status events."""
+        reconnect = 5
+        client_id = f"states-publisher-{ULID()}"
+        while True:
             try:
-                status = ce.data["status"]
-                req_kind = status["kind"]
-                req_name = status["name"]
-                self.logger.debug("requirement_status_update", extra={"sampling_states": self.sampling_states})
-                for state_name in self.sampling_states["requirement_map"][req_kind][req_name]:
-                    state = self.sampling_states["states"][state_name]["state"]
-                    await state.update(status)
-            except KeyError:
-                self.logger.error("requirement_status_update", extra={"reason": e})
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as client:
+                    self.logger.info("Connected to MQTT broker for outbound publishing.")
+                    while True:
+                        topic, payload = await self.publish_queue.get()
+                        await client.publish(topic, payload, qos=1)
+                        self.publish_queue.task_done()
+            except MqttError as e:
+                self.logger.error(f"MQTT Publish Error: {e}. Reconnecting in {reconnect}s...")
+                await asyncio.sleep(reconnect)
+            except Exception as e:
+                self.logger.error("mqtt_publish_loop unexpected error", extra={"reason": str(e)})
+                await asyncio.sleep(reconnect)
+    
+    # async def requirement_status_update(self, ce: CloudEvent):
+
+    #     try:
+            
+    #         self.logger.debug("requirement_status_update", extra={"ce": ce})
+
+    #         # for req_type, status in ce.data.items():
+    #         try:
+    #             status = ce.data["status"]
+    #             req_kind = status["kind"]
+    #             req_name = status["name"]
+    #             self.logger.debug("requirement_status_update", extra={"sampling_states": self.sampling_states})
+    #             for state_name in self.sampling_states["requirement_map"][req_kind][req_name]:
+    #                 state = self.sampling_states["states"][state_name]["state"]
+    #                 await state.update(status)
+    #         except KeyError:
+    #             self.logger.error("requirement_status_update", extra={"reason": e})
                     
 
-        except Exception as e:
-            self.logger.error("requirement_status_update", extra={"reason": e})
-        pass            
+    #     except Exception as e:
+    #         self.logger.error("requirement_status_update", extra={"reason": e})
+    #     pass            
 
+    async def requirement_status_update(self, ce: CloudEvent):
+        try:
+            self.logger.debug("requirement_status_update", extra={"ce": ce})
+
+            # Consume the envds-compliant status format
+            payload = ce.data
+            id_block = payload.get("id", {})
+            state_block = payload.get("state", {})
+            
+            # Map app_group back to kind for internal routing
+            app_group = id_block.get("app_group", "")
+            req_kind = "SamplingCondition" if app_group == "condition" else "SamplingState" if app_group == "state" else app_group
+            req_name = id_block.get("app_uid")
+            
+            # DYNAMICALLY grab the actual status depending on the app_group!
+            if app_group == "condition":
+                actual_status = state_block.get("condition_met", {}).get("actual", "false")
+            elif app_group == "state":
+                actual_status = state_block.get("state_active", {}).get("actual", "false")
+            else:
+                actual_status = "false"
+                
+            is_met = (str(actual_status).lower() == "true")
+            
+            timestamp = payload.get("timestamp", get_datetime_string())
+
+            # Translate back to the internal flat format for the state requirement monitor
+            mapped_status = {
+                "kind": req_kind,
+                "name": req_name,
+                "time": timestamp,
+                "status": is_met
+            }
+
+            self.logger.debug("requirement_status_update mapped", extra={"mapped_status": mapped_status})
+            
+            # Route to the appropriate states that rely on this requirement using tuple lookups
+            if req_kind in self.sampling_states.get("requirement_map", {}) and req_name in self.sampling_states["requirement_map"][req_kind]:
+                for composite_key in self.sampling_states["requirement_map"][req_kind][req_name]:
+                    state_data = self.sampling_states["states"].get(composite_key)
+                    if state_data:
+                        state = state_data["state"]
+                        await state.update(mapped_status)
+            else:
+                self.logger.debug("Requirement not tracked by any active state", extra={"req_name": req_name})
+
+        except Exception as e:
+            self.logger.error("requirement_status_update error", extra={"reason": str(e)})
 
 async def shutdown():
     print("shutting down")

@@ -9,7 +9,6 @@ import logging.config
 from logfmter import Logfmter
 import traceback
 
-
 # from typing import Union
 from pydantic import BaseModel, BaseSettings
 

@@ -17,6 +17,7 @@ dash.register_page(
     __name__,
     path="/sensor-registry",
     title="Sensor Registry",  # , prevent_initial_callbacks=True
+    order=2
      )
 
 class Settings(BaseSettings):
@@ -239,7 +240,7 @@ print(f"config: {config}")
 # )
 ws_send_buffer = html.Div(id="ws-send-buffer", style={"display": "none"})
 
-datastore_url = f"datastore.{config.daq_id}-system"
+datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 # link_url_base = f"http://{config.external_hostname}/msp/dashboardtest"
 # query = {"device_type": "sensor"}
 # url = f"http://{datastore_url}/device-definition/registry/get/"
@@ -327,7 +328,7 @@ def get_layout():
                                         "filter": True,
                                     },
                                     {
-                                        "field": "sampling_sytem_id",
+                                        "field": "sampling_system_id",
                                         "headerName": "Sampling System ID",
                                         "filter": True,
                                         "cellRenderer": "markdown",
@@ -452,7 +453,8 @@ def update_sensor_definitions(count, table_data):
         # print(f"device-definition-get: {url}, {query}")
         print(f"device-definition-get: {url}")
         # response = httpx.get(url, params=query)
-        response = httpx.get(url)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, timeout=timeout)
         results = response.json()
         print(f"results: {results}")
         if "results" in results and results["results"]:
@@ -566,7 +568,8 @@ def update_active_sensors(count, table_data):
         query = {"device_type": "sensor"}
         url = f"http://{datastore_url}/device-instance/registry/get/"
         print(f"device-definition-get: {url}")
-        response = httpx.get(url, params=query)
+        timeout = httpx.Timeout(30.0, read=None)
+        response = httpx.get(url, params=query, timeout=timeout)
         results = response.json()
         # print(f"results: {results}")
         if "results" in results and results["results"]:
@@ -589,6 +592,8 @@ def update_active_sensors(count, table_data):
                     "sampling_system_id": f"[{sampling_system_id}]{link_url_base}/dash/sampling-system/{sampling_system_id})",
                     # "sampling_system_id": f"[{sampling_system_id}]({rel_path}/sampling-system/{sampling_system_id})",
                 }
+                print(f"update_active_sensors 1.75: {sensor}")
+                print(f"update_active_sensors table data: {table_data}")
                 if table_data is None:
                     table_data = []
                 if sensor not in table_data:

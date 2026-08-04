@@ -19,8 +19,9 @@ RUN pip3 install -r requirements.txt
 
 # COPY . .
 COPY ./manager.py .
-COPY ./criteria.py .
+# COPY ./criteria.py .
 COPY ./main.py .
+COPY ./criteria ./criteria
 # COPY ./db_client.py .
 # COPY ./redis_client.py .
 # WORKDIR $APP_HOME/envds

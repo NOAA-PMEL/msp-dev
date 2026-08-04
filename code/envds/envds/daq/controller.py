@@ -101,6 +101,13 @@ class ControllerAttribute(BaseModel):
             if data_type == "char" or data_type == "string":
                 data_type = "str"
 
+            # --- FIX: BYPASS STRICT ELEMENT VALIDATION FOR LISTS ---
+            if isinstance(v, list):
+                # Pydantic natively handles list parsing, so we just return the array
+                # rather than trying to recursively eval() inner elements against "list".
+                return v
+            # -------------------------------------------------------
+
             if "type" in values and not isinstance(v, eval(data_type)):
                 raise ValueError("attribute data is wrong type")
         return v
@@ -113,6 +120,7 @@ class ControllerVariable(BaseModel):
     type: str | None = "str"
     shape: list[str] | None = ["time"]
     attributes: dict[str, ControllerAttribute]
+    data: list | None = None
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
 
@@ -124,6 +132,7 @@ class ControllerSetting(BaseModel):
     type: str | None = "str"
     shape: list[str] | None = ["time"]
     attributes: dict[str, ControllerAttribute]
+    data: list | None = None
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
 
@@ -252,7 +261,8 @@ class Controller(envdsBase):
         self.run_task_list.append(self.client_recv_loop())
 
         self.controller_definition_registered = False
-        self.controller_definition_send_time = 5 # start with every 5 seconds and change once ack
+        self.controller_definition_send_time = 60 # changed to be 60 always and no ack
+        self.controller_instance_send_time = 15 # changed to be 60 always and no ack
         self.controller_registered = False
 
     def configure(self):
@@ -322,7 +332,7 @@ class Controller(envdsBase):
                     await self.send_message(message)
                 except Exception as e:
                     self.logger.error("register_controller_definition", extra={"reason": e})
-                    print(traceback.format_exc())
+                    # print(traceback.format_exc())
             await asyncio.sleep(self.controller_definition_send_time)
 
     async def register_controller_instance(self):
@@ -356,7 +366,8 @@ class Controller(envdsBase):
                 # self.logger.debug("default_data_loop", extra={"m": message})
                 await self.send_message(message)
         
-            await asyncio.sleep(5)
+            # await asyncio.sleep(5)
+            await asyncio.sleep(self.controller_instance_send_time)
 
     def disable(self):
 
@@ -613,23 +624,52 @@ class Controller(envdsBase):
                 },
             )
 
+    # async def handle_settings(self, message: CloudEvent):
+    #     self.logger.debug(
+    #                 "handle_settings", extra={"ce_mess": message}
+    #             )
+    #     if message["type"] == det.controller_settings_request():
+    #         if message["controllerid"] == self.build_app_uid():
+    #             try:
+    #                 src = message["source"]
+    #                 setting = message.data.get("settings", None)
+    #                 requested = message.data.get("requested", None)
+    #                 self.logger.debug(
+    #                     "handle_settings", extra={"source": src, "setting": setting, "requested": requested}
+    #                 )
+    #                 if (setting is not None) and (requested is not None):
+    #                     self.settings.set_requested(
+    #                         name=setting, requested=requested
+    #                     )
+
+    #             except (KeyError, Exception) as e:
+    #                 self.logger.error("databuffer save error", extra={"error": e})
+    #         else:
+    #             pass
+
     async def handle_settings(self, message: CloudEvent):
-        self.logger.debug(
-                    "handle_settings", extra={"ce_mess": message}
-                )
+        self.logger.debug("handle_settings", extra={"ce_mess": message})
         if message["type"] == det.controller_settings_request():
             if message["controllerid"] == self.build_app_uid():
                 try:
                     src = message["source"]
-                    setting = message.data.get("settings", None)
-                    requested = message.data.get("requested", None)
-                    self.logger.debug(
-                        "handle_settings", extra={"source": src, "setting": setting, "requested": requested}
-                    )
-                    if (setting is not None) and (requested is not None):
-                        self.settings.set_requested(
-                            name=setting, requested=requested
-                        )
+                    settings_payload = message.data.get("settings", None)
+                    
+                    # 1. Handle nested dashboard format loop
+                    if isinstance(settings_payload, dict):
+                        for setting_name, setting_data in settings_payload.items():
+                            if isinstance(setting_data, dict) and "requested" in setting_data:
+                                self.settings.set_requested(
+                                    name=setting_name, requested=setting_data["requested"]
+                                )
+                                
+                    # 2. Fallback layout for flat format
+                    elif isinstance(settings_payload, str):
+                        requested_val = message.data.get("requested", None)
+                        if requested_val is not None:
+                            self.settings.set_requested(
+                                name=settings_payload, requested=requested_val
+                            )
 
                 except (KeyError, Exception) as e:
                     self.logger.error("databuffer save error", extra={"error": e})
@@ -933,8 +973,13 @@ class Controller(envdsBase):
             # record["variables"] = self.config.metadata.dict()["variables"]
 
             # print(1, record)
-            for name, _ in record["variables"].items():
-                record["variables"][name]["data"] = None
+            # for name, _ in record["variables"].items():
+            #     record["variables"][name]["data"] = None
+            for name, var_dict in record["variables"].items():
+                # Do not scrub the data array if the variable is a static coordinate
+                var_type = var_dict.get("attributes", {}).get("variable_type", {}).get("data")
+                if var_type != "coordinate":
+                    record["variables"][name]["data"] = None
             # print(2, record)
         else:
             for name, variable in self.config.metadata.dict()["variables"].items():

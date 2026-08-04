@@ -80,7 +80,7 @@ class SamplingOperationsManagerConfig(BaseSettings):
 
     system_init_control: str = "auto"
     system_init_mode: str | None = None
-
+    is_primary_controller: bool = True
     class Config:
         env_prefix = "SAMPLING_OPERATIONS_"
         case_sensitive = False
@@ -99,15 +99,17 @@ class SamplingAction:
         self.config = config
 
         # buffers
-        self.data_buffer = asyncio.Queue(maxsize=60)
+        self.data_buffer = asyncio.Queue(maxsize=500)
         # self.source_buffer = source_buffer
         self.target_buffer = target_buffer
 
         self.sources = {"variables": dict(), "data": dict()}
         self.targets = {"variables": dict()}
 
+        self._tasks = [] # ADD THIS to track tasks
+
         self.configure()
-        asyncio.create_task(self.update_monitor())
+        self._tasks.append(asyncio.create_task(self.update_monitor()))
         # asyncio.create_task(self.requirements_monitor())
         # asyncio.create_task(self.update_status_loop())
 
@@ -166,40 +168,105 @@ class SamplingAction:
         except Exception as e:
             self.logger.error("configure-action", extra={"reason": e})
 
+    # async def run(self):
+    #     source_vars = dict()
+
+    #     dt_now = get_datetime().replace(tzinfo=timezone.utc)
+    #     max_time = self.source_max_age
+    #     min_dt = get_datetime_with_delta(delta=(-(max_time)), dt=dt_now)
+    #     for src_name, src in self.sources["variables"].items():
+    #         src_id = "::".join([src["variablemap_name"], src["variableset_name"]])
+    #         last_var = self.sources["data"][src_id][src_name][src["variable"]]
+    #         if (
+    #             string_to_datetime(last_var["latest_update"]).replace(
+    #                 tzinfo=timezone.utc
+    #             )
+    #             < min_dt
+    #         ):
+    #             return None
+    #         source_vars[src_name] = last_var["data"]
+
+    #     result = await self.method(**source_vars)
+
+    #     target_vars = dict()
+    #     for trg_name, trg in self.targets["variables"].items():
+    #         if trg_name in result:
+    #             target_vars[trg_name] = {"data": result[trg_name], "metadata": trg}
+    #     await self.target_buffer.put(target_vars)
+
+    #     self.logger.debug(
+    #         "run - send set settings event", extra={"target_vars": target_vars}
+    #     )
+
     async def run(self):
         source_vars = dict()
 
         dt_now = get_datetime().replace(tzinfo=timezone.utc)
         max_time = self.source_max_age
         min_dt = get_datetime_with_delta(delta=(-(max_time)), dt=dt_now)
+        
         for src_name, src in self.sources["variables"].items():
             src_id = "::".join([src["variablemap_name"], src["variableset_name"]])
-            last_var = self.sources["data"][src_id][src_name][src["variable"]]
-            if (
-                string_to_datetime(last_var["latest_update"]).replace(
-                    tzinfo=timezone.utc
-                )
-                < min_dt
-            ):
+            v_name = src["variable"]
+            
+            # Safely fetch the variable data cache
+            last_var = self.sources["data"].get(src_id, {}).get(v_name, {})
+            last_update_str = last_var.get("last_update")
+            
+            # 1. Ensure data has actually arrived
+            if not last_update_str:
+                self.logger.debug(f"Action run aborted: No data yet for {src_name}")
                 return None
-            source_vars[src_name] = last_var["data"]
+                
+            last_update_dt = string_to_datetime(last_update_str).replace(tzinfo=timezone.utc)
+            
+            # 2. Ensure data hasn't expired (Jitter/Stale check)
+            if last_update_dt < min_dt:
+                self.logger.debug(f"Action run aborted: Stale data for {src_name}")
+                return None
+                
+            # Note: last_var.get("data") might be explicit `None` if the sensor is offline!
+            # Your custom action scripts must handle this explicitly.
+            source_vars[src_name] = last_var.get("data")
 
-        result = await self.method(**source_vars)
+        # 3. Execute the custom action method
+        try:
+            if asyncio.iscoroutinefunction(self.method):
+                result = await self.method(**source_vars)
+            else:
+                result = self.method(**source_vars)
+        except Exception as e:
+            self.logger.error("action method execution failed", extra={"reason": str(e)})
+            return None
+
+        # 4. If the script deliberately returns None (e.g. ignoring a None input), abort target push
+        if not result:
+            return None
 
         target_vars = dict()
         for trg_name, trg in self.targets["variables"].items():
             if trg_name in result:
                 target_vars[trg_name] = {"data": result[trg_name], "metadata": trg}
-        await self.target_buffer.put(target_vars)
+                
+        if target_vars:
+            await self.target_buffer.put(target_vars)
+            self.logger.debug("run - send set settings event", extra={"target_vars": target_vars})
 
-        self.logger.debug(
-            "run - send set settings event", extra={"target_vars": target_vars}
-        )
+    def stop(self):
+        """Cancels all background tasks associated with this action instance."""
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
 
     async def update(self, data: CloudEvent):
         self.logger.debug("update", extra={"update_data": data})
-        await self.data_buffer.put(data)
-
+        try:
+            self.data_buffer.put_nowait(data)
+        except asyncio.QueueFull:
+            self.logger.warning(f"Action {self.config['metadata']['name']} buffer full. Dropping oldest.")
+            self.data_buffer.get_nowait()
+            self.data_buffer.task_done()
+            self.data_buffer.put_nowait(data)
     async def update_monitor(self):
 
         while True:
@@ -238,7 +305,7 @@ class SamplingMode:
         self.config = config
 
         # buffers
-        self.update_buffer = asyncio.Queue(maxsize=60)
+        self.update_buffer = asyncio.Queue(maxsize=500)
         self.status_buffer = status_buffer
         self.actions_buffer = actions_buffer
         self.transitions_buffer = transitions_buffer
@@ -250,10 +317,12 @@ class SamplingMode:
         self.active = False
         self.current_state = False
 
+        self._tasks = []
+
         self.configure()
-        asyncio.create_task(self.update_monitor())
-        asyncio.create_task(self.requirements_monitor())
-        asyncio.create_task(self.update_status_loop())
+        self._tasks.append(asyncio.create_task(self.update_monitor()))
+        self._tasks.append(asyncio.create_task(self.requirements_monitor()))
+        # self._tasks.append(asyncio.create_task(self.update_status_loop()))
 
     def configure(self):
 
@@ -312,12 +381,24 @@ class SamplingMode:
     def activate(self, active: bool):
         self.active = active
 
+    def stop(self):
+        """Cancels all background tasks associated with this mode instance."""
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+
     def is_active(self) -> bool:
         return self.active
 
     async def update(self, status):
         self.logger.debug("update", extra={"update_data": status})
-        await self.update_buffer.put(status)
+        try:
+            self.update_buffer.put_nowait(status)
+        except asyncio.QueueFull:
+            self.logger.warning(f"Mode {self.config['metadata']['name']} buffer full. Dropping oldest.")
+            self.update_buffer.get_nowait()
+            self.update_buffer.task_done()
+            self.update_buffer.put_nowait(status)
 
     async def update_monitor(self):
 
@@ -352,6 +433,118 @@ class SamplingMode:
             await asyncio.sleep(0.001)
             self.update_buffer.task_done()
 
+    # async def requirements_monitor(self):
+
+    #     while True:
+    #         self.logger.debug(
+    #             "SamplingMode.requirements_monitor",
+    #             extra={"data_buffer": self.requirements},
+    #         )
+
+    #         # all delays are done at state level so current status is directly updated
+    #         try:
+    #             mode_status = []
+    #             current_dt = get_datetime().replace(tzinfo=timezone.utc)
+    #             for req_type, req_kind in self.requirements.items():
+    #                 for req_name, req in req_kind.items():
+    #                     mode_status.append(req["status"])
+    #                     if self.active:
+    #                         self.logger.debug(
+    #                             "SamplingMode.requirements_monitor",
+    #                             extra={"req_name": req_name, "mode_status": mode_status},
+    #                         )
+
+    #             current_dt = get_datetime().replace(tzinfo=timezone.utc)
+    #             current_secs = current_dt.second
+    #             latest_status = all(mode_status)
+    #             if self.active:
+    #                 self.logger.debug(
+    #                     "SamplingMode.requirements_monitor:last_check",
+    #                     extra={
+    #                         "mode_name": self.config["metadata"]["name"],
+    #                         "active": self.is_active(),
+    #                         "mode_status": mode_status,
+    #                         "current_state": self.current_state,
+    #                         "new_state": latest_status,
+    #                     },
+    #                 )
+    #             if latest_status != self.current_state:
+    #                 # send event with updated condition state
+    #                 self.logger.debug(
+    #                     "SamplingMode.requirements_monitor - send update with new state"
+    #                 )
+    #                 try:
+    #                     self.current_state = latest_status
+    #                     if self.active:
+    #                         mode_kind = self.config["kind"]
+    #                         mode_name = self.config["metadata"]["name"]
+    #                         mode_ns = self.config["metadata"]["sampling_namespace"]
+    #                         mode_valid_time = self.config["metadata"]["valid_config_time"]
+
+    #                         status = {
+    #                             "status": {
+    #                                 "kind": mode_kind,
+    #                                 "time": get_datetime_string(),
+    #                                 "name": mode_name,
+    #                                 "sampling_namespace": mode_ns,
+    #                                 "valid_config_time": mode_valid_time,
+    #                                 "status": self.current_state,
+    #                             }
+    #                         }
+    #                         self.logger.debug(
+    #                             "active.status", extra={"current_status": status}
+    #                         )
+    #                         await self.status_buffer.put(status)
+
+    #                         run_type = str(self.current_state).lower()
+
+    #                         self.logger.debug("active.action.list", extra={"actions": self.actions})
+    #                         for act in self.actions[run_type]:
+    #                             action = {
+    #                                 "action": {"kind": act["kind"], "name": act["name"]}
+    #                             }
+    #                             self.logger.debug("active.action", extra={"action": action})
+    #                             await self.actions_buffer.put(action)
+
+    #                         for tran in self.transitions[run_type]:
+    #                             transition = {
+    #                                 "transition": {
+    #                                     "kind": tran["kind"],
+    #                                     "name": tran["name"],
+    #                                 }
+    #                             }
+    #                             self.logger.debug(
+    #                                 "active.transition", extra={"transition": transition}
+    #                             )
+    #                             await self.transitions_buffer.put(transition)
+    #                 except Exception as e:
+    #                     self.logger.error("requirments_monitor - update active modes", extra={"reason": e})
+
+    #             # elif (current_secs % 30) == 0:
+    #             #     self.current_state = latest_status
+    #             #     if self.active:
+    #             #         mode_kind = self.config["metadata"]["kind"]
+    #             #         mode_name = self.config["metadata"]["name"]
+    #             #         mode_ns = self.config["metadata"]["sampling_namespace"]
+    #             #         mode_valid_time = self.config["metadata"]["valid_config_time"]
+
+    #             #         status = {
+    #             #             "status": {
+    #             #                 "kind": mode_kind,
+    #             #                 "time": get_datetime_string(),
+    #             #                 "name": mode_name,
+    #             #                 "sampling_namespace": mode_ns,
+    #             #                 "valid_config_time": mode_valid_time,
+    #             #                 "status": self.current_state
+    #             #             }
+    #             #         }
+    #             #         await self.status_buffer.put(status)
+
+    #         except Exception as e:
+    #             self.logger.error("requirements_monitor", extra={"reason": e})
+
+    #         await asyncio.sleep(time_to_next(1))
+
     async def requirements_monitor(self):
 
         while True:
@@ -360,7 +553,6 @@ class SamplingMode:
                 extra={"data_buffer": self.requirements},
             )
 
-            # all delays are done at state level so current status is directly updated
             try:
                 mode_status = []
                 current_dt = get_datetime().replace(tzinfo=timezone.utc)
@@ -373,129 +565,119 @@ class SamplingMode:
                                 extra={"req_name": req_name, "mode_status": mode_status},
                             )
 
-                current_dt = get_datetime().replace(tzinfo=timezone.utc)
                 current_secs = current_dt.second
-                latest_status = all(mode_status)
+                
+                # Prevent all([]) == True bug if a mode has no requirements
+                if not mode_status:
+                    latest_status = False
+                else:
+                    latest_status = all(mode_status)
+                
                 if self.active:
                     self.logger.debug(
                         "SamplingMode.requirements_monitor:last_check",
                         extra={
-                            "mode_name": self.config["metadata"]["name"],
+                            "mode_name": self.config.get("metadata", {}).get("name", "unknown"),
                             "active": self.is_active(),
                             "mode_status": mode_status,
                             "current_state": self.current_state,
                             "new_state": latest_status,
                         },
                     )
-                if latest_status != self.current_state:
-                    # send event with updated condition state
+                    
+                is_changed = (latest_status != self.current_state)
+                is_heartbeat = ((current_secs % 30) == 0)
+
+                if is_changed or is_heartbeat:
                     self.logger.debug(
-                        "SamplingMode.requirements_monitor - send update with new state"
+                        "SamplingMode.requirements_monitor - heartbeat or status change"
                     )
                     try:
                         self.current_state = latest_status
-                        if self.active:
-                            mode_kind = self.config["kind"]
-                            mode_name = self.config["metadata"]["name"]
-                            mode_ns = self.config["metadata"]["sampling_namespace"]
-                            mode_valid_time = self.config["metadata"]["valid_config_time"]
+                        
+                        # SAFE METADATA LOOKUPS
+                        mode_kind = self.config.get("kind", "SamplingMode")
+                        mode_name = self.config.get("metadata", {}).get("name", "unknown")
+                        mode_ns = self.config.get("metadata", {}).get("sampling_namespace", "default")
+                        mode_valid_time = self.config.get("metadata", {}).get("valid_config_time", "unknown")
 
-                            status = {
-                                "status": {
-                                    "kind": mode_kind,
-                                    "time": get_datetime_string(),
-                                    "name": mode_name,
-                                    "sampling_namespace": mode_ns,
-                                    "valid_config_time": mode_valid_time,
-                                    "status": self.current_state,
-                                }
+                        status = {
+                            "status": {
+                                "kind": mode_kind,
+                                "time": get_datetime_string(),
+                                "name": mode_name,
+                                "sampling_namespace": mode_ns,
+                                "valid_config_time": mode_valid_time,
+                                "status": self.current_state,
                             }
-                            self.logger.debug(
-                                "active.status", extra={"current_status": status}
-                            )
-                            await self.status_buffer.put(status)
+                        }
+                        self.logger.debug("active.status", extra={"current_status": status})
+                        
+                        # Always report status so the UI is updated with a fresh timestamp
+                        await self.status_buffer.put(status)
 
+                        # Trigger actions and transitions ONLY if the status actually changed AND the mode is active
+                        if is_changed and self.active:
                             run_type = str(self.current_state).lower()
 
                             self.logger.debug("active.action.list", extra={"actions": self.actions})
-                            for act in self.actions[run_type]:
+                            for act in self.actions.get(run_type, []):
                                 action = {
-                                    "action": {"kind": act["kind"], "name": act["name"]}
+                                    "action": {"kind": act.get("kind"), "name": act.get("name")}
                                 }
                                 self.logger.debug("active.action", extra={"action": action})
                                 await self.actions_buffer.put(action)
 
-                            for tran in self.transitions[run_type]:
+                            for tran in self.transitions.get(run_type, []):
                                 transition = {
                                     "transition": {
-                                        "kind": tran["kind"],
-                                        "name": tran["name"],
+                                        "kind": tran.get("kind"),
+                                        "name": tran.get("name"),
                                     }
                                 }
-                                self.logger.debug(
-                                    "active.transition", extra={"transition": transition}
-                                )
+                                self.logger.debug("active.transition", extra={"transition": transition})
                                 await self.transitions_buffer.put(transition)
+                                
                     except Exception as e:
-                        self.logger.error("requirments_monitor - update active modes", extra={"reason": e})
-
-                # elif (current_secs % 30) == 0:
-                #     self.current_state = latest_status
-                #     if self.active:
-                #         mode_kind = self.config["metadata"]["kind"]
-                #         mode_name = self.config["metadata"]["name"]
-                #         mode_ns = self.config["metadata"]["sampling_namespace"]
-                #         mode_valid_time = self.config["metadata"]["valid_config_time"]
-
-                #         status = {
-                #             "status": {
-                #                 "kind": mode_kind,
-                #                 "time": get_datetime_string(),
-                #                 "name": mode_name,
-                #                 "sampling_namespace": mode_ns,
-                #                 "valid_config_time": mode_valid_time,
-                #                 "status": self.current_state
-                #             }
-                #         }
-                #         await self.status_buffer.put(status)
+                        self.logger.error("requirements_monitor - update active modes", extra={"reason": str(e)})
 
             except Exception as e:
-                self.logger.error("requirements_monitor", extra={"reason": e})
+                self.logger.error("requirements_monitor", extra={"reason": str(e)})
 
             await asyncio.sleep(time_to_next(1))
 
-    async def update_status_loop(self):
-        while True:
-            try:
-                if self.active:
-                    self.logger.debug("SamplingMode.update_state_loop - send update")
+    # async def update_status_loop(self):
+    #     while True:
+    #         try:
+    #             if self.active:
+    #                 self.logger.debug("SamplingMode.update_state_loop - send update")
 
-                    mode_kind = self.config["kind"]
-                    mode_name = self.config["metadata"]["name"]
-                    mode_ns = self.config["metadata"]["sampling_namespace"]
-                    mode_valid_time = self.config["metadata"]["valid_config_time"]
+    #                 mode_kind = self.config["kind"]
+    #                 mode_name = self.config["metadata"]["name"]
+    #                 mode_ns = self.config["metadata"]["sampling_namespace"]
+    #                 mode_valid_time = self.config["metadata"]["valid_config_time"]
 
-                    status = {
-                        "status": {
-                            "kind": mode_kind,
-                            "time": get_datetime_string(),
-                            "name": mode_name,
-                            "sampling_namespace": mode_ns,
-                            "valid_config_time": mode_valid_time,
-                            "status": self.current_state,
-                        }
-                    }
-                    self.logger.debug(
-                        "SamplingMode.update_state_loop - send update",
-                        extra={"sampling_status": status},
-                    )
-                    await self.status_buffer.put(status)
+    #                 status = {
+    #                     "status": {
+    #                         "kind": mode_kind,
+    #                         "time": get_datetime_string(),
+    #                         "name": mode_name,
+    #                         "sampling_namespace": mode_ns,
+    #                         "valid_config_time": mode_valid_time,
+    #                         "status": self.current_state,
+    #                     }
+    #                 }
+    #                 self.logger.debug(
+    #                     "SamplingMode.update_state_loop - send update",
+    #                     extra={"sampling_status": status},
+    #                 )
+    #                 await self.status_buffer.put(status)
 
-                # await self.update_status(status)
-            except Exception as e:
-                self.logger.error("SamplingMode.update_state_loop", extra={"reason": e})
+    #             # await self.update_status(status)
+    #         except Exception as e:
+    #             self.logger.error("SamplingMode.update_state_loop", extra={"reason": e})
 
-            await asyncio.sleep(10)
+    #         await asyncio.sleep(10)
 
 
 class SamplingOperationsManager:
@@ -520,11 +702,11 @@ class SamplingOperationsManager:
         # self.sampling_states = dict()
         self.sampling_conditions = {"conditions": dict(), "sources": {}}
 
-        self.status_buffer = asyncio.Queue(maxsize=60)
-        self.actions_buffer = asyncio.Queue(maxsize=60)
-        self.transitions_buffer = asyncio.Queue(maxsize=60)
+        # self.status_buffer = asyncio.Queue(maxsize=2000)
+        # self.actions_buffer = asyncio.Queue(maxsize=2000)
+        # self.transitions_buffer = asyncio.Queue(maxsize=2000)
 
-        self.actions_target_buffer = asyncio.Queue(maxsize=60)
+        # self.actions_target_buffer = asyncio.Queue(maxsize=2000)
 
         # self.sampling_actions = dict()
 
@@ -546,25 +728,78 @@ class SamplingOperationsManager:
         # self.index_ready_buffer = asyncio.Queue()
         # self.index_monitor_tasks = dict()
 
+        # Set all asyncio primitives to None. They will be initialized in setup()
+        self.status_buffer = None
+        self.actions_buffer = None
+        self.transitions_buffer = None
+        self.actions_target_buffer = None
+        self.mqtt_buffer = None
+        self.publish_queue = None # Added new MQTT outbound queue
+
         self.config = SamplingOperationsManagerConfig()
+        self.http_client = None
+
+        self._background_tasks = set()
+
         self.configure()
         # print("here:7")
 
-        self.http_client = None
 
-        self.mqtt_buffer = asyncio.Queue()
-        asyncio.create_task(self.get_from_mqtt_loop())
-        asyncio.create_task(self.handle_mqtt_buffer())
-        asyncio.create_task(self.mode_status_monitor())
-        asyncio.create_task(self.mode_action_monitor())
-        asyncio.create_task(self.mode_transition_monitor())
-        asyncio.create_task(self.system_mode_loop())
-        # asyncio.create_tasks(self.sampling_mode_monitor())
-        # asyncio.create_tasks(self.sampling_state_monitor())
-        # asyncio.create_task(self.sampling_condition_monitor())
-        # asyncio.create_tasks(self.sampling_action_monitor())
+        # self.mqtt_buffer = asyncio.Queue()
+        # asyncio.create_task(self.get_from_mqtt_loop())
+        # asyncio.create_task(self.handle_mqtt_buffer())
+        # asyncio.create_task(self.mode_status_monitor())
+        # asyncio.create_task(self.mode_action_monitor())
+        # asyncio.create_task(self.mode_transition_monitor())
+        # asyncio.create_task(self.system_mode_loop())
+        # # asyncio.create_tasks(self.sampling_mode_monitor())
+        # # asyncio.create_tasks(self.sampling_state_monitor())
+        # # asyncio.create_task(self.sampling_condition_monitor())
+        # # asyncio.create_tasks(self.sampling_action_monitor())
 
-        # print("SamplingOperationsManager: init: here:8")
+        # # print("SamplingOperationsManager: init: here:8")
+
+    async def setup(self):
+        """Asynchronously initialize buffers, clients, and loops."""
+        self.logger.info("Running SamplingOperationsManager async setup...")
+        
+        self.status_buffer = asyncio.Queue(maxsize=2000)
+        self.actions_buffer = asyncio.Queue(maxsize=2000)
+        self.transitions_buffer = asyncio.Queue(maxsize=2000)
+        self.actions_target_buffer = asyncio.Queue(maxsize=2000)
+        self.mqtt_buffer = asyncio.Queue(maxsize=2000)
+        self.publish_queue = asyncio.Queue(maxsize=2000)
+
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
+
+        self.init_modes()
+
+        task1 = asyncio.create_task(self.get_from_mqtt_loop())
+        task2 = asyncio.create_task(self.handle_mqtt_buffer())
+        task3 = asyncio.create_task(self.mode_status_monitor())
+        task4 = asyncio.create_task(self.mode_action_monitor())
+        task5 = asyncio.create_task(self.mode_transition_monitor())
+        task6 = asyncio.create_task(self.system_mode_loop())
+        
+        # FIX: Start Sync and Publish loops
+        task7 = asyncio.create_task(self.publish_local_definitions())
+        task8 = asyncio.create_task(self.sync_sampling_definitions_loop())
+        task9 = asyncio.create_task(self.action_target_monitor())
+        task10 = asyncio.create_task(self.mqtt_publish_loop())
+
+        self._background_tasks.update({task1, task2, task3, task4, task5, task6, task7, task8, task9, task10})
+
+    def open_http_client(self):
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        )
+
+    async def close_http_client(self):
+        if getattr(self, 'http_client', None):
+            await self.http_client.aclose()
+            self.http_client = None
 
     def configure(self):
         # set clients
@@ -703,25 +938,73 @@ class SamplingOperationsManager:
         for req in reqs:
             self.activate_required_modes(req)
 
+    # def activate_system_mode(self, name: str):
+    #     try:
+    #         self.logger.debug("activate_system_mode")
+    #         # self.active_modes = {
+    #         #     "SystemMode": None,
+
+    #         # }
+    #         if name not in self.sampling_modes["SystemMode"]:
+    #             self.logger.info(
+    #                 "activate_system_mode-can't activate non SystemMode",
+    #                 extra={"req_name": name},
+    #             )
+    #             return
+    #         # if name in self.sampling_modes["SystemMode"]:
+    #         self.active_modes = {"SystemMode": [name], "SamplingMode": []}
+    #         reqs = self.sampling_modes["SystemMode"][name]["config"].get(
+    #             "requirements", []
+    #         )
+
+    #         for req in reqs:
+    #             self.activate_required_modes(req)
+
+    #         self.logger.debug(
+    #             "activate_system_mode", extra={"active_modes": self.active_modes}
+    #         )
+
+    #         # deactivate all modes
+    #         for mod_type, modes in self.sampling_modes.items():
+    #             for mode_name, mode in modes.items():
+    #                 mode["mode"].activate(False)
+
+    #         # activate modes in active map
+    #         for mode_type, modes in self.active_modes.items():
+    #             for mode_name in modes:
+    #                 mode = self.sampling_modes[mode_type][mode_name]
+    #                 mode["mode"].activate(True)
+    #                 self.logger.debug(
+    #                     "activate_system_mode",
+    #                     extra={mode_name: mode["mode"].is_active()},
+    #                 )
+    #     except Exception as e:
+    #         self.logger.error("activate_system_mode", extra={"reason": e})
+
     def activate_system_mode(self, name: str):
         try:
             self.logger.debug("activate_system_mode")
-            # self.active_modes = {
-            #     "SystemMode": None,
+            
+            # 1. FIX: Prevent KeyError if definitions haven't synced from Datastore yet
+            if "SystemMode" not in self.sampling_modes:
+                self.logger.warning("No SystemMode definitions loaded yet. Waiting for sync.")
+                return
 
-            # }
+            # 2. Check if the requested mode actually exists
             if name not in self.sampling_modes["SystemMode"]:
                 self.logger.info(
                     "activate_system_mode-can't activate non SystemMode",
                     extra={"req_name": name},
                 )
                 return
-            # if name in self.sampling_modes["SystemMode"]:
+            
+            # 3. Set the active modes list
             self.active_modes = {"SystemMode": [name], "SamplingMode": []}
             reqs = self.sampling_modes["SystemMode"][name]["config"].get(
                 "requirements", []
             )
 
+            # 4. Recursively activate any required sub-modes
             for req in reqs:
                 self.activate_required_modes(req)
 
@@ -729,12 +1012,12 @@ class SamplingOperationsManager:
                 "activate_system_mode", extra={"active_modes": self.active_modes}
             )
 
-            # deactivate all modes
+            # 5. Deactivate ALL modes first to ensure a clean state
             for mod_type, modes in self.sampling_modes.items():
                 for mode_name, mode in modes.items():
                     mode["mode"].activate(False)
 
-            # activate modes in active map
+            # 6. Activate only the modes in the active map
             for mode_type, modes in self.active_modes.items():
                 for mode_name in modes:
                     mode = self.sampling_modes[mode_type][mode_name]
@@ -743,6 +1026,7 @@ class SamplingOperationsManager:
                         "activate_system_mode",
                         extra={mode_name: mode["mode"].is_active()},
                     )
+                    
         except Exception as e:
             self.logger.error("activate_system_mode", extra={"reason": e})
 
@@ -765,140 +1049,368 @@ class SamplingOperationsManager:
     #     if mode_entry["instance"] is None:
     #         mode = self.create_mode(mode_entry["config"])
 
-    def open_http_client(self):
-        # create a new client for each request
-        self.http_client = httpx.AsyncClient()
+    # def open_http_client(self):
+    #     # create a new client for each request
+    #     self.http_client = httpx.AsyncClient()
+
+    # async def send_event(self, ce):
+    #     try:
+    #         self.logger.debug(ce)  # , extra=template)
+    #         if not self.http_client:
+    #             self.open_http_client()
+    #         try:
+    #             timeout = httpx.Timeout(5.0, read=0.1)
+    #             headers, body = to_structured(ce)
+    #             self.logger.debug(
+    #                 "send_event",
+    #                 extra={
+    #                     "broker": self.config.knative_broker,
+    #                     "h": headers,
+    #                     "b": body,
+    #                 },
+    #             )
+    #             # send to knative broker
+    #             # async with httpx.AsyncClient() as client:
+    #             #     r = await client.post(
+    #             #         self.config.knative_broker,
+    #             #         headers=headers,
+    #             #         data=body,
+    #             #         timeout=timeout,
+    #             #     )
+
+    #             r = await self.http_client.post(
+    #                 self.config.knative_broker,
+    #                 headers=headers,
+    #                 data=body,
+    #                 timeout=timeout,
+    #             )
+
+    #             r.raise_for_status()
+    #         except InvalidStructuredJSON:
+    #             self.logger.error(f"INVALID MSG: {ce}")
+    #         except httpx.TimeoutException:
+    #             pass
+    #         except httpx.HTTPError as e:
+    #             self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+    #     except Exception as e:
+    #         print("error", e)
+    #     await asyncio.sleep(0.01)
 
     async def send_event(self, ce):
+        """Converts CloudEvents to JSON and drops them onto the persistent MQTT publish queue."""
         try:
-            self.logger.debug(ce)  # , extra=template)
-            if not self.http_client:
-                self.open_http_client()
-            try:
-                timeout = httpx.Timeout(5.0, read=0.1)
-                headers, body = to_structured(ce)
-                self.logger.debug(
-                    "send_event",
-                    extra={
-                        "broker": self.config.knative_broker,
-                        "h": headers,
-                        "b": body,
-                    },
-                )
-                # send to knative broker
-                # async with httpx.AsyncClient() as client:
-                #     r = await client.post(
-                #         self.config.knative_broker,
-                #         headers=headers,
-                #         data=body,
-                #         timeout=timeout,
-                #     )
+            self.logger.debug(ce)
+            
+            # Extract the topic from the event
+            topic = ce.get("destpath", "")
+            if not topic:
+                self.logger.warning("send_event called with no 'destpath' defined in the CloudEvent. Cannot route to MQTT.")
+                return
 
-                r = await self.http_client.post(
-                    self.config.knative_broker,
-                    headers=headers,
-                    data=body,
-                    timeout=timeout,
-                )
+            # Convert to structured JSON payload
+            headers, body = to_structured(ce)
+            
+            self.logger.debug("send_event (Routing to MQTT)", extra={"topic": topic, "body": body})
+            
+            # Drop the tuple onto the publisher queue
+            await self.publish_queue.put((topic, body))
 
-                r.raise_for_status()
-            except InvalidStructuredJSON:
-                self.logger.error(f"INVALID MSG: {ce}")
-            except httpx.TimeoutException:
-                pass
-            except httpx.HTTPError as e:
-                self.logger.error(f"HTTP Error when posting to {e.request.url!r}: {e}")
+        except InvalidStructuredJSON:
+            self.logger.error(f"INVALID MSG JSON: {ce}")
         except Exception as e:
-            print("error", e)
+            self.logger.error("send_event failed", extra={"reason": str(e)})
+            
         await asyncio.sleep(0.01)
 
-    async def submit_request(self, path: str, query: dict):
-        try:
-            self.logger.debug("submit_request", extra={"path": path, "query": query})
-            # results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
-            results = await self.http_client.get(
-                f"http://{self.datastore_url}/{path}/", params=query
-            )
-            self.logger.debug("submit_request", extra={"results": results.json()})
-            return results.json()
-        except Exception as e:
-            self.logger.error("submit_request", extra={"reason": e})
-            return {}
+    # async def submit_request(self, path: str, query: dict):
+    #     try:
+    #         self.logger.debug("submit_request", extra={"path": path, "query": query})
+    #         # results = httpx.get(f"http://{self.datastore_url}/{path}/", params=query)
+    #         results = await self.http_client.get(
+    #             f"http://{self.datastore_url}/{path}/", params=query
+    #         )
+    #         self.logger.debug("submit_request", extra={"results": results.json()})
+    #         return results.json()
+    #     except Exception as e:
+    #         self.logger.error("submit_request", extra={"reason": e})
+    #         return {}
+
+    # async def get_from_mqtt_loop(self):
+    #     reconnect = 10
+    #     while True:
+    #         try:
+    #             self.logger.debug("listen", extra={"config": self.config})
+    #             client_id = str(ULID())
+    #             async with Client(
+    #                 self.config.mqtt_broker,
+    #                 port=self.config.mqtt_port,
+    #                 identifier=client_id,
+    #             ) as self.client:
+    #                 # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+    #                 for topic in self.config.mqtt_topic_subscriptions.split(","):
+    #                     # print(f"run - topic: {topic.strip()}")
+    #                     # self.logger.debug("run", extra={"topic": topic})
+    #                     if topic.strip():
+    #                         self.logger.debug(
+    #                             "subscribe", extra={"topic": topic.strip()}
+    #                         )
+    #                         await self.client.subscribe(
+    #                             f"$share/samplingconditions/{topic.strip()}"
+    #                         )
+
+    #                     # await client.subscribe(config.mqtt_topic_subscription, qos=2)
+    #                 # async with client.messages() as messages:
+    #                 async for message in self.client.messages:  # () as messages:
+
+    #                     try:
+    #                         ce = from_json(message.payload)
+    #                         topic = message.topic.value
+    #                         ce["sourcepath"] = topic
+    #                         await self.mqtt_buffer.put(ce)
+    #                         self.logger.debug(
+    #                             "get_from_mqtt_loop",
+    #                             extra={"cetype": ce["type"], "topic": topic},
+    #                         )
+    #                     except Exception as e:
+    #                         self.logger.error("get_from_mqtt_loop", extra={"reason": e})
+    #                     # try:
+    #                     #     self.logger.debug("listen", extra={"payload_type": type(ce), "ce": ce})
+    #                     #     await self.send_to_knbroker(ce)
+    #                     # except Exception as e:
+    #                     #     self.logger.error("Error sending to knbroker", extra={"reason": e})
+    #         except MqttError as error:
+    #             self.logger.error(
+    #                 f"{error}. Trying again in {reconnect} seconds",
+    #                 extra={
+    #                     k: v
+    #                     for k, v in self.config.dict().items()
+    #                     if k.lower().startswith("mqtt_")
+    #                 },
+    #             )
+    #             await asyncio.sleep(reconnect)
+    #         finally:
+    #             await asyncio.sleep(0.0001)
 
     async def get_from_mqtt_loop(self):
         reconnect = 10
         while True:
             try:
-                self.logger.debug("listen", extra={"config": self.config})
                 client_id = str(ULID())
-                async with Client(
-                    self.config.mqtt_broker,
-                    port=self.config.mqtt_port,
-                    identifier=client_id,
-                ) as self.client:
-                    # for topic in self.config.mqtt_topic_subscriptions.split("\n"):
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as self.client:
                     for topic in self.config.mqtt_topic_subscriptions.split(","):
-                        # print(f"run - topic: {topic.strip()}")
-                        # self.logger.debug("run", extra={"topic": topic})
                         if topic.strip():
-                            self.logger.debug(
-                                "subscribe", extra={"topic": topic.strip()}
-                            )
-                            await self.client.subscribe(
-                                f"$share/samplingconditions/{topic.strip()}"
-                            )
+                            await self.client.subscribe(f"$share/samplingoperations/{topic.strip()}")
 
-                        # await client.subscribe(config.mqtt_topic_subscription, qos=2)
-                    # async with client.messages() as messages:
-                    async for message in self.client.messages:  # () as messages:
-
+                    async for message in self.client.messages:
+                        topic = message.topic.value
+                        
+                        # FIX: Discard reflection loop waste
+                        if "sampling-operations" in topic:
+                            continue
+                            
                         try:
                             ce = from_json(message.payload)
-                            topic = message.topic.value
                             ce["sourcepath"] = topic
                             await self.mqtt_buffer.put(ce)
-                            self.logger.debug(
-                                "get_from_mqtt_loop",
-                                extra={"cetype": ce["type"], "topic": topic},
-                            )
                         except Exception as e:
-                            self.logger.error("get_from_mqtt_loop", extra={"reason": e})
-                        # try:
-                        #     self.logger.debug("listen", extra={"payload_type": type(ce), "ce": ce})
-                        #     await self.send_to_knbroker(ce)
-                        # except Exception as e:
-                        #     self.logger.error("Error sending to knbroker", extra={"reason": e})
+                            self.logger.error("get_from_mqtt_loop JSON error", extra={"reason": e})
             except MqttError as error:
-                self.logger.error(
-                    f"{error}. Trying again in {reconnect} seconds",
-                    extra={
-                        k: v
-                        for k, v in self.config.dict().items()
-                        if k.lower().startswith("mqtt_")
-                    },
-                )
                 await asyncio.sleep(reconnect)
-            finally:
-                await asyncio.sleep(0.0001)
 
+    # async def handle_mqtt_buffer(self):
+    #     while True:
+    #         try:
+    #             ce = await self.mqtt_buffer.get()
+    #             self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
+    #             if ce["type"] == sampet.variableset_data_update():
+    #                 self.logger.debug(
+    #                     "handle_mqtt_buffer", extra={"ce-type": ce["type"]}
+    #                 )
+    #                 await self.requirement_status_update(ce)
+    #             # elif ce["type"] == "envds.controller.data.update":
+    #             #     await self.controller_data_update(ce)
+
+    #         except Exception as e:
+    #             self.logger.error("handle_mqtt_buffer", extra={"reason": e})
+
+    #         await asyncio.sleep(0.0001)
+    #         self.mqtt_buffer.task_done()
+    
     async def handle_mqtt_buffer(self):
+        """Subordinate Node: Intercept the remote transition command off the MQTT queue."""
         while True:
             try:
                 ce = await self.mqtt_buffer.get()
-                self.logger.debug("handle_mqtt_buffer", extra={"ce": ce})
-                if ce["type"] == sampet.variableset_data_update():
-                    self.logger.debug(
-                        "handle_mqtt_buffer", extra={"ce-type": ce["type"]}
-                    )
+                ce_type = ce.get("type", "")
+                
+                if "status.update" in ce_type or "status" in getattr(ce, "data", {}):
                     await self.requirement_status_update(ce)
-                # elif ce["type"] == "envds.controller.data.update":
-                #     await self.controller_data_update(ce)
+                
+                # FIX: Listen for incoming remote commands from the Primary
+                elif ce_type == "envds.sampling-operations.transition.request":
+                    self.logger.info(f"Received remote transition command: {ce.data}")
+                    await self.transitions_buffer.put(ce.data)
 
             except Exception as e:
                 self.logger.error("handle_mqtt_buffer", extra={"reason": e})
+            finally:
+                self.mqtt_buffer.task_done()
 
-            await asyncio.sleep(0.0001)
-            self.mqtt_buffer.task_done()
+    async def mqtt_publish_loop(self):
+        """Maintains a persistent MQTT connection strictly for outbound status and action events."""
+        reconnect = 5
+        client_id = f"operations-publisher-{ULID()}"
+        while True:
+            try:
+                async with Client(self.config.mqtt_broker, port=self.config.mqtt_port, identifier=client_id) as client:
+                    self.logger.info("Connected to MQTT broker for outbound publishing.")
+                    while True:
+                        topic, payload = await self.publish_queue.get()
+                        await client.publish(topic, payload, qos=1)
+                        self.publish_queue.task_done()
+            except MqttError as e:
+                self.logger.error(f"MQTT Publish Error: {e}. Reconnecting in {reconnect}s...")
+                await asyncio.sleep(reconnect)
+            except Exception as e:
+                self.logger.error("mqtt_publish_loop unexpected error", extra={"reason": str(e)})
+                await asyncio.sleep(reconnect)
+
+    async def handle_manual_action(self, kind: str, name: str):
+        """Pushes a manual action request into the action buffer."""
+        action = {
+            "action": {"kind": kind, "name": name},
+            "is_manual_override": True
+        }
+        await self.actions_buffer.put(action)
+
+    async def publish_local_definitions(self):
+        await asyncio.sleep(5)
+        while True:
+            try:
+                # Group all local definitions
+                definitions = [
+                    (self.sampling_actions, "action"),
+                    (self.sampling_modes, "samplingmode")
+                ]
+                
+                for registry_dict, resource_name in definitions:
+                    for kind, item_dict in registry_dict.items():
+                        # Exclude SystemMode from samplingmode route if they share the dict
+                        if resource_name == "samplingmode" and kind == "SystemMode":
+                            res_type = "systemmode"
+                        else:
+                            res_type = resource_name
+                            
+                        for name, data_obj in item_dict.items():
+                            config = data_obj["config"]
+                            event = SamplingEvent.create_definition_registry_update(
+                                resource=f"{res_type}-definition",
+                                source=f"envds.{self.config.daq_id}.sampling-operations",
+                                data={res_type: config}
+                            )
+                            event["destpath"] = f"envds/{self.config.daq_id}/{res_type}-definition/registry/update"
+                            await self.send_event(event)
+                            
+            except Exception as e:
+                self.logger.error("publish_local_definitions", extra={"reason": e})
+            await asyncio.sleep(60)
+
+    # async def sync_sampling_definitions_loop(self):
+    #     """Syncs Actions, SystemModes, and SamplingModes dynamically."""
+    #     resources_to_sync = ["action", "systemmode", "samplingmode"]
+    #     while True:
+    #         try:
+    #             for res in resources_to_sync:
+    #                 ids_resp = await self.submit_get(path=f"{res}-definition/registry/ids/get")
+    #                 if ids_resp and "results" in ids_resp:
+                        
+    #                     async def fetch_def(def_id):
+    #                         return await self.submit_request(
+    #                             path=f"{res}-definition/registry/get", 
+    #                             query={"name": def_id}
+    #                         )
+
+    #                     responses = await asyncio.gather(*(fetch_def(did) for did in ids_resp["results"]))
+
+    #                     for resp in responses:
+    #                         if resp and "results" in resp and resp["results"]:
+    #                             config = resp["results"][0]
+    #                             # Note: You would route 'config' to an abstraction of your local parsing 
+    #                             # logic here (e.g. self.load_mode(config) or self.load_action(config)) 
+    #                             # matching the setup currently residing in your configure() method.
+                                
+    #         except Exception as e:
+    #             self.logger.error("sync_sampling_definitions_loop", extra={"reason": e})
+    #         await asyncio.sleep(60)
+
+    async def sync_sampling_definitions_loop(self):
+        """Syncs Actions, SystemModes, and SamplingModes dynamically from the local Datastore."""
+        resources_to_sync = ["action", "systemmode", "samplingmode"]
+        
+        # Give the local datastore time to boot and sync from the registrar on startup
+        await asyncio.sleep(10) 
+        
+        while True:
+            try:
+                for res in resources_to_sync:
+                    # 1. Ask the local Datastore for all known IDs for this resource type
+                    ids_resp = await self.submit_get(path=f"{res}-definition/registry/ids/get")
+                    
+                    if ids_resp and "results" in ids_resp:
+                        
+                        # Helper to fetch a single definition by its ID
+                        async def fetch_def(def_id):
+                            return await self.submit_request(
+                                path=f"{res}-definition/registry/get", 
+                                query={"name": def_id}
+                            )
+
+                        # 2. Fetch all definitions concurrently
+                        responses = await asyncio.gather(*(fetch_def(did) for did in ids_resp["results"]))
+
+                        # 3. Parse the responses and route them to the correct loader
+                        for resp in responses:
+                            if resp and "results" in resp and resp["results"]:
+                                config = resp["results"][0]
+                                kind = config.get("kind", "")
+                                
+                                if "Action" in kind:
+                                    self.load_action(config)
+                                elif "Mode" in kind:
+                                    self.load_mode(config)
+                                    
+                # 4. Jumpstart the active mode if it was skipped on startup
+                #    (e.g., if activate_system_mode previously hit the "SystemMode not loaded" safeguard)
+                if "SystemMode" in self.sampling_modes and not self.active_modes.get("SystemMode"):
+                    self.logger.info("Definitions synced. Jumpstarting initial SystemMode.")
+                    self.activate_system_mode(self.config.system_init_mode)
+
+            except Exception as e:
+                self.logger.error("sync_sampling_definitions_loop", extra={"reason": str(e)})
+                
+            # Wait before syncing again
+            await asyncio.sleep(60)
+
+    # async def mode_action_monitor(self):
+    #     while True:
+    #         try:
+    #             action = await self.actions_buffer.get()
+
+    #             kind = action["action"]["kind"]
+    #             name = action["action"]["name"]
+
+    #             action_result = await self.sampling_actions[kind][name]["action"].run()
+
+    #             self.logger.debug(
+    #                 "mode_action_monitor - build settings request",
+    #                 extra={"action_result": action_result},
+    #             )
+
+    #         except Exception as e:
+    #             self.logger.error("mode_action_monitor", extra={"reason": e})
+
+    #         await asyncio.sleep(0.001)
+    #         self.action_buffer.task_done()
 
     async def mode_action_monitor(self):
         while True:
@@ -907,40 +1419,71 @@ class SamplingOperationsManager:
 
                 kind = action["action"]["kind"]
                 name = action["action"]["name"]
+                is_manual = action.get("is_manual_override", False)
 
+                # FIX: Action Suppression Logic (Master/Monitor Control)
+                if not is_manual:
+                    if self.system_control == "manual":
+                        self.logger.debug(f"Skipping automatic action {name}: System is in MANUAL mode.")
+                        self.actions_buffer.task_done()
+                        continue
+                    if not self.config.is_primary_controller:
+                        self.logger.debug(f"Skipping automatic action {name}: This node is a MONITOR only.")
+                        self.actions_buffer.task_done()
+                        continue
+
+                self.logger.info(f"Executing Action: {name} (Manual: {is_manual})")
                 action_result = await self.sampling_actions[kind][name]["action"].run()
 
-                self.logger.debug(
-                    "mode_action_monitor - build settings request",
-                    extra={"action_result": action_result},
-                )
+                self.logger.debug("mode_action_monitor - build settings request", extra={"action_result": action_result})
 
             except Exception as e:
                 self.logger.error("mode_action_monitor", extra={"reason": e})
+            finally:
+                self.actions_buffer.task_done()
 
-            await asyncio.sleep(0.001)
-            self.action_buffer.task_done()
+    # async def mode_transition_monitor(self):
+    #     while True:
+    #         try:
+    #             transition = await self.transitions_buffer.get()
+    #             if self.system_control == "auto":
+    #                 kind = transition["transition"]["kind"]
+    #                 name = transition["transition"]["name"]
+
+    #                 if kind == "SystemMode":
+    #                     self.activate_system_mode(name)
+    #                     self.logger.debug(
+    #                         "mode_transition_monitor - transition mode",
+    #                         extra={"transition_request": transition},
+    #                     )
+
+    #         except Exception as e:
+    #             self.logger.error("mode_action_monitor", extra={"reason": e})
+
+    #         await asyncio.sleep(0.001)
+    #         self.transitions_buffer.task_done()
 
     async def mode_transition_monitor(self):
+        """Subordinate Node: Execute the mode switch."""
         while True:
             try:
-                transition = await self.transitions_buffer.get()
-                if self.system_control == "auto":
-                    kind = transition["transition"]["kind"]
-                    name = transition["transition"]["name"]
+                transition_data = await self.transitions_buffer.get()
+                is_remote = transition_data.get("is_remote_command", False)
+                
+                # FIX: Obey the transition if in 'auto', OR if it's a direct forced override from the primary
+                if self.system_control == "auto" or is_remote:
+                    kind = transition_data["transition"]["kind"]
+                    name = transition_data["transition"]["name"]
 
                     if kind == "SystemMode":
                         self.activate_system_mode(name)
-                        self.logger.debug(
-                            "mode_transition_monitor - transition mode",
-                            extra={"transition_request": transition},
+                        self.logger.info(
+                            f"Transitioned SystemMode to '{name}' (Remote Override: {is_remote})"
                         )
-
             except Exception as e:
-                self.logger.error("mode_action_monitor", extra={"reason": e})
-
-            await asyncio.sleep(0.001)
-            self.transitions_buffer.task_done()
+                self.logger.error("mode_transition_monitor", extra={"reason": e})
+            finally:
+                self.transitions_buffer.task_done()
 
     async def mode_status_monitor(self):
 
@@ -1097,131 +1640,203 @@ class SamplingOperationsManager:
             self.logger.error("variableset_data_update", extra={"reason": e})
         pass
 
-    async def handle_condition_request(self, ce: CloudEvent):
 
-        # parse request and evaluate criteria
+    # In sampling-operations/manager.py -> class SamplingOperationsManager
 
-        #   get source data from datastore
-        # query = {}
-        # results = await self.submit_request(
-        #     path="device-definition/registry/get", query=query
-        # )
-        # # results = httpx.get(f"http://{self.datastore_url}/device-definition/registry/get/", parmams=query)
-        # self.logger.debug("get_device_definitions_loop", extra={"results": results})
-
-        # compare result with current:
-        #   if changed, send immediate update
-        #   else, send update at regularly scheduled interval
-
-        pass
-
-    # this probably won't happen for conditions unless there is another layer of resources
-    async def handle_condition_update(self, ce: CloudEvent):
-        pass
-
-        # async def sampling_mode_monitor(self):
-        #     while True:
-
-        #         # get current sampling mode
-        #         #   or trigger off mode updates
-
-        #         await asyncio.sleep(1)
-
-        # # TODO change this for sampling-system
-        # async def device_data_update(self, ce: CloudEvent):
-
-        #     try:
-        #         attributes = ce.data["attributes"]
-        #         # dimensions = ce.data["dimensions"]
-        #         # variables = ce.data["variables"]
-
-        #         make = attributes["make"]["data"]
-        #         model = attributes["model"]["data"]
-        #         serial_number = attributes["serial_number"]["data"]
-        #         device_id = "::".join([make, model, serial_number])
-        #         self.logger.debug("device_data_update", extra={"device_id": device_id})
-        #         # if device_id in self.variablesets["sources"]:
-        #         await self.update_by_source(
-        #             source_id=device_id, source_data=ce
-        #         )
-
-        #     except Exception as e:
-        #         self.logger.error("device_data_update", extra={"reason": e})
-        #     pass
-
-        # async def index_monitor(self):
+    async def action_target_monitor(self):
+        """Consumes evaluated action targets and broadcasts them as setting updates."""
         while True:
-            update = await self.index_ready_buffer.get()
-            self.index_ready_buffer.task_done()
             try:
-                self.logger.debug("index_monitor", extra={"update": update})
-                index_type = update["index_type"]
-                index_value = update["index_value"]
-                update_type = update["update_type"]
-                target_time = update["index_ready"]
+                targets = await self.actions_target_buffer.get()
+                
+                for trg_name, trg_data in targets.items():
+                    val = trg_data["data"]
+                    meta = trg_data["metadata"]
+                    
+                    # Extract target routing info (Default to controller if unspecified)
+                    target_type = meta.get("target_type", "controller").lower() # e.g., 'controller', 'sensor', 'device'
+                    
+                    # If target_id isn't explicitly defined, fall back to the variablemap_name
+                    target_id = meta.get("target_id", meta.get("variablemap_name", "unknown"))
+                    v_name = meta.get("variable", trg_name)
 
-                vm_list = await self.get_valid_variablemaps(target_time=target_time)
-                self.logger.debug(
-                    "index_monitor", extra={"len": len(vm_list), "vm_list": vm_list}
-                )
-                for vm in vm_list:
-                    # await self.update_variableset_by_source(variablemap=vm, source_id=source_id, source_data=source_data)
-                    print(f"index_monitor:vm = {vm}")
-                    variablemap = vm["variablemap"]
-                    print(f"index_monitor: variablemap = {variablemap}")
-
-                    index_type = update["index_type"]
-                    if index_type == "time":
-                        print(f"index_monitor: index_type = {index_type}")
-                        await self.update_variablesets_by_time_index(
-                            variablemap=variablemap, time_index=update
-                        )
-                    # # handle timebase update
-                    # vm_name = update["variablemap"]
-                    # vm_cfg_time =  update["variablemap_revision_time"]
-                    # target_vm = self.platform_variablesets["maps"][vm_name][vm_cfg_time]
-                    # index_value = update["index_value"]
-                    # # for vg in self.platform_variablesets["maps"][vm_name]["indices"][index_type][index_value]["variablegroups"]:
-                    # for vg in target_vm["indices"][index_type][index_value]["variablegroups"]:
-                    #     var_set = {
-                    #         "attributes": {
-                    #             "variablemap": {"type": "string", "data": vm_name},
-                    #             "variablemap_revision_time": {"type": "string", "data": vm_cfg_time},
-                    #             "variablegroup": {"type": "string", "data": vg},
-                    #             "index_type": {"type": "string", "data": index_type},
-                    #             "index_value": {"type": "int", "data": index_value}
-                    #         },
-                    #         "dimensions": {"time": 1},
-                    #         "variables": {}
-                    #     }
-
-                    #     # for name, variable in self.platform_variablesets["maps"][vm_name]["indices"][index_type][index_value]["variablegroups"][vg]["variables"].items():
-                    #     for name, variable in target_vm["indices"][index_type][index_value]["variablegroups"][vg]["variables"].items():
-                    #         map_type = variable["map_type"]
-                    #         source = variable["source"]
-                    #         index_method = variable["index_method"]
-                    #         attributes = variable["attributes"]
-                    #         if map_type == "direct":
-                    #             source_variable = variable["direct_value"]["source_variable"]
-                    #         else:
-                    #             continue # TODO fill in for other types
-                    #         mapped_var = {
-                    #             "type": "float",
-                    #             "shape": ["time"],
-                    #             "attributes": {
-                    #                 # how to make sure these are always using proper config?
-                    #                 "source_type": {"type": "string", "data": source[source_variable]["source_type"]},
-                    #                 "source_id": {"type": "string", "data": source[source_variable]["source_id"]},
-                    #                 "source_variable": {"type": "string", "data": source[source_variable]["source_variable"]},
-                    #             }
-                    #         }
-
-                    pass
-                else:
-                    pass
+                    source_id = f"envds.{self.config.daq_id}.sampling-operations"
+                    
+                    # Dynamically build the correct topic: 
+                    # e.g., envds/raz1/sensor/AerosolDynamics::SpiderMagic::002/settings/update
+                    topic = f"envds/{self.config.daq_id}/{target_type}/{target_id}/settings/update"
+                    
+                    # Dynamically build the CloudEvent type:
+                    # e.g., envds.sensor.settings.update
+                    ce_type = f"envds.{target_type}.settings.update"
+                    
+                    event = CloudEvent(
+                        attributes={
+                            "type": ce_type,
+                            "source": source_id,
+                            "datacontenttype": "application/json"
+                        },
+                        data={
+                            "variables": {
+                                v_name: {"data": val}
+                            }
+                        }
+                    )
+                    event["destpath"] = topic
+                    
+                    self.logger.info(f"Broadcasting Action Command -> [{target_type.upper()}] {target_id}: {v_name} = {val}")
+                    await self.send_event(event)
 
             except Exception as e:
-                self.logger.error("index_monitor", extra={"reason": e})
+                self.logger.error("action_target_monitor", extra={"reason": e})
+            finally:
+                self.actions_target_buffer.task_done()
+
+    async def send_remote_transition_request(self, target_daq_id: str, kind: str, name: str):
+        """Primary Node: Broadcasts a command to a subordinate node to change modes."""
+        source_id = f"envds.{self.config.daq_id}.sampling-operations"
+        topic = f"envds/{target_daq_id}/sampling-operations/transition/request"
+        
+        event = CloudEvent(
+            attributes={
+                "type": "envds.sampling-operations.transition.request",
+                "source": source_id,
+                "datacontenttype": "application/json"
+            },
+            data={
+                "transition": {"kind": kind, "name": name},
+                "is_remote_command": True
+            }
+        )
+        event["destpath"] = topic
+        self.logger.info(f"Broadcasting Remote Transition -> [{target_daq_id}] {kind}: {name}")
+        await self.send_event(event)
+
+    # --- 1. LOCAL DATASTORE FETCH METHODS ---
+    async def submit_get(self, path: str):
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): self.open_http_client()
+            # Fetch from the local datastore (Registrar handles the underlying sync)
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", timeout=timeout)
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_get failed", extra={"reason": str(e)})
+            return {}
+
+    async def submit_request(self, path: str, query: dict):
+        try:
+            timeout = httpx.Timeout(10.0, read=10.0)
+            if not getattr(self, 'http_client', None): self.open_http_client()
+            datastore_url = f"datastore.{self.config.daq_id}-system.svc.cluster.local:80"
+            results = await self.http_client.get(f"http://{datastore_url}/{path}/", params=query, timeout=timeout)
+            return results.json()
+        except Exception as e:
+            self.logger.error("submit_request failed", extra={"reason": str(e)})
+            return {}
+
+    # --- 2. DYNAMIC DEFINITION LOADERS ---
+    def load_action(self, action_config: dict):
+        kind = action_config.get("kind")
+        name = action_config.get("metadata", {}).get("name")
+        if not kind or not name: return
+        
+        if kind not in self.sampling_actions:
+            self.sampling_actions[kind] = dict()
+            
+        # FIX: STOP OLD ACTION TASKS BEFORE REPLACING
+        if name in self.sampling_actions[kind]:
+            old_action = self.sampling_actions[kind][name].get("action")
+            if old_action:
+                old_action.stop()
+
+        self.sampling_actions[kind][name] = {
+            "config": action_config,
+            "action": SamplingAction(action_config, self.actions_target_buffer),
+        }
+
+        if "sources" in action_config:
+            for src_name, src in action_config["sources"].items():
+                src_id = f"{src['variablemap_name']}::{src['variableset_name']}"
+                if src_id not in self.actions_source_map:
+                    self.actions_source_map[src_id] = []
+                
+                entry = {"kind": kind, "name": name}
+                if entry not in self.actions_source_map[src_id]:
+                    self.actions_source_map[src_id].append(entry)
+        self.logger.info(f"Loaded dynamic action definition: {name}")
+
+    def load_mode(self, mode_config: dict):
+        kind = mode_config.get("kind")
+        name = mode_config.get("metadata", {}).get("name")
+        if not kind or not name: return
+        
+        if kind not in self.sampling_modes:
+            self.sampling_modes[kind] = dict()
+            
+        # FIX: STOP OLD MODE TASKS BEFORE REPLACING
+        if name in self.sampling_modes[kind]:
+            old_mode = self.sampling_modes[kind][name].get("mode")
+            if old_mode:
+                old_mode.stop()
+
+        self.sampling_modes[kind][name] = {
+            "config": mode_config,
+            "mode": SamplingMode(mode_config, self.status_buffer, self.actions_buffer, self.transitions_buffer),
+        }
+
+        if "requirements" in mode_config:
+            for req_mode in mode_config["requirements"]:
+                req_kind = req_mode.get("kind")
+                req_name = req_mode.get("name")
+                if not req_kind or not req_name: continue
+                
+                if req_kind not in self.mode_requirements_map:
+                    self.mode_requirements_map[req_kind] = dict()
+                if req_name not in self.mode_requirements_map[req_kind]:
+                    self.mode_requirements_map[req_kind][req_name] = []
+                
+                entry = {"kind": kind, "name": name, "active": False}
+                if entry not in self.mode_requirements_map[req_kind][req_name]:
+                    self.mode_requirements_map[req_kind][req_name].append(entry)
+        self.logger.info(f"Loaded dynamic mode definition: {name}")
+
+    # --- 3. BACKGROUND SYNC LOOP ---
+    # async def sync_sampling_definitions_loop(self):
+    #     """Syncs Actions, SystemModes, and SamplingModes dynamically from local Datastore."""
+    #     resources_to_sync = ["action", "systemmode", "samplingmode"]
+    #     await asyncio.sleep(10) # Give datastore time to boot
+        
+    #     while True:
+    #         try:
+    #             for res in resources_to_sync:
+    #                 ids_resp = await self.submit_get(path=f"{res}-definition/registry/ids/get")
+    #                 if ids_resp and "results" in ids_resp:
+                        
+    #                     async def fetch_def(def_id):
+    #                         return await self.submit_request(
+    #                             path=f"{res}-definition/registry/get", 
+    #                             query={"name": def_id}
+    #                         )
+
+    #                     responses = await asyncio.gather(*(fetch_def(did) for did in ids_resp["results"]))
+
+    #                     for resp in responses:
+    #                         if resp and "results" in resp and resp["results"]:
+    #                             config = resp["results"][0]
+    #                             kind = config.get("kind", "")
+                                
+    #                             if "Action" in kind: self.load_action(config)
+    #                             elif "Mode" in kind: self.load_mode(config)
+                                    
+    #             # Jumpstart the system mode if it was skipped on startup
+    #             if "SystemMode" in self.sampling_modes and not self.active_modes.get("SystemMode"):
+    #                 self.activate_system_mode(self.config.system_init_mode)
+
+    #         except Exception as e:
+    #             self.logger.error("sync_sampling_definitions_loop", extra={"reason": str(e)})
+    #         await asyncio.sleep(60)
 
 
 async def shutdown():

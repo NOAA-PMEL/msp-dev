@@ -1,0 +1,46 @@
+/* assets/envops.css */
+
+/* Custom Health State Overrides */
+.bg-soft-success {
+    background-color: rgba(25, 135, 84, 0.05) !important;
+}
+
+.bg-soft-warning {
+    background-color: rgba(255, 193, 7, 0.08) !important;
+}
+
+.bg-soft-danger {
+    background-color: rgba(220, 53, 69, 0.08) !important;
+}
+
+/* Pulse animation for critical sensors */
+@keyframes criticalPulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+.animate-pulse {
+    animation: criticalPulse 2s infinite ease-in-out;
+}
+
+/* Smooth color transitions */
+.transition-all {
+    transition: all 0.3s ease-in-out;
+}
+
+/* AG Grid Modernization - Removes the ugly double-borders inside cards */
+.ag-theme-alpine {
+    --ag-borders: none;
+    --ag-header-background-color: #f8f9fa;
+    --ag-border-color: #dee2e6;
+    border: none !important;
+}
+
+.ag-theme-alpine .ag-root-wrapper {
+    border: none !important;
+}
+
+.ag-theme-alpine .ag-header {
+    border-bottom: 2px solid #dee2e6 !important;
+}

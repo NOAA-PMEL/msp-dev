@@ -1,39 +1,25 @@
 import asyncio
 import json
+import re
 import redis.asyncio as redis
 from redis.commands.json.path import Path
-# import redis.commands.search.aggregation as aggregations
-# import redis.commands.search.reducers as reducers
 from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.field import TextField, NumericField, TagField
-from redis.commands.search.query import NumericFilter, Query
+from redis.commands.search.query import Query
 
 from db_client import DBClient, DBClientConfig
 from datastore_requests import (
-    DataStoreQuery,
-    DataUpdate,
-    DataRequest,
-    DeviceDefinitionUpdate,
-    DeviceDefinitionRequest,
-    DeviceInstanceUpdate,
-    DeviceInstanceRequest,
-    DatastoreRequest,
-    ControllerInstanceUpdate,
-    ControllerInstanceRequest,
-    ControllerDataRequest,
-    ControllerDataUpdate,
-    ControllerDefinitionRequest,
-    ControllerDefinitionUpdate,
-    VariableSetDataUpdate,
-    VariableSetDataRequest,
-    VariableSetDefinitionUpdate,
-    VariableSetDefinitionRequest,
-    VariableMapDefinitionRequest,
-    VariableMapDefinitionUpdate
+    DataUpdate, DataRequest, DeviceDefinitionUpdate,
+    DeviceDefinitionRequest, DeviceInstanceUpdate, DeviceInstanceRequest,
+    ControllerInstanceUpdate, ControllerInstanceRequest,
+    ControllerDataRequest, ControllerDataUpdate, ControllerDefinitionRequest,
+    ControllerDefinitionUpdate, VariableSetDataUpdate, VariableSetDataRequest,
+    VariableSetDefinitionUpdate, VariableSetDefinitionRequest,
+    VariableMapDefinitionRequest, VariableMapDefinitionUpdate,
+    VariableSetInstanceRequest, VariableSetInstanceUpdate
 )
 
 class RedisClient(DBClient):
-    """docstring for RedisClient."""
     def __init__(self, config: DBClientConfig):
         super(RedisClient, self).__init__(config)
         self.data_device_index_name = "idx:data-device"
@@ -44,163 +30,303 @@ class RedisClient(DBClient):
         self.registry_controller_instance_index_name = "idx:registry-controller-instance"
         self.registry_variablemap_definition_index_name = "idx:registry-variablemap-definition"
         self.registry_variableset_definition_index_name = "idx:registry-variableset-definition"
-
-        # self.build_indexes()
+        self.registry_variableset_instance_index_name = "idx:registry-variableset-instance"
 
     def connect(self):
         if not self.client:
             try:
-                self.logger.debug("connect", extra={"self.config": self.config})
                 if self.config["port"] is None:
                     self.config["port"] = 6379
+                
                 if self.config["password"]:
-                    self.client = redis.Redis(host=self.config["hostname"], port=self.config["port"], password=self.config["password"])
+                    self.client = redis.Redis(
+                        host=self.config["hostname"], 
+                        port=self.config["port"], 
+                        password=self.config["password"],
+                        decode_responses=True 
+                    )
                 else:
-                    self.client = redis.Redis(host=self.config["hostname"], port=self.config["port"])
+                    self.client = redis.Redis(
+                        host=self.config["hostname"], 
+                        port=self.config["port"],
+                        decode_responses=True 
+                    )
             except Exception as e:
-                self.logger.error("redis connect", extra={"reason": e})
+                self.logger.error("redis connect", extra={"reason": str(e)})
                 self.client = None
 
+    # async def build_indexes(self):
+    #     self.connect()
+    #     if self.config.get("clear_db"):
+    #         await self.client.flushall()
+
+    #     try:
+    #         # Device Data Index
+    #         try:
+    #             await self.client.ft(self.data_device_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.record.device_id", as_name="device_id"),
+    #                 TagField("$.record.make", as_name="make"),
+    #                 TagField("$.record.model", as_name="model"),
+    #                 TagField("$.record.serial_number", as_name="serial_number"),
+    #                 TagField("$.record.version", as_name="version"),
+    #                 NumericField("$.record.timestamp", as_name="timestamp")
+    #             )
+    #             definition = IndexDefinition(prefix=["data:device:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
+
+    #         # Device Definition Index
+    #         try:
+    #             await self.client.ft(self.registry_device_definition_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.device_definition_id", as_name="device_definition_id"),
+    #                 TagField("$.registration.make", as_name="make"),
+    #                 TagField("$.registration.model", as_name="model"),
+    #                 TagField("$.registration.version", as_name="version"),
+    #                 TagField("$.registration.device_type", as_name="device_type"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:device-definition:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
+
+    #         # Device Instance Index (Active Sensors)
+    #         try:
+    #             await self.client.ft(self.registry_device_instance_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.device_id", as_name="device_id"),
+    #                 TagField("$.registration.make", as_name="make"),
+    #                 TagField("$.registration.model", as_name="model"),
+    #                 TagField("$.registration.serial_number", as_name="serial_number"),
+    #                 TagField("$.registration.version", as_name="version"),
+    #                 TagField("$.registration.device_type", as_name="device_type"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:device-instance:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
+
+    #         # Controller Data Index
+    #         try:
+    #             await self.client.ft(self.data_controller_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.record.controller_id", as_name="controller_id"),
+    #                 TagField("$.record.make", as_name="make"),
+    #                 TagField("$.record.model", as_name="model"),
+    #                 TagField("$.record.serial_number", as_name="serial_number"),
+    #                 TagField("$.record.version", as_name="version"),
+    #                 NumericField("$.record.timestamp", as_name="timestamp")
+    #             )
+    #             definition = IndexDefinition(prefix=["data:controller:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.data_controller_index_name).create_index(schema, definition=definition)
+
+    #         # Controller Definition Index
+    #         try:
+    #             await self.client.ft(self.registry_controller_definition_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.controller_definition_id", as_name="controller_definition_id"),
+    #                 TagField("$.registration.make", as_name="make"),
+    #                 TagField("$.registration.model", as_name="model"),
+    #                 TagField("$.registration.version", as_name="version"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:controller-definition:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_controller_definition_index_name).create_index(schema, definition=definition)
+
+    #         # Controller Instance Index
+    #         try:
+    #             await self.client.ft(self.registry_controller_instance_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.controller_id", as_name="controller_id"),
+    #                 TagField("$.registration.make", as_name="make"),
+    #                 TagField("$.registration.model", as_name="model"),
+    #                 TagField("$.registration.serial_number", as_name="serial_number"),
+    #                 TagField("$.registration.version", as_name="version"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:controller-instance:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_controller_instance_index_name).create_index(schema, definition=definition)
+
+    #         # Variable Map Definition Index
+    #         try:
+    #             await self.client.ft(self.registry_variablemap_definition_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
+    #                 TagField("$.registration.variablemap_type", as_name="variablemap_type"),
+    #                 TagField("$.registration.variablemap_type_id", as_name="variablemap_type_id"),
+    #                 TagField("$.registration.variablemap", as_name="variablemap"),
+    #                 TagField("$.registration.valid_config_time", as_name="valid_config_time"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:variablemap-definition:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_variablemap_definition_index_name).create_index(schema, definition=definition)
+
+    #         # Variable Set Definition Index
+    #         try:
+    #             await self.client.ft(self.registry_variableset_definition_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.variableset_definition_id", as_name="variableset_definition_id"),
+    #                 TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
+    #                 TagField("$.registration.variableset", as_name="variableset"),
+    #                 TagField("$.registration.index_type", as_name="index_type"),
+    #                 TagField("$.registration.index_value", as_name="index_value"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:variableset-definition:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_variableset_definition_index_name).create_index(schema, definition=definition)
+
+    #         # Variable Set Telemetry Data Index
+    #         try:
+    #             await self.client.ft("idx:data-variableset").info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.record.variableset_id", as_name="variableset_id"),
+    #                 TagField("$.record.variablemap_id", as_name="variablemap_id"),
+    #                 TagField("$.record.variableset", as_name="variableset"),
+    #                 TagField("$.record.attributes.deployment_ref.data", as_name="deployment_ref"),
+    #                 NumericField("$.record.timestamp", as_name="timestamp"),
+    #             )
+    #             definition = IndexDefinition(prefix=["data:variableset:"], index_type=IndexType.JSON)
+    #             await self.client.ft("idx:data-variableset").create_index(schema, definition=definition)
+
+    #         # Variable Set Instance Index
+    #         try:
+    #             await self.client.ft(self.registry_variableset_instance_index_name).info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.variableset_id", as_name="variableset_id"),
+    #                 TagField("$.registration.variablemap_id", as_name="variablemap_id"),
+    #                 TagField("$.registration.variableset", as_name="variableset"),
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:variableset-instance:"], index_type=IndexType.JSON)
+    #             await self.client.ft(self.registry_variableset_instance_index_name).create_index(schema, definition=definition)
+
+    #         # -------------------------------------------------------------
+    #         # NEW: Dedicated Deployment Graph Index 
+    #         # -------------------------------------------------------------
+    #         try:
+    #             await self.client.ft("idx:registry-deployment-definition").info()
+    #         except Exception:
+    #             schema = (
+    #                 TagField("$.registration.metadata.name", as_name="name"),
+    #                 TagField("$.registration.data.platform_ref", as_name="platform_ref"),
+    #                 TagField("$.registration.data.host_platform_ref", as_name="host_platform_ref"),
+    #                 TagField("$.registration.data.deployment_type", as_name="deployment_type"),
+    #                 TagField("$.registration.data.deployment_subtype", as_name="deployment_subtype")
+    #             )
+    #             definition = IndexDefinition(prefix=["registry:deployment-definition:"], index_type=IndexType.JSON)
+    #             await self.client.ft("idx:registry-deployment-definition").create_index(schema, definition=definition)
+
+    #         # Sampling Generic Resource Indexes
+    #         for resource in ["platform", "project", "contact", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action", "projectallocation"]:
+    #             index_name = f"idx:registry-{resource}-definition"
+    #             prefix = f"registry:{resource}-definition:"
+    #             try:
+    #                 await self.client.ft(index_name).info()
+    #             except Exception:
+    #                 schema = (TagField("$.registration.metadata.name", as_name="name"),)
+    #                 definition = IndexDefinition(prefix=[prefix], index_type=IndexType.JSON)
+    #                 await self.client.ft(index_name).create_index(schema, definition=definition)
+
+    #     except Exception as e:
+    #         self.logger.error("build_indexes", extra={"reason": str(e)})
+
     async def build_indexes(self):
-
         self.connect()
-        if self.config["clear_db"]:
+        if self.config.get("clear_db"):
             await self.client.flushall()
-        # change to only create index if it doesn't exist. This allows replicas
-
-        # data:device
-        # index_name = "idx:data-device"
-
-        # try:
-        #     self.client.ft(self.data_device_index_name).dropindex()
-        #     self.logger.debug("build_index:dropped", extra={"index": self.data_device_index_name})
-        #     self.client.ft(self.registry_device_definition_index_name).dropindex()
-        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_device_definition_index_name})
-        #     self.client.ft(self.registry_device_instance_index_name).dropindex()
-        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_device_instance_index_name})
-        #     self.client.ft(self.data_controller_index_name).dropindex()
-        #     self.logger.debug("build_index:dropped", extra={"index": self.data_controller_index_name})
-        #     self.client.ft(self.registry_controller_definition_index_name).dropindex()
-        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_controller_definition_index_name})
-        #     self.client.ft(self.registry_controller_instance_index_name).dropindex()
-        #     self.logger.debug("build_index:dropped", extra={"index": self.registry_controller_instance_index_name})
-        # except Exception as e:
-        #     self.logger.error("build_index", extra={"reason": e})
-        #     pass
 
         try:
-            # data:device
+            # Device Data Index
             try:
                 await self.client.ft(self.data_device_index_name).info()
-            except Exception as e:
+            except Exception:
                 schema = (
                     TagField("$.record.device_id", as_name="device_id"),
                     TagField("$.record.make", as_name="make"),
                     TagField("$.record.model", as_name="model"),
                     TagField("$.record.serial_number", as_name="serial_number"),
                     TagField("$.record.version", as_name="version"),
-                    # TextField("$.record.device_type", as_name="device_type"),
                     NumericField("$.record.timestamp", as_name="timestamp")
                 )
-                definition = IndexDefinition(
-                    prefix=["data:device:"],
-                    index_type=IndexType.JSON
-                )
+                definition = IndexDefinition(prefix=["data:device:"], index_type=IndexType.JSON)
                 await self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
 
-            # registry:device-definition
+            # Device Definition Index
             try:
                 await self.client.ft(self.registry_device_definition_index_name).info()
-            except Exception as e:
+            except Exception:
                 schema = (
                     TagField("$.registration.device_definition_id", as_name="device_definition_id"),
                     TagField("$.registration.make", as_name="make"),
                     TagField("$.registration.model", as_name="model"),
                     TagField("$.registration.version", as_name="version"),
-                    TextField("$.registration.device_type", as_name="device_type"),
+                    TagField("$.registration.device_type", as_name="device_type"),
                 )
-                definition = IndexDefinition(
-                    prefix=["registry:device-definition:"],
-                    index_type=IndexType.JSON
-                )
+                definition = IndexDefinition(prefix=["registry:device-definition:"], index_type=IndexType.JSON)
                 await self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
 
-            # registry:device-instance
+            # Device Instance Index (Active Sensors)
             try:
                 await self.client.ft(self.registry_device_instance_index_name).info()
-            except Exception as e:
+            except Exception:
                 schema = (
                     TagField("$.registration.device_id", as_name="device_id"),
                     TagField("$.registration.make", as_name="make"),
                     TagField("$.registration.model", as_name="model"),
                     TagField("$.registration.serial_number", as_name="serial_number"),
                     TagField("$.registration.version", as_name="version"),
-                    TextField("$.registration.device_type", as_name="device_type"),
+                    TagField("$.registration.device_type", as_name="device_type"),
                 )
-                definition = IndexDefinition(
-                    prefix=["registry:device-instance:"],
-                    index_type=IndexType.JSON
-                )
+                definition = IndexDefinition(prefix=["registry:device-instance:"], index_type=IndexType.JSON)
                 await self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
 
-            # data:controller
+            # Controller Data Index
             try:
                 await self.client.ft(self.data_controller_index_name).info()
-            except Exception as e:
+            except Exception:
                 schema = (
                     TagField("$.record.controller_id", as_name="controller_id"),
                     TagField("$.record.make", as_name="make"),
                     TagField("$.record.model", as_name="model"),
                     TagField("$.record.serial_number", as_name="serial_number"),
                     TagField("$.record.version", as_name="version"),
-                    # TextField("$.record.controller_type", as_name="controller_type"),
                     NumericField("$.record.timestamp", as_name="timestamp")
                 )
-                definition = IndexDefinition(
-                    prefix=["data:controller:"],
-                    index_type=IndexType.JSON
-                )
+                definition = IndexDefinition(prefix=["data:controller:"], index_type=IndexType.JSON)
                 await self.client.ft(self.data_controller_index_name).create_index(schema, definition=definition)
 
-            # registry:controller-definition
+            # Controller Definition Index
             try:
                 await self.client.ft(self.registry_controller_definition_index_name).info()
-            except Exception as e:
+            except Exception:
                 schema = (
                     TagField("$.registration.controller_definition_id", as_name="controller_definition_id"),
                     TagField("$.registration.make", as_name="make"),
                     TagField("$.registration.model", as_name="model"),
                     TagField("$.registration.version", as_name="version"),
-                    # TextField("$.registration.controller_type", as_name="controller_type"),
                 )
-                definition = IndexDefinition(
-                    prefix=["registry:controller-definition:"],
-                    index_type=IndexType.JSON
-                )
+                definition = IndexDefinition(prefix=["registry:controller-definition:"], index_type=IndexType.JSON)
                 await self.client.ft(self.registry_controller_definition_index_name).create_index(schema, definition=definition)
 
-            # registry:controller-instance
+            # Controller Instance Index
             try:
                 await self.client.ft(self.registry_controller_instance_index_name).info()
-            except Exception as e:
+            except Exception:
                 schema = (
                     TagField("$.registration.controller_id", as_name="controller_id"),
                     TagField("$.registration.make", as_name="make"),
                     TagField("$.registration.model", as_name="model"),
                     TagField("$.registration.serial_number", as_name="serial_number"),
                     TagField("$.registration.version", as_name="version"),
-                    # TextField("$.registration.controller_type", as_name="controller_type"),
                 )
-                definition = IndexDefinition(
-                    prefix=["registry:controller-instance:"],
-                    index_type=IndexType.JSON
-                )
+                definition = IndexDefinition(prefix=["registry:controller-instance:"], index_type=IndexType.JSON)
                 await self.client.ft(self.registry_controller_instance_index_name).create_index(schema, definition=definition)
 
-            # registry:variablemap-definition
+            # Variable Map Definition Index
             try:
                 await self.client.ft(self.registry_variablemap_definition_index_name).info()
-            except Exception as e:
+            except Exception:
                 schema = (
                     TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
                     TagField("$.registration.variablemap_type", as_name="variablemap_type"),
@@ -208,16 +334,13 @@ class RedisClient(DBClient):
                     TagField("$.registration.variablemap", as_name="variablemap"),
                     TagField("$.registration.valid_config_time", as_name="valid_config_time"),
                 )
-                definition = IndexDefinition(
-                    prefix=["registry:variablemap-definition:"],
-                    index_type=IndexType.JSON
-                )
+                definition = IndexDefinition(prefix=["registry:variablemap-definition:"], index_type=IndexType.JSON)
                 await self.client.ft(self.registry_variablemap_definition_index_name).create_index(schema, definition=definition)
 
-            # registry:variableset-definition
+            # Variable Set Definition Index
             try:
                 await self.client.ft(self.registry_variableset_definition_index_name).info()
-            except Exception as e:
+            except Exception:
                 schema = (
                     TagField("$.registration.variableset_definition_id", as_name="variableset_definition_id"),
                     TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
@@ -225,865 +348,836 @@ class RedisClient(DBClient):
                     TagField("$.registration.index_type", as_name="index_type"),
                     TagField("$.registration.index_value", as_name="index_value"),
                 )
-                definition = IndexDefinition(
-                    prefix=["registry:variableset-definition:"],
-                    index_type=IndexType.JSON
-                )
+                definition = IndexDefinition(prefix=["registry:variableset-definition:"], index_type=IndexType.JSON)
                 await self.client.ft(self.registry_variableset_definition_index_name).create_index(schema, definition=definition)
 
+            # Variable Set Telemetry Data Index
+            try:
+                await self.client.ft("idx:data-variableset").info()
+            except Exception:
+                schema = (
+                    TagField("$.record.variableset_id", as_name="variableset_id"),
+                    TagField("$.record.variablemap_id", as_name="variablemap_id"),
+                    TagField("$.record.variableset", as_name="variableset"),
+                    TagField("$.record.attributes.deployment_ref.data", as_name="deployment_ref"),
+                    NumericField("$.record.timestamp", as_name="timestamp"),
+                )
+                definition = IndexDefinition(prefix=["data:variableset:"], index_type=IndexType.JSON)
+                await self.client.ft("idx:data-variableset").create_index(schema, definition=definition)
+
+            # Variable Set Instance Index
+            try:
+                await self.client.ft(self.registry_variableset_instance_index_name).info()
+            except Exception:
+                schema = (
+                    TagField("$.registration.variableset_id", as_name="variableset_id"),
+                    TagField("$.registration.variablemap_id", as_name="variablemap_id"),
+                    TagField("$.registration.variableset", as_name="variableset"),
+                )
+                definition = IndexDefinition(prefix=["registry:variableset-instance:"], index_type=IndexType.JSON)
+                await self.client.ft(self.registry_variableset_instance_index_name).create_index(schema, definition=definition)
+
+            # -------------------------------------------------------------
+            # Dedicated Deployment Graph Index 
+            # -------------------------------------------------------------
+            try:
+                await self.client.ft("idx:registry-deployment-definition").info()
+            except Exception:
+                schema = (
+                    TagField("$.registration.metadata.name", as_name="name"),
+                    TagField("$.registration.data.platform_ref", as_name="platform_ref"),
+                    TagField("$.registration.data.deployment_type", as_name="deployment_type"),
+                    TagField("$.registration.data.deployment_subtype", as_name="deployment_subtype")
+                )
+                definition = IndexDefinition(prefix=["registry:deployment-definition:"], index_type=IndexType.JSON)
+                await self.client.ft("idx:registry-deployment-definition").create_index(schema, definition=definition)
+
+            # -------------------------------------------------------------
+            # Dedicated ProjectAllocation Graph Index
+            # -------------------------------------------------------------
+            try:
+                await self.client.ft("idx:registry-projectallocation-definition").info()
+            except Exception:
+                schema = (
+                    TagField("$.registration.metadata.name", as_name="name"),
+                    TagField("$.registration.data.project_ref", as_name="project_ref")
+                )
+                definition = IndexDefinition(prefix=["registry:projectallocation-definition:"], index_type=IndexType.JSON)
+                await self.client.ft("idx:registry-projectallocation-definition").create_index(schema, definition=definition)
+
+            # Sampling Generic Resource Indexes (projectallocation removed!)
+            for resource in ["platform", "project", "contact", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
+                index_name = f"idx:registry-{resource}-definition"
+                prefix = f"registry:{resource}-definition:"
+                try:
+                    await self.client.ft(index_name).info()
+                except Exception:
+                    schema = (TagField("$.registration.metadata.name", as_name="name"),)
+                    definition = IndexDefinition(prefix=[prefix], index_type=IndexType.JSON)
+                    await self.client.ft(index_name).create_index(schema, definition=definition)
+
         except Exception as e:
-            self.logger.error("build_indexes", extra={"reason": e})
-    # def check_db(self, database):
-    #     if not self.client.json().get(database, "$"):
-    #         keys = database.split(":")
-    #         self.client.json().set(database, "$", {keys[-1]: {}})
+            self.logger.error("build_indexes", extra={"reason": str(e)})
 
-    # def check_collection(self, database, collection):
-    #     self.check_db(database=database)
-    #     if not self.client.json().get(database, f'$.{collection}'):
-    #         keys = database.split(":")
-    #         self.client.json().set(database, f"$.{keys[-1]}", {collection: []})
-
+    # -------------------------------------------------------------------------------------
+    # UTILITY HELPERS
+    # -------------------------------------------------------------------------------------
     def escape_query(self, query: str) -> str:
         special = [",",".","<",">","{","}","[","]","'",":",";","!","@","#","$","%","^","&","*","(",")","-","+","=","~"]
+        # special = [",",".","<",">","{","}","[","]","'","!",";","@","#","$","%","^","&","*","(",")","-","+","=","~"]
         escaped = ""
-        for ch in query:
-            if ch in special:
-                escaped += "\\"
+        for ch in str(query):
+            if ch in special: escaped += "\\"
             escaped += ch
-
         return escaped 
-    
-    async def device_data_update(
-        self,
-        # document: dict,
-        database: str,
-        collection: str,
-        request: DataUpdate,
-        ttl: int = 300
-    ):
-        await super(RedisClient, self).device_data_update(database, collection, request, ttl)
-        try:
-            self.connect()
 
-            
-            # document = {
-            #     # "_id": id,
-            #     "make": make,
-            #     "model": model,
-            #     "serial_number": serial_number,
-            #     "version": erddap_version,
-            #     "timestamp": timestamp,
-            #     "attributes": attributes,
-            #     "dimensions": dimensions,
-            #     "variables": variables,
-            #     # "last_update": datetime.now(tz=timezone.utc),
-            # }
-            self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
-            document = request.dict()
-            make = document["make"]
-            model = document["model"]
-            serial_number = document["serial_number"]
-            timestamp = document["timestamp"]
-            
-            # make = request.request.make
-            # model = request.request.model
-            # serial_number = request.request.serial_number
-            # timestamp = request.request.timestamp
-
-            device_id = "::".join([make,model,serial_number])
-            # if not document["device_id"]:
-            document["device_id"] = device_id
-
-            key = f"{database}:{collection}:{device_id}:{timestamp}"
-            self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
-            await self.client.json().set(
-                key,
-                "$",
-                {"record": document}
-            )
-            await self.client.expire(key, ttl)
-
-        except Exception as e:
-            self.logger.error("device_data_update", extra={"reason": e})
-            return None
-           
-    async def device_definition_registry_update(
-        self,
-        # document: dict,
-        database: str,
-        collection: str,
-        request: DeviceDefinitionUpdate,
-        ttl: int = 300
-    ) -> bool:
-        await super(RedisClient, self).device_definition_registry_update(database, collection, request, ttl)
-        try:
-            self.connect()
-
-            
-            # document = {
-            #     # "_id": id,
-            #     "make": make,
-            #     "model": model,
-            #     "serial_number": serial_number,
-            #     "version": erddap_version,
-            #     "timestamp": timestamp,
-            #     "attributes": attributes,
-            #     "dimensions": dimensions,
-            #     "variables": variables,
-            #     # "last_update": datetime.now(tz=timezone.utc),
-            # }
-            self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
-            document = request.dict()
-            # make = document["make"]
-            # model = document["model"]
-            # version = document["version"]
-            
-            make = request.make
-            model = request.model
-            version = request.version
-            # document = request.dict().pop("database").pop("collection")
-            # make = request.request.make
-            # model = request.request.model
-            # serial_number = request.request.serial_number
-            # timestamp = request.request.timestamp
-
-            id = "::".join([make,model,version])
-
-            key = f"{database}:{collection}:{id}"
-            self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
-            check_request = DeviceDefinitionRequest(
-                make=make,
-                model=model,
-                version=version
-            )
-            check_results = await self.device_definition_registry_get(check_request)
-            self.logger.debug("device_definition_registry_update", extra={"check": check_results})
-            # check = False # tmp
-            if check_results["results"]: # check if there are any results
-                self.logger.debug("check_results", extra={"results": check_results["results"]})
-                result = True
-            else:
-                result = await self.client.json().set(
-                    key,
-                    "$",
-                    {"registration": document}
-                )
-            if result and ttl > 0:
-                await self.client.expire(key, ttl)
-
-            self.logger.debug("device_definition_registry_update", extra={"check_request": check_request, "result": result})
-            return result
-        
-        except Exception as e:
-            self.logger.error("device_definition_registry_update", extra={"reason": e})
-            return False
-
-    # async def device_data_get(self, query: DataStoreQuery):
-    async def device_data_get(self, request: DataRequest):
-        await super(RedisClient, self).device_data_get(request)
-
-        max_results = 10000
-        
-        # query_args = [f"@make:{{{self.escape_query(query.make)}}}"]
-        # query_args.append(f"@model:{{{self.escape_query(query.model)}}}")
-        # query_args.append(f"@serial_number:{{{self.escape_query(query.serial_number)}}}")
-
-        query_args = []
-        if request.device_id:
-            query_args.append(f"@device_id:{{{self.escape_query(request.device_id)}}}")
-        if request.make:
-            query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
-        if request.model:
-            query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
-        if request.version:
-            query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
-
-
-        # if request.version:
-        #     query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
-
-        if request.start_timestamp:
-            query_args.append(f"@timestamp >= {request.start_timestamp}")
-        
-        if request.end_timestamp:
-            query_args.append(f"@timestamp < {request.end_timestamp}")
-
-        qstring = " ".join(query_args)
-        self.logger.debug("device_data_get", extra={"query_string": qstring})
-        q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
-        docs = (await self.client.ft(self.data_device_index_name).search(q)).docs
-        results = []
-        for doc in docs:
+    def _parse_docs_sync(self, documents):
+        res = []
+        for doc in documents:
             try:
-                # self.logger.debug("device_data_get", extra={'has_attr':hasattr(doc, 'json'), "jdoc": doc})
-                if doc.json:
-                    record = json.loads(doc.json)
-                    results.append(record["record"])
+                data = None
+                if hasattr(doc, "$"):
+                    data = getattr(doc, "$")
+                elif hasattr(doc, "json"):
+                    data = doc.json
+                elif isinstance(doc, dict) and "$" in doc:
+                    data = doc["$"]
+                
+                if data:
+                    if isinstance(data, list):
+                        record = json.loads(data[0]) if isinstance(data[0], str) else data[0]
+                    else:
+                        record = json.loads(data) if isinstance(data, str) else data
+                        
+                    payload = record.get("record") or record.get("registration") or record
+                    if payload:
+                        res.append(payload)
             except Exception as e:
-                self.logger.error("device_data_get", extra={"reason": e})
+                self.logger.error("parse_docs_sync_error", extra={"reason": str(e)})
                 continue
+        return res
 
-        return {"results": results}
 
-    async def device_definition_registry_get_ids(
-            self,
-    ) -> dict:
+    async def _get_ids_safely(self, prefix: str) -> dict:
+        """Safely scans for IDs regardless of decode_responses settings to prevent crashes."""
         ids = []
         try:
-            self.logger.debug("device_definition_registry_get_ids")
-            async for key in self.client.scan_iter("registry:device-definition:*"):
-                self.logger.debug("device_definition_registry_get_ids", extra={"def_id": key})
-                id = key.decode('utf-8').replace("registry:device-definition:", "")
-                # id = key.split(".")[-1]
-                # ids.append(id.decode('utf-8'))
-                ids.append(id)
-                self.logger.debug("device_definition_registry_get_ids", extra={"ids": ids})
-            # results = {"results": ids}
-            # return {"results": ids}
+            self.connect()
+            async for key in self.client.scan_iter(f"{prefix}*", count=5000):
+                if isinstance(key, bytes):
+                    key = key.decode('utf-8')
+                
+                raw_id = key.replace(prefix, "")
+                
+                # Transparently restore colons for ISO8601 timestamp strings in the ID
+                if "::" in raw_id:
+                    parts = raw_id.split("::")
+                    for i in range(len(parts)):
+                        t = parts[i]
+                        # Match stripped ISO8601 YYYY-MM-DDTHHMMSSZ
+                        if re.match(r"^\d{4}-\d{2}-\d{2}T\d{6}(?:\.\d+)?Z$", t):
+                            parts[i] = f"{t[:13]}:{t[13:15]}:{t[15:]}"
+                    raw_id = "::".join(parts)
+
+                ids.append(raw_id)
         except Exception as e:
-            self.logger.error("device_definition_registry_get_ids", extra={"reason": e})
-            # return {"results": []}
-        self.logger.debug("device_definition_registry_get_ids", extra={"results": ids})
+            self.logger.error("redis_client:get_ids_safely", extra={"prefix": prefix, "reason": str(e)})
         return {"results": ids}
-    
-    async def device_definition_registry_get(
-            self,
-            request: DeviceDefinitionRequest
-    ) -> dict:
+
+
+    # -------------------------------------------------------------------------------------
+    # DEVICES
+    # -------------------------------------------------------------------------------------
+    async def device_data_update(self, database: str, collection: str, request: DataUpdate, ttl: int = 300) -> bool:
+        try:
+            self.connect()
+            document = request.dict()
+            key = f"{database}:{collection}:{document['device_id']}:{document['timestamp']}"
+            result = await self.client.json().set(key, "$", {"record": document})
+            if result and ttl > 0:
+                await self.client.expire(key, ttl)
+            return True if result else False
+        except Exception as e:
+            self.logger.error("redis_client:device_data_update", extra={"reason": str(e)})
+            return False
+
+    async def device_data_get(self, request: DataRequest) -> dict:
+        query_args = []
+        if request.device_id: query_args.append(f"@device_id:{{{self.escape_query(request.device_id)}}}")
+        if request.make: query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
+        if request.model: query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
+        if request.serial_number: query_args.append(f"@serial_number:{{{self.escape_query(request.serial_number)}}}")
+        if request.version: query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
+        # if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
+        # if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
+
+        # FIX: Correct RediSearch Numeric Range Syntax [start end]
+        if request.start_timestamp or request.end_timestamp:
+            start = request.start_timestamp if request.start_timestamp else "-inf"
+            end = request.end_timestamp if request.end_timestamp else "+inf"
+            query_args.append(f"@timestamp:[{start} {end}]")
+
+        qstring = " ".join(query_args) if query_args else "*"
+        q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp").return_fields("$")
+        docs = (await self.client.ft(self.data_device_index_name).search(q)).docs
+        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
+
+    async def device_definition_registry_update(self, database: str, collection: str, request: DeviceDefinitionUpdate, ttl: int = 0) -> bool:
+        try:
+            self.connect()
+            self.logger.debug("redis_client:device_definition_registry_update", extra={"here": str(1)})
+            document = request.dict()
+            id_str = "::".join([request.make, request.model, request.version])
+            key = f"{database}:{collection}:{id_str}"
+            self.logger.debug("redis_client:device_definition_registry_update", extra={"k": key})
+            result = await self.client.json().set(key, "$", {"registration": document})
+            self.logger.debug("redis_client:device_definition_registry_update", extra={"res": result})
+            if result and ttl > 0:
+                await self.client.expire(key, ttl)
+            return True if result else False
+        except Exception as e:
+            self.logger.error("redis_client:device_definition_registry_update", extra={"reason": str(e)})
+            return False
+
+    async def device_definition_registry_get_ids(self) -> dict:
+        return await self._get_ids_safely("registry:device-definition:")
+
+    async def device_definition_registry_get(self, request: DeviceDefinitionRequest) -> dict:
         await super(RedisClient, self).device_definition_registry_get(request)
 
-        query_args = []
+        # -------------------------------------------------------------------------
+        # FAST PATH: O(1) Direct Lookup for Registrar Sync Requests
+        # -------------------------------------------------------------------------
         if request.device_definition_id:
-            query_args.append(f"@device_definition_id:{{{self.escape_query(request.device_definition_id)}}}")
+            key = f"registry:device-definition:{request.device_definition_id}"
+            try:
+                # Instant lookup bypassing RediSearch entirely
+                doc = await self.client.json().get(key)
+                if doc:
+                    # Fallback to the flat doc if "registration" wrapper is missing (Legacy)
+                    return {"results": [doc.get("registration", doc)]}
+            except Exception as e:
+                self.logger.error("redis_client fast-path error", extra={"reason": str(e)})
+            
+            # If exact ID not found, return empty (don't fall back to heavy search)
+            return {"results": []}
+
+        # -------------------------------------------------------------------------
+        # SLOW PATH: RediSearch Fallback for Dashboard Queries
+        # -------------------------------------------------------------------------
+        query_args = []
         if request.make:
             query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
         if request.model:
             query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
         if request.version:
             query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
-
-        # if request.version:
-        #     query_args.append(f"@version:{request.version}")
-
         if request.device_type:
             query_args.append(f"@device_type:{request.device_type}")
         
-        if query_args:
-            qstring = " ".join(query_args)
-        else:
-            qstring = "*"
-        self.logger.debug("device_definition_registry_get", extra={"query_string": qstring})
-        q = Query(qstring)#.sort_by("version", asc=False)
+        qstring = " ".join(query_args) if query_args else "*"
+        self.logger.debug("device_definition_registry_get search", extra={"query": qstring})
+        
+        q = Query(qstring)
         docs = (await self.client.ft(self.registry_device_definition_index_name).search(q)).docs
-        self.logger.debug("device_definition_registry_get", extra={"docs": docs})
+        
         results = []
         for doc in docs:
             try:
                 if doc.json:
                     reg = json.loads(doc.json)
-                    results.append(reg["registration"])
+                    # Support legacy docs that lack the registration wrapper
+                    results.append(reg.get("registration", reg))
             except Exception as e:
-                self.logger.error("device_definition_registry_get", extra={"reason": e})
+                self.logger.error("device_definition_registry_get parsing", extra={"reason": str(e)})
                 continue
-        self.logger.debug("device_definition_registry_get", extra={"results": results})
+                
         return {"results": results}
-
-    async def device_instance_registry_update(
-        self,
-        # document: dict,
-        database: str,
-        collection: str,
-        request: DeviceInstanceUpdate,
-        ttl: int = 300
-    ) -> bool:
-        await super(RedisClient, self).device_instance_registry_update(database, collection, request, ttl)
-        try:
-            self.connect()
-
-            
-            # document = {
-            #     # "_id": id,
-            #     "make": make,
-            #     "model": model,
-            #     "serial_number": serial_number,
-            #     "version": erddap_version,
-            #     "timestamp": timestamp,
-            #     "attributes": attributes,
-            #     "dimensions": dimensions,
-            #     "variables": variables,
-            #     # "last_update": datetime.now(tz=timezone.utc),
-            # }
-            self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
-            document = request.dict()
-            make = document["make"]
-            model = document["model"]
-            serial_number = document["serial_number"]
-            version = document["version"]
-            
-            # make = request.request.make
-            # model = request.request.model
-            # serial_number = request.request.serial_number
-            # timestamp = request.request.timestamp
-
-            device_id = "::".join([make,model,serial_number])
-
-            key = f"{database}:{collection}:{device_id}"
-            self.logger.debug("redis_client", extra={"key": key, "device-doc": document})
-
-            # check_request = DeviceInstanceRequest(
-            #     make=make,
-            #     model=model,
-            #     serial_number=serial_number,
-            #     version=version
-            # )
-            # check_results = await self.device_instance_registry_get(check_request)
-            # self.logger.debug("device_instance_registry_update", extra={"check": check_results})
-            # # check = False # tmp
-            # if check_results["results"]: # check if there are any results
-            #     self.logger.debug("check_results", extra={"results": check_results["results"]})
-            #     result = True
-            # else:
-            #     result = await self.client.json().set(
-            #         key,
-            #         "$",
-            #         {"registration": document}
-            #     )
-
-            # update device instance every time to keep up to date
-            result = await self.client.json().set(
-                key,
-                "$",
-                {"registration": document}
-            )
-            if result:
-                await self.client.expire(key, ttl)
-
-            # self.logger.debug("device_instance_registry_update", extra={"check_request": check_request, "result": result})
-            return result
-        
-        except Exception as e:
-            self.logger.error("redis_client:device_instance_registry_update", extra={"reason": e})
-            return False
-
-    async def device_instance_registry_get(self, request: DeviceInstanceRequest):
-        await super(RedisClient, self).device_instance_registry_get(request)
-
-        query_args = []
-        if request.device_id:
-            query_args.append(f"@device_id:{{{self.escape_query(request.device_id)}}}")
-        if request.make:
-            query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
-        if request.model:
-            query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
-        if request.serial_number:
-            query_args.append(f"@serial_number:{{{self.escape_query(request.serial_number)}}}")
-
-        # if request.version:
-        #     query_args.append(f"@version:{request.version}")
-
-        if request.device_type:
-            query_args.append(f"@device_type:{request.device_type}")
-        
-        # qstring = " ".join(query_args)
-        if query_args:
-            qstring = " ".join(query_args)
-        else:
-            qstring = "*"
-        self.logger.debug("device_instance_registry_get", extra={"query_string": qstring})
-        q = Query(qstring).paging(0, 50)#.sort_by("version", asc=False)
-
-        docs = (await self.client.ft(self.registry_device_instance_index_name).search(q)).docs
-        self.logger.debug("device_instance_registry_get", extra={"docs": docs})
-        results = []
-        for doc in docs:
-            try:
-                if doc.json:
-                    reg = json.loads(doc.json)
-                    results.append(reg["registration"])
-                    self.logger.debug("device_instance_registry_get", extra={"num_results": len(results), "results": results})
-            except Exception as e:
-                self.logger.error("device_instance_registry_get", extra={"reason": e})
-                continue
-
-        return {"results": results}
-
-    async def controller_data_update(
-        self,
-        # document: dict,
-        database: str,
-        collection: str,
-        request: ControllerDataUpdate,
-        ttl: int = 300
-    ):
-        await super(RedisClient, self).controller_data_update(database, collection, request, ttl)
-        try:
-            self.connect()
-
-            
-            self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
-            document = request.dict()
-            make = document["make"]
-            model = document["model"]
-            serial_number = document["serial_number"]
-            timestamp = document["timestamp"]
-
-            controller_id = "::".join([make,model,serial_number])
-            # if not document["controller_id"]:
-            document["controller_id"] = controller_id
-
-            key = f"{database}:{collection}:{controller_id}:{timestamp}"
-            self.logger.debug("redis_client", extra={"key": key, "controller-doc": document})
-            await self.client.json().set(
-                key,
-                "$",
-                {"record": document}
-            )
-            await self.client.expire(key, ttl)
-
-        except Exception as e:
-            self.logger.error("controller_data_update", extra={"reason": e})
-            return None
-           
-    async def controller_definition_registry_update(
-        self,
-        # document: dict,
-        database: str,
-        collection: str,
-        request: ControllerDefinitionUpdate,
-        ttl: int = 300
-    ) -> bool:
-        await super(RedisClient, self).controller_definition_registry_update(database, collection, request, ttl)
-        try:
-            self.connect()
-
-            self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
-            document = request.dict()
-            
-            make = request.make
-            model = request.model
-            version = request.version
-
-            id = "::".join([make,model,version])
-
-            key = f"{database}:{collection}:{id}"
-            self.logger.debug("redis_client", extra={"key": key, "controller-doc": document})
-            check_request = ControllerDefinitionRequest(
-                make=make,
-                model=model,
-                version=version
-            )
-            check_results = await self.controller_definition_registry_get(check_request)
-            self.logger.debug("controller_definition_registry_update", extra={"check": check_results})
-            # check = False # tmp
-            if check_results["results"]: # check if there are any results
-                self.logger.debug("check_results", extra={"results": check_results["results"]})
-                result = True
-            else:
-                result = await self.client.json().set(
-                    key,
-                    "$",
-                    {"registration": document}
-                )
-            if result and ttl > 0:
-                await self.client.expire(key, ttl)
-
-            self.logger.debug("controller_definition_registry_update", extra={"check_request": check_request, "result": result})
-            return result
-        
-        except Exception as e:
-            self.logger.error("controller_definition_registry_update", extra={"reason": e})
-            return False
-
-    # async def controller_data_get(self, query: DataStoreQuery):
-    async def controller_data_get(self, request: ControllerDataRequest):
-        await super(RedisClient, self).controller_data_get(request)
-
-        max_results = 10000
-
-        query_args = []
-        if request.controller_id:
-            query_args.append(f"@controller_id:{{{self.escape_query(request.controller_id)}}}")
-        if request.make:
-            query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
-        if request.model:
-            query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
-        if request.version:
-            query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
-
-
-        if request.start_timestamp:
-            query_args.append(f"@timestamp >= {request.start_timestamp}")
-        
-        if request.end_timestamp:
-            query_args.append(f"@timestamp < {request.end_timestamp}")
-
-        qstring = " ".join(query_args)
-        self.logger.debug("controller_data_get", extra={"query_string": qstring})
-        q = Query(qstring).paging(offset=0, num=max_results).sort_by("timestamp")
-        docs = (await self.client.ft(self.data_controller_index_name).search(q)).docs
-        results = []
-        for doc in docs:
-            try:
-                if doc.json:
-                    record = json.loads(doc.json)
-                    results.append(record["record"])
-            except Exception as e:
-                self.logger.error("controller_data_get", extra={"reason": e})
-                continue
-
-        return {"results": results}
-
-    async def controller_definition_registry_get_ids(
-            self,
-    ) -> dict:
-        ids = []
-        try:
-            self.logger.debug("controller_definition_registry_get_ids")
-            async for key in self.client.scan_iter("registry:controller-definition:*"):
-                self.logger.debug("controller_definition_registry_get_ids", extra={"def_id": key})
-                id = key.decode('utf-8').replace("registry:controller-definition:", "")
-                # id = key.split(".")[-1]
-                # ids.append(id.decode('utf-8'))
-                ids.append(id)
-                self.logger.debug("controller_definition_registry_get_ids", extra={"ids": ids})
-            # results = {"results": ids}
-            # return {"results": ids}
-        except Exception as e:
-            self.logger.error("controller_definition_registry_get_ids", extra={"reason": e})
-            # return {"results": []}
-        self.logger.debug("controller_definition_registry_get_ids", extra={"results": ids})
-        return {"results": ids}
     
+    async def device_instance_registry_update(self, database: str, collection: str, request: DeviceInstanceUpdate, ttl: int = 300) -> bool:
+        try:
+            self.connect()
+            document = request.dict()
+            key = f"{database}:{collection}:{document['device_id']}"
+            result = await self.client.json().set(key, "$", {"registration": document})
+            if result and ttl > 0:
+                await self.client.expire(key, ttl)
+            return True if result else False
+        except Exception as e:
+            self.logger.error("redis_client:device_instance_registry_update", extra={"reason": str(e)})
+            return False
 
-    async def controller_definition_registry_get(
-            self,
-            request: ControllerDefinitionRequest
-    ) -> dict:
-        await super(RedisClient, self).controller_definition_registry_get(request)
+    async def device_instance_registry_get_ids(self) -> dict:
+        return await self._get_ids_safely("registry:device-instance:")
 
+    async def device_instance_registry_get(self, request: DeviceInstanceRequest) -> dict:
         query_args = []
+        if request.device_id: query_args.append(f"@device_id:{{{self.escape_query(request.device_id)}}}")
+        if request.make: query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
+        if request.model: query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
+        if request.serial_number: query_args.append(f"@serial_number:{{{self.escape_query(request.serial_number)}}}")
+        if request.device_type: query_args.append(f"@device_type:{{{self.escape_query(request.device_type)}}}")
+
+        qstring = " ".join(query_args) if query_args else "*"
+        q = Query(qstring).paging(0, 1000).return_fields("$")
+        docs = (await self.client.ft(self.registry_device_instance_index_name).search(q)).docs
+        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
+
+    # -------------------------------------------------------------------------------------
+    # CONTROLLERS
+    # -------------------------------------------------------------------------------------
+    async def controller_data_update(self, database: str, collection: str, request: ControllerDataUpdate, ttl: int = 300) -> bool:
+        try:
+            self.connect()
+            document = request.dict()
+            key = f"{database}:{collection}:{document['controller_id']}:{document['timestamp']}"
+            result = await self.client.json().set(key, "$", {"record": document})
+            if result and ttl > 0:
+                await self.client.expire(key, ttl)
+            return True if result else False
+        except Exception as e:
+            self.logger.error("redis_client:controller_data_update", extra={"reason": str(e)})
+            return False
+
+    async def controller_data_get(self, request: ControllerDataRequest) -> dict:
+        query_args = []
+        if request.controller_id: query_args.append(f"@controller_id:{{{self.escape_query(request.controller_id)}}}")
+        if request.make: query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
+        if request.model: query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
+        if request.version: query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
+        # if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
+        # if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
+
+        # FIX: Correct RediSearch Numeric Range Syntax [start end]
+        if request.start_timestamp or request.end_timestamp:
+            start = request.start_timestamp if request.start_timestamp else "-inf"
+            end = request.end_timestamp if request.end_timestamp else "+inf"
+            query_args.append(f"@timestamp:[{start} {end}]")
+
+        qstring = " ".join(query_args) if query_args else "*"
+        q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp").return_fields("$")
+        docs = (await self.client.ft(self.data_controller_index_name).search(q)).docs
+        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
+
+    async def controller_definition_registry_update(self, database: str, collection: str, request: ControllerDefinitionUpdate, ttl: int = 0) -> bool:
+        try:
+            self.connect()
+            document = request.dict()
+            id_str = "::".join([request.make, request.model, request.version])
+            key = f"{database}:{collection}:{id_str}"
+            result = await self.client.json().set(key, "$", {"registration": document})
+            if result and ttl > 0:
+                await self.client.expire(key, ttl)
+            return True if result else False
+        except Exception as e:
+            self.logger.error("redis_client:controller_definition_registry_update", extra={"reason": str(e)})
+            return False
+
+    async def controller_definition_registry_get_ids(self) -> dict:
+        return await self._get_ids_safely("registry:controller-definition:")
+
+    async def controller_definition_registry_get(self, request: ControllerDefinitionRequest) -> dict:
+        # -------------------------------------------------------------------------
+        # FAST PATH: O(1) Direct Lookup for Registrar Sync Requests
+        # -------------------------------------------------------------------------
         if request.controller_definition_id:
-            query_args.append(f"@controller_definition_id:{{{self.escape_query(request.controller_definition_id)}}}")
+            key = f"registry:controller-definition:{request.controller_definition_id}"
+            try:
+                # Instant lookup bypassing RediSearch entirely
+                doc = await self.client.json().get(key)
+                if doc:
+                    # Fallback to the flat doc if "registration" wrapper is missing (Legacy)
+                    return {"results": [doc.get("registration", doc)]}
+            except Exception as e:
+                self.logger.error("redis_client fast-path error", extra={"reason": str(e)})
+            
+            # If exact ID not found, return empty (don't fall back to heavy search)
+            return {"results": []}
+
+        # -------------------------------------------------------------------------
+        # SLOW PATH: RediSearch Fallback for Dashboard Queries
+        # -------------------------------------------------------------------------
+        query_args = []
         if request.make:
             query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
         if request.model:
             query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
         if request.version:
             query_args.append(f"@version:{{{self.escape_query(request.version)}}}")
-
-        if query_args:
-            qstring = " ".join(query_args)
-        else:
-            qstring = "*"
-        self.logger.debug("controller_definition_registry_get", extra={"query_string": qstring})
-        q = Query(qstring)#.sort_by("version", asc=False)
+        
+        qstring = " ".join(query_args) if query_args else "*"
+        self.logger.debug("controller_definition_registry_get search", extra={"query": qstring})
+        
+        q = Query(qstring)
         docs = (await self.client.ft(self.registry_controller_definition_index_name).search(q)).docs
-        self.logger.debug("controller_definition_registry_get", extra={"docs": docs})
+        
         results = []
         for doc in docs:
             try:
                 if doc.json:
                     reg = json.loads(doc.json)
-                    results.append(reg["registration"])
+                    # Support legacy docs that lack the registration wrapper
+                    results.append(reg.get("registration", reg))
             except Exception as e:
-                self.logger.error("controller_definition_registry_get", extra={"reason": e})
+                self.logger.error("controller_definition_registry_get parsing", extra={"reason": str(e)})
                 continue
-        self.logger.debug("controller_definition_registry_get", extra={"results": results})
+                
         return {"results": results}
-
-    async def controller_instance_registry_update(
-        self,
-        # document: dict,
-        database: str,
-        collection: str,
-        request: ControllerInstanceUpdate,
-        ttl: int = 300
-    ) -> bool:
-        await super(RedisClient, self).controller_instance_registry_update(database, collection, request, ttl)
+    
+    async def controller_instance_registry_update(self, database: str, collection: str, request: ControllerInstanceUpdate, ttl: int = 300) -> bool:
         try:
             self.connect()
-
-            self.logger.debug("redis_client", extra={"update-doc": request, "ttl": ttl})
             document = request.dict()
-            make = document["make"]
-            model = document["model"]
-            serial_number = document["serial_number"]
-            version = document["version"]
-
-            controller_id = "::".join([make,model,serial_number])
-
-            key = f"{database}:{collection}:{controller_id}"
-            self.logger.debug("redis_client", extra={"key": key, "controller-doc": document})
-
-            # check_request = ControllerInstanceRequest(
-            #     make=make,
-            #     model=model,
-            #     serial_number=serial_number,
-            #     version=version
-            # )
-            # check_results = await self.controller_instance_registry_get(check_request)
-            # self.logger.debug("controller_instance_registry_update", extra={"check": check_results})
-            # # check = False # tmp
-            # if check_results["results"]: # check if there are any results
-            #     self.logger.debug("check_results", extra={"results": check_results["results"]})
-            #     result = True
-            # else:
-            #     result = self.client.json().set(
-            #         key,
-            #         "$",
-            #         {"registration": document}
-            #     )
-
-            # update instance every time to keep up to date
-            result = await self.client.json().set(
-                key,
-                "$",
-                {"registration": document}
-            )
-            if result:
+            key = f"{database}:{collection}:{document['controller_id']}"
+            result = await self.client.json().set(key, "$", {"registration": document})
+            if result and ttl > 0:
                 await self.client.expire(key, ttl)
-
-            # self.logger.debug("controller_instance_registry_update", extra={"check_request": check_request, "result": result})
-            return result
-        
+            return True if result else False
         except Exception as e:
-            self.logger.error("redis_client:controller_instance_registry_update", extra={"reason": e})
+            self.logger.error("redis_client:controller_instance_registry_update", extra={"reason": str(e)})
             return False
 
-    async def controller_instance_registry_get(self, request: ControllerInstanceRequest):
-        await super(RedisClient, self).controller_instance_registry_get(request)
+    async def controller_instance_registry_get_ids(self) -> dict:
+        return await self._get_ids_safely("registry:controller-instance:")
 
+    async def controller_instance_registry_get(self, request: ControllerInstanceRequest) -> dict:
         query_args = []
-        if request.controller_id:
-            query_args.append(f"@controller_id:{{{self.escape_query(request.controller_id)}}}")
-        if request.make:
-            query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
-        if request.model:
-            query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
-        if request.serial_number:
-            query_args.append(f"@serial_number:{{{self.escape_query(request.serial_number)}}}")
+        if request.controller_id: query_args.append(f"@controller_id:{{{self.escape_query(request.controller_id)}}}")
+        if request.make: query_args.append(f"@make:{{{self.escape_query(request.make)}}}")
+        if request.model: query_args.append(f"@model:{{{self.escape_query(request.model)}}}")
+        if request.serial_number: query_args.append(f"@serial_number:{{{self.escape_query(request.serial_number)}}}")
 
-        if query_args:
-            qstring = " ".join(query_args)
-        else:
-            qstring = "*"
-        self.logger.debug("controller_instance_registry_get", extra={"query_string": qstring})
-        q = Query(qstring)#.sort_by("version", asc=False)
+        qstring = " ".join(query_args) if query_args else "*"
+        q = Query(qstring).return_fields("$")
         docs = (await self.client.ft(self.registry_controller_instance_index_name).search(q)).docs
-        results = []
-        for doc in docs:
-            try:
-                if doc.json:
-                    reg = json.loads(doc.json)
-                    results.append(reg["registration"])
-            except Exception as e:
-                self.logger.error("controller_instance_registry_get", extra={"reason": e})
-                continue
+        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
 
-        return {"results": results}
+    # -------------------------------------------------------------------------------------
+    # VARIABLE MAPS & SETS
+    # -------------------------------------------------------------------------------------
+    async def variablemap_definition_registry_get_ids(self) -> dict:
+        return await self._get_ids_safely("registry:variablemap-definition:")
 
-    async def variablemap_definition_registry_update(
-        self,
-        # document: dict,
-        database: str,
-        collection: str,
-        request: VariableMapDefinitionUpdate,
-        ttl: int = 300
-    ) -> bool:
-        await super(RedisClient, self).variablemap_definition_registry_update(database, collection, request, ttl)
-        try:
-            self.connect()
-
-            
-            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"update-doc": request, "ttl": ttl})
-            document = request.dict()
-            
-            variable_map_type_id = request.variablemap_type_id
-            # platform_id = request.platform_id
-            variablemap = request.variablemap
-            valid_config_time = request.valid_config_time
-            # document = request.dict().pop("database").pop("collection")
-            # make = request.request.make
-            # model = request.request.model
-            # serial_number = request.request.serial_number
-            # timestamp = request.request.timestamp
-
-            # change timestamp to exclude : for redis index
-            redis_time = valid_config_time.replace(":", "")
-            id = "::".join([variable_map_type_id,variablemap,redis_time])
-
-            key = f"{database}:{collection}:{id}"
-            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"key": key, "device-doc": document})
-            check_request = VariableMapDefinitionRequest(
-                variable_map_type_id=variable_map_type_id,
-                variablemap=variablemap,
-                valid_config_time=redis_time
-            )
-            check_results = await self.variablemap_definition_registry_get(check_request)
-            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"check": check_results})
-            # check = False # tmp
-            if check_results["results"]: # check if there are any results
-                self.logger.debug("redis_client: variablemap_definition_registry_update check_results", extra={"results": check_results["results"]})
-                result = True
-            else:
-                result = await self.client.json().set(
-                    key,
-                    "$",
-                    {"registration": document}
-                )
-            if result and ttl > 0:
-                await self.client.expire(key, ttl)
-
-            self.logger.debug("redis_client: variablemap_definition_registry_update", extra={"check_request": check_request, "result": result})
-            return result
+    async def variablemap_definition_registry_get(self, request: VariableMapDefinitionRequest) -> dict:
+        redis_id = request.variablemap_definition_id
+        if redis_id:
+            redis_id = redis_id.replace(":", "") if "::" not in redis_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
         
-        except Exception as e:
-            self.logger.error("redis_client: variablemap_definition_registry_update", extra={"reason": e})
-            return False
+        # ---------------------------------------------------------
+        # FAST PATH: Exact ID Lookup for Registrar Syncs
+        # ---------------------------------------------------------
+        if redis_id:
+            key = f"registry:variablemap-definition:{redis_id}"
+            try:
+                doc = await self.client.json().get(key)
+                if doc:
+                    return {"results": [doc.get("registration", doc)]}
+            except Exception:
+                pass
+            return {"results": []} # Prevent RediSearch fallback on direct ID lookups
 
-    async def variablemap_definition_registry_get(
-            self,
-            request: VariableMapDefinitionRequest
-    ) -> dict:
-        await super(RedisClient, self).variablemap_definition_registry_get(request)
-
+        # ---------------------------------------------------------
+        # SLOW PATH: RediSearch Dashboard Lookups
+        # ---------------------------------------------------------
         query_args = []
-        if request.variablemap_definition_id:
-            parts = request.variablemap_definition_id.split("::")
-            parts[2] = parts[2].replace(":", "")
-            redis_id = "::".join(parts)
-            # query_args.append(f"@variablemap_definition_id:{{{self.escape_query(request.variablemap_definition_id)}}}")
-            query_args.append(f"@variablemap_definition_id:{{{self.escape_query(redis_id)}}}")
-        if request.variablemap_type:
-            query_args.append(f"@variablemap_type:{{{self.escape_query(request.variablemap_type)}}}")
-        if request.variablemap_type_id:
-            query_args.append(f"@variablemap_type_id:{{{self.escape_query(request.variablemap_type_id)}}}")
-        if request.variablemap:
-            query_args.append(f"@variablemap:{{{self.escape_query(request.variablemap)}}}")
-        if request.valid_config_time:
-            redis_time = request.valid_config_time.replace(":", "")
+        if request.variablemap_type: query_args.append(f"@variablemap_type:{{{self.escape_query(request.variablemap_type)}}}")
+        if request.variablemap_type_id: query_args.append(f"@variablemap_type_id:{{{self.escape_query(request.variablemap_type_id)}}}")
+        if request.variablemap: query_args.append(f"@variablemap:{{{self.escape_query(request.variablemap)}}}")
+        # if request.valid_config_time: query_args.append(f"@valid_config_time:{{{self.escape_query(request.valid_config_time.replace(':', ''))}}}")
+        if request.valid_config_time: 
+            query_args.append(f"@valid_config_time:{{{self.escape_query(request.valid_config_time)}}}")
 
-            # query_args.append(f"@valid_config_time:{{{self.escape_query(request.valid_config_time)}}}")
-            query_args.append(f"@valid_config_time:{{{self.escape_query(redis_time)}}}")
-
-        if query_args:
-            qstring = " ".join(query_args)
-        else:
-            qstring = "*"
-        self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"query_string": qstring})
-        q = Query(qstring)#.sort_by("version", asc=False)
+        qstring = " ".join(query_args) if query_args else "*"
+        q = Query(qstring).return_fields("$")
         docs = (await self.client.ft(self.registry_variablemap_definition_index_name).search(q)).docs
-        self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"docs": docs})
+        
         results = []
         for doc in docs:
             try:
                 if doc.json:
                     reg = json.loads(doc.json)
-                    results.append(reg["registration"])
-            except Exception as e:
-                self.logger.error("redis_client: variablemap_definition_registry_get", extra={"reason": e})
+                    results.append(reg.get("registration", reg))
+            except Exception:
                 continue
-        self.logger.debug("redis_client: variablemap_definition_registry_get", extra={"results": results})
         return {"results": results}
 
-    async def variableset_definition_registry_update(
-        self,
-        # document: dict,
-        database: str,
-        collection: str,
-        request: VariableSetDefinitionUpdate,
-        ttl: int = 300
-    ) -> bool:
-        await super(RedisClient, self).variableset_definition_registry_update(database, collection, request, ttl)
+    async def variablemap_definition_registry_update(self, database: str, collection: str, request: VariableMapDefinitionUpdate, ttl: int = 0) -> bool:
         try:
             self.connect()
-
-            
-            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"update-doc": request, "ttl": ttl})
             document = request.dict()
             
-            variablemap_definition_id = request.variablemap_definition_id
-            parts = variablemap_definition_id.split("::")
-            parts[2] = parts[2].replace(":", "")
-            redis_id = "::".join(parts)
-
-            variableset = request.variableset
-
-            id = "::".join([redis_id,variableset])
-
-            key = f"{database}:{collection}:{id}"
-            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"key": key, "device-doc": document})
-            check_request = VariableSetDefinitionRequest(
-                variablemap_definition_id=variablemap_definition_id,
-                variableset=variableset,
-            )
-            check_results = await self.variableset_definition_registry_get(check_request)
-            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"check": check_results})
-            # check = False # tmp
-            if check_results["results"]: # check if there are any results
-                self.logger.debug("redis_client: variableset_definition_registry_update check_results", extra={"results": check_results["results"]})
-                result = True
+            # FIX: Only strip colons from the timestamp, preserve the "::" delimiters
+            redis_id = request.variablemap_definition_id
+            if "::" in redis_id:
+                redis_id = "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
             else:
-                result = await self.client.json().set(
-                    key,
-                    "$",
-                    {"registration": document}
-                )
+                redis_id = redis_id.replace(":", "")
+                
+            key = f"{database}:{collection}:{redis_id}"
+            
+            result = await self.client.json().set(key, "$", {"registration": document})
             if result and ttl > 0:
                 await self.client.expire(key, ttl)
-
-            self.logger.debug("redis_client: variableset_definition_registry_update", extra={"check_request": check_request, "result": result})
-            return result
-        
+            return True if result else False
         except Exception as e:
-            self.logger.error("redis_client: variableset_definition_registry_update", extra={"reason": e})
+            self.logger.error("redis_client:variablemap_definition_registry_update", extra={"reason": str(e)})
             return False
 
-    async def variableset_definition_registry_get(
-            self,
-            request: VariableSetDefinitionRequest
-    ) -> dict:
-        await super(RedisClient, self).variableset_definition_registry_get(request)
+    async def variableset_definition_registry_get_ids(self) -> dict:
+        return await self._get_ids_safely("registry:variableset-definition:")
 
+    async def variableset_definition_registry_get(self, request: VariableSetDefinitionRequest) -> dict:
+        redis_id = request.variableset_definition_id
+        if redis_id: 
+            redis_id = redis_id.replace(":", "") if "::" not in redis_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
+            
+        # ---------------------------------------------------------
+        # FAST PATH: Exact ID Lookup for Registrar Syncs
+        # ---------------------------------------------------------
+        if redis_id:
+            key = f"registry:variableset-definition:{redis_id}"
+            try:
+                doc = await self.client.json().get(key)
+                if doc:
+                    return {"results": [doc.get("registration", doc)]}
+            except Exception:
+                pass
+            return {"results": []}
+
+        # ---------------------------------------------------------
+        # SLOW PATH: RediSearch Dashboard Lookups
+        # ---------------------------------------------------------
         query_args = []
-        if request.variableset_definition_id:
-            parts = request.variableset_definition_id.split("::")
-            parts[2] = parts[2].replace(":", "")
-            redis_id = "::".join(parts)
-
-            # query_args.append(f"@variableset_definition_id:{{{self.escape_query(request.variableset_definition_id)}}}")
-            query_args.append(f"@variableset_definition_id:{{{self.escape_query(redis_id)}}}")
+        # if request.variablemap_definition_id:
+        #     vmap_id = request.variablemap_definition_id.replace(":", "") if "::" not in request.variablemap_definition_id else "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(request.variablemap_definition_id.split("::"))])
+        #     query_args.append(f"@variablemap_definition_id:{{{self.escape_query(vmap_id)}}}")
         if request.variablemap_definition_id:
-            parts = request.variablemap_definition_id.split("::")
-            parts[2] = parts[2].replace(":", "")
-            redis_id = "::".join(parts)
+            query_args.append(f"@variablemap_definition_id:{{{self.escape_query(request.variablemap_definition_id)}}}")
 
-            # query_args.append(f"@platform_id:{{{self.escape_query(request.platform_id)}}}")
-            query_args.append(f"@platform_id:{{{self.escape_query(redis_id)}}}")
-        if request.variableset:
-            query_args.append(f"@variablemap:{{{self.escape_query(request.variableset)}}}")
-        if request.index_type:
-            query_args.append(f"@variablemap_revision_time:{{{self.escape_query(request.index_type)}}}")
-        if request.index_value:
-            query_args.append(f"@variablegroup:{{{self.escape_query(request.index_value)}}}")
+        if request.variableset: query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
+        if request.index_type: query_args.append(f"@index_type:{{{self.escape_query(request.index_type)}}}")
+        if request.index_value: query_args.append(f"@index_value:{{{self.escape_query(str(request.index_value))}}}")
 
-        if query_args:
-            qstring = " ".join(query_args)
-        else:
-            qstring = "*"
-        self.logger.debug("redis_client: variableset_definition_registry_get", extra={"query_string": qstring})
-        q = Query(qstring)#.sort_by("version", asc=False)
+        qstring = " ".join(query_args) if query_args else "*"
+        q = Query(qstring).return_fields("$")
         docs = (await self.client.ft(self.registry_variableset_definition_index_name).search(q)).docs
-        self.logger.debug("redis_client: variableset_definition_registry_get", extra={"docs": docs})
+        
         results = []
         for doc in docs:
             try:
                 if doc.json:
                     reg = json.loads(doc.json)
-                    results.append(reg["registration"])
-            except Exception as e:
-                self.logger.error("redis_client: variableset_definition_registry_get", extra={"reason": e})
+                    results.append(reg.get("registration", reg))
+            except Exception:
                 continue
-        self.logger.debug("redis_client: variableset_definition_registry_get", extra={"results": results})
         return {"results": results}
+
+    async def variableset_definition_registry_update(self, database: str, collection: str, request: VariableSetDefinitionUpdate, ttl: int = 0) -> bool:
+        try:
+            self.connect()
+            document = request.dict()
+            
+            # FIX: Only strip colons from the timestamp, preserve the "::" delimiters
+            redis_id = request.variableset_definition_id
+            if "::" in redis_id:
+                redis_id = "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
+            else:
+                redis_id = redis_id.replace(":", "")
+                
+            key = f"{database}:{collection}:{redis_id}"
+            
+            result = await self.client.json().set(key, "$", {"registration": document})
+            if result and ttl > 0:
+                await self.client.expire(key, ttl)
+            return True if result else False
+        except Exception as e:
+            self.logger.error("redis_client:variableset_definition_registry_update", extra={"reason": str(e)})
+            return False
+
+    async def variableset_data_get(self, request: VariableSetDataRequest) -> dict:
+        query_args = []
+        if request.variableset_id: query_args.append(f"@variableset_id:{{{self.escape_query(request.variableset_id)}}}")
+        if request.variablemap_id: query_args.append(f"@variablemap_id:{{{self.escape_query(request.variablemap_id)}}}")
+        if request.variableset: query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
+        if request.deployment_ref: query_args.append(f"@deployment_ref:{{{self.escape_query(request.deployment_ref)}}}")
+        # if request.start_timestamp: query_args.append(f"@timestamp >= {request.start_timestamp}")
+        # if request.end_timestamp: query_args.append(f"@timestamp < {request.end_timestamp}")
+
+        # FIX: Correct RediSearch Numeric Range Syntax [start end]
+        if request.start_timestamp or request.end_timestamp:
+            start = request.start_timestamp if request.start_timestamp else "-inf"
+            end = request.end_timestamp if request.end_timestamp else "+inf"
+            query_args.append(f"@timestamp:[{start} {end}]")
+
+        qstring = " ".join(query_args) if query_args else "*"
+        q = Query(qstring).paging(offset=0, num=10000).sort_by("timestamp").return_fields("$")
+        docs = (await self.client.ft("idx:data-variableset").search(q)).docs
+        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
+
+    async def variableset_data_update(self, database: str, collection: str, request: VariableSetDataUpdate, ttl: int = 300) -> bool:
+        try:
+            self.connect()
+            document = request.dict()
+
+            # FIX: Safely strip colons from the timestamp segment for the Redis Key
+            redis_id = request.variableset_id
+            if redis_id and "::" in redis_id:
+                redis_id = "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
+            elif redis_id:
+                redis_id = redis_id.replace(":", "")
+
+            key = f"{database}:{collection}:{request.variableset_id}:{request.timestamp}"
+            result = await self.client.json().set(key, "$", {"record": document})
+            if result and ttl > 0:
+                await self.client.expire(key, ttl)
+            return True if result else False
+        except Exception as e:
+            self.logger.error("redis_client:variableset_data_update", extra={"reason": str(e)})
+            return False
+
+    # -------------------------------------------------------------------------------------
+    # VARIABLE SET INSTANCE (Active Variablesets)
+    # -------------------------------------------------------------------------------------
+    async def variableset_instance_registry_get_ids(self) -> dict:
+        return await self._get_ids_safely("registry:variableset-instance:")
+
+    async def variableset_instance_registry_get(self, request: VariableSetInstanceRequest) -> dict:
+        query_args = []
+        if request.variableset_id: query_args.append(f"@variableset_id:{{{self.escape_query(request.variableset_id)}}}")
+        if request.variablemap_id: query_args.append(f"@variablemap_id:{{{self.escape_query(request.variablemap_id)}}}")
+        if request.variableset: query_args.append(f"@variableset:{{{self.escape_query(request.variableset)}}}")
+            
+        qstring = " ".join(query_args) if query_args else "*"
+        q = Query(qstring).paging(0, 10000).return_fields("$")
+        docs = (await self.client.ft(self.registry_variableset_instance_index_name).search(q)).docs
+        return {"results": await asyncio.to_thread(self._parse_docs_sync, docs)}
+
+    async def variableset_instance_registry_update(self, database: str, collection: str, request: VariableSetInstanceUpdate, ttl: int = 300) -> bool:
+        try:
+            self.connect()
+            document = request.dict()
+
+            # FIX: Safely strip colons from the timestamp segment for the Redis Key
+            redis_id = request.variableset_id
+            if redis_id and "::" in redis_id:
+                redis_id = "::".join([p.replace(":", "") if i==2 else p for i, p in enumerate(redis_id.split("::"))])
+            elif redis_id:
+                redis_id = redis_id.replace(":", "")
+
+            key = f"{database}:{collection}:{request.variableset_id}"
+            result = await self.client.json().set(key, "$", {"registration": document})
+            if result and ttl > 0:
+                await self.client.expire(key, ttl)
+            return True if result else False
+        except Exception as e:
+            self.logger.error("redis_client:variableset_instance_registry_update", extra={"reason": str(e)})
+            return False
+
+    # -------------------------------------------------------------------------------------
+    # PROJECT & PLATFORM HELPERS (Legacy Support for main.py)
+    # -------------------------------------------------------------------------------------
+    async def project_definition_registry_get_ids(self) -> dict:
+        return await self._get_ids_safely("registry:project-definition:")
+
+    async def platform_definition_registry_get_ids(self) -> dict:
+        return await self._get_ids_safely("registry:platform-definition:")
+
+    # -------------------------------------------------------------------------------------
+    # SAMPLING DEFINITIONS (DYNAMIC)
+    # -------------------------------------------------------------------------------------
+    async def sampling_definition_registry_get_ids(self, resource: str) -> dict:
+        return await self._get_ids_safely(f"registry:{resource}-definition:")
+
+    # async def sampling_definition_registry_update(self, resource: str, database: str, collection: str, request: dict, ttl: int = 0) -> bool:
+    #     try:
+    #         self.connect()
+    #         name = request.get("metadata", {}).get("name", "unknown")
+    #         # valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z").replace(":", "")
+    #         valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z")
+            
+    #         # id = f"{name}::{valid_time}"
+    #         # key = f"{database}:{collection}:{id}"
+
+    #         ns = request.get("metadata", {}).get("sampling_namespace", "unknown")
+            
+    #         # ---> The new 3-part ID: namespace::name::time <---
+    #         id = f"{ns}::{name}::{valid_time}"
+    #         key = f"{database}:{collection}:{id}"
+
+    #         result = await self.client.json().set(key, "$", {"registration": request})
+    #         if result and ttl > 0:
+    #             await self.client.expire(key, ttl)
+    #         return True if result else False
+    #     except Exception as e:
+    #         self.logger.error(f"redis_client:{resource}_definition_registry_update", extra={"reason": str(e)})
+    #         return False
+    async def sampling_definition_registry_update(self, resource: str, database: str, collection: str, request: dict, ttl: int = 0) -> bool:
+        try:
+            self.connect()
+            name = request.get("metadata", {}).get("name", "unknown")
+            valid_time = request.get("metadata", {}).get("valid_config_time", "2020-01-01T00:00:00Z").replace(":", "")
+            
+            id = f"{name}::{valid_time}"
+            key = f"{database}:{collection}:{id}"
+
+            result = await self.client.json().set(key, "$", {"registration": request})
+            if result and ttl > 0:
+                await self.client.expire(key, ttl)
+            return True if result else False
+        except Exception as e:
+            self.logger.error(f"redis_client:{resource}_definition_registry_update", extra={"reason": str(e)})
+            return False
+        
+    # async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
+    #     # ---------------------------------------------------------
+    #     # FAST PATH: Exact ID Lookup for Registrar Syncs
+    #     # ---------------------------------------------------------
+    #     self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"q": query})
+    #     if query.get("name") and "::" in query["name"]:
+    #         key = f"registry:{resource}-definition:{query['name']}"
+    #         try:
+    #             self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"qkey": key})
+    #             doc = await self.client.json().get(key)
+    #             if doc:
+    #                 return {"results": [doc.get("registration", doc)]}
+    #         except Exception:
+    #             pass
+    #         return {"results": []}
+
+    #     # ---------------------------------------------------------
+    #     # SLOW PATH: RediSearch Dashboard Lookups
+    #     # ---------------------------------------------------------
+    #     query_args = []
+    #     if "name" in query and query["name"]: 
+    #         query_args.append(f"@name:{{{self.escape_query(query['name'])}}}")
+        
+    #     # Add support for hierarchical graph queries
+    #     if resource == "deployment":
+    #         for key in ["platform_ref", "host_platform_ref", "project_ref", "deployment_type", "deployment_subtype"]:
+    #             if key in query and query[key]:
+    #                 query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
+
+    #     qstring = " ".join(query_args) if query_args else "*"
+    #     q = Query(qstring).return_fields("$")
+        
+    #     docs = (await self.client.ft(f"idx:registry-{resource}-definition").search(q)).docs
+        
+    #     results = []
+    #     for doc in docs:
+    #         try:
+    #             if doc.json:
+    #                 reg = json.loads(doc.json)
+    #                 results.append(reg.get("registration", reg))
+    #         except Exception:
+    #             continue
+    #     return {"results": results}
+    
+    async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
+        # ---------------------------------------------------------
+        # FAST PATH: Exact ID Lookup for Registrar Syncs
+        # ---------------------------------------------------------
+        self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"q": query})
+        if query.get("name") and "::" in query["name"]:
+            # Re-strip the colons from the timestamp (the last part) to match the Redis key
+            parts = query["name"].split("::")
+            parts[-1] = parts[-1].replace(":", "")
+            redis_id = "::".join(parts)
+            
+            key = f"registry:{resource}-definition:{redis_id}"
+            try:
+                self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"qkey": key})
+                doc = await self.client.json().get(key)
+                if doc:
+                    return {"results": [doc.get("registration", doc)]}
+            except Exception:
+                pass
+            return {"results": []}
+
+        # ---------------------------------------------------------
+        # SLOW PATH: RediSearch Dashboard Lookups
+        # ---------------------------------------------------------
+        query_args = []
+        if "name" in query and query["name"]: 
+            query_args.append(f"@name:{{{self.escape_query(query['name'])}}}")
+        
+        # Add support for hierarchical graph queries
+        if resource == "deployment":
+            for key in ["platform_ref", "deployment_type", "deployment_subtype"]:
+                if key in query and query[key]:
+                    query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
+
+        # NEW: ProjectAllocation queries
+        elif resource == "projectallocation":
+            for key in ["project_ref"]:
+                if key in query and query[key]:
+                    query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
+                    
+        qstring = " ".join(query_args) if query_args else "*"
+        q = Query(qstring).return_fields("$")
+        
+        docs = (await self.client.ft(f"idx:registry-{resource}-definition").search(q)).docs
+        
+        results = []
+        for doc in docs:
+            try:
+                if doc.json:
+                    reg = json.loads(doc.json)
+                    results.append(reg.get("registration", reg))
+            except Exception:
+                continue
+        return {"results": results}
+
+    # async def sampling_definition_registry_get(self, resource: str, query: dict) -> dict:
+    #     # ---------------------------------------------------------
+    #     # FAST PATH: Exact ID Lookup for Registrar Syncs
+    #     # ---------------------------------------------------------
+    #     self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"q": query})
+    #     if query.get("name") and "::" in query["name"]:
+    #         # Re-strip the colons from the timestamp (the last part) to match the Redis key
+    #         parts = query["name"].split("::")
+    #         parts[-1] = parts[-1].replace(":", "")
+    #         redis_id = "::".join(parts)
+            
+    #         key = f"registry:{resource}-definition:{redis_id}"
+    #         try:
+    #             self.logger.debug(f"sampling_definition_registry_get:{resource}_definition_registry_get", extra={"qkey": key})
+    #             doc = await self.client.json().get(key)
+    #             if doc:
+    #                 return {"results": [doc.get("registration", doc)]}
+    #         except Exception:
+    #             pass
+    #         return {"results": []}
+
+    #     # ---------------------------------------------------------
+    #     # SLOW PATH: RediSearch Dashboard Lookups
+    #     # ---------------------------------------------------------
+    #     query_args = []
+    #     if "name" in query and query["name"]: 
+    #         query_args.append(f"@name:{{{self.escape_query(query['name'])}}}")
+        
+    #     # Add support for hierarchical graph queries
+    #     if resource == "deployment":
+    #         for key in ["platform_ref", "host_platform_ref", "deployment_type", "deployment_subtype"]:
+    #             if key in query and query[key]:
+    #                 query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
+
+    #     # NEW: ProjectAllocation queries
+    #     elif resource == "projectallocation":
+    #         for key in ["project_ref", "host_platform_ref"]:
+    #             if key in query and query[key]:
+    #                 query_args.append(f"@{key}:{{{self.escape_query(query[key])}}}")
+                    
+    #     qstring = " ".join(query_args) if query_args else "*"
+    #     q = Query(qstring).return_fields("$")
+        
+    #     docs = (await self.client.ft(f"idx:registry-{resource}-definition").search(q)).docs
+        
+    #     results = []
+    #     for doc in docs:
+    #         try:
+    #             if doc.json:
+    #                 reg = json.loads(doc.json)
+    #                 results.append(reg.get("registration", reg))
+    #         except Exception:
+    #             continue
+    #     return {"results": results}

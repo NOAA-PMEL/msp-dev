@@ -10,6 +10,8 @@ class BaseEventType(object):
     TYPE_MANAGE = "manage"
     TYPE_PING = "ping"
     TYPE_KEEPALIVE = "keepalive"
+    TYPE_OPERATIONS = "operations"
+    TYPE_TRANSPORT = "transport"
 
     ACTION_REQUEST = "request"
     ACTION_UPDATE = "update"
@@ -18,6 +20,7 @@ class BaseEventType(object):
     ACTION_SYNC_REQUEST = "sync-request"
     ACTION_SYNC_UPDATE = "sync-update"
     ACTION_SYNC_BCAST = "sync-broadcast"
+    ACTION_LOG = "log"
 
     def __init__(self):
         super(BaseEventType, self).__init__()
@@ -81,7 +84,15 @@ class BaseEventType(object):
     @staticmethod
     def service_registry_request():
         return ".".join([BaseEventType.get_type(BaseEventType.TYPE_SERVICE), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_REQUEST])
+    
+    @staticmethod
+    def operations_log():
+        return ".".join([BaseEventType.get_type(BaseEventType.TYPE_OPERATIONS), BaseEventType.ACTION_LOG])
 
+    @staticmethod
+    def transport_compressed():
+        return ".".join([BaseEventType.get_type(BaseEventType.TYPE_TRANSPORT), "compressed"])
+    
     @staticmethod
     def get_type(type: str):
         return ".".join([BaseEventType.TYPE_BASE, type])

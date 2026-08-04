@@ -45,6 +45,13 @@ class DeviceAttribute(BaseModel):
             if data_type == "char" or data_type == "string":
                 data_type = "str"
 
+            # --- FIX: BYPASS STRICT ELEMENT VALIDATION FOR LISTS ---
+            if isinstance(v, list):
+                # Pydantic natively handles list parsing, so we just return the array
+                # rather than trying to recursively eval() inner elements against "list".
+                return v
+            # -------------------------------------------------------
+
             if "type" in values and not isinstance(v, eval(data_type)):
                 raise ValueError("attribute data is wrong type")
         return v
@@ -57,6 +64,7 @@ class DeviceVariable(BaseModel):
     type: str | None = "str"
     shape: list[str] | None = ["time"]
     attributes: dict[str, DeviceAttribute]
+    data: list | None = None
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
 
@@ -68,6 +76,7 @@ class DeviceSetting(BaseModel):
     type: str | None = "str"
     shape: list[str] | None = ["time"]
     attributes: dict[str, DeviceAttribute]
+    data: list | None = None
     # attributes: dict | None = dict()
     # modes: list[str] | None = ["default"]
 
@@ -180,7 +189,8 @@ class Device(envdsBase):
         self.settings = RuntimeSettings()
 
         self.device_definition_registered = False
-        self.device_definition_send_time = 5 # start with every 5 seconds and change once ack
+        self.device_definition_send_time = 60 # changed to 60s and no ack
+        self.device_instance_send_time = 15 
         self.device_registered = False
 
         # list of sampling tasks to start/stop in do_start
@@ -299,7 +309,8 @@ class Device(envdsBase):
                 # self.logger.debug("default_data_loop", extra={"m": message})
                 await self.send_message(message)
         
-            await asyncio.sleep(5)
+            # await asyncio.sleep(5)
+            await asyncio.sleep(self.device_instance_send_time)
 
     async def register_device_type(self):
         # await init_db_models()
@@ -456,25 +467,55 @@ class Device(envdsBase):
             # )
 
     # async def handle_settings(self, message: Message):
+    # async def handle_settings(self, message: CloudEvent):
+    #     # if message.data["type"] == det.sensor_settings_request():
+    #     if message["type"] == det.sensor_settings_request():
+    #         try:
+    #             # src = message.data["source"]
+    #             # setting = message.data.data.get("settings", None)
+    #             # requested = message.data.data.get("requested", None)
+    #             src = message["source"]
+    #             setting = message.data.get("settings", None)
+    #             requested = message.data.get("requested", None)
+    #             self.logger.debug(
+    #                 "handle_settings", extra={"source": src, "setting": setting}
+    #             )
+    #             if setting and requested:
+    #                 # name = setting["settings"]
+    #                 current = self.settings.get_setting(setting)
+    #                 self.settings.set_setting(
+    #                     name=setting, requested=requested, actual=current["actual"]
+    #                 )
+
+    #         except (KeyError, Exception) as e:
+    #             self.logger.error("databuffer save error", extra={"error": e})
+
     async def handle_settings(self, message: CloudEvent):
-        # if message.data["type"] == det.sensor_settings_request():
         if message["type"] == det.sensor_settings_request():
             try:
-                # src = message.data["source"]
-                # setting = message.data.data.get("settings", None)
-                # requested = message.data.data.get("requested", None)
                 src = message["source"]
-                setting = message.data.get("settings", None)
-                requested = message.data.get("requested", None)
-                self.logger.debug(
-                    "handle_settings", extra={"source": src, "setting": setting}
-                )
-                if setting and requested:
-                    # name = setting["settings"]
-                    current = self.settings.get_setting(setting)
-                    self.settings.set_setting(
-                        name=setting, requested=requested, actual=current["actual"]
-                    )
+                settings_payload = message.data.get("settings", None)
+                
+                # 1. Handle nested dashboard format: {"settings": {"param_name": {"requested": X}}}
+                if isinstance(settings_payload, dict):
+                    for setting_name, setting_data in settings_payload.items():
+                        if isinstance(setting_data, dict) and "requested" in setting_data:
+                            requested_val = setting_data["requested"]
+                            current = self.settings.get_setting(setting_name)
+                            actual_val = current["actual"] if current else None
+                            self.settings.set_setting(
+                                name=setting_name, requested=requested_val, actual=actual_val
+                            )
+                
+                # 2. Fallback layout for flat formats: {"settings": "param_name", "requested": X}
+                elif isinstance(settings_payload, str):
+                    requested_val = message.data.get("requested", None)
+                    if requested_val is not None:
+                        current = self.settings.get_setting(settings_payload)
+                        actual_val = current["actual"] if current else None
+                        self.settings.set_setting(
+                            name=settings_payload, requested=requested_val, actual=actual_val
+                        )
 
             except (KeyError, Exception) as e:
                 self.logger.error("databuffer save error", extra={"error": e})
@@ -608,9 +649,26 @@ class Device(envdsBase):
             await asyncio.sleep(1)
             
 
+    # # each device should handle this as required
+    # async def settings_check(self):
+    #     pass
+
     # each device should handle this as required
     async def settings_check(self):
-        pass
+        if not self.settings.get_health():
+            for name in list(self.settings.get_settings().keys()):
+                if not self.settings.get_health_setting(name):
+                    setting_obj = self.settings.get_setting(name)
+                    target_val = setting_obj.get("requested") if isinstance(setting_obj, dict) else setting_obj
+                    
+                    if name == "sampling_state":
+                        target_str = str(target_val).lower()
+                        if target_str == "sampling":
+                            self.start()
+                        elif target_str == "idle":
+                            self.stop()
+                            
+                        self.settings.set_actual(name, target_val)
 
     async def interface_send_data(self, data: dict, path_id: str = "default"):
 
@@ -1101,6 +1159,95 @@ class Device(envdsBase):
                 self.include_metadata = True
                 await asyncio.sleep(1)
 
+    # def build_data_record(
+    #     self, meta: bool = False, variable_types: list[str] = ["main"]
+    # ) -> dict:
+    #     # TODO: change data_format -> format_version
+    #     # TODO: create record for any number of variable_types
+    #     record = {
+    #         # "time": get_datetime_string(),
+    #         "timestamp": get_datetime_string(),
+    #         # "instance": {
+    #         #     "serial_number": self.config.serial_number,
+    #         #     "sampling_mode": mode,
+    #         # }
+    #     }
+    #     # print(record)
+    #     if meta:
+    #         record["attributes"] = self.config.metadata.dict()["attributes"]
+    #         # print(record)
+    #         record["attributes"]["serial_number"] = {
+    #             "type": "char",
+    #             "data": self.config.serial_number,
+    #         }
+    #         record["attributes"]["mode"] = {"type": "char", "data": "default"}
+    #         record["attributes"]["variable_types"] = {
+    #             "type": "string",
+    #             "data": ",".join(variable_types),
+    #         }
+    #     else:
+    #         record["attributes"] = {
+    #             "make": {"data": self.config.make},
+    #             "model": {"data": self.config.model},
+    #             "serial_number": {"data": self.config.serial_number},
+    #             "mode": {"data": "default"},
+    #             "format_version": {"data": self.device_format_version},
+    #             "variable_types": {"data": ",".join(variable_types)},
+    #         }
+    #     # record["attributes"]["serial_number"] = {"data": self.config.serial_number}
+    #     # record["attributes"]["mode"] = {"data": "default"}
+    #     # record["attributes"]["variable_types"] = {"data": ",".join(variable_type)}
+
+    #     # print(record)
+
+    #     #     "variables": {},
+    #     # }
+
+    #     record["dimensions"] = {"time": 1}
+    #     record["variables"] = dict()
+
+    #     # record["variables"] = dict()
+    #     if meta:
+    #         for name, variable in self.config.metadata.dict()["variables"].items():
+    #             variable_type = variable["attributes"].get(
+    #                 "variable_type", {"type": "string", "data": "main"}
+    #             )
+    #             if variable_type["data"] in variable_types:
+    #                 record["variables"][name] = self.config.metadata.dict()[
+    #                     "variables"
+    #                 ][name]
+
+    #         # record["variables"] = self.config.metadata.dict()["variables"]
+
+    #         # print(1, record)
+    #         # for name, _ in record["variables"].items():
+    #         #     record["variables"][name]["data"] = None
+    #         for name, var_dict in record["variables"].items():
+    #             # Do not scrub the data array if the variable is a static coordinate
+    #             var_type = var_dict.get("attributes", {}).get("variable_type", {}).get("data")
+    #             if var_type != "coordinate":
+    #                 record["variables"][name]["data"] = None
+    #         # print(2, record)
+    #     else:
+    #         for name, variable in self.config.metadata.dict()["variables"].items():
+    #             variable_type = variable["attributes"].get(
+    #                 "variable_type", {"type": "string", "data": "main"}
+    #             )
+    #             # print(f"variable_type: {variable_type}, {variable_types}")
+    #             if variable_type["data"] in variable_types:
+    #                 # print(f"name: {name}")
+    #                 record["variables"][name] = {
+    #                     "attributes": {"variable_type": {"data": variable_type}},
+    #                     "data": None,
+    #                 }
+    #         # print(3, record)
+
+    #         # record["variables"] = dict()
+    #         # for name,_ in self.config.metadata.variables.items():
+    #         #     record["variables"][name] = {"data": None}
+
+    #     return record
+
     def build_data_record(
         self, meta: bool = False, variable_types: list[str] = ["main"]
     ) -> dict:
@@ -1136,19 +1283,10 @@ class Device(envdsBase):
                 "format_version": {"data": self.device_format_version},
                 "variable_types": {"data": ",".join(variable_types)},
             }
-        # record["attributes"]["serial_number"] = {"data": self.config.serial_number}
-        # record["attributes"]["mode"] = {"data": "default"}
-        # record["attributes"]["variable_types"] = {"data": ",".join(variable_type)}
-
-        # print(record)
-
-        #     "variables": {},
-        # }
 
         record["dimensions"] = {"time": 1}
         record["variables"] = dict()
 
-        # record["variables"] = dict()
         if meta:
             for name, variable in self.config.metadata.dict()["variables"].items():
                 variable_type = variable["attributes"].get(
@@ -1159,32 +1297,36 @@ class Device(envdsBase):
                         "variables"
                     ][name]
 
-            # record["variables"] = self.config.metadata.dict()["variables"]
-
-            # print(1, record)
-            for name, _ in record["variables"].items():
-                record["variables"][name]["data"] = None
-            # print(2, record)
+            for name, var_dict in record["variables"].items():
+                var_type = var_dict.get("attributes", {}).get("variable_type", {}).get("data")
+                
+                # --- THE FIX: Auto-fill settings from cache instead of scrubbing ---
+                if var_type == "setting":
+                    s_obj = self.settings.get_setting(name)
+                    s_val = s_obj.get("actual", s_obj.get("requested")) if isinstance(s_obj, dict) else s_obj
+                    record["variables"][name]["data"] = s_val
+                elif var_type != "coordinate":
+                    record["variables"][name]["data"] = None
         else:
             for name, variable in self.config.metadata.dict()["variables"].items():
                 variable_type = variable["attributes"].get(
                     "variable_type", {"type": "string", "data": "main"}
                 )
-                # print(f"variable_type: {variable_type}, {variable_types}")
                 if variable_type["data"] in variable_types:
-                    # print(f"name: {name}")
+                    val = None
+                    
+                    # --- THE FIX: Auto-fill settings from cache ---
+                    if variable_type["data"] == "setting":
+                        s_obj = self.settings.get_setting(name)
+                        val = s_obj.get("actual", s_obj.get("requested")) if isinstance(s_obj, dict) else s_obj
+                        
                     record["variables"][name] = {
                         "attributes": {"variable_type": {"data": variable_type}},
-                        "data": None,
+                        "data": val,
                     }
-            # print(3, record)
-
-            # record["variables"] = dict()
-            # for name,_ in self.config.metadata.variables.items():
-            #     record["variables"][name] = {"data": None}
 
         return record
-
+    
     def get_definition_by_variable_type(
         self, device_def: dict, variable_type: str = "main"
     ) -> dict:
