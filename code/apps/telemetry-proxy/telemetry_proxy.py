@@ -68,7 +68,7 @@ class TelemetryProxyClient:
         key_bytes = self.config.aes_encryption_key.encode('utf-8')[:32].ljust(32, b'\0')
         self.cipher = ChaCha20Poly1305(key_bytes)
         
-        self.outbound_queue = asyncio.Queue(maxsize=100)
+        self.outbound_queue = asyncio.Queue(maxsize=10)
         self.inbound_queue = asyncio.Queue(maxsize=100)
         self.local_batch_queue = asyncio.Queue(maxsize=5000)
 
@@ -137,74 +137,62 @@ class TelemetryProxyClient:
                     await self.inbound_queue.put(msg)
             else:
                 # Instantly pipe to aggregator to prevent blocking the network loop
+                # ---> THE FIX: Shed oldest telemetry if queue is full <---
                 try:
                     self.local_batch_queue.put_nowait((topic, msg.payload))
                 except asyncio.QueueFull:
-                    pass
+                    try:
+                        self.local_batch_queue.get_nowait()
+                        self.local_batch_queue.task_done()
+                    except asyncio.QueueEmpty:
+                        pass
+                    try:
+                        self.local_batch_queue.put_nowait((topic, msg.payload))
+                    except asyncio.QueueFull:
+                        pass
 
     async def batch_aggregator_worker(self):
         """Aggregates local MQTT messages into a time-windowed batch."""
-        batch_items = []
-        current_size = 0
-        
         MAX_BATCH_BYTES = 128 * 1024 
-        current_tx_rate = self.config.transmission_rate_hz
-        last_flush_time = time.time()
+        FLUSH_INTERVAL = 1.0 / self.config.transmission_rate_hz 
         
         while True:
-            try:
-                # --- ADAPTIVE TRANSMISSION RATE (DE-LAGGING) ---
-                # Calculate network lag in seconds based on outbound queue backlog
-                lag_seconds = self.outbound_queue.qsize() * (1.0 / current_tx_rate)
-                
-                if lag_seconds > 2.0:
-                    # Network lagging: Decrease frequency to build larger, more compressible batches
-                    current_tx_rate = max(1.0, current_tx_rate - 0.5)
-                elif lag_seconds < 0.5:
-                    # Network recovering: Slowly return to configured target rate
-                    current_tx_rate = min(self.config.transmission_rate_hz, current_tx_rate + 0.1)
-                
-                FLUSH_INTERVAL = 1.0 / current_tx_rate
-                # -----------------------------------------------
-                
-                time_remaining = FLUSH_INTERVAL - (time.time() - last_flush_time)
-                
-                if time_remaining <= 0:
-                    raise asyncio.TimeoutError()
-
-                topic, raw_payload = await asyncio.wait_for(self.local_batch_queue.get(), timeout=time_remaining)
-                
-                item_str = f'{{"t":"{topic}","d":{raw_payload.decode("utf-8")}}}'
-                item_size = len(item_str)
-                
-                if batch_items and (current_size + item_size >= MAX_BATCH_BYTES):
-                    asyncio.create_task(self.flush_batch(batch_items, current_tx_rate))
-                    batch_items = []
-                    current_size = 0
-                    last_flush_time = time.time()
-                
-                batch_items.append(item_str)
-                current_size += item_size
-                self.local_batch_queue.task_done()
+            # Sleep for the exact flush interval (e.g., 0.2s for 5Hz)
+            await asyncio.sleep(FLUSH_INTERVAL)
+            
+            batch_items = []
+            current_size = 0
+            
+            # Drain everything currently in the queue instantly at max CPU speed
+            while not self.local_batch_queue.empty():
+                try:
+                    topic, raw_payload = self.local_batch_queue.get_nowait()
                     
-            except asyncio.TimeoutError:
-                if batch_items:
-                    asyncio.create_task(self.flush_batch(batch_items, current_tx_rate))
-                    batch_items = []
-                    current_size = 0
-                
-                last_flush_time = time.time()
+                    item_str = f'{{"t":"{topic}","d":{raw_payload.decode("utf-8")}}}'
+                    item_size = len(item_str)
+                    
+                    if batch_items and (current_size + item_size >= MAX_BATCH_BYTES):
+                        asyncio.create_task(self.flush_batch(batch_items))
+                        batch_items = []
+                        current_size = 0
+                        
+                    batch_items.append(item_str)
+                    current_size += item_size
+                    self.local_batch_queue.task_done()
+                except asyncio.QueueEmpty:
+                    break
+                    
+            if batch_items:
+                asyncio.create_task(self.flush_batch(batch_items))
 
     def synchronous_compress_and_encrypt(self, raw_payload: bytes):
         """Helper to run CPU-heavy compression/crypto inside a thread pool."""
-        # Speed up: Lower zlib compression level from 6 to 3 for significantly faster execution
-        # on ARM Edge devices with minimal impact on string table payload reduction ratios.
-        compressed_bytes = zlib.compress(raw_payload, level=3)
+        compressed_bytes = zlib.compress(raw_payload, level=6)
         nonce = os.urandom(12)
         ciphertext = self.cipher.encrypt(nonce, compressed_bytes, associated_data=None)
         return nonce + ciphertext
 
-    async def flush_batch(self, batch_items: list, current_tx_rate: float):
+    async def flush_batch(self, batch_items: list):
         """Compresses and queues outgoing batched telemetry concurrently."""
         try:
             # Construct the final JSON array payload
@@ -239,7 +227,7 @@ class TelemetryProxyClient:
                 ("ce-type", "envds.transport.batch"), ("ce-source", f"envds.{self.config.daq_id}.proxy"),
                 
                 # ---> SAFE KEY: txratehz <---
-                ("txratehz", str(current_tx_rate))
+                ("txratehz", str(self.config.transmission_rate_hz))
             ]
             props.ContentType = "application/octet-stream"
 
@@ -297,13 +285,11 @@ class TelemetryProxyClient:
                     batch_size = len(batch)
                     L.info(f"Routing inbound batch of {batch_size} items.", extra={"reduction_pct": round(reduction, 1)})
                     
-                    # Calculate safe window using the SENDER'S declared rate
-                    trickle_window = (1.0 / actual_tx_rate) * 0.90
-                    trickle_delay = trickle_window / batch_size if batch_size > 0 else 0
-                    
+                    # THE FIX: Remove the disastrous per-item asyncio.sleep trickle delay. 
+                    # The OS-level sleep resolution cannot handle high-frequency loops, causing 
+                    # the receiver to fall multiple seconds behind per batch. Burst directly instead.
                     for item in batch:
                         await client.publish(item["t"], payload=json.dumps(item["d"]).encode('utf-8'), qos=0)
-                        await asyncio.sleep(trickle_delay)
                 else:
                     if original_topic:
                         await client.publish(original_topic, payload=original_json_bytes, qos=0)
