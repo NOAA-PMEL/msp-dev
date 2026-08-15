@@ -253,8 +253,13 @@ async def lifespan(app: FastAPI):
     task_listen.cancel()
     task_publish.cancel()
 
-app = FastAPI(lifespan=lifespan)
-
+# app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan, 
+    docs_url="/api/docs", 
+    redoc_url="/api/redoc", 
+    openapi_url="/api/openapi.json"
+)
 # --- WEBSOCKET ENDPOINTS ---
 @app.websocket("/ws/deployment/{deployment_id}/c2")
 async def ws_deployment_c2(websocket: WebSocket, deployment_id: str):
