@@ -127,44 +127,15 @@ def layout(deployment_id=None):
         
         # --- MAIN CONTENT GRID ---
         dbc.Row([
-            # LOCAL SIDEBAR
-            dbc.Col([
-                html.Div([
-                    html.H6([html.I(className="bi bi-filter-square me-2"), "Group By"], className="fw-bold text-dark text-uppercase mb-3", style={"fontSize": "0.8rem", "letterSpacing": "0.5px"}),
-                    dbc.Nav([
-                        dbc.NavLink("Variableset Type", id="group-type", n_clicks=0, active=True, className="fw-bold mb-1 rounded text-dark", style={"cursor": "pointer"}),
-                        dbc.NavLink("Variable Map", id="group-vmap", n_clicks=0, active=False, className="fw-bold mb-1 rounded text-dark", style={"cursor": "pointer"}),
-                        dbc.NavLink("Platform", id="group-platform", n_clicks=0, active=False, className="fw-bold mb-1 rounded text-dark", style={"cursor": "pointer"}),
-                    ], vertical=True, pills=True)
-                ], className="bg-light p-3 rounded border shadow-sm h-100")
-            ], width=12, md=3, lg=2, className="mb-4"),
-            
-            # CARDS GRID
+            # CARDS GRID (Stretched full width)
             dbc.Col([
                 html.Div(id="varset-cards-container")
-            ], width=12, md=9, lg=10)
+            ], width=12)
         ]),
         
         # --- STORES ---
-        dcc.Store(id="varset-data-store", data=varset_data),
-        dcc.Store(id="varset-active-group", data="type")
+        dcc.Store(id="varset-data-store", data=varset_data)
     ])
-
-@callback(
-    Output("group-type", "active"),
-    Output("group-vmap", "active"),
-    Output("group-platform", "active"),
-    Output("varset-active-group", "data"),
-    Input("group-type", "n_clicks"),
-    Input("group-vmap", "n_clicks"),
-    Input("group-platform", "n_clicks"),
-    prevent_initial_call=True
-)
-def update_active_nav(t_clicks, v_clicks, p_clicks):
-    trigger = ctx.triggered_id
-    if trigger == "group-vmap": return False, True, False, "vmap"
-    elif trigger == "group-platform": return False, False, True, "platform"
-    return True, False, False, "type"
 
 @callback(
     Output("varset-cards-container", "children"),
@@ -221,7 +192,6 @@ def render_varset_cards(group_by, varset_data):
         }
         icon = icon_map.get(group_by, "bi-folder2-open")
         
-        # Format the header text based on the group
         header_text = str(key)
         if group_by == "type":
             header_text = f"Type: {header_text.title()}"
