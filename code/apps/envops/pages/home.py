@@ -1,6 +1,6 @@
 import dash
 import json
-from dash import html, dcc, callback, Input, Output, State, ctx, Patch
+from dash import html, dcc, callback, Input, Output, State, ctx, Patch, ALL
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import httpx
