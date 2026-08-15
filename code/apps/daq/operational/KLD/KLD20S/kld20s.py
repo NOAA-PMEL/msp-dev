@@ -74,7 +74,7 @@ class KLD20S(Operational):
 
     def check_valve_state(self, data):
         try:
-            setting_obj = self.settings.get_setting("valve_state")
+            setting_obj = self.settings.get_setting("valve_state_sp")
             if not setting_obj: return
             
             requested_raw = setting_obj.get("requested", 0)
@@ -87,7 +87,7 @@ class KLD20S(Operational):
             state_fb = level1_data.get("data")
             if state_fb is not None:
                 if int(state_fb) == requested_state:
-                    self.settings.set_actual("valve_state", actual=requested_raw)
+                    self.settings.set_actual("valve_state_sp", actual=requested_raw)
         except Exception as e:
             self.logger.error("check_valve_state error", extra={"error": str(e)})
 
@@ -101,7 +101,7 @@ class KLD20S(Operational):
                     
                     if name == "sampling_state":
                         self.settings.set_actual(name, target_val)
-                    elif name == "valve_state":
+                    elif name == "valve_state_sp":
                         try:
                             state = int(target_val)
                             
@@ -117,7 +117,7 @@ class KLD20S(Operational):
                             await self.interface_send_data(data=payload, path_id="valve_control")
                             
                             # Optimistically set the actual state so the UI updates instantly
-                            self.settings.set_actual("valve_state", actual=state)
+                            self.settings.set_actual("valve_state_sp", actual=state)
                         except Exception as e:
                             self.logger.error("settings_check valve_state error", extra={"error": str(e)})
 
