@@ -1,6 +1,7 @@
 import dash
 import json
 from dash import html, dcc, callback, Input, Output, State, ctx, Patch, ALL
+from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import httpx
@@ -549,38 +550,66 @@ def update_live_locations(message, current_locations):
     State("store-deployments", "data"),
     prevent_initial_call=True
 )
+
+@callback(
+    Output("fleet-map", "figure", allow_duplicate=True),
+    Input({"type": "btn-locate-map", "index": ALL}, "n_clicks"),
+    State("live-fleet-locations", "data"),
+    State("store-deployments", "data"),
+    prevent_initial_call=True
+)
 def zoom_to_deployment(n_clicks_list, live_locations, deployments):
+    
     if not ctx.triggered:
         raise PreventUpdate
-    
+
     trigger_id = ctx.triggered_id
-    if not trigger_id or not any(n_clicks_list):
+    if not trigger_id or not any(n for n in n_clicks_list if n):
         raise PreventUpdate
-        
+
     host_name = trigger_id["index"]
     target_lat, target_lon = None, None
+
+    if live_locations is None:
+        live_locations = {}
+
+    # 1. Fetch the exact host deployment from the registry
+    host_dep = next((d for d in deployments if d.get("metadata", {}).get("name") == host_name), None)
+    if not host_dep:
+        raise PreventUpdate
+
+    platform_ref = host_dep.get("data", {}).get("platform_ref")
     
-    # Attempt to locate live payload data first
-    if live_locations and host_name in live_locations:
-        target_lat = live_locations[host_name]["lat"]
-        target_lon = live_locations[host_name]["lon"]
+    # 2. Fetch the exact sub-deployments tied to this host's platform_ref
+    subs = [d for d in deployments if d.get("data", {}).get("host_platform_ref") == platform_ref] if platform_ref else []
+
+    # 3. Exactly mirror the location discovery logic from patch_fleet_map
+    live_loc = live_locations.get(host_name) or live_locations.get(platform_ref)
+    
+    if not live_loc:
+        for sub in subs:
+            sub_name = sub.get("metadata", {}).get("name")
+            sub_pref = sub.get("data", {}).get("platform_ref")
+            live_loc = live_locations.get(sub_name) or live_locations.get(sub_pref)
+            if live_loc: 
+                break
+
+    if live_loc:
+        target_lat = live_loc.get("lat")
+        target_lon = live_loc.get("lon")
     else:
-        # Fallback to the deployment's estimated bounds 
-        if deployments:
-            for dep in deployments:
-                if dep.get("metadata", {}).get("name") == host_name:
-                    target_lat = dep.get("data", {}).get("planned_geospatial_lat_min")
-                    target_lon = dep.get("data", {}).get("planned_geospatial_lon_min")
-                    break
-                    
+        # Fallback to the deployment's estimated bounds
+        target_lat = host_dep.get("data", {}).get("planned_geospatial_lat_min")
+        target_lon = host_dep.get("data", {}).get("planned_geospatial_lon_min")
+
     if target_lat is None or target_lon is None:
         raise PreventUpdate
-        
+
     map_patch = Patch()
-    map_patch["layout"]["mapbox"]["center"] = {"lat": target_lat, "lon": target_lon}
+    map_patch["layout"]["mapbox"]["center"] = {"lat": float(target_lat), "lon": float(target_lon)}
     map_patch["layout"]["mapbox"]["zoom"] = 8
     
-    # Overriding uirevision forces Plotly to redraw the viewport rather than freezing user bounds
-    map_patch["layout"]["uirevision"] = str(time.time()) 
-    
+    # Uses datetime (already imported in home.py) to force viewport recalculation
+    map_patch["layout"]["uirevision"] = str(datetime.now(timezone.utc).timestamp())
+
     return map_patch
