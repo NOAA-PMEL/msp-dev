@@ -68,9 +68,12 @@ class TelemetryProxyClient:
         key_bytes = self.config.aes_encryption_key.encode('utf-8')[:32].ljust(32, b'\0')
         self.cipher = ChaCha20Poly1305(key_bytes)
         
-        self.outbound_queue = asyncio.Queue(maxsize=100)
+        self.outbound_queue = asyncio.Queue(maxsize=10)
         self.inbound_queue = asyncio.Queue(maxsize=100)
         self.local_batch_queue = asyncio.Queue(maxsize=5000)
+
+        # NEW: Massive secondary queue for preserving delayed data (10,000 batches = ~20MB RAM)
+        self.backfill_queue = asyncio.Queue(maxsize=10000)
 
         self.start_time = time.time()
         self.total_outbound_bytes = 0
@@ -101,8 +104,9 @@ class TelemetryProxyClient:
                     publish_tasks = [asyncio.create_task(self.publisher_worker(client, i)) for i in range(3)]
                     subscribe_task = asyncio.create_task(self.subscriber_worker(client))
                     inbound_processor_task = asyncio.create_task(self.inbound_processor_worker(client))
+                    backfill_task = asyncio.create_task(self.backfill_publisher_worker(client))
                     
-                    await asyncio.gather(*publish_tasks, subscribe_task, inbound_processor_task)
+                    await asyncio.gather(*publish_tasks, subscribe_task, inbound_processor_task, backfill_task)
                     
             except MqttError as e:
                 L.error(f"MQTT Error: {e}. Reconnecting in {reconnect}s...")
@@ -137,50 +141,51 @@ class TelemetryProxyClient:
                     await self.inbound_queue.put(msg)
             else:
                 # Instantly pipe to aggregator to prevent blocking the network loop
+                # ---> THE FIX: Shed oldest telemetry if queue is full <---
                 try:
                     self.local_batch_queue.put_nowait((topic, msg.payload))
                 except asyncio.QueueFull:
-                    pass
+                    try:
+                        self.local_batch_queue.get_nowait()
+                        self.local_batch_queue.task_done()
+                    except asyncio.QueueEmpty:
+                        pass
+                    try:
+                        self.local_batch_queue.put_nowait((topic, msg.payload))
+                    except asyncio.QueueFull:
+                        pass
 
     async def batch_aggregator_worker(self):
         """Aggregates local MQTT messages into a time-windowed batch."""
-        batch_items = []
-        current_size = 0
-        
         MAX_BATCH_BYTES = 128 * 1024 
-        # ---> DYNAMIC FLUSH INTERVAL <---
         FLUSH_INTERVAL = 1.0 / self.config.transmission_rate_hz 
-        last_flush_time = time.time()
         
         while True:
-            try:
-                time_remaining = FLUSH_INTERVAL - (time.time() - last_flush_time)
-                
-                if time_remaining <= 0:
-                    raise asyncio.TimeoutError()
-
-                topic, raw_payload = await asyncio.wait_for(self.local_batch_queue.get(), timeout=time_remaining)
-                
-                item_str = f'{{"t":"{topic}","d":{raw_payload.decode("utf-8")}}}'
-                item_size = len(item_str)
-                
-                if batch_items and (current_size + item_size >= MAX_BATCH_BYTES):
-                    asyncio.create_task(self.flush_batch(batch_items))
-                    batch_items = []
-                    current_size = 0
-                    last_flush_time = time.time()
-                
-                batch_items.append(item_str)
-                current_size += item_size
-                self.local_batch_queue.task_done()
+            await asyncio.sleep(FLUSH_INTERVAL)
+            
+            batch_items = []
+            current_size = 0
+            
+            while not self.local_batch_queue.empty():
+                try:
+                    topic, raw_payload = self.local_batch_queue.get_nowait()
                     
-            except asyncio.TimeoutError:
-                if batch_items:
-                    asyncio.create_task(self.flush_batch(batch_items))
-                    batch_items = []
-                    current_size = 0
-                
-                last_flush_time = time.time()
+                    item_str = f'{{"t":"{topic}","d":{raw_payload.decode("utf-8")}}}'
+                    item_size = len(item_str)
+                    
+                    if batch_items and (current_size + item_size >= MAX_BATCH_BYTES):
+                        asyncio.create_task(self.flush_batch(batch_items))
+                        batch_items = []
+                        current_size = 0
+                        
+                    batch_items.append(item_str)
+                    current_size += item_size
+                    self.local_batch_queue.task_done()
+                except asyncio.QueueEmpty:
+                    break
+                    
+            if batch_items:
+                asyncio.create_task(self.flush_batch(batch_items))
 
     def synchronous_compress_and_encrypt(self, raw_payload: bytes):
         """Helper to run CPU-heavy compression/crypto inside a thread pool."""
@@ -190,9 +195,21 @@ class TelemetryProxyClient:
         return nonce + ciphertext
 
     async def flush_batch(self, batch_items: list):
-        """Compresses and queues outgoing batched telemetry concurrently."""
+        """Compresses and queues outgoing batched telemetry directly on the event loop."""
         try:
-            # Construct the final JSON array payload
+            # --- THE FIX: Route shed data to backfill ---
+            if self.outbound_queue.full():
+                try:
+                    stale_topic, stale_payload, stale_props = self.outbound_queue.get_nowait()
+                    self.outbound_queue.task_done()
+                    L.warning("Outbound queue full. Shifting oldest batch to backfill queue.")
+                    try:
+                        self.backfill_queue.put_nowait((stale_topic, stale_payload, stale_props))
+                    except asyncio.QueueFull:
+                        L.error("Backfill queue full. Dropping oldest telemetry permanently.")
+                except asyncio.QueueEmpty:
+                    pass
+
             final_json = "[" + ",".join(batch_items) + "]"
             raw_payload = final_json.encode("utf-8")
             
@@ -200,7 +217,7 @@ class TelemetryProxyClient:
             if size_in == 0: return
 
             t_start = time.perf_counter()
-            final_payload = await asyncio.to_thread(self.synchronous_compress_and_encrypt, raw_payload)
+            final_payload = self.synchronous_compress_and_encrypt(raw_payload)
             t_elapsed_ms = (time.perf_counter() - t_start) * 1000.0
 
             if t_elapsed_ms > 50.0:
@@ -209,7 +226,6 @@ class TelemetryProxyClient:
             size_out = len(final_payload)
             self.total_outbound_bytes += size_out
             self.total_raw_bytes += size_in
-            elapsed_hours = (time.time() - self.start_time) / 3600.0
             
             reduction = (1 - (size_out / size_in)) * 100 if size_in > 0 else 0
             
@@ -222,73 +238,48 @@ class TelemetryProxyClient:
             props.UserProperty = [
                 ("ce-specversion", "1.0"), ("ce-id", str(ULID())),
                 ("ce-type", "envds.transport.batch"), ("ce-source", f"envds.{self.config.daq_id}.proxy"),
-                
-                # ---> SAFE KEY: txratehz <---
                 ("txratehz", str(self.config.transmission_rate_hz))
             ]
             props.ContentType = "application/octet-stream"
 
-            # Shed load: Discard oldest stale packet to write the newest real-time location
             try:
                 self.outbound_queue.put_nowait((self.config.bridge_topic_out, final_payload, props))
             except asyncio.QueueFull:
-                try:
-                    self.outbound_queue.get_nowait()
-                    self.outbound_queue.task_done()
-                    L.warning("Outbound queue full. Shedding oldest batch to avoid network lag.")
-                except asyncio.QueueEmpty:
-                    pass
-                self.outbound_queue.put_nowait((self.config.bridge_topic_out, final_payload, props))
+                pass 
 
         except Exception as e:
             L.error(f"Outbound proxy error: {e}")
 
     async def inbound_processor_worker(self, client):
-        """Unpacks and decrypts incoming bridge messages and routes them locally with a De-Jitter buffer."""
+        """Unpacks and decrypts incoming bridge messages and routes them locally without artificial delays."""
         while True:
             msg = await self.inbound_queue.get()
             try:
-                # 1. Read Headers from MQTT v5 User Properties
                 props = msg.properties
                 user_props = getattr(props, "UserProperty", [])
                 
                 original_topic = next((v for k, v in user_props if k == "ce-originaltopic"), None)
                 
-                # ---> SAFE KEY: txratehz <---
-                tx_rate_str = next((v for k, v in user_props if k == "txratehz"), None)
-                try:
-                    # Use the sender's exact rate, fallback to local config if missing
-                    actual_tx_rate = float(tx_rate_str) if tx_rate_str else self.config.transmission_rate_hz
-                except (ValueError, TypeError):
-                    actual_tx_rate = self.config.transmission_rate_hz
-
-                # 2. Extract Nonce and Ciphertext
                 incoming_payload = msg.payload
                 size_in = len(incoming_payload)
                 nonce = incoming_payload[:12]
                 ciphertext = incoming_payload[12:]
                 
-                # 3. Decrypt & Decompress
                 compressed_bytes = self.cipher.decrypt(nonce, ciphertext, associated_data=None)
                 original_json_bytes = zlib.decompress(compressed_bytes)
                 size_out = len(original_json_bytes)
                 
                 reduction = (1 - (size_in / size_out)) * 100 if size_out > 0 else 0
                 
-                # 4. Route local 
                 batch = json.loads(original_json_bytes)
                 
                 if isinstance(batch, list):
                     batch_size = len(batch)
                     L.info(f"Routing inbound batch of {batch_size} items.", extra={"reduction_pct": round(reduction, 1)})
                     
-                    # Calculate safe window using the SENDER'S declared rate
-                    trickle_window = (1.0 / actual_tx_rate) * 0.90
-                    trickle_delay = trickle_window / batch_size if batch_size > 0 else 0
-                    
+                    # Burst instantly. Do not sleep between items.
                     for item in batch:
                         await client.publish(item["t"], payload=json.dumps(item["d"]).encode('utf-8'), qos=0)
-                        await asyncio.sleep(trickle_delay)
                 else:
                     if original_topic:
                         await client.publish(original_topic, payload=original_json_bytes, qos=0)
@@ -309,16 +300,72 @@ class TelemetryProxyClient:
                     timeout=1.0
                 )
             except asyncio.TimeoutError:
-                L.warning(f"Publisher {worker_id} timed out. Shedding packet due to Mosquitto/Starlink backpressure.")
+                L.warning(f"Publisher {worker_id} timed out. Shedding packet due to network backpressure.")
             except MqttError as e:
                 L.error(f"Publish failed: {e}")
-                raise e
             except Exception as e:
                 L.error(f"Unexpected publisher error: {e}")
             finally:
                 self.outbound_queue.task_done()
 
 
+    async def flush_batch(self, batch_items: list):
+        """Compresses and queues outgoing batched telemetry directly on the event loop."""
+        try:
+            # --- THE FIX: Route shed data to backfill ---
+            if self.outbound_queue.full():
+                try:
+                    stale_topic, stale_payload, stale_props = self.outbound_queue.get_nowait()
+                    self.outbound_queue.task_done()
+                    L.warning("Outbound queue full. Shifting oldest batch to backfill queue.")
+                    try:
+                        self.backfill_queue.put_nowait((stale_topic, stale_payload, stale_props))
+                    except asyncio.QueueFull:
+                        L.error("Backfill queue full. Dropping oldest telemetry permanently.")
+                except asyncio.QueueEmpty:
+                    pass
+
+            final_json = "[" + ",".join(batch_items) + "]"
+            raw_payload = final_json.encode("utf-8")
+            
+            size_in = len(raw_payload)
+            if size_in == 0: return
+
+            t_start = time.perf_counter()
+            # Run inline to avoid thread pool exhaustion
+            final_payload = self.synchronous_compress_and_encrypt(raw_payload)
+            t_elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+
+            if t_elapsed_ms > 50.0:
+                L.warning(f"Heavy batch compression ({len(batch_items)} items) took {t_elapsed_ms:.2f}ms.")
+
+            size_out = len(final_payload)
+            self.total_outbound_bytes += size_out
+            self.total_raw_bytes += size_in
+            
+            reduction = (1 - (size_out / size_in)) * 100 if size_in > 0 else 0
+            
+            L.info("compression_stats", extra={
+                "direction": "outbound", "batch_items": len(batch_items),
+                "bytes_in": size_in, "bytes_out": size_out, "reduction_pct": round(reduction, 1)
+            })
+
+            props = Properties(PacketTypes.PUBLISH)
+            props.UserProperty = [
+                ("ce-specversion", "1.0"), ("ce-id", str(ULID())),
+                ("ce-type", "envds.transport.batch"), ("ce-source", f"envds.{self.config.daq_id}.proxy"),
+                ("txratehz", str(self.config.transmission_rate_hz))
+            ]
+            props.ContentType = "application/octet-stream"
+
+            try:
+                self.outbound_queue.put_nowait((self.config.bridge_topic_out, final_payload, props))
+            except asyncio.QueueFull:
+                pass 
+
+        except Exception as e:
+            L.error(f"Outbound proxy error: {e}")
+                
 # --- HTTP API ---
 proxy = None
 
