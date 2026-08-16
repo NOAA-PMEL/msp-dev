@@ -72,6 +72,9 @@ class TelemetryProxyClient:
         self.inbound_queue = asyncio.Queue(maxsize=100)
         self.local_batch_queue = asyncio.Queue(maxsize=5000)
 
+        # NEW: Massive secondary queue for preserving delayed data (10,000 batches = ~20MB RAM)
+        self.backfill_queue = asyncio.Queue(maxsize=10000)
+
         self.start_time = time.time()
         self.total_outbound_bytes = 0
         self.total_raw_bytes = 0
@@ -101,8 +104,9 @@ class TelemetryProxyClient:
                     publish_tasks = [asyncio.create_task(self.publisher_worker(client, i)) for i in range(3)]
                     subscribe_task = asyncio.create_task(self.subscriber_worker(client))
                     inbound_processor_task = asyncio.create_task(self.inbound_processor_worker(client))
+                    backfill_task = asyncio.create_task(self.backfill_publisher_worker(client))
                     
-                    await asyncio.gather(*publish_tasks, subscribe_task, inbound_processor_task)
+                    await asyncio.gather(*publish_tasks, subscribe_task, inbound_processor_task, backfill_task)
                     
             except MqttError as e:
                 L.error(f"MQTT Error: {e}. Reconnecting in {reconnect}s...")
@@ -153,52 +157,37 @@ class TelemetryProxyClient:
 
     async def batch_aggregator_worker(self):
         """Aggregates local MQTT messages into a time-windowed batch."""
-        batch_items = []
-        current_size = 0
-        
         MAX_BATCH_BYTES = 128 * 1024 
-        current_tx_rate = self.config.transmission_rate_hz
-        last_flush_time = time.time()
+        FLUSH_INTERVAL = 1.0 / self.config.transmission_rate_hz 
         
         while True:
-            try:
-                # --- ADAPTIVE TRANSMISSION RATE (DE-LAGGING) ---
-                lag_seconds = self.outbound_queue.qsize() * (1.0 / current_tx_rate)
-                
-                if lag_seconds > 2.0:
-                    current_tx_rate = max(1.0, current_tx_rate - 0.5)
-                elif lag_seconds < 0.5:
-                    current_tx_rate = min(self.config.transmission_rate_hz, current_tx_rate + 0.1)
-                
-                FLUSH_INTERVAL = 1.0 / current_tx_rate
-                
-                time_remaining = FLUSH_INTERVAL - (time.time() - last_flush_time)
-                
-                if time_remaining <= 0:
-                    raise asyncio.TimeoutError()
-
-                topic, raw_payload = await asyncio.wait_for(self.local_batch_queue.get(), timeout=time_remaining)
-                
-                item_str = f'{{"t":"{topic}","d":{raw_payload.decode("utf-8")}}}'
-                item_size = len(item_str)
-                
-                if batch_items and (current_size + item_size >= MAX_BATCH_BYTES):
-                    asyncio.create_task(self.flush_batch(batch_items, current_tx_rate))
-                    batch_items = []
-                    current_size = 0
-                    last_flush_time = time.time()
-                
-                batch_items.append(item_str)
-                current_size += item_size
-                self.local_batch_queue.task_done()
+            # Sleep for the exact flush interval (e.g., 0.2s for 5Hz)
+            await asyncio.sleep(FLUSH_INTERVAL)
+            
+            batch_items = []
+            current_size = 0
+            
+            # Drain everything currently in the queue instantly at max CPU speed
+            while not self.local_batch_queue.empty():
+                try:
+                    topic, raw_payload = self.local_batch_queue.get_nowait()
                     
-            except asyncio.TimeoutError:
-                if batch_items:
-                    asyncio.create_task(self.flush_batch(batch_items, current_tx_rate))
-                    batch_items = []
-                    current_size = 0
-                
-                last_flush_time = time.time()
+                    item_str = f'{{"t":"{topic}","d":{raw_payload.decode("utf-8")}}}'
+                    item_size = len(item_str)
+                    
+                    if batch_items and (current_size + item_size >= MAX_BATCH_BYTES):
+                        asyncio.create_task(self.flush_batch(batch_items))
+                        batch_items = []
+                        current_size = 0
+                        
+                    batch_items.append(item_str)
+                    current_size += item_size
+                    self.local_batch_queue.task_done()
+                except asyncio.QueueEmpty:
+                    break
+                    
+            if batch_items:
+                asyncio.create_task(self.flush_batch(batch_items))
 
     def synchronous_compress_and_encrypt(self, raw_payload: bytes):
         """Helper to run CPU-heavy compression/crypto inside a thread pool."""
@@ -207,10 +196,22 @@ class TelemetryProxyClient:
         ciphertext = self.cipher.encrypt(nonce, compressed_bytes, associated_data=None)
         return nonce + ciphertext
 
-    async def flush_batch(self, batch_items: list, current_tx_rate: float):
-        """Compresses and queues outgoing batched telemetry concurrently."""
+    async def flush_batch(self, batch_items: list):
+        """Compresses and queues outgoing batched telemetry directly on the event loop."""
         try:
-            # Construct the final JSON array payload
+            # --- THE FIX: Route shed data to backfill ---
+            if self.outbound_queue.full():
+                try:
+                    stale_topic, stale_payload, stale_props = self.outbound_queue.get_nowait()
+                    self.outbound_queue.task_done()
+                    L.warning("Outbound queue full. Shifting oldest batch to backfill queue.")
+                    try:
+                        self.backfill_queue.put_nowait((stale_topic, stale_payload, stale_props))
+                    except asyncio.QueueFull:
+                        L.error("Backfill queue full. Dropping oldest telemetry permanently.")
+                except asyncio.QueueEmpty:
+                    pass
+
             final_json = "[" + ",".join(batch_items) + "]"
             raw_payload = final_json.encode("utf-8")
             
@@ -218,7 +219,7 @@ class TelemetryProxyClient:
             if size_in == 0: return
 
             t_start = time.perf_counter()
-            final_payload = await asyncio.to_thread(self.synchronous_compress_and_encrypt, raw_payload)
+            final_payload = self.synchronous_compress_and_encrypt(raw_payload)
             t_elapsed_ms = (time.perf_counter() - t_start) * 1000.0
 
             if t_elapsed_ms > 50.0:
@@ -227,7 +228,6 @@ class TelemetryProxyClient:
             size_out = len(final_payload)
             self.total_outbound_bytes += size_out
             self.total_raw_bytes += size_in
-            elapsed_hours = (time.time() - self.start_time) / 3600.0
             
             reduction = (1 - (size_out / size_in)) * 100 if size_in > 0 else 0
             
@@ -240,23 +240,14 @@ class TelemetryProxyClient:
             props.UserProperty = [
                 ("ce-specversion", "1.0"), ("ce-id", str(ULID())),
                 ("ce-type", "envds.transport.batch"), ("ce-source", f"envds.{self.config.daq_id}.proxy"),
-                
-                # ---> SAFE KEY: txratehz <---
-                ("txratehz", str(current_tx_rate))
+                ("txratehz", str(self.config.transmission_rate_hz))
             ]
             props.ContentType = "application/octet-stream"
 
-            # Shed load: Discard oldest stale packet to write the newest real-time location
             try:
                 self.outbound_queue.put_nowait((self.config.bridge_topic_out, final_payload, props))
             except asyncio.QueueFull:
-                try:
-                    self.outbound_queue.get_nowait()
-                    self.outbound_queue.task_done()
-                    L.warning("Outbound queue full. Shedding oldest batch to avoid network lag.")
-                except asyncio.QueueEmpty:
-                    pass
-                self.outbound_queue.put_nowait((self.config.bridge_topic_out, final_payload, props))
+                pass 
 
         except Exception as e:
             L.error(f"Outbound proxy error: {e}")
@@ -319,33 +310,44 @@ class TelemetryProxyClient:
         while True:
             bridge_topic, payload, props = await self.outbound_queue.get()
             try:
-                # Check underlying Paho network backpressure before publishing.
-                # If Starlink is blocked, this forces outbound_queue to fill up, 
-                # which natively triggers your adaptive batching logic.
-                try:
-                    paho_client = client._client
-                    out_queue = getattr(paho_client, "_out_messages", getattr(paho_client, "_out_packet", []))
-                    while len(out_queue) > 5:
-                        await asyncio.sleep(0.05)
-                except Exception:
-                    pass
-
                 # Enforce QoS 0: Wrapped in a timeout to aggressively drop delayed packets
                 await asyncio.wait_for(
                     client.publish(bridge_topic, payload=payload, qos=0, properties=props),
                     timeout=1.0
                 )
             except asyncio.TimeoutError:
-                L.warning(f"Publisher {worker_id} timed out. Shedding packet due to Mosquitto/Starlink backpressure.")
+                L.warning(f"Publisher {worker_id} timed out. Shedding packet due to network backpressure.")
             except MqttError as e:
                 L.error(f"Publish failed: {e}")
-                raise e
             except Exception as e:
                 L.error(f"Unexpected publisher error: {e}")
             finally:
                 self.outbound_queue.task_done()
 
 
+    async def backfill_publisher_worker(self, client):
+        """Publishes delayed historical telemetry only when the real-time queue is empty."""
+        while True:
+            bridge_topic, payload, props = await self.backfill_queue.get()
+            try:
+                # Yield to live data: Block execution as long as there is real-time traffic waiting
+                while not self.outbound_queue.empty():
+                    await asyncio.sleep(0.2)
+
+                # Attempt to transmit the historical batch
+                await asyncio.wait_for(
+                    client.publish(bridge_topic, payload=payload, qos=0, properties=props),
+                    timeout=1.0
+                )
+            except asyncio.TimeoutError:
+                L.warning("Backfill publish timed out due to backpressure. Packet dropped.")
+            except MqttError as e:
+                L.error(f"Backfill publish failed: {e}")
+            except Exception as e:
+                L.error(f"Unexpected backfill publisher error: {e}")
+            finally:
+                self.backfill_queue.task_done()
+                
 # --- HTTP API ---
 proxy = None
 
