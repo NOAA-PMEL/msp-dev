@@ -308,6 +308,28 @@ class TelemetryProxyClient:
             finally:
                 self.outbound_queue.task_done()
 
+    async def backfill_publisher_worker(self, client):
+        """Publishes delayed historical telemetry only when the real-time queue is empty."""
+        while True:
+            bridge_topic, payload, props = await self.backfill_queue.get()
+            try:
+                # Yield to live data: Block execution as long as there is real-time traffic waiting
+                while not self.outbound_queue.empty():
+                    await asyncio.sleep(0.2)
+
+                # Attempt to transmit the historical batch
+                await asyncio.wait_for(
+                    client.publish(bridge_topic, payload=payload, qos=0, properties=props),
+                    timeout=1.0
+                )
+            except asyncio.TimeoutError:
+                L.warning("Backfill publish timed out due to backpressure. Packet dropped.")
+            except MqttError as e:
+                L.error(f"Backfill publish failed: {e}")
+            except Exception as e:
+                L.error(f"Unexpected backfill publisher error: {e}")
+            finally:
+                self.backfill_queue.task_done()
 
     async def flush_batch(self, batch_items: list):
         """Compresses and queues outgoing batched telemetry directly on the event loop."""
