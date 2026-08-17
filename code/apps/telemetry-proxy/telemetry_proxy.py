@@ -194,22 +194,65 @@ class TelemetryProxyClient:
         ciphertext = self.cipher.encrypt(nonce, compressed_bytes, associated_data=None)
         return nonce + ciphertext
 
-    async def flush_batch(self, batch_items: list):
-        """Compresses and queues outgoing batched telemetry directly on the event loop."""
-        try:
-            # --- THE FIX: Route shed data to backfill ---
-            if self.outbound_queue.full():
-                try:
-                    stale_topic, stale_payload, stale_props = self.outbound_queue.get_nowait()
-                    self.outbound_queue.task_done()
-                    L.warning("Outbound queue full. Shifting oldest batch to backfill queue.")
-                    try:
-                        self.backfill_queue.put_nowait((stale_topic, stale_payload, stale_props))
-                    except asyncio.QueueFull:
-                        L.error("Backfill queue full. Dropping oldest telemetry permanently.")
-                except asyncio.QueueEmpty:
-                    pass
+    # async def flush_batch(self, batch_items: list):
+    #     """Compresses and queues outgoing batched telemetry directly on the event loop."""
+    #     try:
+    #         # --- THE FIX: Route shed data to backfill ---
+    #         if self.outbound_queue.full():
+    #             try:
+    #                 stale_topic, stale_payload, stale_props = self.outbound_queue.get_nowait()
+    #                 self.outbound_queue.task_done()
+    #                 L.warning("Outbound queue full. Shifting oldest batch to backfill queue.")
+    #                 try:
+    #                     self.backfill_queue.put_nowait((stale_topic, stale_payload, stale_props))
+    #                 except asyncio.QueueFull:
+    #                     L.error("Backfill queue full. Dropping oldest telemetry permanently.")
+    #             except asyncio.QueueEmpty:
+    #                 pass
 
+    #         final_json = "[" + ",".join(batch_items) + "]"
+    #         raw_payload = final_json.encode("utf-8")
+            
+    #         size_in = len(raw_payload)
+    #         if size_in == 0: return
+
+    #         t_start = time.perf_counter()
+    #         final_payload = self.synchronous_compress_and_encrypt(raw_payload)
+    #         t_elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+
+    #         if t_elapsed_ms > 50.0:
+    #             L.warning(f"Heavy batch compression ({len(batch_items)} items) took {t_elapsed_ms:.2f}ms.")
+
+    #         size_out = len(final_payload)
+    #         self.total_outbound_bytes += size_out
+    #         self.total_raw_bytes += size_in
+            
+    #         reduction = (1 - (size_out / size_in)) * 100 if size_in > 0 else 0
+            
+    #         L.info("compression_stats", extra={
+    #             "direction": "outbound", "batch_items": len(batch_items),
+    #             "bytes_in": size_in, "bytes_out": size_out, "reduction_pct": round(reduction, 1)
+    #         })
+
+    #         props = Properties(PacketTypes.PUBLISH)
+    #         props.UserProperty = [
+    #             ("ce-specversion", "1.0"), ("ce-id", str(ULID())),
+    #             ("ce-type", "envds.transport.batch"), ("ce-source", f"envds.{self.config.daq_id}.proxy"),
+    #             ("txratehz", str(self.config.transmission_rate_hz))
+    #         ]
+    #         props.ContentType = "application/octet-stream"
+
+    #         try:
+    #             self.outbound_queue.put_nowait((self.config.bridge_topic_out, final_payload, props))
+    #         except asyncio.QueueFull:
+    #             pass 
+
+    #     except Exception as e:
+    #         L.error(f"Outbound proxy error: {e}")
+
+    async def flush_batch(self, batch_items: list):
+        """Compresses and queues outgoing batched telemetry safely."""
+        try:
             final_json = "[" + ",".join(batch_items) + "]"
             raw_payload = final_json.encode("utf-8")
             
@@ -217,7 +260,12 @@ class TelemetryProxyClient:
             if size_in == 0: return
 
             t_start = time.perf_counter()
-            final_payload = self.synchronous_compress_and_encrypt(raw_payload)
+            
+            # --- THE FIX 1: Offload CPU-heavy compression to prevent blocking the event loop ---
+            loop = asyncio.get_running_loop()
+            final_payload = await loop.run_in_executor(None, self.synchronous_compress_and_encrypt, raw_payload)
+            # -------------------------------------------------------------------------------
+            
             t_elapsed_ms = (time.perf_counter() - t_start) * 1000.0
 
             if t_elapsed_ms > 50.0:
@@ -242,6 +290,19 @@ class TelemetryProxyClient:
             ]
             props.ContentType = "application/octet-stream"
 
+            # --- THE FIX 2: Route shed data to backfill AFTER the await to prevent concurrent race conditions ---
+            while self.outbound_queue.full():
+                try:
+                    stale_topic, stale_payload, stale_props = self.outbound_queue.get_nowait()
+                    self.outbound_queue.task_done()
+                    L.warning("Outbound queue full. Shifting oldest batch to backfill queue.")
+                    try:
+                        self.backfill_queue.put_nowait((stale_topic, stale_payload, stale_props))
+                    except asyncio.QueueFull:
+                        L.error("Backfill queue full. Dropping oldest telemetry permanently.")
+                except asyncio.QueueEmpty:
+                    break
+
             try:
                 self.outbound_queue.put_nowait((self.config.bridge_topic_out, final_payload, props))
             except asyncio.QueueFull:
@@ -249,7 +310,7 @@ class TelemetryProxyClient:
 
         except Exception as e:
             L.error(f"Outbound proxy error: {e}")
-
+            
     async def inbound_processor_worker(self, client):
         """Unpacks and decrypts incoming bridge messages and routes them locally without artificial delays."""
         while True:
@@ -331,62 +392,62 @@ class TelemetryProxyClient:
             finally:
                 self.backfill_queue.task_done()
 
-    async def flush_batch(self, batch_items: list):
-        """Compresses and queues outgoing batched telemetry directly on the event loop."""
-        try:
-            # --- THE FIX: Route shed data to backfill ---
-            if self.outbound_queue.full():
-                try:
-                    stale_topic, stale_payload, stale_props = self.outbound_queue.get_nowait()
-                    self.outbound_queue.task_done()
-                    L.warning("Outbound queue full. Shifting oldest batch to backfill queue.")
-                    try:
-                        self.backfill_queue.put_nowait((stale_topic, stale_payload, stale_props))
-                    except asyncio.QueueFull:
-                        L.error("Backfill queue full. Dropping oldest telemetry permanently.")
-                except asyncio.QueueEmpty:
-                    pass
+    # async def flush_batch(self, batch_items: list):
+    #     """Compresses and queues outgoing batched telemetry directly on the event loop."""
+    #     try:
+    #         # --- THE FIX: Route shed data to backfill ---
+    #         if self.outbound_queue.full():
+    #             try:
+    #                 stale_topic, stale_payload, stale_props = self.outbound_queue.get_nowait()
+    #                 self.outbound_queue.task_done()
+    #                 L.warning("Outbound queue full. Shifting oldest batch to backfill queue.")
+    #                 try:
+    #                     self.backfill_queue.put_nowait((stale_topic, stale_payload, stale_props))
+    #                 except asyncio.QueueFull:
+    #                     L.error("Backfill queue full. Dropping oldest telemetry permanently.")
+    #             except asyncio.QueueEmpty:
+    #                 pass
 
-            final_json = "[" + ",".join(batch_items) + "]"
-            raw_payload = final_json.encode("utf-8")
+    #         final_json = "[" + ",".join(batch_items) + "]"
+    #         raw_payload = final_json.encode("utf-8")
             
-            size_in = len(raw_payload)
-            if size_in == 0: return
+    #         size_in = len(raw_payload)
+    #         if size_in == 0: return
 
-            t_start = time.perf_counter()
-            # Run inline to avoid thread pool exhaustion
-            final_payload = self.synchronous_compress_and_encrypt(raw_payload)
-            t_elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+    #         t_start = time.perf_counter()
+    #         # Run inline to avoid thread pool exhaustion
+    #         final_payload = self.synchronous_compress_and_encrypt(raw_payload)
+    #         t_elapsed_ms = (time.perf_counter() - t_start) * 1000.0
 
-            if t_elapsed_ms > 50.0:
-                L.warning(f"Heavy batch compression ({len(batch_items)} items) took {t_elapsed_ms:.2f}ms.")
+    #         if t_elapsed_ms > 50.0:
+    #             L.warning(f"Heavy batch compression ({len(batch_items)} items) took {t_elapsed_ms:.2f}ms.")
 
-            size_out = len(final_payload)
-            self.total_outbound_bytes += size_out
-            self.total_raw_bytes += size_in
+    #         size_out = len(final_payload)
+    #         self.total_outbound_bytes += size_out
+    #         self.total_raw_bytes += size_in
             
-            reduction = (1 - (size_out / size_in)) * 100 if size_in > 0 else 0
+    #         reduction = (1 - (size_out / size_in)) * 100 if size_in > 0 else 0
             
-            L.info("compression_stats", extra={
-                "direction": "outbound", "batch_items": len(batch_items),
-                "bytes_in": size_in, "bytes_out": size_out, "reduction_pct": round(reduction, 1)
-            })
+    #         L.info("compression_stats", extra={
+    #             "direction": "outbound", "batch_items": len(batch_items),
+    #             "bytes_in": size_in, "bytes_out": size_out, "reduction_pct": round(reduction, 1)
+    #         })
 
-            props = Properties(PacketTypes.PUBLISH)
-            props.UserProperty = [
-                ("ce-specversion", "1.0"), ("ce-id", str(ULID())),
-                ("ce-type", "envds.transport.batch"), ("ce-source", f"envds.{self.config.daq_id}.proxy"),
-                ("txratehz", str(self.config.transmission_rate_hz))
-            ]
-            props.ContentType = "application/octet-stream"
+    #         props = Properties(PacketTypes.PUBLISH)
+    #         props.UserProperty = [
+    #             ("ce-specversion", "1.0"), ("ce-id", str(ULID())),
+    #             ("ce-type", "envds.transport.batch"), ("ce-source", f"envds.{self.config.daq_id}.proxy"),
+    #             ("txratehz", str(self.config.transmission_rate_hz))
+    #         ]
+    #         props.ContentType = "application/octet-stream"
 
-            try:
-                self.outbound_queue.put_nowait((self.config.bridge_topic_out, final_payload, props))
-            except asyncio.QueueFull:
-                pass 
+    #         try:
+    #             self.outbound_queue.put_nowait((self.config.bridge_topic_out, final_payload, props))
+    #         except asyncio.QueueFull:
+    #             pass 
 
-        except Exception as e:
-            L.error(f"Outbound proxy error: {e}")
+    #     except Exception as e:
+    #         L.error(f"Outbound proxy error: {e}")
                 
 # --- HTTP API ---
 proxy = None
