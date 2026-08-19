@@ -45,7 +45,7 @@ for x in 40:
     print("delta pressure: ", dp)
     print("temperature: ", temp)
 
-    rho = 1.179
+    rho = 1.197
     A2 = 3.1415*((0.0508/2)^2)
     v2 = ((2*dp)/(rho*(1-(0.6135^4))))^0.5
     Re = rho*v2*0.0508/0.0000179
