@@ -27,7 +27,9 @@ ljm.eWriteName(handle, "I2C_NUM_BYTES_TX", 0)
 ljm.eWriteName(handle, "I2C_NUM_BYTES_RX", 9)
 ljm.eWriteName(handle, "I2C_GO", 1)
 
-for x in 40:
+x = 0
+
+if x < 40:
     dataRead = ljm.eReadNameByteArray(handle, "I2C_DATA_RX", 9)
     #print(type(dataRead))
     raw_dp = (dataRead[0] << 8) | dataRead[1]
