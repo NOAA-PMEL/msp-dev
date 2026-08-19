@@ -310,7 +310,7 @@ class TelemetryProxyClient:
 
         except Exception as e:
             L.error(f"Outbound proxy error: {e}")
-            
+
     async def inbound_processor_worker(self, client):
         """Unpacks and decrypts incoming bridge messages and routes them locally without artificial delays."""
         while True:
@@ -370,7 +370,10 @@ class TelemetryProxyClient:
                 self.outbound_queue.task_done()
 
     async def backfill_publisher_worker(self, client):
-        """Publishes delayed historical telemetry only when the real-time queue is empty."""
+        """Publishes delayed historical telemetry at a strictly throttled rate."""
+        # Enforce a strict 5-second delay between historical batch transmissions
+        throttle_delay_seconds = 5.0
+        
         while True:
             bridge_topic, payload, props = await self.backfill_queue.get()
             try:
@@ -383,6 +386,10 @@ class TelemetryProxyClient:
                     client.publish(bridge_topic, payload=payload, qos=0, properties=props),
                     timeout=1.0
                 )
+                
+                # Apply strict rate limit to prevent AWS IoT throttling and event loop contention
+                await asyncio.sleep(throttle_delay_seconds)
+
             except asyncio.TimeoutError:
                 L.warning("Backfill publish timed out due to backpressure. Packet dropped.")
             except MqttError as e:
