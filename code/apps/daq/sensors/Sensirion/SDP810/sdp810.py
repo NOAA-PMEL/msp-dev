@@ -300,6 +300,8 @@ class SDP810(Sensor):
 
                 if "temperature" in record["variables"]:
                     record["variables"]["temperature"]["data"] = round(temp, 3)
+                if "pressure" in record["variables"]:
+                    record["variables"]["pressure"]["data"] = round(dp, 3)
                 if "flow" in record["variables"]:
                     record["variables"]["flow"]["data"] = round(Q_lpm, 3)
                     
