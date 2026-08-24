@@ -13,7 +13,8 @@ deviceType = info[0]
 
 ljm.eWriteName(handle, "I2C_SDA_DIONUM", 4)  # CS is FIO2
 ljm.eWriteName(handle, "I2C_SCL_DIONUM", 5)  # CLK is FIO3
-ljm.eWriteName(handle, "I2C_SPEED_THROTTLE", 0) # CLK frequency approx 100 kHz
+ljm.eWriteName(handle, "I2C_SPEED_THROTTLE", 0)
+
 ljm.eWriteName(handle, "I2C_OPTIONS", 0)
 ljm.eWriteName(handle, "I2C_SLAVE_ADDRESS", 0x25) # default address is 0x25
 
