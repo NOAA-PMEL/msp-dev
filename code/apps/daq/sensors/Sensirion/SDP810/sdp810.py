@@ -290,8 +290,6 @@ class SDP810(Sensor):
                 rho = 1.297
                 A2 = 3.1415*((0.0508/2.0)**2.0)
                 v2 = ((2.0*dp)/(rho*(1.0-(0.6135**4.0))))**0.5
-                Q_test = v2*(3.1415*(0.0508/2.0)**2.0)
-                print(Q_test*2118.88)
                 Re = rho*v2*0.0508/0.0000179
                 Cd = 1.0054-(6.88*(Re**-0.5))
                 Q = Cd*A2*v2 # flow in m3/s
@@ -304,7 +302,7 @@ class SDP810(Sensor):
                     record["variables"]["pressure"]["data"] = round(dp, 3)
                 if "flow" in record["variables"]:
                     record["variables"]["flow"]["data"] = round(Q_lpm, 3)
-                    
+
             except Exception as e:
                 self.logger.warning(
                     "default_parse - failed to decode I2C bytes", 
