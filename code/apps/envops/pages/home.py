@@ -73,17 +73,17 @@ def fetch_registry_data(resource_type: str, query_params: dict = None):
 
 # --- LAYOUT ---
 # --- LAYOUT ---
+# --- LAYOUT ---
 def layout():
     base_fig = go.Figure()
     # Trace 0: Planned Locations (Index 0 in Patch)
-    base_fig.add_trace(go.Scattermapbox(lat=[], lon=[], text=[], mode='markers', marker=dict(size=10, color='gray', opacity=0.5), name="Planned Locations")) 
+    base_fig.add_trace(go.Scattermapbox(lat=[], lon=[], text=[], mode='markers', marker=dict(size=10, color='gray', opacity=0.5), name="Planned Locations"))
     # Trace 1: Live Locations (Index 1 in Patch)
-    base_fig.add_trace(go.Scattermapbox(lat=[], lon=[], text=[], mode='markers', marker=dict(size=14, color='#0d6efd'), name="Live Locations"))      
+    base_fig.add_trace(go.Scattermapbox(lat=[], lon=[], text=[], mode='markers', marker=dict(size=14, color='#0d6efd'), name="Live Locations"))
     
     base_fig.update_layout(
-        mapbox_style="carto-positron", 
         margin={"r":0,"t":0,"l":0,"b":0},
-        mapbox=dict(center=dict(lat=20, lon=0), zoom=1.5), # Zoomed out for global view
+        mapbox=dict(style="carto-positron", center=dict(lat=20, lon=0), zoom=1.5), # Zoomed out for global view
         uirevision="constant-fleet-map",
         legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255,255,255,0.8)")
     )
@@ -102,7 +102,7 @@ def layout():
         dcc.Store(id="store-projects", data=[]),
         dcc.Store(id="store-deployments", data=[]),
         dcc.Store(id="store-platforms", data=[]),
-        dcc.Store(id="store-allocations", data=[]), 
+        dcc.Store(id="store-allocations", data=[]), # <-- NEW
         dcc.Store(id="live-fleet-locations", data={}),
         dcc.Store(id="live-health-store", data={}),
         
@@ -115,8 +115,8 @@ def layout():
         dbc.Row([
             dbc.Col(
                 dbc.Card([
-                    # THE FIX: Added config={"scrollZoom": True} to allow mouse wheel zooming
-                    dbc.CardBody(dcc.Graph(id="fleet-map", figure=base_fig, style={"height": "450px"}, config={"scrollZoom": True}), className="p-1")
+                    # THE FIX: Removed dcc.Loading wrapper around the dcc.Graph
+                    dbc.CardBody(dcc.Graph(id="fleet-map", figure=base_fig, style={"height": "450px"}), className="p-1")
                 ], className="shadow-sm border-0 mb-4"),
                 width=12
             )
@@ -125,6 +125,7 @@ def layout():
         # --- PROJECT GRID (Horizontal Tiling) ---
         html.H5([html.I(className="bi bi-diagram-3 me-2 text-primary"), "Active Projects & Deployments"], className="fw-bold text-dark mb-3"),
         
+        # THE FIX: Removed dcc.Loading wrapper around the html.Div container
         html.Div(id="projects-grid-container")
     ])
 
