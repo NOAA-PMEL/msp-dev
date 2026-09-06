@@ -54,7 +54,7 @@ class SDP810(Sensor):
         self.polling_task = None
         self.sampling_interval = 1
         
-        self.i2c_address = "28"
+        self.i2c_address = "25"
         
         self.sensor_definition_file = "Sensirion_SDP810_sensor_definition.json"
 
