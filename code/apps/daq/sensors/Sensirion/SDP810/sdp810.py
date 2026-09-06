@@ -189,7 +189,7 @@ class SDP810(Sensor):
         }
         i2c_read = {
             "address": self.i2c_address,
-            "read-length": 4,
+            "read-length": 9,
             "delay-ms": 50 
         }
         data = {
