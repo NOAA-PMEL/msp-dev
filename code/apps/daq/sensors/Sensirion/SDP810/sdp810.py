@@ -288,6 +288,10 @@ class SDP810(Sensor):
             
                 dp = raw_dp / dp_scale
                 temp = raw_temp / temp_scale
+                self.logger.debug(
+                                    "default_parse - temp, dp", 
+                                    extra={"temp": temp, "dp": dp}
+                                )
             
                 rho = 1.297
                 A2 = 3.1415*((0.0508/2.0)**2.0)
