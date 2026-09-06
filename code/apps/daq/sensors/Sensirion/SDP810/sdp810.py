@@ -185,7 +185,7 @@ class SDP810(Sensor):
     async def polling_loop(self):
         i2c_write = {
             "address": self.i2c_address,
-            "data": "[36,08]"
+            "data": ["36","08"]
         }
         i2c_read = {
             "address": self.i2c_address,
