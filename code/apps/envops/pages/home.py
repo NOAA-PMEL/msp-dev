@@ -75,17 +75,18 @@ def fetch_registry_data(resource_type: str, query_params: dict = None):
 # --- LAYOUT ---
 # --- LAYOUT ---
 # --- LAYOUT ---
+# --- LAYOUT ---
 def layout():
     base_fig = go.Figure()
     # Trace 0: Planned Locations (Index 0 in Patch)
-    base_fig.add_trace(go.Scattermapbox(lat=[], lon=[], text=[], mode='markers', marker=dict(size=10, color='gray', opacity=0.5), name="Planned Locations"))
+    base_fig.add_trace(go.Scattermap(lat=[], lon=[], text=[], mode='markers', marker=dict(size=10, color='gray', opacity=0.5), name="Planned Locations"))
     # Trace 1: Live Locations (Index 1 in Patch)
-    base_fig.add_trace(go.Scattermapbox(lat=[], lon=[], text=[], mode='markers', marker=dict(size=14, color='#0d6efd'), name="Live Locations"))
+    base_fig.add_trace(go.Scattermap(lat=[], lon=[], text=[], mode='markers', marker=dict(size=14, color='#0d6efd'), name="Live Locations"))
     
     base_fig.update_layout(
         margin={"r":0,"t":0,"l":0,"b":0},
-        # Use OpenFreeMap's Positron style to avoid API keys and watermarks
-        mapbox=dict(style="https://tiles.openfreemap.org/styles/positron", center=dict(lat=20, lon=0), zoom=1.5), # Zoomed out for global view
+        # Use OpenFreeMap's Positron style and the new Plotly 6.x 'map' layout structure
+        map=dict(style="https://tiles.openfreemap.org/styles/positron", center=dict(lat=20, lon=0), zoom=1.5), # Zoomed out for global view
         uirevision="constant-fleet-map",
         legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255,255,255,0.8)")
     )
@@ -553,14 +554,6 @@ def update_live_locations(message, current_locations):
     State("store-deployments", "data"),
     prevent_initial_call=True
 )
-
-@callback(
-    Output("fleet-map", "figure", allow_duplicate=True),
-    Input({"type": "btn-locate-map", "index": ALL}, "n_clicks"),
-    State("live-fleet-locations", "data"),
-    State("store-deployments", "data"),
-    prevent_initial_call=True
-)
 def zoom_to_deployment(n_clicks_list, live_locations, deployments):
     
     if not ctx.triggered:
@@ -609,8 +602,9 @@ def zoom_to_deployment(n_clicks_list, live_locations, deployments):
         raise PreventUpdate
 
     map_patch = Patch()
-    map_patch["layout"]["mapbox"]["center"] = {"lat": float(target_lat), "lon": float(target_lon)}
-    map_patch["layout"]["mapbox"]["zoom"] = 8
+    # THE FIX: Updated to 'map' to match Plotly's MapLibre migration
+    map_patch["layout"]["map"]["center"] = {"lat": float(target_lat), "lon": float(target_lon)}
+    map_patch["layout"]["map"]["zoom"] = 8
     
     # Uses datetime (already imported in home.py) to force viewport recalculation
     map_patch["layout"]["uirevision"] = str(datetime.now(timezone.utc).timestamp())
