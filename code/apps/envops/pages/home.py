@@ -74,6 +74,7 @@ def fetch_registry_data(resource_type: str, query_params: dict = None):
 # --- LAYOUT ---
 # --- LAYOUT ---
 # --- LAYOUT ---
+# --- LAYOUT ---
 def layout():
     base_fig = go.Figure()
     # Trace 0: Planned Locations (Index 0 in Patch)
@@ -83,7 +84,8 @@ def layout():
     
     base_fig.update_layout(
         margin={"r":0,"t":0,"l":0,"b":0},
-        mapbox=dict(style="carto-positron", center=dict(lat=20, lon=0), zoom=1.5), # Zoomed out for global view
+        # Use OpenFreeMap's Positron style to avoid API keys and watermarks
+        mapbox=dict(style="https://tiles.openfreemap.org/styles/positron", center=dict(lat=20, lon=0), zoom=1.5), # Zoomed out for global view
         uirevision="constant-fleet-map",
         legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255,255,255,0.8)")
     )
