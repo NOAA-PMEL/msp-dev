@@ -295,6 +295,87 @@ class Aurora3000(Sensor):
                 self.logger.error("default_data_loop error", extra={"error": str(e)})
             await asyncio.sleep(0.01)
 
+    # def default_parse(self, data):
+    #     if not data: return None
+    #     try:
+    #         v_types = ["main", "setting", "coordinate", "calibration"] if self.include_metadata else ["main"]
+    #         record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+    #         self.include_metadata = False
+            
+    #         raw_payload = data.data if isinstance(data.data, dict) else {}
+    #         record["timestamp"] = raw_payload.get("timestamp")
+    #         if "time" in record["variables"]:
+    #             record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+            
+    #         raw_str = raw_payload.get("data", "").strip()
+            
+    #         if not raw_str or len(raw_str) < 5:
+    #             return None
+                
+    #         raw_parts = [x.strip() for x in raw_str.split(",")]
+    #         # --- ALIGNMENT FIX ---
+    #         first_chunk = raw_parts[0].split()
+    #         if len(first_chunk) >= 2:
+    #             clean_time = first_chunk[1].replace(";", "0")
+    #             parts = [first_chunk[0], clean_time] + raw_parts[1:]
+    #         else:
+    #             parts = raw_parts
+
+    #         # --- VI099 MAPPING LIST ---
+    #         variable_map = [
+    #             "aurora_date", "aurora_time", "scat_coef_ch1_red",
+    #             "scat_coef_ch2_green", "scat_coef_ch3_blue", "backscatter_ch1_red",
+    #             "backscatter_ch2_green", "backscatter_ch3_blue", "sample_T",
+    #             "enclosure_T", "rh", "pressure", "major_state", "DIO_state"
+    #         ]
+
+    #         for i, var_name in enumerate(variable_map):
+    #             if i < len(parts) and var_name in record["variables"]:
+    #                 val = parts[i]
+    #                 instvar = self.config.metadata.variables[var_name]
+    #                 try:
+    #                     record["variables"][var_name]["data"] = int(val) if instvar.type == "int" else (float(val) if instvar.type == "float" else val)
+    #                 except ValueError:
+    #                     record["variables"][var_name]["data"] = "" if instvar.type in ("str", "char") else None
+
+    #         # --- CONTINUOUS TRACKING: Auto-reset calibration state ---
+    #         try:
+    #             major_state = record["variables"].get("major_state", {}).get("data")
+    #             if major_state is not None:
+    #                 self.current_major_state = int(major_state)
+
+    #             # Reset single-step calibrations safely. 
+    #             # (We ignore "full_cal" here because the sequencer handles its own termination)
+    #             if self.current_major_state == 0 and self.current_cal_routine not in ["none", "full_cal"]:
+    #                 self.logger.info("Calibration sequence finished. Resetting UI to 'none'.")
+    #                 self.settings.set_setting("calibration_status", requested="success")
+    #                 self.settings.set_actual("calibration_status", "success")
+    #                 self.settings.set_setting("calibration_routine", requested="none")
+    #                 self.settings.set_actual("calibration_routine", "none")
+    #                 self.current_cal_routine = "none"
+
+    #                 # Force update the record dynamically so the UI sees the reset immediately this tick
+    #                 if "calibration_status" in record["variables"]:
+    #                     cs_obj = self.settings.get_setting("calibration_status")
+    #                     record["variables"]["calibration_status"]["data"] = cs_obj.get("actual") if isinstance(cs_obj, dict) else cs_obj
+    #                 if "calibration_routine" in record["variables"]:
+    #                     cr_obj = self.settings.get_setting("calibration_routine")
+    #                     record["variables"]["calibration_routine"]["data"] = cr_obj.get("actual") if isinstance(cr_obj, dict) else cr_obj
+
+    #         except (KeyError, TypeError):
+    #             pass
+                
+    #         # # Add status variable to UI updates
+    #         # if "calibration_status" in record["variables"]:
+    #         #     cal_stat = self.settings.get_setting("calibration_status")
+    #         #     record["variables"]["calibration_status"]["data"] = cal_stat.get("actual", "none") if isinstance(cal_stat, dict) else "none"
+
+    #         return record
+            
+    #     except Exception as e:
+    #         self.logger.error("default_parse error", extra={"error": str(e)})
+    #         return None
+
     def default_parse(self, data):
         if not data: return None
         try:
@@ -344,38 +425,22 @@ class Aurora3000(Sensor):
                 if major_state is not None:
                     self.current_major_state = int(major_state)
 
-                # Reset single-step calibrations safely. 
-                # (We ignore "full_cal" here because the sequencer handles its own termination)
-                if self.current_major_state == 0 and self.current_cal_routine not in ["none", "full_cal"]:
-                    self.logger.info("Calibration sequence finished. Resetting UI to 'none'.")
-                    self.settings.set_setting("calibration_status", requested="success")
-                    self.settings.set_actual("calibration_status", "success")
-                    self.settings.set_setting("calibration_routine", requested="none")
-                    self.settings.set_actual("calibration_routine", "none")
-                    self.current_cal_routine = "none"
-
-                    # Force update the record dynamically so the UI sees the reset immediately this tick
-                    if "calibration_status" in record["variables"]:
-                        cs_obj = self.settings.get_setting("calibration_status")
-                        record["variables"]["calibration_status"]["data"] = cs_obj.get("actual") if isinstance(cs_obj, dict) else cs_obj
-                    if "calibration_routine" in record["variables"]:
-                        cr_obj = self.settings.get_setting("calibration_routine")
-                        record["variables"]["calibration_routine"]["data"] = cr_obj.get("actual") if isinstance(cr_obj, dict) else cr_obj
+                # Force update the record dynamically so the UI sees the reset immediately this tick
+                if "calibration_status" in record["variables"]:
+                    cs_obj = self.settings.get_setting("calibration_status")
+                    record["variables"]["calibration_status"]["data"] = cs_obj.get("actual") if isinstance(cs_obj, dict) else cs_obj
+                if "calibration_routine" in record["variables"]:
+                    cr_obj = self.settings.get_setting("calibration_routine")
+                    record["variables"]["calibration_routine"]["data"] = cr_obj.get("actual") if isinstance(cr_obj, dict) else cr_obj
 
             except (KeyError, TypeError):
                 pass
-                
-            # # Add status variable to UI updates
-            # if "calibration_status" in record["variables"]:
-            #     cal_stat = self.settings.get_setting("calibration_status")
-            #     record["variables"]["calibration_status"]["data"] = cal_stat.get("actual", "none") if isinstance(cal_stat, dict) else "none"
 
             return record
             
         except Exception as e:
             self.logger.error("default_parse error", extra={"error": str(e)})
             return None
-
 class ServerConfig(BaseModel):
     host: str = "localhost"
     port: int = 9080
