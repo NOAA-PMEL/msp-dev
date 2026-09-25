@@ -2,6 +2,7 @@ import asyncio
 import binascii
 import signal
 from struct import unpack
+import collections
 
 # import uvicorn
 # from uvicorn.config import LOGGING_CONFIG
@@ -52,10 +53,20 @@ class SDP810(Sensor):
         super(SDP810, self).__init__(config=config, **kwargs)
         self.default_data_buffer = asyncio.Queue(maxsize=1000)
         self.polling_task = None
-        self.sampling_interval = 10
         
+        # Poll fast (10 Hz = 0.1s interval) to capture turbulence
+        self.polling_interval = 0.1 
+        
+        # Target output rate (10 seconds)
+        self.averaging_period_sec = 10 
+        
+        # Calculate buffer size: 10 seconds at 10 Hz = 100 samples
+        self.buffer_capacity = int(self.averaging_period_sec / self.polling_interval)
+        self.flow_buffer = collections.deque(maxlen=self.buffer_capacity)
+        self.dp_buffer = collections.deque(maxlen=self.buffer_capacity)
+        self.temp_buffer = collections.deque(maxlen=self.buffer_capacity)
+
         self.i2c_address = "25"
-        
         self.sensor_definition_file = "Sensirion_SDP810_sensor_definition.json"
 
         try:            
@@ -183,44 +194,28 @@ class SDP810(Sensor):
 
 
     async def polling_loop(self):
-        # 1. Start continuous mode ONCE outside the loop
-        start_cmd = {
+        # Command 0x361E = Differential Pressure, Continuous Mode, NO Averaging
+        data = {
             "data": {
                 "i2c-write": {
                     "address": self.i2c_address,
-                    "data": ["3F", "F9"]  # 0x3615: Start Continuous Average-Till-Read
-                }
-            }
-        }
-        
-        try:
-            await self.interface_send_data(data=start_cmd)
-            await asyncio.sleep(0.05)  # Brief pause to let sensor complete initial startup
-        except Exception as e:
-            self.logger.error("Failed to start SDP810 continuous mode", extra={"error": str(e)})
-
-        # 2. Read payload: Send empty write data so driver opens I2C bus without resetting sensor
-        read_payload = {
-            "data": {
-                "i2c-write": {
-                    "address": self.i2c_address,
-                    "data": []  # Empty array keeps the sensor running uninterrupted
+                    "data": ["36", "1E"]  
                 },
                 "i2c-read": {
                     "address": self.i2c_address,
-                    "read-length": 9
+                    "read-length": 9,
+                    "delay-ms": 10
                 }
             }
         }
 
-        # 3. Main loop running strictly every 1 second
         while True:
             try:
-                await self.interface_send_data(data=read_payload)
+                await self.interface_send_data(data=data)
             except Exception as e:
                 self.logger.error("polling_loop error", extra={"error": str(e)})
-                
-            await asyncio.sleep(time_to_next(self.sampling_interval)) # Wait 1 second
+            
+            await asyncio.sleep(self.polling_interval)
 
 
     async def default_data_loop(self):
@@ -250,11 +245,11 @@ class SDP810(Sensor):
 
 
     def default_parse(self, data):
-        if not data: return None
+        if not data: 
+            return None
         try:
             v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
             record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
-            self.include_metadata = False
 
             raw_payload = data.data if isinstance(data.data, dict) else {}
             record["timestamp"] = raw_payload.get("timestamp")
@@ -262,78 +257,87 @@ class SDP810(Sensor):
                 record["variables"]["time"]["data"] = raw_payload.get("timestamp")
 
             iface_data = raw_payload.get("data", {})
-            self.logger.debug("default_parse - raw iface_data received", extra={"iface_data": iface_data})
-            
             address = str(iface_data.get("address", ""))
             
-            # Reject data if it's from a different I2C address
             if not address or address != str(self.i2c_address):
-                self.logger.debug(
-                    "default_parse - I2C address mismatch or missing", 
-                    extra={"received_address": address, "expected_address": self.i2c_address}
-                )
                 return None
                 
             dataRead = iface_data.get("data", [])
             
-            # Ensure we have the 4 bytes required for decoding
             if not isinstance(dataRead, list) or len(dataRead) < 9:
-                self.logger.warning(
-                    "default_parse - incomplete I2C data frame", 
-                    extra={
-                        "dataRead_length": len(dataRead) if isinstance(dataRead, list) else "not_a_list", 
-                        "expected": 9
-                    }
-                )
                 return None
 
             try:
-                # IST specific hex-to-float decoding logic
+                # 1. Decode raw bytes (Retain signed 2's complement)
                 raw_dp = (dataRead[0] << 8) | dataRead[1]
                 if raw_dp & 0x8000:
-                    raw_dp -= 65536
+                    raw_dp -= 65536  # Correct negative handling
 
                 raw_temp = ((dataRead[3] << 8) | dataRead[4])
                 if raw_temp & 0x8000:
                     raw_temp -= 65536
 
-                dp_scale = 240 # Pa^-1
-                temp_scale = 200 # degrees C^-1
+                dp_scale = 240.0  # Pa^-1 for SDP8xx-125Pa
+                temp_scale = 200.0  # deg C^-1
             
                 dp = raw_dp / dp_scale
                 temp = raw_temp / temp_scale
-                self.logger.debug(
-                                    "default_parse - temp, dp", 
-                                    extra={"temp": temp, "dp": dp}
-                                )
             
+                # 2. Instantaneous non-linear Flow calculation
                 rho = 1.297
-                A2 = 3.1415*((0.0508/2.0)**2.0)
-                v2 = ((2.0*dp)/(rho*(1.0-(0.6135**4.0))))**0.5
-                Re = rho*v2*0.0508/0.0000179
-                Cd = 1.0054-(6.88*(Re**-0.5))
-                Q = Cd*A2*v2 # flow in m3/s
-                Q_cfm = Q*2118.88 # flow in CFM
-                Q_lpm = Q_cfm*28.3168 # flow in LPM
+                A2 = 3.1415 * ((0.0508 / 2.0) ** 2.0)
+                
+                # Handle edge cases for zero/negative DP in sqrt logic
+                abs_dp = abs(dp)
+                v2 = ((2.0 * abs_dp) / (rho * (1.0 - (0.6135 ** 4.0)))) ** 0.5
+                Re = max(rho * v2 * 0.0508 / 0.0000179, 1e-5)
+                Cd = 1.0054 - (6.88 * (Re ** -0.5))
+                
+                Q = Cd * A2 * v2  # m^3/s
+                Q_cfm = Q * 2118.88
+                Q_lpm = Q_cfm * 28.3168
+                
+                # Preserve directional sign based on DP
+                if dp < 0:
+                    Q_lpm = -Q_lpm
 
+                # 3. Append instantaneous samples to software rolling buffers
+                self.flow_buffer.append(Q_lpm)
+                self.dp_buffer.append(dp)
+                self.temp_buffer.append(temp)
+
+                # 4. Only emit record when we have accumulated a full 10-second window
+                if len(self.flow_buffer) < self.buffer_capacity:
+                    return None  # Still filling buffer
+
+                # Compute true arithmetic mean across the full 10-second window
+                avg_flow = sum(self.flow_buffer) / len(self.flow_buffer)
+                avg_dp = sum(self.dp_buffer) / len(self.dp_buffer)
+                avg_temp = sum(self.temp_buffer) / len(self.temp_buffer)
+
+                # Clear buffers for next 10-second window
+                self.flow_buffer.clear()
+                self.dp_buffer.clear()
+                self.temp_buffer.clear()
+
+                # Set values in outgoing record
                 if "temperature" in record["variables"]:
-                    record["variables"]["temperature"]["data"] = round(temp, 3)
+                    record["variables"]["temperature"]["data"] = round(avg_temp, 3)
                 if "pressure" in record["variables"]:
-                    record["variables"]["pressure"]["data"] = round(dp, 3)
+                    record["variables"]["pressure"]["data"] = round(avg_dp, 3)
                 if "flow" in record["variables"]:
-                    record["variables"]["flow"]["data"] = round(Q_lpm, 3)
+                    record["variables"]["flow"]["data"] = round(avg_flow, 3)
+
+                # Disable metadata for subsequent records until needed
+                self.include_metadata = False
+                return record
 
             except Exception as e:
-                self.logger.warning(
-                    "default_parse - failed to decode I2C bytes", 
-                    extra={"error": str(e), "dataRead": dataRead}
-                )
+                self.logger.warning("default_parse - decoding error", extra={"error": str(e)})
                 return None
 
-            return record
-            
         except Exception as e:
-            self.logger.error("default_parse - critical error", extra={"error": str(e), "data": data})
+            self.logger.error("default_parse - critical error", extra={"error": str(e)})
             return None
 
 class ServerConfig(BaseModel):
