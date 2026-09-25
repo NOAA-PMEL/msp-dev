@@ -52,7 +52,7 @@ class SDP810(Sensor):
         super(SDP810, self).__init__(config=config, **kwargs)
         self.default_data_buffer = asyncio.Queue(maxsize=1000)
         self.polling_task = None
-        self.sampling_interval = 1
+        self.sampling_interval = 10
         
         self.i2c_address = "25"
         
