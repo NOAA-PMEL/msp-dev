@@ -188,7 +188,7 @@ class SDP810(Sensor):
             "data": {
                 "i2c-write": {
                     "address": self.i2c_address,
-                    "data": ["36", "15"]  # 0x3615: Start Continuous Average-Till-Read
+                    "data": ["3F", "F9"]  # 0x3615: Start Continuous Average-Till-Read
                 }
             }
         }
