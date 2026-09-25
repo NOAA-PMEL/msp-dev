@@ -183,24 +183,29 @@ class SDP810(Sensor):
 
 
     async def polling_loop(self):
-        # 1. Send start command ONCE to initialize continuous averaging mode
+        # 1. Start continuous mode ONCE outside the loop
         start_cmd = {
             "data": {
                 "i2c-write": {
                     "address": self.i2c_address,
-                    "data": ["36", "15"]  # Continuous mode with average-till-read
+                    "data": ["36", "15"]  # 0x3615: Start Continuous Average-Till-Read
                 }
             }
         }
+        
         try:
             await self.interface_send_data(data=start_cmd)
-            await asyncio.sleep(0.01)  # Brief delay to allow initial start
+            await asyncio.sleep(0.05)  # Brief pause to let sensor complete initial startup
         except Exception as e:
-            self.logger.error("Failed to start SDP810 measurement", extra={"error": str(e)})
+            self.logger.error("Failed to start SDP810 continuous mode", extra={"error": str(e)})
 
-        # Payload used during the loop (ONLY reads data, does NOT resend 0x3615)
+        # 2. Read payload: Send empty write data so driver opens I2C bus without resetting sensor
         read_payload = {
             "data": {
+                "i2c-write": {
+                    "address": self.i2c_address,
+                    "data": []  # Empty array keeps the sensor running uninterrupted
+                },
                 "i2c-read": {
                     "address": self.i2c_address,
                     "read-length": 9
@@ -208,16 +213,14 @@ class SDP810(Sensor):
             }
         }
 
-        # 2. Main loop reading every 1 second
+        # 3. Main loop running strictly every 1 second
         while True:
             try:
                 await self.interface_send_data(data=read_payload)
             except Exception as e:
                 self.logger.error("polling_loop error", extra={"error": str(e)})
                 
-            # Sampling interval is 1s, so the sensor internally averages all 
-            # 0.5ms readings accumulated over that 1-second window.
-            await asyncio.sleep(time_to_next(self.sampling_interval))
+            await asyncio.sleep(time_to_next(self.sampling_interval)) # Wait 1 second
 
 
     async def default_data_loop(self):
