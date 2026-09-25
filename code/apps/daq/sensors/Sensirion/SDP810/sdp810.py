@@ -183,27 +183,40 @@ class SDP810(Sensor):
 
 
     async def polling_loop(self):
-        i2c_write = {
-            "address": self.i2c_address,
-            "data": ["36","15"]
-        }
-        i2c_read = {
-            "address": self.i2c_address,
-            "read-length": 9,
-            "delay-ms": 50 
-        }
-        data = {
+        # 1. Send start command ONCE to initialize continuous averaging mode
+        start_cmd = {
             "data": {
-                "i2c-write": i2c_write,
-                "i2c-read": i2c_read
+                "i2c-write": {
+                    "address": self.i2c_address,
+                    "data": ["36", "15"]  # Continuous mode with average-till-read
+                }
+            }
+        }
+        try:
+            await self.interface_send_data(data=start_cmd)
+            await asyncio.sleep(0.01)  # Brief delay to allow initial start
+        except Exception as e:
+            self.logger.error("Failed to start SDP810 measurement", extra={"error": str(e)})
+
+        # Payload used during the loop (ONLY reads data, does NOT resend 0x3615)
+        read_payload = {
+            "data": {
+                "i2c-read": {
+                    "address": self.i2c_address,
+                    "read-length": 9
+                }
             }
         }
 
+        # 2. Main loop reading every 1 second
         while True:
             try:
-                await self.interface_send_data(data=data)
+                await self.interface_send_data(data=read_payload)
             except Exception as e:
                 self.logger.error("polling_loop error", extra={"error": str(e)})
+                
+            # Sampling interval is 1s, so the sensor internally averages all 
+            # 0.5ms readings accumulated over that 1-second window.
             await asyncio.sleep(time_to_next(self.sampling_interval))
 
 
@@ -276,8 +289,6 @@ class SDP810(Sensor):
                 raw_dp = (dataRead[0] << 8) | dataRead[1]
                 if raw_dp & 0x8000:
                     raw_dp -= 65536
-                if raw_dp < 1:
-                    raw_dp = raw_dp/-1
 
                 raw_temp = ((dataRead[3] << 8) | dataRead[4])
                 if raw_temp & 0x8000:
