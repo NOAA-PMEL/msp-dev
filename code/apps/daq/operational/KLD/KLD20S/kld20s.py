@@ -125,12 +125,13 @@ class KLD20S(Operational):
         await super(KLD20S, self).handle_interface_data(message)
         if message["type"] == det.interface_data_recv():
             try:
-                path_id = message.get("path_id") or (message.data.get("path_id") if isinstance(message.data, dict) else None)
+                path_id = message["path_id"]
+                valve_path = self.config.interfaces.get("valve_control", {}).get("path")
                 
-                if path_id == "valve_control":
+                if path_id == valve_path:
                     self.check_valve_state(message.data)
                     await self.default_data_buffer.put(message)
-            except Exception:
+            except KeyError:
                 pass
 
     async def sampling_monitor(self):
@@ -202,10 +203,16 @@ class KLD20S(Operational):
             if "time" in record["variables"]:
                 record["variables"]["time"]["data"] = timestamp
                 
-            # Grab the actual state and inject it into both the main telemetry and the setting
             sp_setting = self.settings.get_setting("valve_state_sp")
             if sp_setting:
-                sp_val = sp_setting.get("actual") if isinstance(sp_setting, dict) and "actual" in sp_setting else (sp_setting.get("requested") if isinstance(sp_setting, dict) else sp_setting)
+                # Safely fallback to requested if actual is explicitly None
+                if isinstance(sp_setting, dict):
+                    sp_val = sp_setting.get("actual")
+                    if sp_val is None:
+                        sp_val = sp_setting.get("requested")
+                else:
+                    sp_val = sp_setting
+                    
                 if sp_val is not None:
                     try:
                         int_val = int(float(sp_val))
