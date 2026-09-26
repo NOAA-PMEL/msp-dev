@@ -185,12 +185,13 @@ class KLD20S(Operational):
 
     def default_parse(self, data):
         try:
-            v_types = ["main", "setting"] if self.include_metadata else ["main"]
+            # Force inclusion of settings so 1Hz updates don't erase them from the UI
+            v_types = ["main", "setting"]
             record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
             self.include_metadata = False
 
-            if data:
-                raw_payload = data.data if isinstance(data.data, dict) else {}
+            if data is not None:
+                raw_payload = data if isinstance(data, dict) else getattr(data, "data", {})
                 timestamp = raw_payload.get("timestamp")
             else:
                 timestamp = None
@@ -203,9 +204,9 @@ class KLD20S(Operational):
             if "time" in record["variables"]:
                 record["variables"]["time"]["data"] = timestamp
                 
+            # Safely grab the actual state and inject it into the telemetry payload
             sp_setting = self.settings.get_setting("valve_state_sp")
             if sp_setting:
-                # Safely fallback to requested if actual is explicitly None
                 if isinstance(sp_setting, dict):
                     sp_val = sp_setting.get("actual")
                     if sp_val is None:
