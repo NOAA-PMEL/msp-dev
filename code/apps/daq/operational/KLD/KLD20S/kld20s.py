@@ -125,13 +125,12 @@ class KLD20S(Operational):
         await super(KLD20S, self).handle_interface_data(message)
         if message["type"] == det.interface_data_recv():
             try:
-                path_id = message["path_id"]
-                valve_path = self.config.interfaces.get("valve_control", {}).get("path")
+                path_id = message.get("path_id") or (message.data.get("path_id") if isinstance(message.data, dict) else None)
                 
-                if path_id == valve_path:
+                if path_id == "valve_control":
                     self.check_valve_state(message.data)
                     await self.default_data_buffer.put(message)
-            except KeyError:
+            except Exception:
                 pass
 
     async def sampling_monitor(self):
@@ -143,17 +142,23 @@ class KLD20S(Operational):
     async def default_data_loop(self):
         while True:
             try:
-                data = await self.default_data_buffer.get()
-                record = self.default_parse(data)
-                
-                if record and self.sampling():
-                    event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record)
-                    event["destpath"] = f"{self.get_id_as_topic()}/data/update"
-                    await self.send_message(event)
-
+                if self.sampling():
+                    try:
+                        data = await asyncio.wait_for(self.default_data_buffer.get(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        data = None
+                        
+                    record = self.default_parse(data)
+                    
+                    if record:
+                        event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record)
+                        event["destpath"] = f"{self.get_id_as_topic()}/data/update"
+                        await self.send_message(event)
+                else:
+                    await asyncio.sleep(1.0)
             except Exception as e:
                 self.logger.error("default_data_loop error", extra={"error": str(e)})
-            await asyncio.sleep(0.1)
+                await asyncio.sleep(1.0)
 
     # def default_parse(self, data):
     #     if not data: return None
@@ -178,16 +183,20 @@ class KLD20S(Operational):
     #         return None
 
     def default_parse(self, data):
-        if not data: return None
         try:
             v_types = ["main", "setting"] if self.include_metadata else ["main"]
             record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
             self.include_metadata = False
 
-            raw_payload = data.data if isinstance(data.data, dict) else {}
-            timestamp = raw_payload.get("timestamp")
+            if data:
+                raw_payload = data.data if isinstance(data.data, dict) else {}
+                timestamp = raw_payload.get("timestamp")
+            else:
+                timestamp = None
             
-            if not timestamp: return None
+            if not timestamp:
+                from datetime import datetime, timezone
+                timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
             record["timestamp"] = timestamp
             if "time" in record["variables"]:
