@@ -185,13 +185,17 @@ class KLD20S(Operational):
 
     def default_parse(self, data):
         try:
-            # Force inclusion of settings so 1Hz updates don't erase them from the UI
-            v_types = ["main", "setting"]
+            # Revert to original behavior: only include settings on the first metadata pass
+            v_types = ["main", "setting"] if self.include_metadata else ["main"]
             record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
             self.include_metadata = False
 
+            # FIX: Force format_version to match the JSON definition to prevent ERDDAP dataset mismatch
+            if "format_version" in record.get("attributes", {}):
+                record["attributes"]["format_version"]["data"] = self.metadata["attributes"]["format_version"]["data"]
+
             if data is not None:
-                raw_payload = data if isinstance(data, dict) else getattr(data, "data", {})
+                raw_payload = data.data if isinstance(data.data, dict) else {}
                 timestamp = raw_payload.get("timestamp")
             else:
                 timestamp = None
@@ -204,7 +208,6 @@ class KLD20S(Operational):
             if "time" in record["variables"]:
                 record["variables"]["time"]["data"] = timestamp
                 
-            # Safely grab the actual state and inject it into the telemetry payload
             sp_setting = self.settings.get_setting("valve_state_sp")
             if sp_setting:
                 if isinstance(sp_setting, dict):
