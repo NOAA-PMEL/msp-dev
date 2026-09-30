@@ -220,13 +220,13 @@ class SDP810(Sensor):
             }
         }
 
-    while True:
-        try:
-            await self.interface_send_data(data=read_cmd)
-        except Exception as e:
-            self.logger.error("polling_loop error", extra={"error": str(e)})
-        
-        await asyncio.sleep(self.polling_interval)
+        while True:
+            try:
+                await self.interface_send_data(data=read_cmd)
+            except Exception as e:
+                self.logger.error("polling_loop error", extra={"error": str(e)})
+            
+            await asyncio.sleep(self.polling_interval)
 
 
     async def default_data_loop(self):
