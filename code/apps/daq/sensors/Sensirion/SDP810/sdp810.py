@@ -54,17 +54,14 @@ class SDP810(Sensor):
         self.default_data_buffer = asyncio.Queue(maxsize=1000)
         self.polling_task = None
         
-        # Poll fast (10 Hz = 0.1s interval) to capture turbulence
-        self.polling_interval = 0.1 
+        self.polling_interval = 0.1  # Poll at 10 Hz (0.1s)
+        self.emit_interval = 10.0    # Emit averaged record every 10 seconds
+        self.last_emit_time = time.time()
         
-        # Target output rate (10 seconds)
-        self.averaging_period_sec = 10 
-        
-        # Calculate buffer size: 10 seconds at 10 Hz = 100 samples
-        self.buffer_capacity = int(self.averaging_period_sec / self.polling_interval)
-        self.flow_buffer = collections.deque(maxlen=self.buffer_capacity)
-        self.dp_buffer = collections.deque(maxlen=self.buffer_capacity)
-        self.temp_buffer = collections.deque(maxlen=self.buffer_capacity)
+        # Rolling buffers (unlimited maxlen so we can average whatever arrives in 10s)
+        self.flow_buffer = []
+        self.dp_buffer = []
+        self.temp_buffer = []
 
         self.i2c_address = "25"
         self.sensor_definition_file = "Sensirion_SDP810_sensor_definition.json"
@@ -194,28 +191,42 @@ class SDP810(Sensor):
 
 
     async def polling_loop(self):
-        # Command 0x361E = Differential Pressure, Continuous Mode, NO Averaging
-        data = {
+        # 1. Start continuous mode (NO averaging) ONCE before the loop
+        start_cmd = {
             "data": {
                 "i2c-write": {
                     "address": self.i2c_address,
-                    "data": ["36", "1E"]  
+                    "data": ["36", "1E"]
+                }
+            }
+        }
+        try:
+            await self.interface_send_data(data=start_cmd)
+            await asyncio.sleep(0.02)  # Allow 20ms for initial sensor ready state[cite: 1]
+        except Exception as e:
+            self.logger.error("Failed to start SDP810 continuous mode", extra={"error": str(e)})
+
+        # 2. Frame used inside the loop (Read request only)
+        read_cmd = {
+            "data": {
+                "i2c-write": {
+                    "address": self.i2c_address,
+                    "data": []  # Empty payload prevents resetting sensor mode
                 },
                 "i2c-read": {
                     "address": self.i2c_address,
-                    "read-length": 9,
-                    "delay-ms": 10
+                    "read-length": 9
                 }
             }
         }
 
-        while True:
-            try:
-                await self.interface_send_data(data=data)
-            except Exception as e:
-                self.logger.error("polling_loop error", extra={"error": str(e)})
-            
-            await asyncio.sleep(self.polling_interval)
+    while True:
+        try:
+            await self.interface_send_data(data=read_cmd)
+        except Exception as e:
+            self.logger.error("polling_loop error", extra={"error": str(e)})
+        
+        await asyncio.sleep(self.polling_interval)
 
 
     async def default_data_loop(self):
@@ -263,59 +274,63 @@ class SDP810(Sensor):
                 return None
                 
             dataRead = iface_data.get("data", [])
-            
             if not isinstance(dataRead, list) or len(dataRead) < 9:
                 return None
 
             try:
-                # 1. Decode raw bytes (Retain signed 2's complement)
+                # 1. Decode raw bytes (Signed 2's complement)
                 raw_dp = (dataRead[0] << 8) | dataRead[1]
                 if raw_dp & 0x8000:
-                    raw_dp -= 65536  # Correct negative handling
+                    raw_dp -= 65536  
 
                 raw_temp = ((dataRead[3] << 8) | dataRead[4])
                 if raw_temp & 0x8000:
                     raw_temp -= 65536
 
-                dp_scale = 240.0  # Pa^-1 for SDP8xx-125Pa
-                temp_scale = 200.0  # deg C^-1
-            
+                dp_scale = 240.0  # Scale factor for SDP8xx-125Pa[cite: 1]
+                temp_scale = 200.0  
+
                 dp = raw_dp / dp_scale
                 temp = raw_temp / temp_scale
-            
+
                 # 2. Instantaneous non-linear Flow calculation
                 rho = 1.297
                 A2 = 3.1415 * ((0.0508 / 2.0) ** 2.0)
                 
-                # Handle edge cases for zero/negative DP in sqrt logic
+                dp_sign = 1.0 if dp >= 0 else -1.0
                 abs_dp = abs(dp)
-                v2 = ((2.0 * abs_dp) / (rho * (1.0 - (0.6135 ** 4.0)))) ** 0.5
-                Re = max(rho * v2 * 0.0508 / 0.0000179, 1e-5)
-                Cd = 1.0054 - (6.88 * (Re ** -0.5))
-                
-                Q = Cd * A2 * v2  # m^3/s
-                Q_cfm = Q * 2118.88
-                Q_lpm = Q_cfm * 28.3168
-                
-                # Preserve directional sign based on DP
-                if dp < 0:
-                    Q_lpm = -Q_lpm
 
-                # 3. Append instantaneous samples to software rolling buffers
+                if abs_dp > 0.001:
+                    v2 = ((2.0 * abs_dp) / (rho * (1.0 - (0.6135 ** 4.0)))) ** 0.5
+                    Re = max(rho * v2 * 0.0508 / 0.0000179, 1e-5)
+                    Cd = 1.0054 - (6.88 * (Re ** -0.5))
+                    
+                    Q = Cd * A2 * v2
+                    Q_cfm = Q * 2118.88
+                    Q_lpm = Q_cfm * 28.3168 * dp_sign
+                else:
+                    Q_lpm = 0.0
+
+                # 3. Append to sample lists
                 self.flow_buffer.append(Q_lpm)
                 self.dp_buffer.append(dp)
                 self.temp_buffer.append(temp)
 
-                # 4. Only emit record when we have accumulated a full 10-second window
-                if len(self.flow_buffer) < self.buffer_capacity:
-                    return None  # Still filling buffer
+                # 4. Check if 10 seconds have elapsed since last emit
+                now = time.time()
+                if (now - self.last_emit_time) < self.emit_interval:
+                    return None  # Do not emit yet
 
-                # Compute true arithmetic mean across the full 10-second window
+                # Time to emit! Calculate averages of whatever samples were collected
+                if not self.flow_buffer:
+                    return None
+
                 avg_flow = sum(self.flow_buffer) / len(self.flow_buffer)
                 avg_dp = sum(self.dp_buffer) / len(self.dp_buffer)
                 avg_temp = sum(self.temp_buffer) / len(self.temp_buffer)
 
-                # Clear buffers for next 10-second window
+                # Reset timer and buffers
+                self.last_emit_time = now
                 self.flow_buffer.clear()
                 self.dp_buffer.clear()
                 self.temp_buffer.clear()
@@ -328,7 +343,6 @@ class SDP810(Sensor):
                 if "flow" in record["variables"]:
                     record["variables"]["flow"]["data"] = round(avg_flow, 3)
 
-                # Disable metadata for subsequent records until needed
                 self.include_metadata = False
                 return record
 
