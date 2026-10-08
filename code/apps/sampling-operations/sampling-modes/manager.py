@@ -61,9 +61,12 @@ class SamplingMode:
         self.actions_buffer = actions_buffer
         self.requirements = {}
         self.actions = {"true": [], "false": []}
-        self.current_state = False
-        self.last_status_time = 0 # Track last heartbeat
-        self.active = False 
+        
+        # --- FIX 1: Initialize to None and track execution exclusivity ---
+        self.current_state = None 
+        self.last_status_time = 0 
+        self.active = False
+        self._last_executed_state = None 
         
         self._configure_requirements()
 
@@ -74,7 +77,6 @@ class SamplingMode:
             if kind not in self.requirements:
                 self.requirements[kind] = {}
             self.requirements[kind][name] = {"status": False}
-
         for act_test, act_list in self.config.get("actions", {}).items():
             for act in act_list:
                 if act not in self.actions[act_test]:
@@ -114,32 +116,29 @@ class SamplingMode:
         Evaluates the mode status based on requirements.
         Triggers an update immediately on change or every 30s as a heartbeat.
         """
-        # if not self.active:
-        #     return
-
         # 1. Calculate current status based on requirements
         mode_status = [
             req["status"] 
             for kind in self.requirements.values() 
             for req in kind.values()
         ]
-        
         latest_status = all(mode_status) if mode_status else False
         
         self.logger.debug("evaluate", extra={"mode_name": self.config.get("metadata", {}).get("name"), "mode_status_array": mode_status, "latest_status": latest_status})
-
+        
         # 2. Check for Heartbeat or Change
         now = get_datetime().timestamp()
         is_changed = (latest_status != self.current_state)
         is_heartbeat = (now - self.last_status_time >= 30)
-
+        
         if is_changed or is_heartbeat:
-            self.logger.info("mode evaluation trigger", extra={"mode_name": self.config.get("metadata", {}).get("name"), "change": is_changed, "hb": is_heartbeat, "new_status": latest_status})
+            if is_changed:
+                self.logger.info("mode evaluation trigger", extra={"mode_name": self.config.get("metadata", {}).get("name"), "change": is_changed, "hb": is_heartbeat, "new_status": latest_status})
             
             # Update internal state and reset heartbeat timer
             self.current_state = latest_status
             self.last_status_time = now
-
+            
             # 3. Build the envds-compliant status block
             status_str = "true" if self.current_state else "false"
             
@@ -158,29 +157,37 @@ class SamplingMode:
                 },
                 "timestamp": get_datetime_string()
             }
-
             # 4. Push to the buffer for the status_publish_monitor
             await self.status_buffer.put({"status": status_update})
-
-            # 5. Handle action execution on state change
-            if is_changed:
-                self.logger.info("Executing actions for state change", extra={"mode_name": self.config.get("metadata", {}).get("name"), "new_state": self.current_state})
-                await self.execute_actions(self.current_state)
+            
+        # 5. Handle action execution. MUST be active. MUST fire if state changed OR if we just became active.
+        if self.active and self._last_executed_state != self.current_state:
+            self.logger.info("Executing actions", extra={"mode_name": self.config.get("metadata", {}).get("name"), "state": self.current_state})
+            await self.execute_actions(self.current_state)
+            self._last_executed_state = self.current_state
+            
+        # If we become inactive, reset the execution tracker so it fires fresh next time it activates
+        if not self.active and self._last_executed_state is not None:
+            self._last_executed_state = None
 
     async def execute_actions(self, state: bool):
         """Pushes configured actions and their namespace to the buffer when state changes."""
         run_type = str(state).lower()
         if self.actions.get(run_type):
             for act in self.actions[run_type]:
-                self.logger.debug("Queueing action", extra={"mode_name": self.config.get("metadata", {}).get("name"), "action": act, "state": state})
+                # --- FIX 2: Extract string name if the action is a dictionary ---
+                act_name = act.get("name") if isinstance(act, dict) else act
+                
+                self.logger.debug("Queueing action", extra={"mode_name": self.config.get("metadata", {}).get("name"), "action": act_name, "state": state})
                 await self.actions_buffer.put({
                     "action": {
-                        "name": act,
+                        "name": act_name,
                         # Pass the namespace down so the monitor can match the composite key
                         "namespace": self.config["metadata"].get("sampling_namespace", "")
                     }, 
                     "state": state
                 })
+                
 class SamplingAction:
     """Executes python modules to compute physical system settings."""
     def __init__(self, config, actions_target_buffer):
