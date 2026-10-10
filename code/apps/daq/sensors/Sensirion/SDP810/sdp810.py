@@ -55,14 +55,15 @@ class SDP810(Sensor):
         self.default_data_buffer = asyncio.Queue(maxsize=1000)
         self.polling_task = None
         
-        self.polling_interval = 0.1  # Poll at 10 Hz (0.1s)
-        self.emit_interval = 10.0    # Emit averaged record every 10 seconds
+        self.polling_interval = 1.0  # Poll at 1 Hz (1.0s)
+        self.emit_interval = 1.0     # Emit rolling average every 1.0 second
         self.last_emit_time = time.time()
         
-        # Rolling buffers (unlimited maxlen so we can average whatever arrives in 10s)
-        self.flow_buffer = []
-        self.dp_buffer = []
-        self.temp_buffer = []
+        # Maxlen guarantees rolling average of 10 seconds worth of samples
+        window_size = int(10.0 / self.polling_interval)
+        self.flow_buffer = collections.deque(maxlen=window_size)
+        self.dp_buffer = collections.deque(maxlen=window_size)
+        self.temp_buffer = collections.deque(maxlen=window_size)
 
         self.i2c_address = "25"
         self.sensor_definition_file = "Sensirion_SDP810_sensor_definition.json"
@@ -192,18 +193,18 @@ class SDP810(Sensor):
 
 
     async def polling_loop(self):
-        # 1. Start continuous mode (NO averaging) ONCE before the loop
+        # 1. Start continuous mode (Average till read) ONCE before the loop
         start_cmd = {
             "data": {
                 "i2c-write": {
                     "address": self.i2c_address,
-                    "data": ["36", "1E"]
+                    "data": ["36", "15"]
                 }
             }
         }
         try:
             await self.interface_send_data(data=start_cmd)
-            await asyncio.sleep(0.02)  # Allow 20ms for initial sensor ready state[cite: 1]
+            await asyncio.sleep(0.02)  # Allow 20ms for initial sensor ready state
         except Exception as e:
             self.logger.error("Failed to start SDP810 continuous mode", extra={"error": str(e)})
 
@@ -260,14 +261,7 @@ class SDP810(Sensor):
         if not data: 
             return None
         try:
-            v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
-            record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
-
             raw_payload = data.data if isinstance(data.data, dict) else {}
-            record["timestamp"] = raw_payload.get("timestamp")
-            if "time" in record.get("variables", {}):
-                record["variables"]["time"]["data"] = raw_payload.get("timestamp")
-
             iface_data = raw_payload.get("data", {})
             address = str(iface_data.get("address", ""))
             
@@ -278,78 +272,80 @@ class SDP810(Sensor):
             if not isinstance(dataRead, list) or len(dataRead) < 9:
                 return None
 
-            try:
-                # 1. Decode raw bytes (Signed 2's complement)
-                raw_dp = (dataRead[0] << 8) | dataRead[1]
-                if raw_dp & 0x8000:
-                    raw_dp -= 65536  
+            # 1. Decode raw bytes (Signed 2's complement)
+            raw_dp = (dataRead[0] << 8) | dataRead[1]
+            if raw_dp & 0x8000:
+                raw_dp -= 65536  
 
-                raw_temp = ((dataRead[3] << 8) | dataRead[4])
-                if raw_temp & 0x8000:
-                    raw_temp -= 65536
+            raw_temp = ((dataRead[3] << 8) | dataRead[4])
+            if raw_temp & 0x8000:
+                raw_temp -= 65536
 
-                dp_scale = 240.0  # Scale factor for SDP8xx-125Pa[cite: 1]
-                temp_scale = 200.0  
+            dp_scale = 240.0  
+            temp_scale = 200.0  
 
-                dp = raw_dp / dp_scale
-                temp = raw_temp / temp_scale
+            dp = raw_dp / dp_scale
+            temp = raw_temp / temp_scale
 
-                # 2. Instantaneous non-linear Flow calculation
-                rho = 1.297
-                A2 = 3.1415 * ((0.0508 / 2.0) ** 2.0)
+            # 2. Instantaneous non-linear Flow calculation
+            rho = 1.297
+            A2 = 3.1415 * ((0.0508 / 2.0) ** 2.0)
+            
+            dp_sign = 1.0 if dp >= 0 else -1.0
+            abs_dp = abs(dp)
+
+            if abs_dp > 0.001:
+                v2 = ((2.0 * abs_dp) / (rho * (1.0 - (0.6135 ** 4.0)))) ** 0.5
+                Re = max(rho * v2 * 0.0508 / 0.0000179, 1e-5)
+                Cd = 1.0054 - (6.88 * (Re ** -0.5))
                 
-                dp_sign = 1.0 if dp >= 0 else -1.0
-                abs_dp = abs(dp)
+                Q = Cd * A2 * v2
+                Q_cfm = Q * 2118.88
+                Q_lpm = Q_cfm * 28.3168 * dp_sign
+            else:
+                Q_lpm = 0.0
 
-                if abs_dp > 0.001:
-                    v2 = ((2.0 * abs_dp) / (rho * (1.0 - (0.6135 ** 4.0)))) ** 0.5
-                    Re = max(rho * v2 * 0.0508 / 0.0000179, 1e-5)
-                    Cd = 1.0054 - (6.88 * (Re ** -0.5))
-                    
-                    Q = Cd * A2 * v2
-                    Q_cfm = Q * 2118.88
-                    Q_lpm = Q_cfm * 28.3168 * dp_sign
-                else:
-                    Q_lpm = 0.0
+            # 3. Append to rolling deque
+            self.flow_buffer.append(Q_lpm)
+            self.dp_buffer.append(dp)
+            self.temp_buffer.append(temp)
 
-                # 3. Append to sample lists
-                self.flow_buffer.append(Q_lpm)
-                self.dp_buffer.append(dp)
-                self.temp_buffer.append(temp)
+            # 4. Check if emission interval has elapsed (with small jitter allowance)
+            now = time.time()
+            if (now - self.last_emit_time) < (self.emit_interval - 0.1):
+                return None  # Wait until emission interval passes
 
-                # 4. Check if 10 seconds have elapsed since last emit
-                now = time.time()
-                if (now - self.last_emit_time) < self.emit_interval:
-                    return None  # Do not emit yet
-
-                # Time to emit! Calculate averages of whatever samples were collected
-                if not self.flow_buffer:
-                    return None
-
-                avg_flow = sum(self.flow_buffer) / len(self.flow_buffer)
-                avg_dp = sum(self.dp_buffer) / len(self.dp_buffer)
-                avg_temp = sum(self.temp_buffer) / len(self.temp_buffer)
-
-                # Reset timer and buffers
-                self.last_emit_time = now
-                self.flow_buffer.clear()
-                self.dp_buffer.clear()
-                self.temp_buffer.clear()
-
-                # Set values in outgoing record
-                if "temperature" in record["variables"]:
-                    record["variables"]["temperature"]["data"] = round(avg_temp, 3)
-                if "pressure" in record["variables"]:
-                    record["variables"]["pressure"]["data"] = round(avg_dp, 3)
-                if "flow" in record["variables"]:
-                    record["variables"]["flow"]["data"] = round(avg_flow, 3)
-
-                self.include_metadata = False
-                return record
-
-            except Exception as e:
-                self.logger.warning("default_parse - decoding error", extra={"error": str(e)})
+            # Time to emit! Require at least 1 sample to avoid DivByZero
+            if len(self.flow_buffer) < 1:
                 return None
+
+            v_types = ["main", "setting", "calibration"] if self.include_metadata else ["main"]
+            record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
+            
+            record["timestamp"] = raw_payload.get("timestamp")
+            if "time" in record.get("variables", {}):
+                record["variables"]["time"]["data"] = raw_payload.get("timestamp")
+
+            avg_flow = sum(self.flow_buffer) / len(self.flow_buffer)
+            avg_dp = sum(self.dp_buffer) / len(self.dp_buffer)
+            avg_temp = sum(self.temp_buffer) / len(self.temp_buffer)
+
+            # Reset timer
+            self.last_emit_time = now
+
+            # Note: We do NOT clear() the deques here. Maxlen automatically drops old values 
+            # to maintain a continuous rolling average for the next emission.
+
+            # Set values in outgoing record
+            if "temperature" in record["variables"]:
+                record["variables"]["temperature"]["data"] = round(avg_temp, 3)
+            if "pressure" in record["variables"]:
+                record["variables"]["pressure"]["data"] = round(avg_dp, 3)
+            if "flow" in record["variables"]:
+                record["variables"]["flow"]["data"] = round(avg_flow, 3)
+
+            self.include_metadata = False
+            return record
 
         except Exception as e:
             self.logger.error("default_parse - critical error", extra={"error": str(e)})
@@ -484,5 +480,3 @@ if __name__ == "__main__":
         pass
 
     asyncio.run(main(config))
-
-    
