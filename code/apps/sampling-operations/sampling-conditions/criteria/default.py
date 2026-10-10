@@ -54,7 +54,6 @@ class LimitMinMax(SamplingCriterion):
     """
     Docstring for LimitMinMax
     """
-
     def __init__(self, config):
         self.min_val = None
         self.max_val = None
@@ -64,7 +63,6 @@ class LimitMinMax(SamplingCriterion):
 
     def configure(self):
         super(LimitMinMax, self).configure()
-
         if "max_val" in self.config:
             self.max_val = self.config["max_val"]
         if "min_val" in self.config:
@@ -79,7 +77,12 @@ class LimitMinMax(SamplingCriterion):
         self.logger.debug("evaluate", extra={"src_vals": sources})
         for source_var in self.get_sources():
             if source_var in sources:
-                source_val = sources[source_var]
+                try:
+                    source_val = float(sources[source_var])
+                except (TypeError, ValueError):
+                    self.logger.error("evaluate", extra={"error": f"Could not cast {source_var} to float."})
+                    continue
+                
                 if self.true_if == "inside":
                     self.logger.debug("evaluate", extra={"src_val": source_val, "min_val": self.min_val, "max_val": self.max_val})
                     result.append(source_val >= self.min_val and source_val <= self.max_val)
@@ -237,54 +240,54 @@ class TimeModulo(SamplingCriterion):
         })
         return result
 
-async def eval_min_max_limit(criterion: dict, source_data: dict):
-    crit_source = criterion["source"]
-    data = source_data["crit_source"]["data"]
-    for val in data:
-        # if not in valid range for any value in data
-        if val < criterion["source"]["min_val"] or val > criterion["source"]["min_val"]:
-            return False
+# async def eval_min_max_limit(criterion: dict, source_data: dict):
+#     crit_source = criterion["source"]
+#     data = source_data["crit_source"]["data"]
+#     for val in data:
+#         # if not in valid range for any value in data
+#         if val < criterion["source"]["min_val"] or val > criterion["source"]["min_val"]:
+#             return False
     
-    # all values satisfy the criterion
-    return True
+#     # all values satisfy the criterion
+#     return True
 
-async def eval_lat_lon_region(criterion: dict, source_data: dict):
+# async def eval_lat_lon_region(criterion: dict, source_data: dict):
     
-    pass
+#     pass
 
-async def eval_compare_mean(criterion: dict, source_data: dict):
+# async def eval_compare_mean(criterion: dict, source_data: dict):
     
-    pass
+#     pass
 
 
-eval_fn_map = {
-    "MinMaxLimit": eval_min_max_limit,
-    "LatLonRegionLocation": eval_lat_lon_region,
-    "CompareMean": eval_compare_mean
-}
+# eval_fn_map = {
+#     "MinMaxLimit": eval_min_max_limit,
+#     "LatLonRegionLocation": eval_lat_lon_region,
+#     "CompareMean": eval_compare_mean
+# }
 
-async def evaluate_criteria(criteria: dict, sources:dict, evaluation_time:int=1)->bool:
+# async def evaluate_criteria(criteria: dict, sources:dict, evaluation_time:int=1)->bool:
 
-    # get source data for eval time
-    source_data = dict()
-    for source_name, source in sources.items():
-        # get variableset::variable data for eval_time from datastore
-        data = set_
-        data=[]
-        source_data[source_name] = {"data": data}
+#     # get source data for eval time
+#     source_data = dict()
+#     for source_name, source in sources.items():
+#         # get variableset::variable data for eval_time from datastore
+#         data = set_
+#         data=[]
+#         source_data[source_name] = {"data": data}
 
-    results = []
-    for criteria_group, criteria_list in criteria.items():
-        group_results = []
-        for criterion in criteria_list:
-            if criterion["kind"] in eval_fn_map:
-                group_results.append(eval_fn_map[criterion["kind"]](criterion=criterion, source_data=source_data, evaluation_time=evaluation_time))
+#     results = []
+#     for criteria_group, criteria_list in criteria.items():
+#         group_results = []
+#         for criterion in criteria_list:
+#             if criterion["kind"] in eval_fn_map:
+#                 group_results.append(eval_fn_map[criterion["kind"]](criterion=criterion, source_data=source_data, evaluation_time=evaluation_time))
         
-        if criteria_group == "all":
-            results.append(all(group_results))
-        elif criteria_group == "any":
-            results.append(any(group_results))
-        elif criteria_group == "none":
-            results.append(not all(group_results))
+#         if criteria_group == "all":
+#             results.append(all(group_results))
+#         elif criteria_group == "any":
+#             results.append(any(group_results))
+#         elif criteria_group == "none":
+#             results.append(not all(group_results))
 
-    return all(results)
+#     return all(results)
