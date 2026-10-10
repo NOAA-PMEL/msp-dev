@@ -571,6 +571,14 @@ class SamplingConditionsManager:
 
     def load_condition(self, condition: dict):
         """Helper to process definitions from either local files or Datastore API using a composite key."""
+        
+        # ---> UNIVERSAL EXPANSION PATCH <---
+        # Ensures that configurations loaded from persistent Datastore are expanded at runtime
+        # using the current pod's environment variables.
+        expanded_str = os.path.expandvars(json.dumps(condition))
+        condition = json.loads(expanded_str)
+        # -----------------------------------
+
         if condition.get("kind") != "SamplingCondition":
             return
 
