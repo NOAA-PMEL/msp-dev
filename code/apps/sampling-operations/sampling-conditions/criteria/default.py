@@ -75,7 +75,11 @@ class LimitMinMax(SamplingCriterion):
         await super(LimitMinMax, self).evaluate(sources)
         result = []
         self.logger.debug("evaluate", extra={"src_vals": sources})
-        for source_var in self.get_sources():
+        
+        # Ensure we always fall back to checking the sources dictionary if the array is empty
+        eval_sources = self.get_sources() if self.get_sources() else list(sources.keys())
+        
+        for source_var in eval_sources:
             if source_var in sources:
                 try:
                     source_val = float(sources[source_var])
