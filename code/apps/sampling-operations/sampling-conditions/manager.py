@@ -374,13 +374,14 @@ class SamplingConditionsManager:
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.config = SamplingConditionsManagerConfig()
         try:
             self.logger.setLevel(self.config.log_level.upper())
         except ValueError:
             self.logger.setLevel(logging.INFO)
 
         self.sampling_conditions = {"conditions": dict(), "sources": {}}
-        self.config = SamplingConditionsManagerConfig()
+        # self.config = SamplingConditionsManagerConfig()
         self.http_client = None
         self._background_tasks = set()
 
