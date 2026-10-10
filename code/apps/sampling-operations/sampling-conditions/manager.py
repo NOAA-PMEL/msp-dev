@@ -62,6 +62,7 @@ class SamplingConditionsManagerConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     debug: bool = True
+    log_level: str = "INFO"
 
     # TODO fix ns prefix
     daq_id: str | None = None
@@ -92,7 +93,11 @@ class SamplingCondition:
 
     def __init__(self, config, status_buffer):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.INFO)
+        sys_config = SamplingConditionsManagerConfig()
+        try:
+            self.logger.setLevel(sys_config.log_level.upper())
+        except (ValueError, AttributeError):
+            self.logger.setLevel(logging.INFO)
         self.logger.debug("SamplingCondition instantiated")
 
         self.config = config
@@ -369,7 +374,10 @@ class SamplingConditionsManager:
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.INFO)
+        try:
+            self.logger.setLevel(self.config.log_level.upper())
+        except ValueError:
+            self.logger.setLevel(logging.INFO)
 
         self.sampling_conditions = {"conditions": dict(), "sources": {}}
         self.config = SamplingConditionsManagerConfig()
@@ -514,7 +522,7 @@ class SamplingConditionsManager:
                         else:
                             results.append(data)
                             
-                    self.logger.info(f"Loaded and expanded file: {file_path.name}")
+                    self.logger.debug(f"DEBUG _load_json_dir: Loaded and expanded file: {file_path.name}")
                 except Exception as e:
                     self.logger.error(f"Failed to parse {file_path.name}", extra={"reason": str(e)})
         else:
@@ -571,14 +579,6 @@ class SamplingConditionsManager:
 
     def load_condition(self, condition: dict):
         """Helper to process definitions from either local files or Datastore API using a composite key."""
-        
-        # ---> UNIVERSAL EXPANSION PATCH <---
-        # Ensures that configurations loaded from persistent Datastore are expanded at runtime
-        # using the current pod's environment variables.
-        expanded_str = os.path.expandvars(json.dumps(condition))
-        condition = json.loads(expanded_str)
-        # -----------------------------------
-
         if condition.get("kind") != "SamplingCondition":
             return
 
@@ -590,6 +590,8 @@ class SamplingConditionsManager:
         
         new_time_str = condition.get("metadata", {}).get("valid_config_time", "")
         new_time = string_to_datetime(new_time_str)
+        
+        self.logger.debug(f"DEBUG load_condition: Attempting to load {composite_key} with time {new_time_str}. Raw sources incoming: {list(condition.get('sources', {}).keys())}")
 
         # 1. Check if condition already exists using the composite key lookup
         existing_entry = self.sampling_conditions["conditions"].get(composite_key)
@@ -598,6 +600,8 @@ class SamplingConditionsManager:
             existing_config = existing_entry.get("config", {})
             existing_time_str = existing_config.get("metadata", {}).get("valid_config_time", "")
             existing_time = string_to_datetime(existing_time_str)
+            
+            self.logger.debug(f"DEBUG load_condition: {composite_key} ALREADY EXISTS. Existing time: {existing_time_str}. New time: {new_time_str}")
 
             # --- TIME-GATING FIX: Reject stale configs from Datastore ---
             if new_time and existing_time:
@@ -605,13 +609,16 @@ class SamplingConditionsManager:
                     self.logger.warning(f"REJECTED STALE CONFIG: {cond_name} ({new_time_str} is older than active {existing_time_str})")
                     return
                 if new_time == existing_time:
+                    self.logger.debug(f"DEBUG load_condition: {composite_key} times are equal. SKIPPING reload.")
                     return # Already active
             # ------------------------------------------------------------
             
+            self.logger.debug(f"DEBUG load_condition: OVERWRITING {composite_key}. Shutting down old instance.")
             old_condition_instance = existing_entry.get("condition")
             if old_condition_instance:
                 old_condition_instance.shutdown()
         else:
+            self.logger.debug(f"DEBUG load_condition: Creating NEW entry for {composite_key}.")
             # Initialize dictionary for a brand-new condition
             self.sampling_conditions["conditions"][composite_key] = {
                 "config": None,
@@ -626,6 +633,8 @@ class SamplingConditionsManager:
             vm_name = source["variablemap_name"]
             vs_name = source["variableset_name"]
             src_id = "::".join([vm_name, vs_name])
+            
+            self.logger.debug(f"DEBUG load_condition: Mapping target. source_name='{source_name}', src_id='{src_id}' (vm='{vm_name}', vs='{vs_name}')")
 
             if src_id not in self.sampling_conditions["sources"]:
                 self.sampling_conditions["sources"][src_id] = {"targets": []}
@@ -649,6 +658,8 @@ class SamplingConditionsManager:
             status_buffer=self.status_buffer,
         )
         self.sampling_conditions["conditions"][composite_key]["condition"] = condition_instance
+        
+        self.logger.debug(f"DEBUG load_condition: SUCCESS loading {composite_key}. Current mapped sources: {list(self.sampling_conditions['sources'].keys())}")
 
     async def send_event(self, ce):
         """Routes registry definitions to the Datastore via Knative HTTP Broker."""
@@ -773,7 +784,7 @@ class SamplingConditionsManager:
         """Concurrently fetches remote definitions to keep local memory updated."""
         while True:
             try:
-                self.logger.debug("sync_sampling_definitions_loop: STARTING LOOP. Requesting IDs.")
+                self.logger.debug("DEBUG sync_sampling_definitions_loop: STARTING LOOP. Requesting IDs.")
                 
                 # 1. Fetch Condition IDs
                 ids_resp = await self.submit_get(path="samplingcondition-definition/registry/ids/get")
@@ -781,39 +792,39 @@ class SamplingConditionsManager:
                 
                 if ids_resp and "results" in ids_resp:
                     fetched_ids = ids_resp["results"]
-                    self.logger.debug("sync_sampling_definitions_loop: parsed IDs", extra={"id_count": len(fetched_ids), "ids": fetched_ids})
+                    self.logger.debug(f"DEBUG sync_sampling_definitions_loop: parsed IDs count={len(fetched_ids)}, ids={fetched_ids}")
                     
                     if fetched_ids:
                         # 2. Concurrently fetch all bodies
                         async def fetch_cond(cond_id):
-                            self.logger.debug(f"sync_sampling_definitions_loop: fetching definition body for '{cond_id}'")
+                            self.logger.debug(f"DEBUG sync_sampling_definitions_loop: fetching definition body for '{cond_id}'")
                             return await self.submit_request(
                                 path="samplingcondition-definition/registry/get", 
                                 query={"name": cond_id}
                             )
 
-                        self.logger.debug("sync_sampling_definitions_loop: gathering definitions...")
+                        self.logger.debug("DEBUG sync_sampling_definitions_loop: gathering definitions...")
                         responses = await asyncio.gather(*(fetch_cond(cid) for cid in fetched_ids))
-                        self.logger.debug("sync_sampling_definitions_loop: gather complete", extra={"responses_count": len(responses)})
+                        self.logger.debug(f"DEBUG sync_sampling_definitions_loop: gather complete. responses_count={len(responses)}")
 
                         # 3. Load them into memory
                         for idx, resp in enumerate(responses):
                             if resp and "results" in resp and resp["results"]:
                                 cond_db = resp["results"][0]
                                 cond_name = cond_db.get("metadata", {}).get("name", "unknown")
-                                self.logger.debug(f"sync_sampling_definitions_loop: loading condition '{cond_name}' into memory")
+                                self.logger.debug(f"DEBUG sync_sampling_definitions_loop: passing '{cond_name}' to load_condition from remote fetch.")
                                 self.load_condition(cond_db)
                             else:
-                                self.logger.warning(f"sync_sampling_definitions_loop: empty or invalid response at index {idx}", extra={"resp": resp})
+                                self.logger.warning(f"DEBUG sync_sampling_definitions_loop: empty or invalid response at index {idx}", extra={"resp": resp})
                     else:
-                        self.logger.debug("sync_sampling_definitions_loop: no IDs found to fetch.")
+                        self.logger.debug("DEBUG sync_sampling_definitions_loop: no IDs found to fetch.")
                 else:
-                    self.logger.warning("sync_sampling_definitions_loop: invalid or missing 'results' in IDs response.")
+                    self.logger.warning("DEBUG sync_sampling_definitions_loop: invalid or missing 'results' in IDs response.")
 
             except Exception as e:
                 self.logger.error("sync_sampling_definitions_loop error", extra={"reason": str(e)})
             
-            self.logger.debug("sync_sampling_definitions_loop: LOOP COMPLETE. Sleeping for 60s.")
+            self.logger.debug("DEBUG sync_sampling_definitions_loop: LOOP COMPLETE. Sleeping for 60s.")
             await asyncio.sleep(60)
 
     # async def condition_status_monitor(self):
