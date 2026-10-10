@@ -44,3 +44,20 @@ async def set_valve_total_aerosol(self, **kwargs):
 async def set_valve_cyclone(self, **kwargs):
     L.info("action_triggered", extra={"action": "set_valve_cyclone"})
     return {"size_cut_valve_state_sp": 1}
+
+# --- STATE ACTIONS ---
+async def set_neph_idle(self, **kwargs):
+    L.info("action_triggered", extra={"action": "set_neph_idle"})
+    return {"neph_sampling_state": "idle"}
+
+async def set_neph_sampling(self, **kwargs):
+    L.info("action_triggered", extra={"action": "set_neph_sampling"})
+    return {"neph_sampling_state": "sampling"}
+
+async def set_absorb_idle(self, **kwargs):
+    L.info("action_triggered", extra={"action": "set_absorb_idle"})
+    return {"absorb_sampling_state": "idle"}
+
+async def set_absorb_sampling(self, **kwargs):
+    L.info("action_triggered", extra={"action": "set_absorb_sampling"})
+    return {"absorb_sampling_state": "sampling"}
