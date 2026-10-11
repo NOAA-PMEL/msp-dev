@@ -500,23 +500,23 @@ def layout(deployment_id=None):
         return html.Div("No Deployment ID provided.", className="p-4 text-danger")
     host_dep, subs, varsets = get_deployment_bundle(deployment_id)
     display_name = host_dep.get("data", {}).get("display_name", deployment_id) if host_dep else deployment_id
-    
+         
     bundle_ids = [deployment_id]
     for s in subs:
         sub_name = s.get("metadata", {}).get("name")
         if sub_name: bundle_ids.append(sub_name)
-    
+         
     # --- FETCH REGISTRIES FOR ALLOCATIONS ---
     systemmodes = fetch_registry_data("systemmode")
     actions = fetch_registry_data("action")
     projects = fetch_registry_data("project")
     allocations = fetch_registry_data("projectallocation")
-    
+         
     # --- DYNAMIC TIME-BOUND ALLOCATION RESOLUTION ---
     platform_ref = host_dep.get("data", {}).get("platform_ref") if host_dep else None
     proj_ref = "Unallocated Deployment"
     now = datetime.now(timezone.utc)
-    
+         
     if allocations and platform_ref:
         for alloc in allocations:
             alloc_data = alloc.get("data", {})
@@ -533,14 +533,14 @@ def layout(deployment_id=None):
                 except Exception:
                     proj_ref = alloc_data.get("project_ref")
                     break
-    
+         
     proj_name = proj_ref
     for p in projects:
         if p.get("metadata", {}).get("name") == proj_ref:
             proj_name = p.get("data", {}).get("display_name", proj_ref)
             break
     # ------------------------------------------------
-    
+         
     sm_options = [{"label": sm.get("metadata", {}).get("name", "Unknown").upper(), "value": sm.get("metadata", {}).get("name", "Unknown")} for sm in systemmodes if sm.get("metadata", {}).get("name")]
     act_options = [{"label": act.get("metadata", {}).get("name", "Unknown").replace("_", " ").title(), "value": act.get("metadata", {}).get("name", "Unknown")} for act in actions if act.get("metadata", {}).get("name")]
     websockets = [WebSocket(id={"type": "ws-varset", "index": vs}, url=f"{ws_url_base}/envds/envops/ws/variableset/{vs}") for vs in varsets]
@@ -555,7 +555,6 @@ def layout(deployment_id=None):
                 ], className="text-muted small mt-1 mb-0")
             ], width=7),
             dbc.Col([
-                dbc.Button([html.I(className="bi bi-arrow-clockwise me-2"), "Refresh Telemetry"], id="btn-refresh-telemetry", color="warning", outline=True, className="fw-bold shadow-sm me-2"),
                 dbc.Button([html.I(className="bi bi-graph-up me-2"), "Telemetry Plots"], href=dash.get_relative_path(f"/variablesets/{deployment_id}"), color="info", outline=True, className="fw-bold shadow-sm me-2"),
                 dbc.Button([html.I(className="bi bi-database me-2"), "Asset Registry"], href=dash.get_relative_path("/assets"), color="secondary", outline=True, className="fw-bold shadow-sm")
             ], width=5, className="text-end align-self-center")
@@ -727,41 +726,33 @@ def send_c2_request(payload):
 @callback(
     Output("c2-health-store", "data"),
     Input("ws-system-ops", "message"),
-    Input("btn-refresh-telemetry", "n_clicks"),
     State("c2-health-store", "data"),
     State("store-bundle-ids", "data"),
     prevent_initial_call=True
 )
-def aggregate_health(message, refresh_clicks, current_store, bundle_ids):
-    trigger = ctx.triggered_id
-    
-    if trigger == "btn-refresh-telemetry":
-        # Force a flush of the local health state to clear stale DOM data
-        return {}
-
+def aggregate_health(message, current_store, bundle_ids):
     if current_store is None: current_store = {}
     if not message or "data" not in message: raise PreventUpdate
-    
+         
     try:
         ce = json.loads(message["data"])
         ce_type = ce.get("type", "")
         dep_ref = ce.get("deploymentref", "")
-        
+         
         if "control.update" in ce_type:
             mode = ce.get("data", {}).get("mode", "auto")
             if "control" not in current_store: current_store["control"] = {}
             current_store["control"]["mode"] = mode
             return current_store
-
         if not dep_ref or dep_ref.lower() == "unknown": 
-            raise PreventUpdate
-            
+             raise PreventUpdate
+         
         if bundle_ids and dep_ref not in bundle_ids:
             raise PreventUpdate
-            
+         
         status_data = ce.get("data", {})
         app_uid = status_data.get("id", {}).get("app_uid", "")
-        
+         
         if dep_ref and app_uid:
             if dep_ref not in current_store: current_store[dep_ref] = {}
             status_data["isprimarycontroller"] = ce.get("isprimarycontroller", "false")
@@ -769,8 +760,9 @@ def aggregate_health(message, refresh_clicks, current_store, bundle_ids):
             return current_store
     except Exception as e:
         L.error(f"Health Parse Error: {e}")
-        
+         
     raise PreventUpdate
+
 @callback(
     Output("ops-health-container", "children"),
     Output("btn-mode-auto", "outline"),
