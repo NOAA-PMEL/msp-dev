@@ -498,26 +498,25 @@ def build_live_dependency_tree(health_store, host_id):
 def layout(deployment_id=None):
     if not deployment_id:
         return html.Div("No Deployment ID provided.", className="p-4 text-danger")
-
     host_dep, subs, varsets = get_deployment_bundle(deployment_id)
     display_name = host_dep.get("data", {}).get("display_name", deployment_id) if host_dep else deployment_id
-    
+         
     bundle_ids = [deployment_id]
     for s in subs:
         sub_name = s.get("metadata", {}).get("name")
         if sub_name: bundle_ids.append(sub_name)
-    
+         
     # --- FETCH REGISTRIES FOR ALLOCATIONS ---
     systemmodes = fetch_registry_data("systemmode")
     actions = fetch_registry_data("action")
     projects = fetch_registry_data("project")
     allocations = fetch_registry_data("projectallocation")
-    
+         
     # --- DYNAMIC TIME-BOUND ALLOCATION RESOLUTION ---
     platform_ref = host_dep.get("data", {}).get("platform_ref") if host_dep else None
     proj_ref = "Unallocated Deployment"
     now = datetime.now(timezone.utc)
-    
+         
     if allocations and platform_ref:
         for alloc in allocations:
             alloc_data = alloc.get("data", {})
@@ -534,19 +533,17 @@ def layout(deployment_id=None):
                 except Exception:
                     proj_ref = alloc_data.get("project_ref")
                     break
-    
+         
     proj_name = proj_ref
     for p in projects:
         if p.get("metadata", {}).get("name") == proj_ref:
             proj_name = p.get("data", {}).get("display_name", proj_ref)
             break
     # ------------------------------------------------
-    
+         
     sm_options = [{"label": sm.get("metadata", {}).get("name", "Unknown").upper(), "value": sm.get("metadata", {}).get("name", "Unknown")} for sm in systemmodes if sm.get("metadata", {}).get("name")]
     act_options = [{"label": act.get("metadata", {}).get("name", "Unknown").replace("_", " ").title(), "value": act.get("metadata", {}).get("name", "Unknown")} for act in actions if act.get("metadata", {}).get("name")]
-
     websockets = [WebSocket(id={"type": "ws-varset", "index": vs}, url=f"{ws_url_base}/envds/envops/ws/variableset/{vs}") for vs in varsets]
-
     return html.Div([
         # --- HEADER STRIP ---
         dbc.Row([
@@ -556,13 +553,13 @@ def layout(deployment_id=None):
                     html.Strong("Project: "), proj_name, html.Br(),
                     html.Strong("Deployment ID: "), html.Span(deployment_id, className="font-monospace")
                 ], className="text-muted small mt-1 mb-0")
-            ], width=7),
+            ], width=6),
             dbc.Col([
+                dbc.Button([html.I(className="bi bi-arrow-clockwise me-2"), "Refresh Telemetry"], id="btn-refresh-telemetry", color="warning", outline=True, className="fw-bold shadow-sm me-2"),
                 dbc.Button([html.I(className="bi bi-graph-up me-2"), "Telemetry Plots"], href=dash.get_relative_path(f"/variablesets/{deployment_id}"), color="info", outline=True, className="fw-bold shadow-sm me-2"),
                 dbc.Button([html.I(className="bi bi-database me-2"), "Asset Registry"], href=dash.get_relative_path("/assets"), color="secondary", outline=True, className="fw-bold shadow-sm")
-            ], width=5, className="text-end align-self-center")
+            ], width=6, className="text-end align-self-center")
         ], className="mb-4 mt-3 border-bottom pb-3"),
-
         # --- ROW 1: COMMAND & HEALTH STRIP ---
         dbc.Row([
             # Controls (Left)
@@ -584,7 +581,7 @@ def layout(deployment_id=None):
                                 dbc.Select(id="c2-mode-select", options=sm_options, placeholder="Select Mode...", className="bg-white"),
                                 dbc.Button([html.I(className="bi bi-check2-circle me-1"), "Apply"], id="btn-apply-mode", color="primary", className="fw-bold")
                             ], className="shadow-sm")
-                        ], id="c2-manual-container", style={"display": "none"}, className="bg-light border rounded p-3 mb-3"), 
+                        ], id="c2-manual-container", style={"display": "none"}, className="bg-light border rounded p-3 mb-3"),
                         
                         html.Div([
                             html.Div([html.I(className="bi bi-lightning me-1 opacity-75"), "Trigger System Action"], className="text-muted fw-bold text-uppercase mb-2 text-nowrap", style={"fontSize": "0.65rem", "letterSpacing": "0.5px"}),
@@ -596,21 +593,19 @@ def layout(deployment_id=None):
                     ], className="p-2")
                 ], className="mb-4 shadow-sm border-0 h-100"),
             ], lg=4, md=12),
-
             # Health Nodes (Right)
             dbc.Col([
                 dbc.Card([
                     dbc.CardHeader([
                         html.H6(html.B("Fleet Operations Health"), className="mb-0 text-primary float-start mt-1"),
-                        dbc.Button([html.I(className="bi bi-diagram-3 me-1"), "View Dependency Tree"], 
-                                   id="btn-open-deps", size="sm", color="primary", outline=True, 
-                                   className="float-end fw-bold shadow-sm")
+                        dbc.Button([html.I(className="bi bi-diagram-3 me-1"), "View Dependency Tree"],
+                                    id="btn-open-deps", size="sm", color="primary", outline=True,
+                                    className="float-end fw-bold shadow-sm")
                     ], className="p-2 bg-white border-bottom-0 clearfix"),
                     dbc.CardBody(id="ops-health-container", className="p-0 bg-white")
                 ], className="shadow-sm mb-4 border-0 h-100")
             ], lg=8, md=12)
         ], className="align-items-stretch"),
-
         # --- ROW 2: FULL-WIDTH TELEMETRY GRID ---
         dbc.Row([
             # Column 1: Platform Core
@@ -633,7 +628,6 @@ def layout(deployment_id=None):
                         make_kpi_col("Size Cut", "kpi-ops-sizecut", "bi bi-funnel")
                     ], className="g-2"), className="p-2 bg-light")
                 ], className="mb-3 shadow-sm border-0"),
-
                 dbc.Card([
                     dbc.CardHeader(html.H6(html.B("Power Routing"), className="mb-0 text-primary"), className="p-2 bg-white border-bottom-0"),
                     dbc.CardBody(dbc.Row([
@@ -655,7 +649,6 @@ def layout(deployment_id=None):
                         make_kpi_col("Irradiance", "kpi-met-irrad", "bi bi-brightness-high")
                     ], className="g-2"), className="p-2 bg-light")
                 ], className="mb-3 shadow-sm border-0"),
-
                 dbc.Card([
                     dbc.CardHeader(html.H6(html.B("Gas Phase"), className="mb-0 text-primary"), className="p-2 bg-white border-bottom-0"),
                     dbc.CardBody(dbc.Row([
@@ -678,7 +671,6 @@ def layout(deployment_id=None):
                 ], className="mb-3 shadow-sm border-0")
             ], lg=4, md=12)
         ]),
-
         html.Div(websockets),
         WebSocket(id="ws-system-ops", url=f"{ws_url_base}/envds/envops/ws/deployment/{deployment_id}/c2"),
         html.Div(id="ws-c2-send-buffer", style={"display": "none"}),
@@ -690,7 +682,6 @@ def layout(deployment_id=None):
                 dbc.Button("Close", id="btn-close-deps", color="secondary", className="fw-bold shadow-sm")
             )
         ], id="modal-deps", is_open=False, size="lg"),
-
         dcc.Interval(id="kpi-staleness-interval", interval=1000, n_intervals=0),
         dcc.Store(id="store-deployment-id", data=deployment_id),
         dcc.Store(id="store-bundle-ids", data=bundle_ids),
@@ -736,34 +727,40 @@ def send_c2_request(payload):
 @callback(
     Output("c2-health-store", "data"),
     Input("ws-system-ops", "message"),
+    Input("btn-refresh-telemetry", "n_clicks"),
     State("c2-health-store", "data"),
     State("store-bundle-ids", "data"),
     prevent_initial_call=True
 )
-def aggregate_health(message, current_store, bundle_ids):
+def aggregate_health(message, refresh_clicks, current_store, bundle_ids):
+    trigger = ctx.triggered_id
+    
+    if trigger == "btn-refresh-telemetry":
+        # Force a flush of the local health state to clear stale DOM data
+        return {}
+
     if current_store is None: current_store = {}
     if not message or "data" not in message: raise PreventUpdate
-    
+         
     try:
         ce = json.loads(message["data"])
         ce_type = ce.get("type", "")
         dep_ref = ce.get("deploymentref", "")
-        
+         
         if "control.update" in ce_type:
             mode = ce.get("data", {}).get("mode", "auto")
             if "control" not in current_store: current_store["control"] = {}
             current_store["control"]["mode"] = mode
             return current_store
-
         if not dep_ref or dep_ref.lower() == "unknown": 
-            raise PreventUpdate
-        
+             raise PreventUpdate
+         
         if bundle_ids and dep_ref not in bundle_ids:
             raise PreventUpdate
-        
+         
         status_data = ce.get("data", {})
         app_uid = status_data.get("id", {}).get("app_uid", "")
-        
+         
         if dep_ref and app_uid:
             if dep_ref not in current_store: current_store[dep_ref] = {}
             status_data["isprimarycontroller"] = ce.get("isprimarycontroller", "false")
@@ -771,7 +768,7 @@ def aggregate_health(message, current_store, bundle_ids):
             return current_store
     except Exception as e:
         L.error(f"Health Parse Error: {e}")
-            
+         
     raise PreventUpdate
 
 @callback(
