@@ -562,13 +562,12 @@ class Registrar:
             data = message.data
             for update_type, update in data.items():
                 
-                # 1. Fix Device Routing
+                # 1. Device Definition Ingestion
                 if update_type == "device-definition-update":
                     event = DAQEvent.create_device_definition_registry_update(
                         source=f"envds.{self.config.daq_id}.registrar",
                         data={"device-definition": update},
                     )
-                    # Route directly to the device-definition datastore topic
                     destpath = f"envds/{self.config.daq_id}/device-definition/registry/update"
                     
                     self.logger.debug(
@@ -577,13 +576,12 @@ class Registrar:
                     event["destpath"] = destpath
                     await self.send_event(event)
                     
-                # 2. Fix Controller Routing
+                # 2. Controller Definition Ingestion
                 elif update_type == "controller-definition-update":
                     event = DAQEvent.create_controller_definition_registry_update(
                         source=f"envds.{self.config.daq_id}.registrar",
                         data={"controller-definition": update},
                     )
-                    # Route directly to the controller-definition datastore topic
                     destpath = f"envds/{self.config.daq_id}/controller-definition/registry/update"
                     
                     self.logger.debug(
@@ -592,19 +590,17 @@ class Registrar:
                     event["destpath"] = destpath
                     await self.send_event(event)
 
-                # 3. Dynamic catch-all for Sampling definitions
+                # 3. Dynamic Catch-All for Sampling Definitions
                 elif update_type.endswith("-definition-update"):
-                    # FIX: Strip the full suffix to get the clean resource name (e.g. 'samplingcondition')
                     resource_type = update_type.replace("-definition-update", "") 
                     
                     event = SamplingEvent.create_definition_registry_update(
-                        resource=resource_type,
+                        resource=f"{resource_type}-definition",
                         source=f"envds.{self.config.daq_id}.registrar",
-                        # Explicitly format the data key to match datastore expectations
-                        data={f"{resource_type}-definition": update} 
+                        # Correct key name expected by Datastore (e.g., 'variablemap', 'systemmode')
+                        data={resource_type: update} 
                     )
                     
-                    # FIX: Manually append the singular '-definition' suffix for the routing topic
                     destpath = f"envds/{self.config.daq_id}/{resource_type}-definition/registry/update"
                     event["destpath"] = destpath
                     
@@ -1225,7 +1221,6 @@ class Registrar:
         try:
             path = f"{resource_type}-definition/registry/get"
             
-            # FIX: Map the definition_id to the exact query parameter the Datastore API expects
             if resource_type == "variablemap":
                 query = {"variablemap_definition_id": definition_id}
             elif resource_type == "variableset":
@@ -1234,7 +1229,7 @@ class Registrar:
                 query = {"name": definition_id} 
             
             results = await self.submit_request(path=path, query=query)
-            print(f"send_sampling_update: {results}")
+            self.logger.debug("send_sampling_update", extra={"results": results})
             if "results" in results and results["results"]:
                 update = DAQEvent.create_registry_sync_update(
                     source=f"envds.{self.config.daq_id}.registrar",
