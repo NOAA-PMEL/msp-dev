@@ -26,26 +26,6 @@ config = Settings()
 datastore_url = f"datastore.{config.daq_id}-system.svc.cluster.local"
 ws_url_base = f"ws://{config.external_hostname}:{config.ws_port}"
 
-# # --- HELPER: REST FETCH ---
-# def fetch_registry_data(resource_type: str):
-#     url = f"http://{datastore_url}/{resource_type}-definition/registry/ids/get/"
-#     docs = []
-#     try:
-#         timeout = httpx.Timeout(5.0)
-#         id_response = httpx.get(url, timeout=timeout)
-#         if id_response.status_code == 200:
-#             ids = id_response.json().get("results", [])
-#             for doc_id in ids:
-#                 if doc_id:
-#                     doc_url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
-#                     doc_response = httpx.get(doc_url, params={"name": doc_id}, timeout=timeout) 
-#                     if doc_response.status_code == 200:
-#                         doc_results = doc_response.json().get("results", [])
-#                         if doc_results: docs.append(doc_results[0])
-#     except Exception as e:
-#         L.error(f"Sidebar fetch failed for {resource_type}: {e}")
-#     return docs
-
 # --- HELPER: REST FETCH ---
 def fetch_registry_data(resource_type: str, query_params: dict = None):
     """Fetches registry documents dynamically without N+1 looping."""
@@ -125,9 +105,21 @@ sidebar = html.Div(
             type="dot"
         ),
         
+        html.Hr(id="sidebar-view-options-hr", className="text-secondary opacity-25 my-3", style={"display": "none"}),
+        
+        # 3. Contextual View Options (Dynamically Exposed)
+        html.Div([
+            html.Div("Telemetry Grouping", className="text-muted fw-bold text-uppercase mb-2 px-2", style={"fontSize": "0.65rem", "letterSpacing": "0.5px"}),
+            dbc.Nav([
+                dbc.NavLink([html.I(className="bi bi-diagram-3 me-2"), "By Type"], id="group-type", n_clicks=0, active=True, className="fw-bold mb-1 rounded text-dark", style={"cursor": "pointer"}),
+                dbc.NavLink([html.I(className="bi bi-map me-2"), "By Map"], id="group-vmap", n_clicks=0, active=False, className="fw-bold mb-1 rounded text-dark", style={"cursor": "pointer"}),
+                dbc.NavLink([html.I(className="bi bi-hdd-network me-2"), "By Platform"], id="group-platform", n_clicks=0, active=False, className="fw-bold mb-1 rounded text-dark", style={"cursor": "pointer"}),
+            ], vertical=True, pills=True, className="px-2")
+        ], id="sidebar-view-options", style={"display": "none"}),
+        
         html.Hr(className="text-secondary opacity-25 my-3"),
         
-        # 3. Ops Tools
+        # 4. Ops Tools
         html.Div([
             html.Div("Ops Tools", className="text-muted fw-bold text-uppercase mb-2", style={"fontSize": "0.65rem", "letterSpacing": "0.5px"}),
             dbc.Button(
@@ -222,7 +214,7 @@ floating_chat_widget = html.Div([
                     {'label': 'Guest', 'value': 'Guest'}
                 ],
                 placeholder="Identify yourself...",
-                className="mb-2 shadow-sm"  # <-- Removed size="sm" from here!
+                className="mb-2 shadow-sm"
             ),
             
             # Chat history rendering box
@@ -253,6 +245,7 @@ floating_chat_widget = html.Div([
 # --- APP LAYOUT ---
 app.layout = html.Div([
     dcc.Location(id="url"),
+    dcc.Store(id="varset-active-group", data="type"),
     sidebar,
     html.Div(dash.page_container, id="page-content"), 
     offcanvas_logbook,
@@ -261,6 +254,37 @@ app.layout = html.Div([
 ])
 
 # --- CALLBACKS ---
+
+# 0. Contextual Sidebar View Options
+@app.callback(
+    Output("sidebar-view-options", "style"),
+    Output("sidebar-view-options-hr", "style"),
+    Input("url", "pathname")
+)
+def toggle_view_options(pathname):
+    if pathname and "/variablesets/" in pathname:
+        return {"display": "block"}, {"display": "block"}
+    return {"display": "none"}, {"display": "none"}
+
+@app.callback(
+    Output("group-type", "active"),
+    Output("group-vmap", "active"),
+    Output("group-platform", "active"),
+    Output("varset-active-group", "data"),
+    Input("group-type", "n_clicks"),
+    Input("group-vmap", "n_clicks"),
+    Input("group-platform", "n_clicks"),
+    prevent_initial_call=True
+)
+def update_active_nav(t_clicks, v_clicks, p_clicks):
+    ctx = dash.callback_context
+    if not ctx.triggered: return dash.no_update
+    trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+    
+    if trigger == "group-vmap": return False, True, False, "vmap"
+    elif trigger == "group-platform": return False, False, True, "platform"
+    return True, False, False, "type"
+
 
 # 1. Toggle Chat Widget Visibility
 @app.callback(
@@ -300,10 +324,9 @@ def send_chat(n_clicks, n_submit, message, user):
         "timestamp": datetime.now().strftime("%H:%M:%S")
     })
     
-    # Return payload to send to WS, and clear the input box
     return payload, ""
 
-# 3. Receive & Display Chat Message (Using Patch to prevent re-renders)
+# 3. Receive & Display Chat Message
 @app.callback(
     Output("chat-messages-container", "children"),
     Input("ws-chat-channel", "message"),
@@ -314,7 +337,6 @@ def receive_chat(msg):
         
     data = json.loads(msg["data"])
     
-    # Build a clean message bubble
     new_msg = html.Div([
         html.Div([
             html.Span(data['user'], className="fw-bold text-primary", style={"fontSize": "0.75rem"}),
@@ -323,7 +345,6 @@ def receive_chat(msg):
         html.Div(data['message'], className="bg-white border rounded p-1 shadow-sm mt-1 mb-2", style={"fontSize": "0.85rem", "display": "inline-block"})
     ], className="mb-1")
     
-    # Append it directly to the DOM using Patch()
     patched_list = Patch()
     patched_list.append(new_msg)
     
@@ -338,21 +359,19 @@ def update_sidebar_missions(n):
     """Fetches deployments and builds a nested navigation accordion."""
     deployments = fetch_registry_data("deployment")
     projects = fetch_registry_data("project")
-    allocations = fetch_registry_data("projectallocation") # NEW: Fetch allocations
+    allocations = fetch_registry_data("projectallocation")
     
     if not deployments:
         return html.P("No active missions.", className="text-muted small px-2 fst-italic")
         
     platform_to_dep = {d.get("data", {}).get("platform_ref"): d for d in deployments}
     
-    # Isolate only the Top-Level Host deployments (like enc01) for the sidebar
     host_deployments = []
     for dep in deployments:
         host_pref = dep.get("data", {}).get("host_platform_ref")
         if not host_pref or host_pref not in platform_to_dep:
             host_deployments.append(dep)
             
-    # Group Hosts by Project via Time-Bound Allocations
     hosts_by_project = {}
     now = datetime.now(timezone.utc)
     
@@ -362,19 +381,16 @@ def update_sidebar_missions(n):
         
         for alloc in allocations:
             data = alloc.get("data", {})
-            # Look for the allocation linking this physical platform
             if data.get("platform_ref") == platform_ref:
                 start_str = data.get("start_time", "1970-01-01T00:00:00Z")
                 end_str = data.get("end_time", "9999-12-31T23:59:59Z")
                 try:
                     start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
                     end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
-                    # Only map it if the current time falls within the allocation window
                     if start_dt <= now <= end_dt:
                         proj_ref = data.get("project_ref")
                         break
                 except Exception:
-                    # Fallback if time parsing fails
                     proj_ref = data.get("project_ref")
                     break
                     

@@ -74,7 +74,7 @@ class KLD20S(Operational):
 
     def check_valve_state(self, data):
         try:
-            setting_obj = self.settings.get_setting("valve_state")
+            setting_obj = self.settings.get_setting("valve_state_sp")
             if not setting_obj: return
             
             requested_raw = setting_obj.get("requested", 0)
@@ -87,7 +87,7 @@ class KLD20S(Operational):
             state_fb = level1_data.get("data")
             if state_fb is not None:
                 if int(state_fb) == requested_state:
-                    self.settings.set_actual("valve_state", actual=requested_raw)
+                    self.settings.set_actual("valve_state_sp", actual=requested_raw)
         except Exception as e:
             self.logger.error("check_valve_state error", extra={"error": str(e)})
 
@@ -101,7 +101,7 @@ class KLD20S(Operational):
                     
                     if name == "sampling_state":
                         self.settings.set_actual(name, target_val)
-                    elif name == "valve_state":
+                    elif name == "valve_state_sp":
                         try:
                             state = int(target_val)
                             
@@ -117,7 +117,7 @@ class KLD20S(Operational):
                             await self.interface_send_data(data=payload, path_id="valve_control")
                             
                             # Optimistically set the actual state so the UI updates instantly
-                            self.settings.set_actual("valve_state", actual=state)
+                            self.settings.set_actual("valve_state_sp", actual=state)
                         except Exception as e:
                             self.logger.error("settings_check valve_state error", extra={"error": str(e)})
 
@@ -143,17 +143,23 @@ class KLD20S(Operational):
     async def default_data_loop(self):
         while True:
             try:
-                data = await self.default_data_buffer.get()
-                record = self.default_parse(data)
-                
-                if record and self.sampling():
-                    event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record)
-                    event["destpath"] = f"{self.get_id_as_topic()}/data/update"
-                    await self.send_message(event)
-
+                if self.sampling():
+                    try:
+                        data = await asyncio.wait_for(self.default_data_buffer.get(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        data = None
+                        
+                    record = self.default_parse(data)
+                    
+                    if record:
+                        event = DAQEvent.create_data_update(source=self.get_id_as_source(), data=record)
+                        event["destpath"] = f"{self.get_id_as_topic()}/data/update"
+                        await self.send_message(event)
+                else:
+                    await asyncio.sleep(1.0)
             except Exception as e:
                 self.logger.error("default_data_loop error", extra={"error": str(e)})
-            await asyncio.sleep(0.1)
+                await asyncio.sleep(1.0)
 
     # def default_parse(self, data):
     #     if not data: return None
@@ -178,25 +184,39 @@ class KLD20S(Operational):
     #         return None
 
     def default_parse(self, data):
-        if not data: return None
         try:
+            # Revert to original behavior: only include settings on the first metadata pass
             v_types = ["main", "setting"] if self.include_metadata else ["main"]
             record = self.build_data_record(meta=self.include_metadata, variable_types=v_types)
             self.include_metadata = False
 
-            raw_payload = data.data if isinstance(data.data, dict) else {}
-            timestamp = raw_payload.get("timestamp")
+            # FIX: Force format_version to match the JSON definition to prevent ERDDAP dataset mismatch
+            if "format_version" in record.get("attributes", {}):
+                record["attributes"]["format_version"]["data"] = self.metadata["attributes"]["format_version"]["data"]
+
+            if data is not None:
+                raw_payload = data.data if isinstance(data.data, dict) else {}
+                timestamp = raw_payload.get("timestamp")
+            else:
+                timestamp = None
             
-            if not timestamp: return None
+            if not timestamp:
+                from datetime import datetime, timezone
+                timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
             record["timestamp"] = timestamp
             if "time" in record["variables"]:
                 record["variables"]["time"]["data"] = timestamp
                 
-            # Grab the actual state and inject it into both the main telemetry and the setting
             sp_setting = self.settings.get_setting("valve_state_sp")
             if sp_setting:
-                sp_val = sp_setting.get("actual") if isinstance(sp_setting, dict) and "actual" in sp_setting else (sp_setting.get("requested") if isinstance(sp_setting, dict) else sp_setting)
+                if isinstance(sp_setting, dict):
+                    sp_val = sp_setting.get("actual")
+                    if sp_val is None:
+                        sp_val = sp_setting.get("requested")
+                else:
+                    sp_val = sp_setting
+                    
                 if sp_val is not None:
                     try:
                         int_val = int(float(sp_val))

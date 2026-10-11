@@ -41,9 +41,10 @@ def layout():
                 icon = "bi bi-file-earmark-text text-primary"
             else:
                 icon = "bi bi-file-earmark text-secondary"
-
+            
             # Dash automatically serves files in the 'assets' folder
-            file_url = f"/assets/docs/{f}"
+            # THE FIX: Wrap the path so the ingress prefix is applied
+            file_url = dash.get_relative_path(f"/assets/docs/{f}")
             
             list_items.append(
                 dbc.ListGroupItem(

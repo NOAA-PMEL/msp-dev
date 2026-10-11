@@ -172,8 +172,8 @@ async def dataset_generate_request(request: Request):
         
         L.debug("Config found. Proceeding to pipeline...", extra={"dataset_id": dataset_id})
         
-        # Fire and forget the pipeline task so we don't block the Knative Eventing Broker
-        asyncio.create_task(generator.generate_dataset(dataset_config, start_time, end_time))
+        # ---> THE FIX: Await the task so Knative doesn't scale to zero mid-generation <---
+        await generator.generate_dataset(dataset_config, start_time, end_time)
             
         return Response(status_code=status.HTTP_204_NO_CONTENT)
         
