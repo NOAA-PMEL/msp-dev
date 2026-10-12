@@ -338,7 +338,7 @@ class SamplingState:
     #         # Sleep until the next integer second
     #         await asyncio.sleep(time_to_next(1))
 
-    async def requirement_monitor(self):
+async def requirement_monitor(self):
         """
         Monitors requirements for state transitions using contiguous streak tracking. 
         Triggers update immediately on change or every 30s as a heartbeat.
@@ -375,8 +375,12 @@ class SamplingState:
                                     else:
                                         break
                                 
-                                # If the streak started before or exactly at the required time boundary, transition!
-                                if streak_start_ts <= transition_str:
+                                # If the streak started before OR within 2 seconds of the required time boundary, transition!
+                                # This 2-second grace period allows the state to transition even if the exact boundary packet was slightly delayed
+                                grace_dt = get_datetime_with_delta(delta=2, dt=string_to_datetime(transition_str))
+                                grace_str = datetime_to_string(grace_dt)
+                                
+                                if streak_start_ts <= grace_str:
                                     req["status"] = target_status
 
                         state_status.append(req["status"])
@@ -430,7 +434,7 @@ class SamplingState:
 
             # Sleep until the next integer second
             await asyncio.sleep(time_to_next(1))
-
+            
     # async def data_gc(self):
     #     while True:
     #         try:
