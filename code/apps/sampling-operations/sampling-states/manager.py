@@ -338,7 +338,7 @@ class SamplingState:
     #         # Sleep until the next integer second
     #         await asyncio.sleep(time_to_next(1))
 
-async def requirement_monitor(self):
+    async def requirement_monitor(self):
         """
         Monitors requirements for state transitions using contiguous streak tracking. 
         Triggers update immediately on change or every 30s as a heartbeat.
@@ -434,7 +434,7 @@ async def requirement_monitor(self):
 
             # Sleep until the next integer second
             await asyncio.sleep(time_to_next(1))
-            
+
     # async def data_gc(self):
     #     while True:
     #         try:
