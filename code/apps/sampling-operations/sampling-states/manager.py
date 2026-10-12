@@ -866,8 +866,9 @@ class SamplingStatesManager:
                     self.logger.warning(f"REJECTED STALE CONFIG: {state_name} ({new_time_str} is older than active {existing_time_str})")
                     return
                 if new_time == existing_time:
-                    if existing_config == state:
-                        return # Config hasn't changed and timestamp is the same, do not restart!
+                    return # Config timestamp hasn't advanced, DO NOT wipe memory!
+            elif existing_config == state:
+                return
             # ------------------------------------------------------------
                 
             old_state = existing_entry.get("state")
