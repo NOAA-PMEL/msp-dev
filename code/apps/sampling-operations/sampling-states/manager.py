@@ -434,35 +434,6 @@ class SamplingState:
 
             # Sleep until the next integer second
             await asyncio.sleep(time_to_next(1))
-
-    # async def data_gc(self):
-    #     while True:
-    #         try:
-    #             for req_type, req_kind in self.requirements.items():
-    #                 for req_name, req in req_kind.items():
-    #                     gc_time = req["transition_time"]["to_become_false"]
-    #                     if req["transition_time"]["to_become_true"] > gc_time:
-    #                         gc_time = req["transition_time"]["to_become_true"]
-    #                     # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "req": req})
-    #                     # delta = timedelta(seconds=(gc_time * -1))
-    #                     # gc_dt = get_datetime_with_delta(delta)
-    #                     dt_now = get_datetime().replace(tzinfo=timezone.utc)
-    #                     gc_dt = get_datetime_with_delta(delta=(-(gc_time)), dt=dt_now)
-    #                     # self.logger.debug("data_gc1", extra={"gc_time": gc_time, "now": get_datetime_string(), "gc_dt": gc_dt})
-    #                     keys = list(req["data"].keys())
-    #                     # self.logger.debug("data_gc", extra={"keys": keys, "gc_dt": gc_dt})
-    #                     del_list = []
-    #                     for k in keys:
-    #                         # self.logger.debug("data_gc2", extra={"key": string_to_datetime(k).replace(tzinfo=timezone.utc), "gc_dt": gc_dt, "dt_now": get_datetime()})
-    #                         # self.logger.debug("data_gc2", extra={"diff": string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt})
-    #                         if string_to_datetime(k).replace(tzinfo=timezone.utc) < gc_dt:
-    #                             # self.logger.debug("data_gc-pop", extra={"keys": k})
-    #                             # del self.requirements[req_type][req_name]["data"][k]
-    #                             req["data"].pop(k)
-    #             self.logger.debug("data_gc", extra={"self.req": self.requirements[req_type][req_name]["data"]})
-    #         except Exception as e:
-    #             self.logger.error("data_gc", extra={"reason": e})
-    #         await asyncio.sleep(time_to_next(30))
             
     async def data_gc(self):
         """
