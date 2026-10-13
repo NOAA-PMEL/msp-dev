@@ -597,8 +597,8 @@ class Registrar:
                     event = SamplingEvent.create_definition_registry_update(
                         resource=f"{resource_type}-definition",
                         source=f"envds.{self.config.daq_id}.registrar",
-                        # Correct key name expected by Datastore (e.g., 'variablemap', 'systemmode')
-                        data={resource_type: update} 
+                        # FIXED: Use the correct root key expected by the datastore schema
+                        data={f"{resource_type}-definition": update} 
                     )
                     
                     destpath = f"envds/{self.config.daq_id}/{resource_type}-definition/registry/update"
