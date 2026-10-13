@@ -198,7 +198,7 @@ class SDP810(Sensor):
             "data": {
                 "i2c-write": {
                     "address": self.i2c_address,
-                    "data": ["3F", "F9"]
+                    "data": ["36", "15"]
                 }
             }
         }
