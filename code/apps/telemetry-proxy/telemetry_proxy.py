@@ -345,6 +345,10 @@ class TelemetryProxyClient:
                     if original_topic:
                         await client.publish(original_topic, payload=original_json_bytes, qos=0)
 
+            except MqttError as e:
+                L.error(f"Inbound unpack MQTT Error: {e}. Exiting worker to force reconnect.")
+                self.inbound_queue.task_done()
+                raise  # Break the gather loop to force a clean reconnect
             except Exception as e:
                 L.error(f"Inbound unpack error: {e}")
             finally:
