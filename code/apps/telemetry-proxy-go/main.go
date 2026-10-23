@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
+	mathrand "math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -441,7 +441,7 @@ func getEnvInt(key string, defaultVal int) int {
 
 func generateULID() string {
 	t := time.Now().UTC()
-	entropy := ulid.Monotonic(rand.New(rand.NewSource(t.UnixNano())), 0)
+	entropy := ulid.Monotonic(mathrand.New(mathrand.NewSource(t.UnixNano())), 0)
 	return ulid.MustNew(ulid.Timestamp(t), entropy).String()
 }
 
