@@ -2533,6 +2533,29 @@ class SamplingSystem:
 
     #     return
 
+    # def normalize_unit_string(self, unit_str: str) -> str:
+    #     """
+    #     Converts UDUNITS/CF style unit exponents (like cm3 min-1 or W m-2)
+    #     into Pint-compatible explicit exponent formats (cm**3 min**-1)
+    #     to prevent the parser from interpreting dashes as subtraction.
+    #     """
+    #     if not unit_str or not isinstance(unit_str, str):
+    #         return unit_str
+    #     import re
+    #     # return re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
+    
+    #     s = re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
+        
+    #     # ---> THE FIX: Map common string abbreviations that the strict Pint parser rejects <---
+    #     s = s.replace("kilometers/hour", "km/h")  # <-- Added Furuno exact match
+    #     s = s.replace("km/hr", "km/h")
+    #     s = s.replace("m/sec", "m/s")
+    #     s = s.replace("knots", "knot")
+    #     s = s.replace("degree_C", "degC")
+    #     s = s.replace("degrees_C", "degC")
+        
+    #     return s
+
     def normalize_unit_string(self, unit_str: str) -> str:
         """
         Converts UDUNITS/CF style unit exponents (like cm3 min-1 or W m-2)
@@ -2541,21 +2564,33 @@ class SamplingSystem:
         """
         if not unit_str or not isinstance(unit_str, str):
             return unit_str
+            
         import re
-        # return re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
-    
-        s = re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', unit_str)
+        s = unit_str.strip()
+        s = re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', s)
         
-        # ---> THE FIX: Map common string abbreviations that the strict Pint parser rejects <---
-        s = s.replace("kilometers/hour", "km/h")  # <-- Added Furuno exact match
-        s = s.replace("km/hr", "km/h")
-        s = s.replace("m/sec", "m/s")
-        s = s.replace("knots", "knot")
-        s = s.replace("degree_C", "degC")
-        s = s.replace("degrees_C", "degC")
+        # ---> THE FIX: Exact unit mapping to prevent Pint undefined unit errors <---
+        exact_mappings = {
+            "degree_C": "degC",
+            "degrees_C": "degC",
+            "degree_c": "degC",
+            "degrees_c": "degC",
+            "kilometers/hour": "km/h",
+            "km/hr": "km/h",
+            "m/sec": "m/s",
+            "knots": "knot"
+        }
+        
+        # If it's a direct 1:1 match, return it instantly
+        if s in exact_mappings:
+            return exact_mappings[s]
+            
+        # Otherwise fall back to substring replacement
+        for k, v in exact_mappings.items():
+            s = s.replace(k, v)
         
         return s
-    
+
     # async def update_direct_variable_by_time_index(self, variablemap:dict, variableset_name:str, variableset_record:dict, variable_name:str, time_index: dict, data_buffer: dict = None):
     #     map_type = "direct"
     #     try:
