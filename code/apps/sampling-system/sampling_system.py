@@ -2551,6 +2551,8 @@ class SamplingSystem:
         s = s.replace("km/hr", "km/h")
         s = s.replace("m/sec", "m/s")
         s = s.replace("knots", "knot")
+        s = s.replace("degree_C", "degC")
+        s = s.replace("degrees_C", "degC")
         
         return s
     
