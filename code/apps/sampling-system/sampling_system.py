@@ -2567,6 +2567,11 @@ class SamplingSystem:
             
         import re
         s = unit_str.strip()
+        
+        # Pre-process unsupported symbols (like '#' for count) before regex
+        s = s.replace("#/", "1/")
+        s = s.replace("#", "1")
+        
         s = re.sub(r'([a-zA-Z]+)([-+]?\d+)', r'\1**\2', s)
         
         # ---> THE FIX: Exact unit mapping to prevent Pint undefined unit errors <---
@@ -2578,7 +2583,9 @@ class SamplingSystem:
             "kilometers/hour": "km/h",
             "km/hr": "km/h",
             "m/sec": "m/s",
-            "knots": "knot"
+            "knots": "knot",
+            "lpm": "l/min",
+            "LPM": "l/min"
         }
         
         # If it's a direct 1:1 match, return it instantly
