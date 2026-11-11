@@ -77,6 +77,19 @@ type BatchItem struct {
 	D json.RawMessage `json:"d"`
 }
 
+// type TelemetryProxy struct {
+// 	config        ProxySettings
+// 	cipher        cipher.AEAD
+// 	outboundChan  chan PublishRequest
+// 	inboundChan   chan *paho.Publish
+// 	localBatchChan chan LocalMessage
+// 	backfillChan  chan PublishRequest
+
+// 	mu                 sync.Mutex
+// 	totalOutboundBytes int
+// 	totalRawBytes      int
+// }
+
 type TelemetryProxy struct {
 	config        ProxySettings
 	cipher        cipher.AEAD
@@ -88,7 +101,15 @@ type TelemetryProxy struct {
 	mu                 sync.Mutex
 	totalOutboundBytes int
 	totalRawBytes      int
+	totalInboundBytes  int
+
+	// New fields for tracking running bandwidth usage
+	dailyOutboundBytes   int64
+	monthlyOutboundBytes int64
+	dailyInboundBytes    int64
+	monthlyInboundBytes  int64
 }
+
 
 func NewTelemetryProxy(cfg ProxySettings) *TelemetryProxy {
 	keyBytes := []byte(cfg.AESEncryptionKey)
@@ -154,6 +175,7 @@ func (p *TelemetryProxy) pushToOutbound(req PublishRequest) {
 func (p *TelemetryProxy) Setup(ctx context.Context) {
 	go p.batchAggregatorWorker()
 	go p.mqttLoop(ctx)
+	go p.bandwidthMonitorWorker(ctx)
 }
 
 // --- CORE PIPELINES ---
@@ -328,6 +350,11 @@ func (p *TelemetryProxy) inboundProcessorWorker(cm *autopaho.ConnectionManager) 
 		}
 
 		sizeIn := len(msg.Payload)
+		
+		p.mu.Lock()
+		p.totalInboundBytes += sizeIn
+		p.mu.Unlock()
+
 		if sizeIn < chacha20poly1305.NonceSize {
 			log.Println("Inbound unpack error: payload too short")
 			continue
@@ -372,6 +399,76 @@ func (p *TelemetryProxy) inboundProcessorWorker(cm *autopaho.ConnectionManager) 
 				cm.Publish(ctx, &paho.Publish{Topic: originalTopic, QoS: 0, Payload: originalJSONBytes})
 				cancel()
 			}
+		}
+	}
+}
+
+func (p *TelemetryProxy) bandwidthMonitorWorker(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	var lastLogTime time.Time = time.Now()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			p.mu.Lock()
+			
+			// Grab current totals and reset the minute interval counters
+			minuteOutbound := p.totalOutboundBytes
+			minuteInbound := p.totalInboundBytes
+			minuteRaw := p.totalRawBytes
+			
+			p.totalOutboundBytes = 0
+			p.totalInboundBytes = 0
+			p.totalRawBytes = 0
+			
+			// Accumulate into rolling counters
+			p.dailyOutboundBytes += int64(minuteOutbound)
+			p.monthlyOutboundBytes += int64(minuteOutbound)
+			
+			p.dailyInboundBytes += int64(minuteInbound)
+			p.monthlyInboundBytes += int64(minuteInbound)
+			
+			// Check if we crossed a midnight boundary to reset daily total
+			if now.Day() != lastLogTime.Day() {
+				p.dailyOutboundBytes = int64(minuteOutbound)
+				p.dailyInboundBytes = int64(minuteInbound)
+			}
+			
+			// Check if we crossed a month boundary to reset monthly total
+			if now.Month() != lastLogTime.Month() {
+				p.monthlyOutboundBytes = int64(minuteOutbound)
+				p.monthlyInboundBytes = int64(minuteInbound)
+			}
+			
+			dailyOut := p.dailyOutboundBytes
+			monthlyOut := p.monthlyOutboundBytes
+			dailyIn := p.dailyInboundBytes
+			monthlyIn := p.monthlyInboundBytes
+			p.mu.Unlock()
+
+			// Calculate compression reduction
+			reduction := 0.0
+			if minuteRaw > 0 {
+				reduction = (1.0 - float64(minuteOutbound)/float64(minuteRaw)) * 100.0
+			}
+
+			// Convert to MB for human readability in the logs
+			minOutMB := float64(minuteOutbound) / 1024.0 / 1024.0
+			dayOutMB := float64(dailyOut) / 1024.0 / 1024.0
+			monthOutMB := float64(monthlyOut) / 1024.0 / 1024.0
+			
+			minInMB := float64(minuteInbound) / 1024.0 / 1024.0
+			dayInMB := float64(dailyIn) / 1024.0 / 1024.0
+			monthInMB := float64(monthlyIn) / 1024.0 / 1024.0
+
+			log.Printf("bandwidth_monitor min_out_bytes=%d min_out_mb=%.4f day_out_mb=%.2f month_out_mb=%.2f reduction_pct=%.1f min_in_bytes=%d min_in_mb=%.4f day_in_mb=%.2f month_in_mb=%.2f",
+				minuteOutbound, minOutMB, dayOutMB, monthOutMB, reduction, minuteInbound, minInMB, dayInMB, monthInMB)
+				
+			lastLogTime = now
 		}
 	}
 }
