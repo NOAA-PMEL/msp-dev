@@ -193,10 +193,29 @@ func (p *TelemetryProxy) mqttLoop(ctx context.Context) {
 			OnPublishReceived: []func(paho.PublishReceived) (bool, error){
 				func(pr paho.PublishReceived) (bool, error) {
 					topic := pr.Packet.Topic
+					
+					// THE FIX: Paho reuses the Packet buffer. We MUST deep copy the payload
+					// before passing it through channels, otherwise rapidly arriving messages
+					// overwrite each other and cause massive data duplication in the batches.
 					if topic == p.config.BridgeTopicIn {
-						p.pushToInbound(pr.Packet)
+						pubCopy := *pr.Packet
+						pubCopy.Payload = make([]byte, len(pr.Packet.Payload))
+						copy(pubCopy.Payload, pr.Packet.Payload)
+						
+						if pr.Packet.Properties != nil {
+							propsCopy := *pr.Packet.Properties
+							if len(pr.Packet.Properties.User) > 0 {
+								propsCopy.User = make([]paho.UserProperty, len(pr.Packet.Properties.User))
+								copy(propsCopy.User, pr.Packet.Properties.User)
+							}
+							pubCopy.Properties = &propsCopy
+						}
+						
+						p.pushToInbound(&pubCopy)
 					} else {
-						p.pushToLocalBatch(LocalMessage{T: topic, D: pr.Packet.Payload})
+						payloadCopy := make([]byte, len(pr.Packet.Payload))
+						copy(payloadCopy, pr.Packet.Payload)
+						p.pushToLocalBatch(LocalMessage{T: topic, D: payloadCopy})
 					}
 					return true, nil
 				},
@@ -242,6 +261,7 @@ func (p *TelemetryProxy) mqttLoop(ctx context.Context) {
 
 	<-ctx.Done()
 }
+
 
 func (p *TelemetryProxy) batchAggregatorWorker() {
 	flushInterval := time.Duration(float64(time.Second) / p.config.TransmissionRateHz)
