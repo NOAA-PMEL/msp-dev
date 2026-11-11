@@ -483,15 +483,17 @@ class ErddapClient:
         return {"results": parsed_results}
 
     async def _fetch_system_registry(self, kind: str, query_id: str) -> dict:
-        """Fetches variablemaps/variablesets using the generic 'name' column."""
+        """Fetches variablemaps/variablesets using their specific unique ID columns."""
         dataset_id = "envds_system_registry" 
         query_args = [f'kind="{kind}"']
         
+        id_col = "variablemap_definition_id" if kind == "variablemap-definition" else "variableset_definition_id"
+        
         if query_id:
-            query_args.append(f'name="{query_id}"')
+            query_args.append(f'{id_col}="{query_id}"')
             
-        # FIX: Group by name and return the row with the max time
-        query_args.append("orderByMax(%22name,time%22)")
+        # Group by the specific definition ID and return the row with the max time
+        query_args.append(f"orderByMax(%22{id_col},time%22)")
         result = await self._fetch_tabledap(dataset_id, query_args)
         
         parsed_results = []

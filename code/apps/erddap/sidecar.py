@@ -859,7 +859,12 @@ async def handle_ops_registry_insert(ce: dict):
 
     kind = def_key
     namespace = metadata.get("sampling_namespace", "unknown")
-    name = metadata.get("name") or def_block.get(f"{kind.replace('-', '_')}_id", "unknown")
+    
+    # THE FIX: Extract the fully namespaced definition ID if it exists, otherwise fall back to generic name.
+    # This prevents sidecar from collapsing Payload 01 and Payload 02's shared variable map names.
+    id_key = f"{kind.replace('-', '_')}_id"
+    name = def_block.get(id_key) or metadata.get("name") or "unknown"
+    
     revision = metadata.get("revision", 1)
     
     valid_config_time = (
@@ -1223,16 +1228,11 @@ async def sync_definitions_loop():
                                 endpoint_key = jsonl_file.parent.name 
                                 
                                 if endpoint_key in ["variablemap-definition", "variableset-definition"]:
-                                    if len(row) > 6:
-                                        try:
-                                            payload = json.loads(row[6])
-                                            def_id = payload.get(f"{endpoint_key.replace('-', '_')}_id")
-                                            if def_id:
-                                                known_ids[endpoint_key].add(def_id)
-                                        except Exception:
-                                            pass
+                                    # Since our previous fix, 'name' (row[3]) safely holds the full ID
+                                    known_ids[endpoint_key].add(name)
                                 else:
-                                    known_ids[endpoint_key].add(f"{namespace}::{name}::{valid_time}")
+                                    # Must match the Datastore's exact ID format to prevent infinite sync loops
+                                    known_ids[endpoint_key].add(f"{name}::{valid_time}")
             except Exception as e:
                 L.error(f"Discovery failed to parse system file {jsonl_file.name}", extra={"reason": str(e)})
 
