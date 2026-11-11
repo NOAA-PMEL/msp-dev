@@ -78,6 +78,13 @@ class TelemetryProxyClient:
         self.start_time = time.time()
         self.total_outbound_bytes = 0
         self.total_raw_bytes = 0
+        
+        # NEW: Fields for tracking bandwidth usage
+        self.total_inbound_bytes = 0
+        self.daily_outbound_bytes = 0
+        self.monthly_outbound_bytes = 0
+        self.daily_inbound_bytes = 0
+        self.monthly_inbound_bytes = 0
 
     async def setup(self):
         """Starts background task orchestration."""
@@ -87,6 +94,60 @@ class TelemetryProxyClient:
         
         asyncio.create_task(self.mqtt_loop())
         asyncio.create_task(self.batch_aggregator_worker())
+        asyncio.create_task(self.bandwidth_monitor_worker())
+
+    async def bandwidth_monitor_worker(self):
+        """Monitors and logs real-time bandwidth consumption over intervals."""
+        import datetime
+        last_log_time = datetime.datetime.now()
+        
+        while True:
+            await asyncio.sleep(60.0)
+            now = datetime.datetime.now()
+            
+            # Grab current totals and reset the minute interval counters
+            minute_outbound = self.total_outbound_bytes
+            minute_inbound = self.total_inbound_bytes
+            minute_raw = self.total_raw_bytes
+            
+            self.total_outbound_bytes = 0
+            self.total_inbound_bytes = 0
+            self.total_raw_bytes = 0
+            
+            # Accumulate into rolling counters
+            self.daily_outbound_bytes += minute_outbound
+            self.monthly_outbound_bytes += minute_outbound
+            
+            self.daily_inbound_bytes += minute_inbound
+            self.monthly_inbound_bytes += minute_inbound
+            
+            # Check if we crossed a midnight boundary to reset daily total
+            if now.day != last_log_time.day:
+                self.daily_outbound_bytes = minute_outbound
+                self.daily_inbound_bytes = minute_inbound
+                
+            # Check if we crossed a month boundary to reset monthly total
+            if now.month != last_log_time.month:
+                self.monthly_outbound_bytes = minute_outbound
+                self.monthly_inbound_bytes = minute_inbound
+                
+            # Calculate compression reduction
+            reduction = 0.0
+            if minute_raw > 0:
+                reduction = (1.0 - float(minute_outbound) / float(minute_raw)) * 100.0
+                
+            # Convert to MB for human readability in the logs
+            min_out_mb = minute_outbound / 1024.0 / 1024.0
+            day_out_mb = self.daily_outbound_bytes / 1024.0 / 1024.0
+            month_out_mb = self.monthly_outbound_bytes / 1024.0 / 1024.0
+            
+            min_in_mb = minute_inbound / 1024.0 / 1024.0
+            day_in_mb = self.daily_inbound_bytes / 1024.0 / 1024.0
+            month_in_mb = self.monthly_inbound_bytes / 1024.0 / 1024.0
+
+            L.info(f"bandwidth_monitor min_out_bytes={minute_outbound} min_out_mb={min_out_mb:.4f} day_out_mb={day_out_mb:.2f} month_out_mb={month_out_mb:.2f} reduction_pct={reduction:.1f} min_in_bytes={minute_inbound} min_in_mb={min_in_mb:.4f} day_in_mb={day_in_mb:.2f} month_in_mb={month_in_mb:.2f}")
+            
+            last_log_time = now
 
     async def mqtt_loop(self):
         """Maintains the core Mosquitto connection and worker threads."""
@@ -323,6 +384,10 @@ class TelemetryProxyClient:
                 
                 incoming_payload = msg.payload
                 size_in = len(incoming_payload)
+                
+                # ---> THE FIX: Track inbound bandwidth bytes <---
+                self.total_inbound_bytes += size_in
+                
                 nonce = incoming_payload[:12]
                 ciphertext = incoming_payload[12:]
                 
