@@ -64,14 +64,12 @@ def get_bundle_varsets(host_id):
                     if sub.get("data", {}).get("host_platform_ref") == host_platform:
                         platforms.add(sub.get("data", {}).get("platform_ref"))
             break
-
     url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
     try:
         response = httpx.get(url, timeout=10.0)
         all_vs_ids = response.json().get("results", []) if response.status_code == 200 else []
     except Exception:
         all_vs_ids = []
-
     active_varsets = {}
     for full_id in all_vs_ids:
         if not full_id: continue
@@ -79,7 +77,6 @@ def get_bundle_varsets(host_id):
         if len(parts) >= 4:
             vs_platform = parts[0]
             if vs_platform in platforms:
-                # --- REVERT: Map short_id back to full_id for dynamic resolution ---
                 short_id = f"{parts[1]}::{parts[3]}"
                 active_varsets[short_id] = full_id
     return active_varsets
@@ -136,7 +133,7 @@ def build_graphs(layout_options):
     if "layout-2d" in layout_options:
         for dim_key, opts in layout_options["layout-2d"].items():
             graph_list.append(dbc.AccordionItem([build_graph_2d(opts["variable-list"], dim_key)], title=f"2-Dimensional Heatmap (time vs {dim_key})"))
-                 
+            
     return graph_list
 
 # --- LAYOUT ---
@@ -144,7 +141,6 @@ def layout(deployment_id=None, variableset_id=None):
     if not deployment_id or not variableset_id: 
         return html.Div("Invalid Routing.", className="p-4 text-danger")
 
-    # --- REVERT: Resolve the short_id back into the dynamically current full_id ---
     active_varsets = get_bundle_varsets(deployment_id)
     full_id = active_varsets.get(variableset_id)
 
@@ -154,7 +150,6 @@ def layout(deployment_id=None, variableset_id=None):
         platform_ref = parts[0] if len(parts) >= 4 else "unknown"
         variablemap_id = "::".join(parts[:3]) if len(parts) >= 4 else "unknown"
     else:
-        # Fallback if the registry hasn't synced it yet
         short_id = variableset_id
         platform_ref = "unknown"
         variablemap_id = "unknown"
@@ -175,7 +170,6 @@ def layout(deployment_id=None, variableset_id=None):
         "layout-1d": {"time": {"variable-list": []}}, 
         "layout-2d": {}
     }
-
     table_columns = [{"field": "time", "headerName": "Time"}]
 
     if varset_def:
@@ -183,7 +177,6 @@ def layout(deployment_id=None, variableset_id=None):
             if name == "time": continue
             dtype = var.get("type", "unknown")
             if dtype not in ["float", "double", "int", "number"]: continue
-
             long_name = var.get("attributes", {}).get("long_name", {}).get("data", name)
             unit_val = var.get("attributes", {}).get("units", {}).get("data")
             if unit_val: long_name = f"{long_name} ({unit_val})"
@@ -200,10 +193,8 @@ def layout(deployment_id=None, variableset_id=None):
                 continue
 
             table_columns.append({"field": name, "headerName": long_name, "cellDataType": "number"})
-
             shape = var.get("shape", ["time"])
             if "time" not in shape: continue
-
             if len(shape) == 1:
                 layout_options["layout-1d"]["time"]["variable-list"].append({"label": long_name, "value": name})
             elif len(shape) == 2:
@@ -302,8 +293,7 @@ def layout(deployment_id=None, variableset_id=None):
         # --- HIDDEN STORES & WEBSOCKETS ---
         dcc.Store(id="vs-meta", data={"variableset_id": short_id, "full_id": full_id, "platform": platform_ref, "variablemap_id": variablemap_id, "deployment_id": deployment_id}),
         dcc.Store(id="vs-def-store", data=varset_def),
-        # --- REVERT: Safely connect to the short_id WebSocket channel ---
-        WebSocket(id="ws-vs-instance", url=f"{ws_url_base}/envds/envops/ws/variableset/{short_id}"),
+        WebSocket(id="ws-vs-instance", url=f"{ws_url_base}/envds/envops/ws/variableset/{deployment_id}::{short_id}"),
         html.Div(id="ws-send-vs-buffer", children="", style={"display": "none"}),
         dcc.Store(id="vs-data-buffer", data={})
     ])
@@ -320,7 +310,6 @@ def update_variableset_buffer(message, vs_meta):
     try:
         payload = json.loads(message["data"])
         
-        # THE FIX: Retained explicit deployment isolation to prevent cross-payload stream collision
         incoming_dep_ref = payload.get("attributes", {}).get("deployment_ref", {}).get("data", "")
         if incoming_dep_ref and incoming_dep_ref != vs_meta.get("deployment_id"):
             raise PreventUpdate
@@ -344,8 +333,6 @@ def update_table_1d(buffer_data, col_defs):
             name = col["field"]
             raw_val = variables.get(name, {}).get("data", "")
             
-            # THE FIX: If the value is a list (2D data), convert it to a string 
-            # so the datatable can render it without crashing
             if isinstance(raw_val, list):
                 data[name] = json.dumps(raw_val)
             else:
@@ -369,7 +356,6 @@ def select_graph_1d(y_axis, vs_meta, varset_def):
     
     try:
         x, y = [], []
-        # THE FIX: Safely route historical queries through ERDDAP using the exact variablemap_id
         results = get_variableset_data(vs_meta["variableset_id"], vs_meta["variablemap_id"])
         if results:
             for doc in results:
@@ -379,13 +365,11 @@ def select_graph_1d(y_axis, vs_meta, varset_def):
                         x.append(variables["time"]["data"])
                         y.append(variables[y_axis]["data"])
                 except Exception: continue
-
         units = ""
         try:
             unit_data = varset_def.get("variables", {}).get(y_axis, {}).get("attributes", {}).get("units", {}).get("data")
             if unit_data: units = f'({unit_data})'
         except Exception: pass
-
         return go.Figure(
                 data=go.Scatter(x=x, y=y, type="scatter", mode="lines+markers"),
                 layout={"xaxis": {"title": "Time"}, "yaxis": {"title": f"{y_axis} {units}".strip()}},
@@ -410,16 +394,13 @@ def update_graph_1d(buffer_data, selected_values):
                 continue
             x_val = variables["time"].get("data")
             y_val = variables[y_axis].get("data")
-
             if x_val is None or y_val is None:
                 figs_to_update.append(dash.no_update)
                 continue
-
             if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[-1]
             if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[-1]
             
             figs_to_update.append(( {"x": [[x_val]], "y": [[y_val]]}, [0], 1000 ))
-
         if not any(f != dash.no_update for f in figs_to_update): raise PreventUpdate
         return figs_to_update
     except Exception:
@@ -441,18 +422,15 @@ def select_graph_2d(z_axis, vs_meta, varset_def, graph_id):
         dim_y = graph_id["index"]
         real_y_axis = dim_y
         
-        # Resolve the true alias for the coordinate axis (e.g. diameter -> smps_diameter)
         if varset_def:
             for v_name, v_def in varset_def.get("variables", {}).items():
                 if v_def.get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                     if dim_y in v_def.get("shape", []) or v_name == dim_y:
                         real_y_axis = v_name
                         break
-
         use_log = ("diameter" in real_y_axis.lower() or "dp" in real_y_axis.lower())
-        x, y, orig_z = [], [], []
+        x, y, orig_z = [], []
         
-        # THE FIX: Safely route historical queries through ERDDAP using the exact variablemap_id
         results = get_variableset_data(vs_meta["variableset_id"], vs_meta["variablemap_id"])
         if not results: raise PreventUpdate
         
@@ -462,10 +440,10 @@ def select_graph_2d(z_axis, vs_meta, varset_def, graph_id):
                 y.append(doc["variables"][real_y_axis]["data"])
                 orig_z.append(doc["variables"][z_axis]["data"])
             except KeyError: continue
-            
+        
         if len(y) > 0 and isinstance(y[-1], list): 
             y = y[-1]
-            
+        
         z = []
         for yi in range(len(y)):
             new_z = []
@@ -473,7 +451,7 @@ def select_graph_2d(z_axis, vs_meta, varset_def, graph_id):
                 try: new_z.append(orig_z[xi][yi])
                 except IndexError: new_z.append(None)
             z.append(new_z)
-            
+        
         y_units = varset_def.get("variables", {}).get(real_y_axis, {}).get("attributes", {}).get("units", {}).get("data", "")
         if y_units: y_units = f"({y_units})"
         
@@ -507,59 +485,51 @@ def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, 
         if not current_fig or not z_axis:
             heatmaps.append(dash.no_update)
             continue
-            
+        
         dim_y = graph_id["index"]
         real_y_axis = dim_y
         
-        # Resolve the true alias for the coordinate axis
         if varset_def:
             for v_name, v_def in varset_def.get("variables", {}).items():
                 if v_def.get("attributes", {}).get("variable_type", {}).get("data") == "coordinate":
                     if dim_y in v_def.get("shape", []) or v_name == dim_y:
                         real_y_axis = v_name
                         break
-                        
+                
         variables = buffer_data.get("variables", {})
-                  
+        
         if "time" not in variables or z_axis not in variables:
             heatmaps.append(dash.no_update)
             continue
-            
+        
         x = variables["time"]["data"]
         if not isinstance(x, list): x = [x]
         
         if len(current_fig["data"]) > 0 and x[0] in current_fig["data"][0].get("x", []):
             heatmaps.append(dash.no_update)
             continue
-            
+        
         heatmap_patch = Patch()
         for nx in x: heatmap_patch["data"][0]["x"].append(nx)
         
         y = current_fig["data"][0].get("y", [])
         if len(y) == 0:
             y = variables.get(real_y_axis, {}).get("data", [])
-            
-        # The telemetry matrix is a flat 1D list representing the Z values for this time bucket
+        
         orig_z = variables.get(z_axis, {}).get("data", [])
         
-        # Plotly heatmaps extending over the x-axis (time) expect a 2D array [time_buckets][y_bins]
-        # But when patching, Plotly expects Z to be updated per Y-bin: z[yi].append(val)
-        
-        # Ensure the patch structure exists
         if "z" not in current_fig["data"][0] or not current_fig["data"][0]["z"]: 
             heatmap_patch["data"][0]["z"] = [[] for _ in range(len(y))]
-            
+        
         for yi in range(len(y)):
             try:
-                # Safely extract the bin value from the 1D telemetry payload
                 val = orig_z[yi] if isinstance(orig_z, list) and yi < len(orig_z) else None
                 heatmap_patch["data"][0]["z"][yi].append(val)
             except Exception as e:
                 L.error(f"Error patching heatmap bin {yi}: {e}")
                 heatmap_patch["data"][0]["z"][yi].append(None)
-                
+        
         heatmaps.append(heatmap_patch)
-
     if all(h == dash.no_update for h in heatmaps): raise PreventUpdate
     return heatmaps
 
@@ -592,10 +562,8 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def, live_data)
     t_id = attrs.get("source_id", {}).get("data", "unknown")
     t_type = attrs.get("source_type", {}).get("data", "sensor").lower()
     src_var = attrs.get("source_variable", {}).get("data", param_name)
-
     if t_id == "unknown":
         raise PreventUpdate
-
     dest_topic = "envds/controller/settings/request" if t_type == "controller" else "envds/sensor/settings/request"
     
     if str(raw_val).lower() in ["true", "on", "1"]:
@@ -605,8 +573,7 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def, live_data)
     else:
         try: requested_val = int(raw_val) if selected_row.get("type") == "int" else float(raw_val)
         except (ValueError, TypeError): requested_val = raw_val
-
-    # --- THE FIX: Just send a lightweight raw dictionary with routing hints ---
+        
     payload = {
         "source": f"envds.{config.daq_id}.dashboard",
         "data": {
@@ -620,7 +587,6 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def, live_data)
     }
     print(f"SUCCESS! Transmitting lightweight dict: {payload}")
     return json.dumps(payload)
-
 
 @callback(
     Output("vs-settings-table", "rowData"),
@@ -654,10 +620,9 @@ def update_vs_settings_table(buffer_data, row_data):
             if str(new_row.get("actual_value")) != str(actual_val):
                 new_row["actual_value"] = actual_val
                 updated = True
-            
+        
         new_rows.append(new_row)
         
     if not updated:
         raise PreventUpdate
-
     return new_rows

@@ -52,14 +52,12 @@ def get_bundle_varsets(host_id):
                     if sub.get("data", {}).get("host_platform_ref") == host_platform:
                         platforms.add(sub.get("data", {}).get("platform_ref"))
             break
-
     url = f"http://{datastore_url}/variableset-definition/registry/ids/get/"
     try:
         response = httpx.get(url, timeout=10.0)
         all_vs_ids = response.json().get("results", []) if response.status_code == 200 else []
     except Exception:
         all_vs_ids = []
-
     active_varsets = {}
     for full_id in all_vs_ids:
         if not full_id: continue
@@ -67,7 +65,6 @@ def get_bundle_varsets(host_id):
         if len(parts) >= 4:
             vs_platform = parts[0]
             if vs_platform in platforms:
-                # --- REVERT: Restore the flexible short_id routing ---
                 short_id = f"{parts[1]}::{parts[3]}"
                 active_varsets[short_id] = full_id
     return active_varsets
@@ -75,7 +72,7 @@ def get_bundle_varsets(host_id):
 def layout(deployment_id=None):
     if not deployment_id: 
         return html.Div("No Deployment ID provided.", className="p-4 text-danger")
-
+        
     active_varsets = get_bundle_varsets(deployment_id)
     
     varset_data = []
@@ -90,12 +87,12 @@ def layout(deployment_id=None):
                     var_names = [name for name in results[0].get("variables", {}).keys() if name != "time"]
         except Exception:
             pass
-
+            
         parts = full_id.split("::")
         platform = parts[0] if len(parts) > 0 else "Unknown Platform"
         vmap = parts[1] if len(parts) > 1 else "Unknown VariableMap"
         vtype = parts[3] if len(parts) > 3 else "Unknown Type"
-
+        
         varset_data.append({
             "short_id": short_id,
             "full_id": full_id,
@@ -105,7 +102,7 @@ def layout(deployment_id=None):
             "var_names": var_names,
             "deployment_id": deployment_id
         })
-
+        
     return html.Div([
         dbc.Row([
             dbc.Col([
@@ -178,7 +175,7 @@ def render_varset_cards(group_by, varset_data):
                     width=12, md=12, lg=6, xl=4, className="mb-4"
                 )
             )
-            
+        
         icon_map = {
             "type": "bi-diagram-3",
             "vmap": "bi-map",
