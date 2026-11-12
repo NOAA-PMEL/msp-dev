@@ -65,7 +65,7 @@ def get_bundle_varsets(host_id):
         if len(parts) >= 4:
             vs_platform = parts[0]
             if vs_platform in platforms:
-                short_id = f"{parts[1]}::{parts[3]}"
+                short_id = f"{parts[0]}::{parts[1]}::{parts[3]}"
                 active_varsets[short_id] = full_id
     return active_varsets
 

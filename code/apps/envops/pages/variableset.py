@@ -77,7 +77,7 @@ def get_bundle_varsets(host_id):
         if len(parts) >= 4:
             vs_platform = parts[0]
             if vs_platform in platforms:
-                short_id = f"{parts[1]}::{parts[3]}"
+                short_id = f"{parts[0]}::{parts[1]}::{parts[3]}"
                 active_varsets[short_id] = full_id
     return active_varsets
 
@@ -293,7 +293,7 @@ def layout(deployment_id=None, variableset_id=None):
         # --- HIDDEN STORES & WEBSOCKETS ---
         dcc.Store(id="vs-meta", data={"variableset_id": short_id, "full_id": full_id, "platform": platform_ref, "variablemap_id": variablemap_id, "deployment_id": deployment_id}),
         dcc.Store(id="vs-def-store", data=varset_def),
-        WebSocket(id="ws-vs-instance", url=f"{ws_url_base}/envds/envops/ws/variableset/{deployment_id}::{short_id}"),
+        WebSocket(id="ws-vs-instance", url=f"{ws_url_base}/envds/envops/ws/variableset/{short_id}"),
         html.Div(id="ws-send-vs-buffer", children="", style={"display": "none"}),
         dcc.Store(id="vs-data-buffer", data={})
     ])
@@ -308,13 +308,7 @@ def layout(deployment_id=None, variableset_id=None):
 def update_variableset_buffer(message, vs_meta): 
     if not message or "data" not in message: raise PreventUpdate
     try:
-        payload = json.loads(message["data"])
-        
-        incoming_dep_ref = payload.get("attributes", {}).get("deployment_ref", {}).get("data", "")
-        if incoming_dep_ref and incoming_dep_ref != vs_meta.get("deployment_id"):
-            raise PreventUpdate
-            
-        return payload
+        return json.loads(message["data"])
     except Exception:
         raise PreventUpdate
 

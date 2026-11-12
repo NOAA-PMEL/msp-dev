@@ -148,16 +148,14 @@ async def mqtt_listen_task():
                             vs_id = ce.get("variablesetid", "")
                             if not vs_id:
                                 attrs = ce.data.get("attributes", {})
+                                platform = attrs.get("platform", {}).get("data", "unknown")
                                 vmap = attrs.get("variablemap_id", {}).get("data", "unknown")
                                 vs_name = attrs.get("variableset_id", {}).get("data") or attrs.get("variableset", {}).get("data", "unknown")
-                                vs_id = f"{vmap}::{vs_name}"
+                                vs_id = f"{platform}::{vmap}::{vs_name}"
                             
-                            deployment_ref = ce.get("deploymentref") or ce.data.get("attributes", {}).get("deployment_ref", {}).get("data", "unknown")
-                            routing_id = f"{deployment_ref}::{vs_id}"
-                            
-                            L.info(f"[DEBUG MQTT] Broadcasting to variableset channel | routing_id: '{routing_id}'")
+                            L.info(f"[DEBUG MQTT] Broadcasting to variableset channel | routing_id: '{vs_id}'")
                                 
-                            await manager.broadcast(json.dumps(ce.data), "variableset", routing_id)
+                            await manager.broadcast(json.dumps(ce.data), "variableset", vs_id)
 
                             variables = ce.data.get("variables", {})
                             if "latitude" in variables and "longitude" in variables:
