@@ -236,188 +236,118 @@ class RedisClient(DBClient):
         if self.config.get("clear_db"):
             await self.client.flushall()
 
+        async def _safe_create_index(index_name, prefix, schema):
+            try:
+                await self.client.ft(index_name).info()
+            except Exception:
+                try:
+                    definition = IndexDefinition(prefix=prefix, index_type=IndexType.JSON)
+                    await self.client.ft(index_name).create_index(schema, definition=definition)
+                    self.logger.info(f"Created missing index: {index_name}")
+                except Exception as create_err:
+                    self.logger.error(f"Failed to create index {index_name}", extra={"reason": str(create_err)})
+
         try:
-            # Device Data Index
-            try:
-                await self.client.ft(self.data_device_index_name).info()
-            except Exception:
-                schema = (
-                    TagField("$.record.device_id", as_name="device_id"),
-                    TagField("$.record.make", as_name="make"),
-                    TagField("$.record.model", as_name="model"),
-                    TagField("$.record.serial_number", as_name="serial_number"),
-                    TagField("$.record.version", as_name="version"),
-                    NumericField("$.record.timestamp", as_name="timestamp")
-                )
-                definition = IndexDefinition(prefix=["data:device:"], index_type=IndexType.JSON)
-                await self.client.ft(self.data_device_index_name).create_index(schema, definition=definition)
+            await _safe_create_index(self.data_device_index_name, ["data:device:"], (
+                TagField("$.record.device_id", as_name="device_id"),
+                TagField("$.record.make", as_name="make"),
+                TagField("$.record.model", as_name="model"),
+                TagField("$.record.serial_number", as_name="serial_number"),
+                TagField("$.record.version", as_name="version"),
+                NumericField("$.record.timestamp", as_name="timestamp")
+            ))
+            
+            await _safe_create_index(self.registry_device_definition_index_name, ["registry:device-definition:"], (
+                TagField("$.registration.device_definition_id", as_name="device_definition_id"),
+                TagField("$.registration.make", as_name="make"),
+                TagField("$.registration.model", as_name="model"),
+                TagField("$.registration.version", as_name="version"),
+                TagField("$.registration.device_type", as_name="device_type"),
+            ))
 
-            # Device Definition Index
-            try:
-                await self.client.ft(self.registry_device_definition_index_name).info()
-            except Exception:
-                schema = (
-                    TagField("$.registration.device_definition_id", as_name="device_definition_id"),
-                    TagField("$.registration.make", as_name="make"),
-                    TagField("$.registration.model", as_name="model"),
-                    TagField("$.registration.version", as_name="version"),
-                    TagField("$.registration.device_type", as_name="device_type"),
-                )
-                definition = IndexDefinition(prefix=["registry:device-definition:"], index_type=IndexType.JSON)
-                await self.client.ft(self.registry_device_definition_index_name).create_index(schema, definition=definition)
+            await _safe_create_index(self.registry_device_instance_index_name, ["registry:device-instance:"], (
+                TagField("$.registration.device_id", as_name="device_id"),
+                TagField("$.registration.make", as_name="make"),
+                TagField("$.registration.model", as_name="model"),
+                TagField("$.registration.serial_number", as_name="serial_number"),
+                TagField("$.registration.version", as_name="version"),
+                TagField("$.registration.device_type", as_name="device_type"),
+            ))
 
-            # Device Instance Index (Active Sensors)
-            try:
-                await self.client.ft(self.registry_device_instance_index_name).info()
-            except Exception:
-                schema = (
-                    TagField("$.registration.device_id", as_name="device_id"),
-                    TagField("$.registration.make", as_name="make"),
-                    TagField("$.registration.model", as_name="model"),
-                    TagField("$.registration.serial_number", as_name="serial_number"),
-                    TagField("$.registration.version", as_name="version"),
-                    TagField("$.registration.device_type", as_name="device_type"),
-                )
-                definition = IndexDefinition(prefix=["registry:device-instance:"], index_type=IndexType.JSON)
-                await self.client.ft(self.registry_device_instance_index_name).create_index(schema, definition=definition)
+            await _safe_create_index(self.data_controller_index_name, ["data:controller:"], (
+                TagField("$.record.controller_id", as_name="controller_id"),
+                TagField("$.record.make", as_name="make"),
+                TagField("$.record.model", as_name="model"),
+                TagField("$.record.serial_number", as_name="serial_number"),
+                TagField("$.record.version", as_name="version"),
+                NumericField("$.record.timestamp", as_name="timestamp")
+            ))
 
-            # Controller Data Index
-            try:
-                await self.client.ft(self.data_controller_index_name).info()
-            except Exception:
-                schema = (
-                    TagField("$.record.controller_id", as_name="controller_id"),
-                    TagField("$.record.make", as_name="make"),
-                    TagField("$.record.model", as_name="model"),
-                    TagField("$.record.serial_number", as_name="serial_number"),
-                    TagField("$.record.version", as_name="version"),
-                    NumericField("$.record.timestamp", as_name="timestamp")
-                )
-                definition = IndexDefinition(prefix=["data:controller:"], index_type=IndexType.JSON)
-                await self.client.ft(self.data_controller_index_name).create_index(schema, definition=definition)
+            await _safe_create_index(self.registry_controller_definition_index_name, ["registry:controller-definition:"], (
+                TagField("$.registration.controller_definition_id", as_name="controller_definition_id"),
+                TagField("$.registration.make", as_name="make"),
+                TagField("$.registration.model", as_name="model"),
+                TagField("$.registration.version", as_name="version"),
+            ))
 
-            # Controller Definition Index
-            try:
-                await self.client.ft(self.registry_controller_definition_index_name).info()
-            except Exception:
-                schema = (
-                    TagField("$.registration.controller_definition_id", as_name="controller_definition_id"),
-                    TagField("$.registration.make", as_name="make"),
-                    TagField("$.registration.model", as_name="model"),
-                    TagField("$.registration.version", as_name="version"),
-                )
-                definition = IndexDefinition(prefix=["registry:controller-definition:"], index_type=IndexType.JSON)
-                await self.client.ft(self.registry_controller_definition_index_name).create_index(schema, definition=definition)
+            await _safe_create_index(self.registry_controller_instance_index_name, ["registry:controller-instance:"], (
+                TagField("$.registration.controller_id", as_name="controller_id"),
+                TagField("$.registration.make", as_name="make"),
+                TagField("$.registration.model", as_name="model"),
+                TagField("$.registration.serial_number", as_name="serial_number"),
+                TagField("$.registration.version", as_name="version"),
+            ))
 
-            # Controller Instance Index
-            try:
-                await self.client.ft(self.registry_controller_instance_index_name).info()
-            except Exception:
-                schema = (
-                    TagField("$.registration.controller_id", as_name="controller_id"),
-                    TagField("$.registration.make", as_name="make"),
-                    TagField("$.registration.model", as_name="model"),
-                    TagField("$.registration.serial_number", as_name="serial_number"),
-                    TagField("$.registration.version", as_name="version"),
-                )
-                definition = IndexDefinition(prefix=["registry:controller-instance:"], index_type=IndexType.JSON)
-                await self.client.ft(self.registry_controller_instance_index_name).create_index(schema, definition=definition)
+            await _safe_create_index(self.registry_variablemap_definition_index_name, ["registry:variablemap-definition:"], (
+                TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
+                TagField("$.registration.variablemap_type", as_name="variablemap_type"),
+                TagField("$.registration.variablemap_type_id", as_name="variablemap_type_id"),
+                TagField("$.registration.variablemap", as_name="variablemap"),
+                TagField("$.registration.valid_config_time", as_name="valid_config_time"),
+            ))
 
-            # Variable Map Definition Index
-            try:
-                await self.client.ft(self.registry_variablemap_definition_index_name).info()
-            except Exception:
-                schema = (
-                    TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
-                    TagField("$.registration.variablemap_type", as_name="variablemap_type"),
-                    TagField("$.registration.variablemap_type_id", as_name="variablemap_type_id"),
-                    TagField("$.registration.variablemap", as_name="variablemap"),
-                    TagField("$.registration.valid_config_time", as_name="valid_config_time"),
-                )
-                definition = IndexDefinition(prefix=["registry:variablemap-definition:"], index_type=IndexType.JSON)
-                await self.client.ft(self.registry_variablemap_definition_index_name).create_index(schema, definition=definition)
+            await _safe_create_index(self.registry_variableset_definition_index_name, ["registry:variableset-definition:"], (
+                TagField("$.registration.variableset_definition_id", as_name="variableset_definition_id"),
+                TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
+                TagField("$.registration.variableset", as_name="variableset"),
+                TagField("$.registration.index_type", as_name="index_type"),
+                TagField("$.registration.index_value", as_name="index_value"),
+            ))
 
-            # Variable Set Definition Index
-            try:
-                await self.client.ft(self.registry_variableset_definition_index_name).info()
-            except Exception:
-                schema = (
-                    TagField("$.registration.variableset_definition_id", as_name="variableset_definition_id"),
-                    TagField("$.registration.variablemap_definition_id", as_name="variablemap_definition_id"),
-                    TagField("$.registration.variableset", as_name="variableset"),
-                    TagField("$.registration.index_type", as_name="index_type"),
-                    TagField("$.registration.index_value", as_name="index_value"),
-                )
-                definition = IndexDefinition(prefix=["registry:variableset-definition:"], index_type=IndexType.JSON)
-                await self.client.ft(self.registry_variableset_definition_index_name).create_index(schema, definition=definition)
+            await _safe_create_index("idx:data-variableset", ["data:variableset:"], (
+                TagField("$.record.variableset_id", as_name="variableset_id"),
+                TagField("$.record.variablemap_id", as_name="variablemap_id"),
+                TagField("$.record.variableset", as_name="variableset"),
+                TagField("$.record.attributes.deployment_ref.data", as_name="deployment_ref"),
+                NumericField("$.record.timestamp", as_name="timestamp"),
+            ))
 
-            # Variable Set Telemetry Data Index
-            try:
-                await self.client.ft("idx:data-variableset").info()
-            except Exception:
-                schema = (
-                    TagField("$.record.variableset_id", as_name="variableset_id"),
-                    TagField("$.record.variablemap_id", as_name="variablemap_id"),
-                    TagField("$.record.variableset", as_name="variableset"),
-                    TagField("$.record.attributes.deployment_ref.data", as_name="deployment_ref"),
-                    NumericField("$.record.timestamp", as_name="timestamp"),
-                )
-                definition = IndexDefinition(prefix=["data:variableset:"], index_type=IndexType.JSON)
-                await self.client.ft("idx:data-variableset").create_index(schema, definition=definition)
+            await _safe_create_index(self.registry_variableset_instance_index_name, ["registry:variableset-instance:"], (
+                TagField("$.registration.variableset_id", as_name="variableset_id"),
+                TagField("$.registration.variablemap_id", as_name="variablemap_id"),
+                TagField("$.registration.variableset", as_name="variableset"),
+            ))
 
-            # Variable Set Instance Index
-            try:
-                await self.client.ft(self.registry_variableset_instance_index_name).info()
-            except Exception:
-                schema = (
-                    TagField("$.registration.variableset_id", as_name="variableset_id"),
-                    TagField("$.registration.variablemap_id", as_name="variablemap_id"),
-                    TagField("$.registration.variableset", as_name="variableset"),
-                )
-                definition = IndexDefinition(prefix=["registry:variableset-instance:"], index_type=IndexType.JSON)
-                await self.client.ft(self.registry_variableset_instance_index_name).create_index(schema, definition=definition)
+            await _safe_create_index("idx:registry-deployment-definition", ["registry:deployment-definition:"], (
+                TagField("$.registration.metadata.name", as_name="name"),
+                TagField("$.registration.data.platform_ref", as_name="platform_ref"),
+                TagField("$.registration.data.deployment_type", as_name="deployment_type"),
+                TagField("$.registration.data.deployment_subtype", as_name="deployment_subtype")
+            ))
 
-            # -------------------------------------------------------------
-            # Dedicated Deployment Graph Index 
-            # -------------------------------------------------------------
-            try:
-                await self.client.ft("idx:registry-deployment-definition").info()
-            except Exception:
-                schema = (
-                    TagField("$.registration.metadata.name", as_name="name"),
-                    TagField("$.registration.data.platform_ref", as_name="platform_ref"),
-                    TagField("$.registration.data.deployment_type", as_name="deployment_type"),
-                    TagField("$.registration.data.deployment_subtype", as_name="deployment_subtype")
-                )
-                definition = IndexDefinition(prefix=["registry:deployment-definition:"], index_type=IndexType.JSON)
-                await self.client.ft("idx:registry-deployment-definition").create_index(schema, definition=definition)
+            await _safe_create_index("idx:registry-projectallocation-definition", ["registry:projectallocation-definition:"], (
+                TagField("$.registration.metadata.name", as_name="name"),
+                TagField("$.registration.data.project_ref", as_name="project_ref")
+            ))
 
-            # -------------------------------------------------------------
-            # Dedicated ProjectAllocation Graph Index
-            # -------------------------------------------------------------
-            try:
-                await self.client.ft("idx:registry-projectallocation-definition").info()
-            except Exception:
-                schema = (
-                    TagField("$.registration.metadata.name", as_name="name"),
-                    TagField("$.registration.data.project_ref", as_name="project_ref")
-                )
-                definition = IndexDefinition(prefix=["registry:projectallocation-definition:"], index_type=IndexType.JSON)
-                await self.client.ft("idx:registry-projectallocation-definition").create_index(schema, definition=definition)
-
-            # Sampling Generic Resource Indexes (projectallocation removed!)
             for resource in ["platform", "project", "contact", "systemmode", "samplingmode", "samplingstate", "samplingcondition", "action"]:
                 index_name = f"idx:registry-{resource}-definition"
-                prefix = f"registry:{resource}-definition:"
-                try:
-                    await self.client.ft(index_name).info()
-                except Exception:
-                    schema = (TagField("$.registration.metadata.name", as_name="name"),)
-                    definition = IndexDefinition(prefix=[prefix], index_type=IndexType.JSON)
-                    await self.client.ft(index_name).create_index(schema, definition=definition)
+                prefix = [f"registry:{resource}-definition:"]
+                schema = (TagField("$.registration.metadata.name", as_name="name"),)
+                await _safe_create_index(index_name, prefix, schema)
 
         except Exception as e:
-            self.logger.error("build_indexes", extra={"reason": str(e)})
+            self.logger.error("build_indexes catastrophic failure", extra={"reason": str(e)})
 
     # -------------------------------------------------------------------------------------
     # UTILITY HELPERS
