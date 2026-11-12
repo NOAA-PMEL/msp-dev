@@ -141,13 +141,15 @@ async def mqtt_listen_task():
                                 await manager.broadcast(ce_str, "deployment_c2", dep_id)
                             
                             for fleet_id in manager.active_connections.get("fleet", {}).keys():
-                                # ---> THE FIX: Send ce_str instead of payload_str <---
                                 await manager.broadcast(ce_str, "fleet", fleet_id)
 
                         # 2. Route Variableset Telemetry to Variableset WebSockets
                         elif ce_type in ["envds.variableset.data.update"]:
-                            vs_id = source.split(".")[-1] 
-                            # await manager.broadcast(payload_str, "variableset", vs_id)
+                            # THE FIX: Extract exact ID from CloudEvent headers to prevent string truncation
+                            vs_id = ce.get("variablesetid", "")
+                            if not vs_id:
+                                vs_id = source.split(".")[-1] 
+                                
                             await manager.broadcast(json.dumps(ce.data), "variableset", vs_id)
 
                             variables = ce.data.get("variables", {})
@@ -155,7 +157,6 @@ async def mqtt_listen_task():
                                 try:
                                     target_id = None
                                     try:
-                                        # target_id = ce["deploymentref"]
                                         target_id = ce.get("deploymentref")
                                     except Exception:
                                         target_id = ce.data.get("attributes", {}).get("deployment_ref", {}).get("data", "unknown")
