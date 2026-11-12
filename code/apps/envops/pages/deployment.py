@@ -138,7 +138,8 @@ def get_deployment_bundle(host_id):
         if len(parts) >= 4:
             vs_platform = parts[0]
             if vs_platform in platforms:
-                routing_key = f"{parts[1]}::{parts[3]}"
+                # THE FIX: Match the new platform::vmap::vs routing key format for KPI WebSockets
+                routing_key = f"{parts[0]}::{parts[1]}::{parts[3]}"
                 required_varsets.add(routing_key)
                 
     return host_dep, subs, list(required_varsets)
