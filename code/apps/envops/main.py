@@ -145,17 +145,18 @@ async def mqtt_listen_task():
 
                         # 2. Route Variableset Telemetry to Variableset WebSockets
                         elif "variableset.data.update" in ce_type:
-                            vs_id = ce.get("variablesetid", "")
-                            if not vs_id:
-                                attrs = ce.data.get("attributes", {})
-                                platform = attrs.get("platform", {}).get("data", "unknown")
-                                vmap = attrs.get("variablemap_id", {}).get("data", "unknown")
-                                vs_name = attrs.get("variableset_id", {}).get("data") or attrs.get("variableset", {}).get("data", "unknown")
-                                vs_id = f"{platform}::{vmap}::{vs_name}"
+                            # THE FIX: Ignore the CE header which lacks the platform context.
+                            # Force strict construction of platform::vmap::vs from payload attributes.
+                            attrs = ce.data.get("attributes", {})
+                            platform = attrs.get("platform", {}).get("data", "unknown")
+                            vmap = attrs.get("variablemap_id", {}).get("data") or attrs.get("variablemap", {}).get("data", "unknown")
+                            vs_name = attrs.get("variableset_id", {}).get("data") or attrs.get("variableset", {}).get("data", "unknown")
                             
-                            L.info(f"[DEBUG MQTT] Broadcasting to variableset channel | routing_id: '{vs_id}'")
+                            routing_id = f"{platform}::{vmap}::{vs_name}"
+                            
+                            L.info(f"[DEBUG MQTT] Broadcasting to variableset channel | routing_id: '{routing_id}'")
                                 
-                            await manager.broadcast(json.dumps(ce.data), "variableset", vs_id)
+                            await manager.broadcast(json.dumps(ce.data), "variableset", routing_id)
 
                             variables = ce.data.get("variables", {})
                             if "latitude" in variables and "longitude" in variables:
