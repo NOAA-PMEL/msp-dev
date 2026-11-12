@@ -180,7 +180,6 @@ def layout(deployment_id=None, variableset_id=None):
         for name, var in varset_def.get("variables", {}).items():
             if name == "time": continue
             dtype = var.get("type", "unknown")
-            if dtype not in ["float", "double", "int", "number"]: continue
             long_name = var.get("attributes", {}).get("long_name", {}).get("data", name)
             unit_val = var.get("attributes", {}).get("units", {}).get("data")
             if unit_val: long_name = f"{long_name} ({unit_val})"
@@ -192,9 +191,13 @@ def layout(deployment_id=None, variableset_id=None):
                     "parameter": name,
                     "description": var.get("attributes", {}).get("description", {}).get("data", long_name),
                     "actual_value": "--",
-                    "requested_value": ""
+                    "requested_value": "",
+                    "type": dtype
                 })
                 continue
+
+            # THE FIX: Only filter out non-numerics AFTER pulling out settings!
+            if dtype not in ["float", "double", "int", "number"]: continue
 
             table_columns.append({"field": name, "headerName": long_name, "cellDataType": "number"})
             shape = var.get("shape", ["time"])
