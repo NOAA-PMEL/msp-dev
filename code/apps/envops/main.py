@@ -145,13 +145,23 @@ async def mqtt_listen_task():
 
                         # 2. Route Variableset Telemetry to Variableset WebSockets
                         elif "variableset.data.update" in ce_type:
-                            # THE FIX: Ignore the CE header which lacks the platform context.
-                            # Force strict construction of platform::vmap::vs from payload attributes.
                             attrs = ce.data.get("attributes", {})
                             platform = attrs.get("platform", {}).get("data", "unknown")
                             vmap = attrs.get("variablemap_id", {}).get("data") or attrs.get("variablemap", {}).get("data", "unknown")
-                            vs_name = attrs.get("variableset_id", {}).get("data") or attrs.get("variableset", {}).get("data", "unknown")
                             
+                            # THE FIX: Robustly extract vs_name utilizing CE headers if missing from payload attributes
+                            vs_name = attrs.get("variableset_id", {}).get("data") or attrs.get("variableset", {}).get("data")
+                            if not vs_name:
+                                hdr_id = ce.get("variablesetid", "")
+                                if hdr_id and "::" in hdr_id:
+                                    vs_name = hdr_id.split("::")[-1]
+                                elif hdr_id:
+                                    vs_name = hdr_id
+                            if not vs_name:
+                                source_parts = ce.get("source", "").split(".")
+                                raw_source = source_parts[-1] if len(source_parts) > 0 else "unknown"
+                                vs_name = raw_source.split("::")[-1] if "::" in raw_source else raw_source
+                                
                             routing_id = f"{platform}::{vmap}::{vs_name}"
                             
                             L.info(f"[DEBUG MQTT] Broadcasting to variableset channel | routing_id: '{routing_id}'")
