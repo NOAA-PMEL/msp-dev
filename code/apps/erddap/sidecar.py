@@ -853,25 +853,43 @@ async def handle_ops_registry_insert(ce: dict):
     
     def_block = data.get(def_key, {})
     metadata = def_block.get("metadata", {})
+    attributes = def_block.get("attributes") or def_block.get("data", {}).get("attributes", {})
     
-    if not metadata: 
-        return
-
     kind = def_key
-    namespace = metadata.get("sampling_namespace", "unknown")
-    
-    # THE FIX: Extract the fully namespaced definition ID if it exists, otherwise fall back to generic name.
-    # This prevents sidecar from collapsing Payload 01 and Payload 02's shared variable map names.
     id_key = f"{kind.replace('-', '_')}_id"
-    name = def_block.get(id_key) or metadata.get("name") or "unknown"
     
-    revision = metadata.get("revision", 1)
+    # --- THE FIX: Support both raw CloudEvents and Datastore sync models ---
+    name = def_block.get(id_key)
+    
+    if not name and kind == "variablemap-definition":
+        p_ref = metadata.get("platform") or attributes.get("platform") or "unknown"
+        v_name = metadata.get("name", "unknown")
+        v_time = metadata.get("valid_config_time", "2026-01-01T00:00:00Z")
+        name = f"{p_ref}::{v_name}::{v_time}"
+    elif not name and kind == "variableset-definition":
+        vmap_ref = attributes.get("variablemap_definition_id", {}).get("data")
+        if not vmap_ref:
+            p_ref = metadata.get("platform") or attributes.get("platform") or "unknown"
+            vmap_name = attributes.get("variablemap_id") or "unknown"
+            v_time = metadata.get("valid_config_time", "2026-01-01T00:00:00Z")
+            vmap_ref = f"{p_ref}::{vmap_name}::{v_time}"
+        vset_name = metadata.get("name", "unknown")
+        name = f"{vmap_ref}::{vset_name}"
+    elif not name:
+        name = metadata.get("name")
+        
+    if not name:
+        return
+        
+    namespace = metadata.get("sampling_namespace") or attributes.get("sampling_namespace", {}).get("data", "unknown")
+    revision = metadata.get("revision") or def_block.get("revision", 1)
     
     valid_config_time = (
+        def_block.get("valid_config_time") or
+        metadata.get("valid_config_time") or 
         def_block.get("revision-time") or 
         metadata.get("revision-time") or 
-        def_block.get("valid_config_time") or 
-        metadata.get("valid_config_time") or 
+        def_block.get("valid_time") or
         attrs.get("time", "2026-01-01T00:00:00Z")
     )
 
@@ -1228,7 +1246,7 @@ async def sync_definitions_loop():
                                 endpoint_key = jsonl_file.parent.name 
                                 
                                 if endpoint_key in ["variablemap-definition", "variableset-definition"]:
-                                    # Since our previous fix, 'name' (row[3]) safely holds the full ID
+                                    # With the new insert logic, row[3] (name) perfectly holds the full ID
                                     known_ids[endpoint_key].add(name)
                                 else:
                                     # Must match the Datastore's exact ID format to prevent infinite sync loops
@@ -1238,7 +1256,6 @@ async def sync_definitions_loop():
 
     L.info("Pre-flight discovery complete.", extra={k: len(v) for k, v in known_ids.items()})
 
-    # Moved sleep after discovery to prevent cache misses while MQTT is processing live data
     await asyncio.sleep(10) 
 
     while True:
