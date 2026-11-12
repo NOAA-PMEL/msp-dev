@@ -140,6 +140,7 @@ def build_graphs(layout_options):
     return graph_list
 
 # --- LAYOUT ---
+# --- LAYOUT ---
 def layout(deployment_id=None, variableset_id=None):
     if not deployment_id or not variableset_id: 
         return html.Div("Invalid Routing.", className="p-4 text-danger")
@@ -157,12 +158,13 @@ def layout(deployment_id=None, variableset_id=None):
                 if results: varset_def = results[0]
         except Exception as e:
             L.error(f"Failed to fetch Variableset definition: {e}")
-    
+
     layout_options = {
         "layout-settings": {"time": {"row-data-skeletons": []}},
         "layout-1d": {"time": {"variable-list": []}}, 
         "layout-2d": {}
     }
+
     table_columns = [{"field": "time", "headerName": "Time"}]
 
     if varset_def:
@@ -174,7 +176,7 @@ def layout(deployment_id=None, variableset_id=None):
             long_name = var.get("attributes", {}).get("long_name", {}).get("data", name)
             unit_val = var.get("attributes", {}).get("units", {}).get("data")
             if unit_val: long_name = f"{long_name} ({unit_val})"
-
+            
             var_type = var.get("variable_type") or var.get("attributes", {}).get("variable_type", {}).get("data", "main")
             
             if var_type == "setting":
@@ -287,24 +289,35 @@ def layout(deployment_id=None, variableset_id=None):
         ]),
 
         # --- HIDDEN STORES & WEBSOCKETS ---
-        dcc.Store(id="vs-meta", data={"variableset_id": variableset_id}),
+        # THE FIX: Store the deployment_id so we can filter incoming socket traffic
+        dcc.Store(id="vs-meta", data={"variableset_id": variableset_id, "deployment_id": deployment_id}),
         dcc.Store(id="vs-def-store", data=varset_def),
         WebSocket(id="ws-vs-instance", url=f"{ws_url_base}/envds/envops/ws/variableset/{variableset_id}"),
         html.Div(id="ws-send-vs-buffer", children="", style={"display": "none"}),
         dcc.Store(id="vs-data-buffer", data={})
     ])
 
-# --- CALLBACKS ---
 
+# --- CALLBACKS ---
 @callback(
     Output("vs-data-buffer", "data"),
     Input("ws-vs-instance", "message"),
+    State("vs-meta", "data"),
     prevent_initial_call=True
 )
-def update_variableset_buffer(message): 
+def update_variableset_buffer(message, vs_meta): 
     if not message or "data" not in message: raise PreventUpdate
-    try: return json.loads(message["data"])
-    except: raise PreventUpdate
+    try:
+        payload = json.loads(message["data"])
+        
+        # THE FIX: Explicitly drop any telemetry that does not belong to this deployment
+        incoming_dep_ref = payload.get("attributes", {}).get("deployment_ref", {}).get("data", "")
+        if incoming_dep_ref and incoming_dep_ref != vs_meta.get("deployment_id"):
+            raise PreventUpdate
+            
+        return payload
+    except Exception:
+        raise PreventUpdate
 
 @callback(
     Output("vs-data-table", "rowTransaction"),

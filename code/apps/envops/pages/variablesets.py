@@ -33,7 +33,6 @@ def fetch_registry_data(resource_type: str, query_params: dict = None):
     url = f"http://{datastore_url}/{resource_type}-definition/registry/get/"
     try:
         timeout = httpx.Timeout(10.0)
-        # RediSearch will return all matching documents directly based on the query!
         response = httpx.get(url, params=query_params, timeout=timeout) 
         if response.status_code == 200:
             return response.json().get("results", [])
@@ -68,20 +67,19 @@ def get_bundle_varsets(host_id):
         if len(parts) >= 4:
             vs_platform = parts[0]
             if vs_platform in platforms:
-                short_id = f"{parts[1]}::{parts[3]}"
-                active_varsets[short_id] = full_id
+                # THE FIX: Key by full_id so we don't drop overlapping template names
+                active_varsets[full_id] = full_id
 
     return active_varsets
 
 def layout(deployment_id=None):
     if not deployment_id: 
         return html.Div("No Deployment ID provided.", className="p-4 text-danger")
-        
+
     active_varsets = get_bundle_varsets(deployment_id)
     
-    # Pre-process all variable metadata for fast client-side sorting
     varset_data = []
-    for short_id, full_id in active_varsets.items():
+    for full_key, full_id in active_varsets.items():
         var_names = []
         try:
             def_url = f"http://{datastore_url}/variableset-definition/registry/get/"
@@ -92,12 +90,14 @@ def layout(deployment_id=None):
                     var_names = [name for name in results[0].get("variables", {}).keys() if name != "time"]
         except Exception:
             pass
-            
+
         parts = full_id.split("::")
         platform = parts[0] if len(parts) > 0 else "Unknown Platform"
         vmap = parts[1] if len(parts) > 1 else "Unknown VariableMap"
         vtype = parts[3] if len(parts) > 3 else "Unknown Type"
         
+        short_id = f"{parts[1]}::{parts[3]}" if len(parts) >= 4 else "unknown"
+
         varset_data.append({
             "short_id": short_id,
             "full_id": full_id,
@@ -109,7 +109,6 @@ def layout(deployment_id=None):
         })
 
     return html.Div([
-        # --- HEADER STRIP ---
         dbc.Row([
             dbc.Col([
                 html.H2([html.I(className="bi bi-collection-play me-2 text-primary"), "Telemetry Streams"], className="text-dark fw-bold mb-0"),
@@ -125,15 +124,12 @@ def layout(deployment_id=None):
             )
         ], className="mb-4 mt-3 border-bottom pb-3"),
         
-        # --- MAIN CONTENT GRID ---
         dbc.Row([
-            # CARDS GRID (Stretched full width)
             dbc.Col([
                 html.Div(id="varset-cards-container")
             ], width=12)
         ]),
         
-        # --- STORES ---
         dcc.Store(id="varset-data-store", data=varset_data)
     ])
 
@@ -176,7 +172,7 @@ def render_varset_cards(group_by, varset_data):
                             html.Div(badges, className="mb-4 d-flex flex-wrap"),
                             dbc.Button(
                                 [html.I(className="bi bi-display me-2"), "Open Telemetry View"], 
-                                href=dash.get_relative_path(f"/variableset/{deployment_id}/{short_id}"),
+                                href=dash.get_relative_path(f"/variableset/{deployment_id}/{item['full_id']}"),
                                 color="primary", className="w-100 fw-bold shadow-sm mt-auto"
                             )
                         ], className="p-3 d-flex flex-column h-100")
@@ -199,7 +195,7 @@ def render_varset_cards(group_by, varset_data):
             header_text = f"Map: {header_text}"
         elif group_by == "platform":
             header_text = f"Platform: {header_text}"
-
+            
         sections.append(html.Div([
             html.H4([html.I(className=f"bi {icon} me-2 text-secondary"), header_text], className="fw-bold mb-3 border-bottom pb-2 text-dark"),
             dbc.Row(cards)
