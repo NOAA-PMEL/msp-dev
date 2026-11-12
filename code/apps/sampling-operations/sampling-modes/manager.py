@@ -34,6 +34,7 @@ class SamplingModesConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     debug: bool = True
+    log_level: str = "INFO"
 
     daq_id: str | None = None
 
@@ -55,6 +56,11 @@ class SamplingMode:
     """Evaluates environmental requirements and triggers assigned SamplingActions."""
     def __init__(self, config, status_buffer, actions_buffer):
         self.logger = logging.getLogger(self.__class__.__name__)
+        sys_config = SamplingModesConfig()
+        try:
+            self.logger.setLevel(sys_config.log_level.upper())
+        except (ValueError, AttributeError):
+            self.logger.setLevel(logging.INFO)
         self.logger.setLevel(logging.INFO)
         self.config = config
         self.status_buffer = status_buffer
@@ -216,12 +222,19 @@ class SamplingAction:
 
 class SamplingModesManager:
     def __init__(self):
-        # ---> ADD THESE TWO LINES <---
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.INFO)
-        
-        self.logger.debug("SamplingModesManager instantiated")
         self.config = SamplingModesConfig()
+        
+        try:
+            log_level = self.config.log_level.upper()
+            L.setLevel(log_level)
+            self.logger.setLevel(log_level)
+        except (ValueError, AttributeError):
+            L.setLevel(logging.INFO)
+            self.logger.setLevel(logging.INFO)
+            
+        self.logger.debug("SamplingModesManager instantiated")
+            
         self.modes, self.actions = {}, {}
         self.status_buffer = None
         self.actions_buffer = None
