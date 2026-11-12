@@ -154,6 +154,8 @@ async def mqtt_listen_task():
                             
                             deployment_ref = ce.get("deploymentref") or ce.data.get("attributes", {}).get("deployment_ref", {}).get("data", "unknown")
                             routing_id = f"{deployment_ref}::{vs_id}"
+                            
+                            L.info(f"[DEBUG MQTT] Broadcasting to variableset channel | routing_id: '{routing_id}'")
                                 
                             await manager.broadcast(json.dumps(ce.data), "variableset", routing_id)
 
@@ -287,6 +289,7 @@ async def ws_deployment_c2(websocket: WebSocket, deployment_id: str):
 
 @app.websocket("/ws/variableset/{variableset_id}")
 async def ws_variableset(websocket: WebSocket, variableset_id: str):
+    L.info(f"[DEBUG WS] Frontend connected to variableset channel | variableset_id: '{variableset_id}'")
     await manager.connect(websocket, "variableset", variableset_id)
     try:
         while True:
@@ -298,7 +301,6 @@ async def ws_variableset(websocket: WebSocket, variableset_id: str):
                 target_id = payload.get("target_id")
 
                 if destpath and target_type:
-                    # --- THE FIX: Gateway takes ownership of building the CloudEvent ---
                     if target_type == "controller":
                         ce_obj = DAQEvent.create_controller_settings_request(
                             source=payload.get("source", f"envds.{config.daq_id}.dashboard"),
@@ -312,7 +314,6 @@ async def ws_variableset(websocket: WebSocket, variableset_id: str):
                             extra_header={"deviceid": target_id, "destpath": destpath}
                         )
                         
-                    # Drop the validated object directly onto the publisher queue
                     await mqtt_publish_queue.put((destpath, ce_obj))
             except Exception as e:
                 L.error(f"VariableSet Command Bridge Error: {e}")
