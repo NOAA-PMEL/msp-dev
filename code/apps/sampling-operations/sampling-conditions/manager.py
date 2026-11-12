@@ -1016,8 +1016,18 @@ class SamplingConditionsManager:
         try:
             self.logger.debug("variableset_data_update", extra={"ce": ce})
             
+            # --- THE FIX 1: Isolate telemetry to the correct deployment ---
+            incoming_dep_ref = ce.data.get("attributes", {}).get("deployment_ref", {}).get("data", "")
+            if incoming_dep_ref and self.config.deployment_ref and self.config.deployment_ref != "unknown":
+                if incoming_dep_ref != self.config.deployment_ref:
+                    return
+
             raw_source = ce.get("source", "UNKNOWN_SOURCE")
-            src_id = raw_source.split(".")[-1]
+            
+            # --- THE FIX 2: Extract exact variablesetid from headers to avoid truncation ---
+            src_id = ce.get("variablesetid", "")
+            if not src_id:
+                src_id = raw_source.split(".")[-1]
 
             # --- ADDED DEBUGGING ---
             available_sources = list(self.sampling_conditions["sources"].keys())

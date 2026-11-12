@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     daq_id: str = "default"
     external_hostname: str = "localhost"
     ws_port: int = 80
+
     class Config:
         env_prefix = "ENVOPS_"
         case_sensitive = False
@@ -46,7 +47,6 @@ def fetch_registry_data(resource_type: str):
                     if doc_response.status_code == 200:
                         doc_results = doc_response.json().get("results", [])
                         if doc_results: 
-                            # Safe for overlapping names across namespaces!
                             docs.extend(doc_results)
     except Exception as e:
         L.error(f"Failed to fetch {resource_type} definitions: {e}")
@@ -79,12 +79,13 @@ def get_bundle_varsets(host_id):
         if len(parts) >= 4:
             vs_platform = parts[0]
             if vs_platform in platforms:
+                # --- REVERT: Map short_id back to full_id for dynamic resolution ---
                 short_id = f"{parts[1]}::{parts[3]}"
                 active_varsets[short_id] = full_id
     return active_varsets
 
-def get_variableset_data(short_id: str):
-    query = {"variableset_id": short_id}
+def get_variableset_data(short_id: str, variablemap_id: str):
+    query = {"variableset_id": short_id, "variablemap_id": variablemap_id}
     url = f"http://{datastore_url}/variableset/data/get/"
     try:
         timeout = httpx.Timeout(30.0, read=None)
@@ -132,21 +133,31 @@ def build_graphs(layout_options):
     if "layout-1d" in layout_options and "time" in layout_options["layout-1d"]:
         opts = layout_options["layout-1d"]["time"]
         graph_list.append(dbc.AccordionItem([build_graph_1d(opts["variable-list"])], title="1-Dimensional Time Series"))
-
     if "layout-2d" in layout_options:
         for dim_key, opts in layout_options["layout-2d"].items():
             graph_list.append(dbc.AccordionItem([build_graph_2d(opts["variable-list"], dim_key)], title=f"2-Dimensional Heatmap (time vs {dim_key})"))
-            
+                 
     return graph_list
 
-# --- LAYOUT ---
 # --- LAYOUT ---
 def layout(deployment_id=None, variableset_id=None):
     if not deployment_id or not variableset_id: 
         return html.Div("Invalid Routing.", className="p-4 text-danger")
 
+    # --- REVERT: Resolve the short_id back into the dynamically current full_id ---
     active_varsets = get_bundle_varsets(deployment_id)
     full_id = active_varsets.get(variableset_id)
+
+    if full_id:
+        parts = full_id.split("::")
+        short_id = variableset_id
+        platform_ref = parts[0] if len(parts) >= 4 else "unknown"
+        variablemap_id = "::".join(parts[:3]) if len(parts) >= 4 else "unknown"
+    else:
+        # Fallback if the registry hasn't synced it yet
+        short_id = variableset_id
+        platform_ref = "unknown"
+        variablemap_id = "unknown"
 
     varset_def = {}
     if full_id:
@@ -205,8 +216,8 @@ def layout(deployment_id=None, variableset_id=None):
         # --- HEADER STRIP ---
         dbc.Row([
             dbc.Col([
-                html.H2([html.I(className="bi bi-broadcast me-3 text-primary"), f"{variableset_id}"], className="text-dark fw-bold mb-0"),
-                html.P(f"Host Deployment ID: {deployment_id}", className="text-muted small font-monospace mt-1 mb-0")
+                html.H2([html.I(className="bi bi-broadcast me-3 text-primary"), f"{short_id}"], className="text-dark fw-bold mb-0"),
+                html.P(f"Host Deployment ID: {deployment_id} | Platform: {platform_ref}", className="text-muted small font-monospace mt-1 mb-0")
             ], width=8),
             dbc.Col(
                 dbc.Button(
@@ -289,14 +300,13 @@ def layout(deployment_id=None, variableset_id=None):
         ]),
 
         # --- HIDDEN STORES & WEBSOCKETS ---
-        # THE FIX: Store the deployment_id so we can filter incoming socket traffic
-        dcc.Store(id="vs-meta", data={"variableset_id": variableset_id, "deployment_id": deployment_id}),
+        dcc.Store(id="vs-meta", data={"variableset_id": short_id, "full_id": full_id, "platform": platform_ref, "variablemap_id": variablemap_id, "deployment_id": deployment_id}),
         dcc.Store(id="vs-def-store", data=varset_def),
-        WebSocket(id="ws-vs-instance", url=f"{ws_url_base}/envds/envops/ws/variableset/{variableset_id}"),
+        # --- REVERT: Safely connect to the short_id WebSocket channel ---
+        WebSocket(id="ws-vs-instance", url=f"{ws_url_base}/envds/envops/ws/variableset/{short_id}"),
         html.Div(id="ws-send-vs-buffer", children="", style={"display": "none"}),
         dcc.Store(id="vs-data-buffer", data={})
     ])
-
 
 # --- CALLBACKS ---
 @callback(
@@ -310,7 +320,7 @@ def update_variableset_buffer(message, vs_meta):
     try:
         payload = json.loads(message["data"])
         
-        # THE FIX: Explicitly drop any telemetry that does not belong to this deployment
+        # THE FIX: Retained explicit deployment isolation to prevent cross-payload stream collision
         incoming_dep_ref = payload.get("attributes", {}).get("deployment_ref", {}).get("data", "")
         if incoming_dep_ref and incoming_dep_ref != vs_meta.get("deployment_id"):
             raise PreventUpdate
@@ -359,7 +369,8 @@ def select_graph_1d(y_axis, vs_meta, varset_def):
     
     try:
         x, y = [], []
-        results = get_variableset_data(vs_meta["variableset_id"])
+        # THE FIX: Safely route historical queries through ERDDAP using the exact variablemap_id
+        results = get_variableset_data(vs_meta["variableset_id"], vs_meta["variablemap_id"])
         if results:
             for doc in results:
                 try:
@@ -390,16 +401,13 @@ def select_graph_1d(y_axis, vs_meta, varset_def):
 )
 def update_graph_1d(buffer_data, selected_values):
     if not buffer_data: raise PreventUpdate
-
     try:
         variables = buffer_data.get("variables", {})
         figs_to_update = []
-
         for y_axis in selected_values:
             if not y_axis or "time" not in variables or y_axis not in variables:
                 figs_to_update.append(dash.no_update)
                 continue
-
             x_val = variables["time"].get("data")
             y_val = variables[y_axis].get("data")
 
@@ -409,7 +417,7 @@ def update_graph_1d(buffer_data, selected_values):
 
             if isinstance(x_val, list) and len(x_val) > 0: x_val = x_val[-1]
             if isinstance(y_val, list) and len(y_val) > 0: y_val = y_val[-1]
-
+            
             figs_to_update.append(( {"x": [[x_val]], "y": [[y_val]]}, [0], 1000 ))
 
         if not any(f != dash.no_update for f in figs_to_update): raise PreventUpdate
@@ -444,7 +452,8 @@ def select_graph_2d(z_axis, vs_meta, varset_def, graph_id):
         use_log = ("diameter" in real_y_axis.lower() or "dp" in real_y_axis.lower())
         x, y, orig_z = [], [], []
         
-        results = get_variableset_data(vs_meta["variableset_id"])
+        # THE FIX: Safely route historical queries through ERDDAP using the exact variablemap_id
+        results = get_variableset_data(vs_meta["variableset_id"], vs_meta["variablemap_id"])
         if not results: raise PreventUpdate
         
         for doc in results:
@@ -511,7 +520,7 @@ def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, 
                         break
                         
         variables = buffer_data.get("variables", {})
-                 
+                  
         if "time" not in variables or z_axis not in variables:
             heatmaps.append(dash.no_update)
             continue
@@ -537,9 +546,9 @@ def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, 
         # But when patching, Plotly expects Z to be updated per Y-bin: z[yi].append(val)
         
         # Ensure the patch structure exists
-        if "z" not in current_fig["data"][0] or not current_fig["data"][0]["z"]:
-             heatmap_patch["data"][0]["z"] = [[] for _ in range(len(y))]
-             
+        if "z" not in current_fig["data"][0] or not current_fig["data"][0]["z"]: 
+            heatmap_patch["data"][0]["z"] = [[] for _ in range(len(y))]
+            
         for yi in range(len(y)):
             try:
                 # Safely extract the bin value from the 1D telemetry payload
@@ -548,9 +557,9 @@ def update_graph_2d_heatmap(buffer_data, z_axis_list, varset_def, current_figs, 
             except Exception as e:
                 L.error(f"Error patching heatmap bin {yi}: {e}")
                 heatmap_patch["data"][0]["z"][yi].append(None)
-            
+                
         heatmaps.append(heatmap_patch)
-        
+
     if all(h == dash.no_update for h in heatmaps): raise PreventUpdate
     return heatmaps
 
@@ -566,14 +575,14 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def, live_data)
     print(f"\n--- VARIABLESET APPLY BUTTON CLICKED ---")
     if not n_clicks or not selected_rows: 
         raise PreventUpdate
-    
+        
     selected_row = selected_rows[0]
     param_name = selected_row["parameter"]
     raw_val = selected_row.get("requested_value")
     
     if raw_val is None or raw_val == "": 
         raise PreventUpdate
-    
+        
     if not live_data:
         raise PreventUpdate
         
@@ -609,9 +618,9 @@ def handle_vs_setting_submission(n_clicks, selected_rows, varset_def, live_data)
         "target_type": t_type, 
         "target_id": t_id
     }
-
     print(f"SUCCESS! Transmitting lightweight dict: {payload}")
     return json.dumps(payload)
+
 
 @callback(
     Output("vs-settings-table", "rowData"),
@@ -627,8 +636,7 @@ def update_vs_settings_table(buffer_data, row_data):
     new_rows = []
     
     for row in row_data:
-        # THE FIX: Create a fresh copy to force React DOM update
-        new_row = row.copy()
+        new_row = row.copy() 
         param = new_row["parameter"]
         
         if param in variables:
@@ -646,9 +654,10 @@ def update_vs_settings_table(buffer_data, row_data):
             if str(new_row.get("actual_value")) != str(actual_val):
                 new_row["actual_value"] = actual_val
                 updated = True
-                
+            
         new_rows.append(new_row)
-                
+        
     if not updated:
         raise PreventUpdate
+
     return new_rows

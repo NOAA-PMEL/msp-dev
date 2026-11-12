@@ -192,6 +192,7 @@ class VariableSetDefinitionUpdate(BaseModel):
     attributes: dict
     dimensions: dict
     variables: dict
+    metadata: dict | None = None
 
 
 class VariableSetDefinitionRequest(BaseModel):
@@ -200,7 +201,6 @@ class VariableSetDefinitionRequest(BaseModel):
     variableset: str | None = None
     index_type: str | None = None
     index_value: Any | None = None
-
 
 class VariableMapDefinitionUpdate(BaseModel):
     variablemap_definition_id: str | None = None
@@ -212,6 +212,7 @@ class VariableMapDefinitionUpdate(BaseModel):
     attributes: dict
     variablesets: dict
     variables: dict
+    metadata: dict | None = None
 
 
 class VariableMapDefinitionRequest(BaseModel):

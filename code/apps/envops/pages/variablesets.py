@@ -67,9 +67,9 @@ def get_bundle_varsets(host_id):
         if len(parts) >= 4:
             vs_platform = parts[0]
             if vs_platform in platforms:
-                # THE FIX: Key by full_id so we don't drop overlapping template names
-                active_varsets[full_id] = full_id
-
+                # --- REVERT: Restore the flexible short_id routing ---
+                short_id = f"{parts[1]}::{parts[3]}"
+                active_varsets[short_id] = full_id
     return active_varsets
 
 def layout(deployment_id=None):
@@ -79,7 +79,7 @@ def layout(deployment_id=None):
     active_varsets = get_bundle_varsets(deployment_id)
     
     varset_data = []
-    for full_key, full_id in active_varsets.items():
+    for short_id, full_id in active_varsets.items():
         var_names = []
         try:
             def_url = f"http://{datastore_url}/variableset-definition/registry/get/"
@@ -95,8 +95,6 @@ def layout(deployment_id=None):
         platform = parts[0] if len(parts) > 0 else "Unknown Platform"
         vmap = parts[1] if len(parts) > 1 else "Unknown VariableMap"
         vtype = parts[3] if len(parts) > 3 else "Unknown Type"
-        
-        short_id = f"{parts[1]}::{parts[3]}" if len(parts) >= 4 else "unknown"
 
         varset_data.append({
             "short_id": short_id,
@@ -172,7 +170,7 @@ def render_varset_cards(group_by, varset_data):
                             html.Div(badges, className="mb-4 d-flex flex-wrap"),
                             dbc.Button(
                                 [html.I(className="bi bi-display me-2"), "Open Telemetry View"], 
-                                href=dash.get_relative_path(f"/variableset/{deployment_id}/{item['full_id']}"),
+                                href=dash.get_relative_path(f"/variableset/{deployment_id}/{short_id}"),
                                 color="primary", className="w-100 fw-bold shadow-sm mt-auto"
                             )
                         ], className="p-3 d-flex flex-column h-100")

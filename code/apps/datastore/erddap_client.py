@@ -482,16 +482,19 @@ class ErddapClient:
                 
         return {"results": parsed_results}
 
-    async def _fetch_system_registry(self, kind: str, query_id: str) -> dict:
-        """Fetches variablemaps/variablesets using the generic 'name' column."""
+    async def _fetch_system_registry(self, kind: str, query_id: str = None, namespace: str = None) -> dict:
+        """Fetches variablemaps/variablesets using namespace and clean name column."""
         dataset_id = "envds_system_registry" 
         query_args = [f'kind="{kind}"']
         
         if query_id:
             query_args.append(f'name="{query_id}"')
             
-        # Group by name and return the row with the max time
-        query_args.append("orderByMax(%22name,time%22)")
+        if namespace:
+            query_args.append(f'namespace="{namespace}"')
+            
+        # Group perfectly by namespace AND name
+        query_args.append("orderByMax(%22namespace,name,time%22)")
         result = await self._fetch_tabledap(dataset_id, query_args)
         
         parsed_results = []
@@ -511,11 +514,33 @@ class ErddapClient:
         return await self._fetch_hardware_registry("controller-definition", request.controller_definition_id)
 
     async def variablemap_definition_registry_get(self, request: VariableMapDefinitionRequest) -> dict:
-        return await self._fetch_system_registry("variablemap-definition", request.variablemap_definition_id)
-
+        namespace = None
+        name = None
+        if request.variablemap_definition_id:
+            parts = request.variablemap_definition_id.split("::")
+            if len(parts) >= 2:
+                # Reconstruct domain logic based on the isolated platform reference
+                namespace = f"pmel.noaa.gov/{parts[0]}"
+                name = parts[1]
+            else:
+                name = request.variablemap_definition_id
+                
+        return await self._fetch_system_registry("variablemap-definition", query_id=name, namespace=namespace)
+    
     async def variableset_definition_registry_get(self, request: VariableSetDefinitionRequest) -> dict:
-        return await self._fetch_system_registry("variableset-definition", request.variableset_definition_id)
-
+        namespace = None
+        name = None
+        if request.variableset_definition_id:
+            parts = request.variableset_definition_id.split("::")
+            if len(parts) >= 4:
+                # Reconstruct domain logic based on the isolated platform reference
+                namespace = f"pmel.noaa.gov/{parts[0]}"
+                name = parts[3]
+            else:
+                name = request.variableset_definition_id
+                
+        return await self._fetch_system_registry("variableset-definition", query_id=name, namespace=namespace)
+    
 
     # ---------------------------------------------------------
     # OPERATIONS REGISTRY (Read-Through Cache)

@@ -673,10 +673,27 @@ class SamplingModesManager:
                             ce_type = ce.get("type", "")
                             
                             if ce.get("source") == my_id: continue
+
+                            # --- THE FIX 1: Universal Deployment Isolation ---
+                            # Protects both data.update and status.update from crosstalk
+                            incoming_dep_ref = ce.get("deploymentref")
+                            if not incoming_dep_ref:
+                                incoming_dep_ref = ce.data.get("attributes", {}).get("deployment_ref", {}).get("data", "")
+                            
+                            if incoming_dep_ref and self.config.deployment_ref and self.config.deployment_ref != "unknown":
+                                if incoming_dep_ref != self.config.deployment_ref:
+                                    continue 
+                            # -----------------------------------------------
                             
                             if "data.update" in ce_type:
                                 self.logger.debug("mqtt_listen_loop received data.update", extra={"ce_type": ce_type, "ce_source": ce.get("source")})
-                                src_id = ce.get("source", "").split(".")[-1]
+                                
+                                # --- THE FIX 2: Extract exact variablesetid from headers to avoid truncation ---
+                                src_id = ce.get("variablesetid", "")
+                                if not src_id:
+                                    src_id = ce.get("source", "").split(".")[-1]
+                                # -------------------------------------------------
+
                                 ts = ce.data.get("variables", {}).get("time", {}).get("data")
                                 for action_obj in self.actions.values():
                                     for req_src in action_obj.config.get("sources", {}).values():
@@ -691,7 +708,7 @@ class SamplingModesManager:
                                 for mode in self.modes.values(): 
                                     await mode.update(ce.data)
                                     
-                            # --- NEW: Listen for activation requests from SystemModes ---
+                            # --- Listen for activation requests from SystemModes ---
                             elif ce_type == "envds.samplingmode.activation.request":
                                 mode_name = ce.data.get("mode_name")
                                 active_flag = ce.data.get("active", False)
@@ -718,7 +735,7 @@ class SamplingModesManager:
                                     await target_mode.evaluate()
                             # ----------------------------------------------------------
                             
-                            # --- NEW: Listen for incoming remote transition overrides ---
+                            # --- Listen for incoming remote transition overrides ---
                             elif ce_type == "envds.sampling-operations.transition.request":
                                 self.logger.info(f"Received remote transition command: {ce.data}")
                                 await self.transitions_buffer.put(ce.data)

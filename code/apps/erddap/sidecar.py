@@ -853,43 +853,22 @@ async def handle_ops_registry_insert(ce: dict):
     
     def_block = data.get(def_key, {})
     metadata = def_block.get("metadata", {})
-    attributes = def_block.get("attributes") or def_block.get("data", {}).get("attributes", {})
     
-    kind = def_key
-    id_key = f"{kind.replace('-', '_')}_id"
-    
-    # --- THE FIX: Support both raw CloudEvents and Datastore sync models ---
-    name = def_block.get(id_key)
-    
-    if not name and kind == "variablemap-definition":
-        p_ref = metadata.get("platform") or attributes.get("platform") or "unknown"
-        v_name = metadata.get("name", "unknown")
-        v_time = metadata.get("valid_config_time", "2026-01-01T00:00:00Z")
-        name = f"{p_ref}::{v_name}::{v_time}"
-    elif not name and kind == "variableset-definition":
-        vmap_ref = attributes.get("variablemap_definition_id", {}).get("data")
-        if not vmap_ref:
-            p_ref = metadata.get("platform") or attributes.get("platform") or "unknown"
-            vmap_name = attributes.get("variablemap_id") or "unknown"
-            v_time = metadata.get("valid_config_time", "2026-01-01T00:00:00Z")
-            vmap_ref = f"{p_ref}::{vmap_name}::{v_time}"
-        vset_name = metadata.get("name", "unknown")
-        name = f"{vmap_ref}::{vset_name}"
-    elif not name:
-        name = metadata.get("name")
-        
-    if not name:
+    if not metadata: 
         return
-        
-    namespace = metadata.get("sampling_namespace") or attributes.get("sampling_namespace", {}).get("data", "unknown")
-    revision = metadata.get("revision") or def_block.get("revision", 1)
+
+    kind = def_key
+    namespace = metadata.get("sampling_namespace", "unknown")
+    
+    # THE FIX: ERDDAP columns perfectly match metadata payload block.
+    name = metadata.get("name") or def_block.get(f"{kind.replace('-', '_')}_id", "unknown")
+    revision = metadata.get("revision", 1)
     
     valid_config_time = (
-        def_block.get("valid_config_time") or
-        metadata.get("valid_config_time") or 
         def_block.get("revision-time") or 
         metadata.get("revision-time") or 
-        def_block.get("valid_time") or
+        def_block.get("valid_config_time") or 
+        metadata.get("valid_config_time") or 
         attrs.get("time", "2026-01-01T00:00:00Z")
     )
 

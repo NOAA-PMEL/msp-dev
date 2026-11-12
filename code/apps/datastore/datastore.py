@@ -722,6 +722,7 @@ class Datastore:
                         attributes=attributes,
                         variablesets=data.get("variablesets", {}),
                         variables=data.get("variables", {}),
+                        metadata=metadata
                     )
 
                 self.logger.debug("variablemap_definition_registry_update", extra={"request": request})
@@ -754,7 +755,8 @@ class Datastore:
                 if "variableset_definition_id" in vs_payload:
                     request = VariableSetDefinitionUpdate(**vs_payload)
                 else:
-                    vs_name = vs_payload.get("metadata", {}).get("name", "unknown")
+                    metadata = vs_payload.get("metadata", {})
+                    vs_name = metadata.get("name", "unknown")
                     data = vs_payload.get("data", {})
                     attributes = data.get("attributes", {})
                     
@@ -775,7 +777,8 @@ class Datastore:
                         index_value=index_value,
                         attributes=attributes,
                         dimensions=data.get("dimensions", {}),
-                        variables=data.get("variables", {})
+                        variables=data.get("variables", {}),
+                        metadata=metadata
                     )
 
                 self.logger.debug("variableset_definition_registry_update", extra={"request": request})
