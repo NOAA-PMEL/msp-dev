@@ -153,6 +153,10 @@ def layout(deployment_id=None, variableset_id=None):
         short_id = variableset_id
         platform_ref = "unknown"
         variablemap_id = "unknown"
+        
+    s_parts = short_id.split("::")
+    display_id = f"{s_parts[1]}::{s_parts[2]}" if len(s_parts) >= 3 else short_id
+    query_vs_id = display_id
 
     varset_def = {}
     if full_id:
@@ -207,7 +211,7 @@ def layout(deployment_id=None, variableset_id=None):
         # --- HEADER STRIP ---
         dbc.Row([
             dbc.Col([
-                html.H2([html.I(className="bi bi-broadcast me-3 text-primary"), f"{short_id}"], className="text-dark fw-bold mb-0"),
+                html.H2([html.I(className="bi bi-broadcast me-3 text-primary"), f"{display_id}"], className="text-dark fw-bold mb-0"),
                 html.P(f"Host Deployment ID: {deployment_id} | Platform: {platform_ref}", className="text-muted small font-monospace mt-1 mb-0")
             ], width=8),
             dbc.Col(
@@ -291,7 +295,7 @@ def layout(deployment_id=None, variableset_id=None):
         ]),
 
         # --- HIDDEN STORES & WEBSOCKETS ---
-        dcc.Store(id="vs-meta", data={"variableset_id": short_id, "full_id": full_id, "platform": platform_ref, "variablemap_id": variablemap_id, "deployment_id": deployment_id}),
+        dcc.Store(id="vs-meta", data={"variableset_id": short_id, "query_vs_id": query_vs_id, "full_id": full_id, "platform": platform_ref, "variablemap_id": variablemap_id, "deployment_id": deployment_id}),
         dcc.Store(id="vs-def-store", data=varset_def),
         WebSocket(id="ws-vs-instance", url=f"{ws_url_base}/envds/envops/ws/variableset/{short_id}"),
         html.Div(id="ws-send-vs-buffer", children="", style={"display": "none"}),
@@ -350,7 +354,7 @@ def select_graph_1d(y_axis, vs_meta, varset_def):
     
     try:
         x, y = [], []
-        results = get_variableset_data(vs_meta["variableset_id"], vs_meta["variablemap_id"])
+        results = get_variableset_data(vs_meta["query_vs_id"], vs_meta["variablemap_id"])
         if results:
             for doc in results:
                 try:
@@ -425,7 +429,7 @@ def select_graph_2d(z_axis, vs_meta, varset_def, graph_id):
         use_log = ("diameter" in real_y_axis.lower() or "dp" in real_y_axis.lower())
         x, y, orig_z = [], []
         
-        results = get_variableset_data(vs_meta["variableset_id"], vs_meta["variablemap_id"])
+        results = get_variableset_data(vs_meta["query_vs_id"], vs_meta["variablemap_id"])
         if not results: raise PreventUpdate
         
         for doc in results:
@@ -460,7 +464,7 @@ def select_graph_2d(z_axis, vs_meta, varset_def, graph_id):
     except Exception as e:
         L.error(f"select_graph_2d error: {e}")
         raise PreventUpdate
-
+    
 @callback(
     Output({"type": "vs-graph-2d-heatmap", "index": ALL}, "figure", allow_duplicate=True),
     Input("vs-data-buffer", "data"),

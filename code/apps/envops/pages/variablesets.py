@@ -65,6 +65,7 @@ def get_bundle_varsets(host_id):
         if len(parts) >= 4:
             vs_platform = parts[0]
             if vs_platform in platforms:
+                # Unique routing ID using platform::vmap::vs
                 short_id = f"{parts[0]}::{parts[1]}::{parts[3]}"
                 active_varsets[short_id] = full_id
     return active_varsets
@@ -153,13 +154,17 @@ def render_varset_cards(group_by, varset_data):
             platform_prefix = item["platform"]
             deployment_id = item["deployment_id"]
             
+            # Display only vmap::vs on the card
+            s_parts = short_id.split("::")
+            display_id = f"{s_parts[1]}::{s_parts[2]}" if len(s_parts) >= 3 else short_id
+            
             badges = [dbc.Badge(v, color="light", text_color="dark", className="me-1 mb-1 rounded-pill border shadow-sm", style={"fontSize": "0.7rem"}) for v in var_names] if var_names else [html.Span("No variables found", className="text-muted small fst-italic")]
             
             cards.append(
                 dbc.Col(
                     dbc.Card([
                         dbc.CardHeader([
-                            html.H5([html.I(className="bi bi-activity me-2 text-primary"), short_id], className="mb-0 fw-bold text-dark text-truncate"),
+                            html.H5([html.I(className="bi bi-activity me-2 text-primary"), display_id], className="mb-0 fw-bold text-dark text-truncate"),
                             html.Span(platform_prefix, className="font-monospace small text-muted text-truncate d-block mt-1")
                         ], className="bg-light p-2 border-bottom"),
                         dbc.CardBody([
