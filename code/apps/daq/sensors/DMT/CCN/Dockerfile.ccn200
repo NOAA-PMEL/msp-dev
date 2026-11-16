@@ -1,0 +1,17 @@
+FROM ghcr.io/noaa-pmel/msp/envds-base:latest
+
+# Allow statements and log messages to immediately appear in the Knative logs
+ENV PYTHONUNBUFFERED True
+
+# Copy local code to the container image.
+ENV APP_HOME /app
+WORKDIR $APP_HOME
+
+COPY requirements.txt requirements.txt
+RUN pip3 install -r requirements.txt
+
+# Copy the shared base class and the specific driver
+COPY ./ccn_base.py .
+COPY ./ccn200.py .
+
+CMD ["python", "ccn200.py", "--host", "0.0.0.0"]
