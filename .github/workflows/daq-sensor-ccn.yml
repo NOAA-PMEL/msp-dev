@@ -49,15 +49,15 @@ jobs:
             username: ${{github.actor}}
             password: ${{secrets.GITHUB_TOKEN}}
 
-        - name: Build and push CCN-100 multi-platform image
-          uses: docker/build-push-action@v4
-          with:
-            context: code/apps/daq/sensors/DMT/CCN/.
-            file: code/apps/daq/sensors/DMT/CCN/Dockerfile.ccn100
-            push: true
-            tags: |
-              ghcr.io/noaa-pmel/msp/dmt-ccn100:${{env.IMAGE_TAG}}
-            platforms: linux/amd64,linux/arm64
+        # - name: Build and push CCN-100 multi-platform image
+        #   uses: docker/build-push-action@v4
+        #   with:
+        #     context: code/apps/daq/sensors/DMT/CCN/.
+        #     file: code/apps/daq/sensors/DMT/CCN/Dockerfile.ccn100
+        #     push: true
+        #     tags: |
+        #       ghcr.io/noaa-pmel/msp/dmt-ccn100:${{env.IMAGE_TAG}}
+        #     platforms: linux/amd64,linux/arm64
 
         - name: Build and push CCN-200 multi-platform image
           uses: docker/build-push-action@v4
