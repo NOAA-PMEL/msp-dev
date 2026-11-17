@@ -2,17 +2,17 @@ name: Build and Push aerosoldynamics-spidermagic810
 
 on:
 
-  # push:
-  #   branches: [ dev-* , add-SCX21-and-spider-magic-drivers', aps-dndlogdp]
-  #   paths:
-  #     - 'code/apps/daq/sensors/AerosolDynamics/SpiderMagic810/**'
+  push:
+    branches: [ dev-* , add-SCX21-and-spider-magic-drivers', aps-dndlogdp]
+    paths:
+      - 'code/apps/daq/sensors/AerosolDynamics/SpiderMagic810/**'
   
-  # pull_request:
-  #   branches: [main, dev-*]
-  #   paths:
-  #     - 'code/apps/daq/sensors/AerosolDynamics/SpiderMagic810/**'
+  pull_request:
+    branches: [main, dev-*]
+    paths:
+      - 'code/apps/daq/sensors/AerosolDynamics/SpiderMagic810/**'
   
-  workflow_dispatch:
+  # workflow_dispatch:
 
   # workflow_run:
   #   workflows: [Build Envds Package]
@@ -50,7 +50,7 @@ jobs:
             echo "${{ secrets.GIT_CRYPT_KEY_BASE64 }}" | base64 --decode > repo-key.key
             git-crypt unlock repo-key.key
             rm repo-key.key
-            
+
         - name: 'set env variables'
           run: |
             VER=$(cat VERSION)
