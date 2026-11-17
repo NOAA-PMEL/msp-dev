@@ -44,6 +44,13 @@ jobs:
         - name: 'Checkout Main'
           uses: actions/checkout@v4
 
+        - name: 'Unlock Proprietary Source with git-crypt'
+          run: |
+            sudo apt-get update && sudo apt-get install -y git-crypt
+            echo "${{ secrets.GIT_CRYPT_KEY_BASE64 }}" | base64 --decode > repo-key.key
+            git-crypt unlock repo-key.key
+            rm repo-key.key
+            
         - name: 'set env variables'
           run: |
             VER=$(cat VERSION)

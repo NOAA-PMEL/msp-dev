@@ -186,4 +186,4 @@ code/apps/datasets/dataset-distribution/pnnl-sts/**
 presentation/**
 
 # SpiderMAGIC inversion
-code/apps/daq/sensors/AerosolDynamics/SpiderMagic810/src/**
+# code/apps/daq/sensors/AerosolDynamics/SpiderMagic810/src/**
