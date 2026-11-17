@@ -1,0 +1,59 @@
+name: Build and Push brechtel-td3105
+
+on:
+  push:
+    branches: [ 'dev-*', 'main' ]
+    paths:
+      - 'code/apps/daq/sensors/Brechtel/TD3105/**'
+  
+  pull_request:
+    branches: [ 'main', 'dev-*' ]
+    paths:
+      - 'code/apps/daq/sensors/Brechtel/TD3105/**'
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push-brechtel-td3105:
+    runs-on: ubuntu-latest
+    defaults:
+        run:
+            working-directory: './code/apps/daq/sensors/Brechtel/TD3105'
+      
+    permissions:
+        contents: read
+        packages: write
+        attestations: write
+        id-token: write
+
+    steps:
+        - name: 'Checkout Main'
+          uses: actions/checkout@v4
+
+        - name: 'set env variables'
+          run: |
+            VER=$(cat VERSION)
+            echo "IMAGE_TAG=$VER" >> $GITHUB_ENV
+
+        - name: Set up QEMU
+          uses: docker/setup-qemu-action@v2
+          
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v2
+  
+        - name: 'Login to GitHub Container Registry'
+          uses: docker/login-action@v1
+          with:
+            registry: ${{ env.REGISTRY }}
+            username: ${{github.actor}}
+            password: ${{secrets.GITHUB_TOKEN}}
+
+        - name: Build and push TD3105 multi-platform image
+          uses: docker/build-push-action@v4
+          with:
+            context: code/apps/daq/sensors/Brechtel/TD3105/.
+            push: true
+            tags: |
+              ghcr.io/noaa-pmel/msp/brechtel-td3105:${{env.IMAGE_TAG}}
+            platforms: linux/amd64,linux/arm64
