@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from envds.core import envdsLogger
 from ccn_base import CCNBase
 
+
 class CCN200(CCNBase):
     def __init__(self, config=None, **kwargs):
         # Define strict CCN-200 boundaries
