@@ -495,19 +495,115 @@ class AerosolDynamicsInversion(SpiderInversionBase):
     """
     def __init__(self, target_grid, config=None):
         super().__init__(target_grid=target_grid, config=config)
-        # TODO: Add any specific setup (e.g., loading transfer matrices) here
+        # Persist scanning environment states across sequences per manufacturer logic
+        self.d_info_prev = {}
 
     def invert(self, record):
-        # TODO: Implement Aerosol Dynamics specific logic here
+        self.logger.debug("adi_inversion_start", extra={"input_ts": record.get("timestamp")})
         
-        # Example safety block
         try:
-            pass
+            # Local import to allow dynamic resolution of the injected manufacturer module
+            from src.inversion import Inversion as MfgInversion
+            import numpy as np
+
+            # Helper functions to extract from the strict CF-compliant schema
+            def safe_mean(var_dict, default_val):
+                try:
+                    val = var_dict.get("data")
+                    if val is None: 
+                        return default_val
+                    if isinstance(val, (list, tuple, np.ndarray)):
+                        m = np.nanmean(np.array(val, dtype=float))
+                        return m if not np.isnan(m) else default_val
+                    return float(val)
+                except Exception:
+                    return default_val
+
+            def safe_array(var_dict):
+                try:
+                    val = var_dict.get("data")
+                    if val is None: 
+                        return np.array([])
+                    return np.array(val, dtype=float)
+                except Exception:
+                    return np.array([])
+                    
+            def safe_scalar(var_dict, default_val):
+                try:
+                    val = var_dict.get("data")
+                    if val is None: 
+                        return default_val
+                    if isinstance(val, list) and len(val) > 0: 
+                        return val[0]
+                    return val
+                except Exception:
+                    return default_val
+
+            # 1. Map Schema Variables to Manufacturer's Expected Flat Dictionary
+            vp_rd = str(safe_scalar(record["variables"].get("vp_rd", {}), "pd")).strip().lower()
+            is_up = vp_rd in ["pu", "nu"]
+            is_neg_HV = vp_rd in ["nd", "nu"]
+
+            data_payload = {
+                "T": safe_mean(record["variables"].get("input_T", {}), 20.0),
+                "P": safe_mean(record["variables"].get("abs_pressure", {}), 1013.25) * 0.1,  # Convert mbar to kPa
+                "Qsh": safe_mean(record["variables"].get("sh_flow", {}), 900.0),
+                "Qa": safe_mean(record["variables"].get("aer_flow", {}), 300.0),
+                "Qcpc": safe_mean(record["variables"].get("flow", {}), 300.0),
+                "hv_set": safe_array(record["variables"].get("set_V", {})),
+                "hv_read": safe_array(record["variables"].get("read_V", {})),
+                "ncc": safe_array(record["variables"].get("concentration", {})),
+                "is_up": is_up,
+                "is_neg_HV": is_neg_HV,
+                "scan_settings": {
+                    "mode": "scan",
+                    "Vmin": safe_mean(record["variables"].get("Vi", {}), 10.0),
+                    "Vmax": safe_mean(record["variables"].get("Vmax", {}), 5000.0),
+                    "f_Hz": safe_mean(record["variables"].get("data_freq", {}), 1.0),
+                    "tau": safe_mean(record["variables"].get("tau", {}), 5.0),
+                    "secs_per_step": 0
+                }
+            }
+
+            if len(data_payload["hv_set"]) == 0 or len(data_payload["ncc"]) == 0:
+                raise ValueError("Incomplete active scan array data.")
+
+            # 2. Execute Manufacturer Inversion
+            inv = MfgInversion(
+                data=data_payload,
+                Dp_vec=np.array(self.std_Dp, dtype=float),
+                d_info_prev=self.d_info_prev,
+                # Explicitly override 'geom' over 'type' to prevent KeyErrors in dma_funcs.py
+                d_dma={"R2": 0.0450, "R1": 0.0024, "B": 0.005, "geom": "radial"},
+                use_set_hv=False,
+                is_diff_corr=True
+            )
+            
+            result = inv.invert()
+            self.d_info_prev = inv.d_info_prev  
+
+            # 3. Calculate Bin Dimensions and Totals
+            std_dNdlogDp = np.array(result["dC_dlogDp"]["N"], dtype=float)
+            std_dlogDp = np.gradient(np.log10(self.std_Dp))
+            std_dN = std_dNdlogDp * std_dlogDp
+            intN = float(result["C_tot"]["N"])
+
+            # 4. Map Back to CF-Compliant Record Schema
+            record["variables"]["diameter"]["data"] = np.round(self.std_Dp, 3).tolist()
+            record["variables"]["dN"]["data"] = np.round(std_dN, 3).tolist()
+            record["variables"]["dlogDp"]["data"] = np.round(std_dlogDp, 5).tolist()
+            record["variables"]["dNdlogDp"]["data"] = np.round(std_dNdlogDp, 3).tolist()
+            record["variables"]["intN"]["data"] = float(np.round(intN, 3))
+
+            self.logger.debug("adi_inversion_success", extra={"calc_intN": float(np.round(intN, 3))})
+
         except Exception as e:
-            record["variables"]["diameter"]["data"] = [None] * self.num_diameter_bins
-            record["variables"]["dN"]["data"] = [None] * self.num_diameter_bins
-            record["variables"]["dlogDp"]["data"] = [None] * self.num_diameter_bins
-            record["variables"]["dNdlogDp"]["data"] = [None] * self.num_diameter_bins
+            self.logger.error("adi_inversion_failed", extra={"err_detail": str(e)})
+            
+            record["variables"]["diameter"]["data"] = [None] * len(self.std_Dp)
+            record["variables"]["dN"]["data"] = [None] * len(self.std_Dp)
+            record["variables"]["dlogDp"]["data"] = [None] * len(self.std_Dp)
+            record["variables"]["dNdlogDp"]["data"] = [None] * len(self.std_Dp)
             record["variables"]["intN"]["data"] = None
 
         return record

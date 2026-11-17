@@ -17,7 +17,7 @@ from envds.daq.types import DAQEventType as det
 
 import math
 import traceback
-from inversion import StandardInversion
+from inversion import StandardInversion, AerosolDynamicsInversion
 
 task_list = []
 class SpiderMagic810(Sensor):
@@ -28,13 +28,20 @@ class SpiderMagic810(Sensor):
         self.sequence_start = False
         self.sensor_definition_file = "AerosolDynamics_SPIDERMAGIC810_sensor_definition.json"
         
+        # try:            
+        #     with open(self.sensor_definition_file, "r") as f:
+        #         self.metadata = json.load(f)
+
+        #         # Initialize inversion routine with the static grid
+        #         target_diameters = self.metadata["variables"]["diameter"]["data"]
+        #         self.inversion_routine = StandardInversion(target_grid=target_diameters)
         try:            
             with open(self.sensor_definition_file, "r") as f:
                 self.metadata = json.load(f)
 
                 # Initialize inversion routine with the static grid
                 target_diameters = self.metadata["variables"]["diameter"]["data"]
-                self.inversion_routine = StandardInversion(target_grid=target_diameters)
+                self.inversion_routine = AerosolDynamicsInversion(target_grid=target_diameters)
 
         except FileNotFoundError: 
             sys.exit(1)
