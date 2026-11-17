@@ -502,9 +502,18 @@ class AerosolDynamicsInversion(SpiderInversionBase):
         self.logger.debug("adi_inversion_start", extra={"input_ts": record.get("timestamp")})
         
         try:
+            import sys
+            import os
+            import numpy as np
+
+            # Ensure the directory containing inversion.py is in the Python path
+            # so the 'src' package can be resolved regardless of the caller's working directory.
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            if current_dir not in sys.path:
+                sys.path.insert(0, current_dir)
+
             # Local import to allow dynamic resolution of the injected manufacturer module
             from src.inversion import Inversion as MfgInversion
-            import numpy as np
 
             # Helper functions to extract from the strict CF-compliant schema
             def safe_mean(var_dict, default_val):
