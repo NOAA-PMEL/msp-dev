@@ -288,6 +288,9 @@ async def ws_deployment_c2(websocket: WebSocket, deployment_id: str):
                 # Parse the frontend string directly into a CloudEvent object
                 ce_obj = from_json(data.encode('utf-8'))
                 topic = ce_obj.get("destpath")
+                
+                L.info(f"Deployment C2 received manual action request", extra={"topic": topic, "type": ce_obj.get("type"), "payload": ce_obj.data})
+                
                 if topic:
                     await mqtt_publish_queue.put((topic, ce_obj))
             except Exception as e:
