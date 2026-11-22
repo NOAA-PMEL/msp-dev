@@ -1086,11 +1086,11 @@ class SamplingModesManager:
                             # Fetch the VariableMap from the local Datastore
                             resp = await self.submit_request(
                                 path="variablemap-definition/registry/get", 
-                                query={"name": v_map_name}
+                                query={"variablemap": v_map_name}
                             )
                             if resp and "results" in resp and resp["results"]:
                                 vmap_def = resp["results"][0]
-                                var_def = vmap_def.get("data", {}).get("variables", {}).get(v_name, {})
+                                var_def = vmap_def.get("variables", {}).get(v_name, {})
                                 
                                 # Extract source hardware mapping
                                 if var_def.get("map_type") == "direct":
