@@ -61,7 +61,7 @@ class SamplingMode:
             self.logger.setLevel(sys_config.log_level.upper())
         except (ValueError, AttributeError):
             self.logger.setLevel(logging.INFO)
-        self.logger.setLevel(logging.INFO)
+        # self.logger.setLevel(logging.INFO)
         self.config = config
         self.status_buffer = status_buffer
         self.actions_buffer = actions_buffer
@@ -231,7 +231,7 @@ class SamplingModesManager:
             self.logger.setLevel(log_level)
         except (ValueError, AttributeError):
             L.setLevel(logging.INFO)
-            self.logger.setLevel(logging.INFO)
+            # self.logger.setLevel(logging.INFO)
             
         self.logger.debug("SamplingModesManager instantiated")
             
@@ -753,7 +753,22 @@ class SamplingModesManager:
                                 self.logger.info(f"Received remote transition command: {ce.data}")
                                 await self.transitions_buffer.put(ce.data)
                             # ----------------------------------------------------------
-                                    
+                            
+                            # --- Listen for explicit manual action executions from dashboard ---
+                            elif ce_type == "envds.action.execute.request":
+                                action_name = ce.data.get("action", {}).get("name")
+                                if action_name:
+                                    self.logger.info(f"Received manual action execution request for '{action_name}'")
+                                    # Drop it directly into the actions buffer with the matching deployment namespace
+                                    await self.actions_buffer.put({
+                                        "action": {
+                                            "name": action_name,
+                                            "namespace": self.config.deployment_ref
+                                        }, 
+                                        "state": True
+                                    })
+                            # -------------------------------------------------------------------
+
                         except Exception as inner_e: 
                             self.logger.error("Error processing MQTT message", extra={"reason": str(inner_e)})
             except MqttError:
@@ -1110,18 +1125,13 @@ class SamplingModesManager:
                         extra_header = {"deviceid": t_id} # Strictly uses deviceid attribute
                     # -------------------------------------------------------------------------
                     
-                    # --- FIX 2: EMIT NESTED PAYLOAD SCHEMAS TO MATCH THE DASHBOARD CONTRACT ---
-                    # Replaced the flat {"settings": X, "requested": Y} configuration block
-                    # with the nested object structure to achieve unified cross-system synergy.
+                    # --- REVERTED FIX 2: RESTORE STRICT FLAT PAYLOAD SCHEMA ---
                     event = SamplingEvent.create(
                         type=ce_type, 
                         source=source_id,
                         data={
-                            "settings": {
-                                sensor_var_name: {
-                                    "requested": val
-                                }
-                            }
+                            "settings": sensor_var_name,
+                            "requested": val
                         },
                         extra_header=extra_header
                     )

@@ -11,6 +11,9 @@ from pydantic import BaseSettings
 from ulid import ULID
 from datetime import datetime, timezone # <--- NEW: For time-bound allocations
 
+from cloudevents.conversion import to_json
+from envds.sampling.event import SamplingEvent
+
 L = logging.getLogger(__name__)
 
 dash.register_page(
@@ -946,20 +949,36 @@ def handle_c2_commands(auto_clicks, manual_clicks, apply_clicks, exec_clicks, mo
     if not ctx.triggered: raise PreventUpdate
     trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
     
-    event = {
-        "type": "envds.control.request", "source": f"envds.{config.daq_id}.dashboard",
-        "id": str(ULID()), "datacontenttype": "application/json",
-        "destpath": f"envds/{config.daq_id}/system/control/request", "deploymentref": deployment_id,
-        "data": {}
-    }
+    # 1. Handle standard system control modes (AUTO/MANUAL/MODE OVERRIDE)
+    if trigger_id in ["btn-mode-auto", "btn-mode-manual", "btn-apply-mode"]:
+        mode_req = "auto" if trigger_id == "btn-mode-auto" else "manual" if trigger_id == "btn-mode-manual" else mode_val
+        if not mode_req and trigger_id == "btn-apply-mode": raise PreventUpdate
+        
+        ce_obj = SamplingEvent.create_system_control_request(
+            source=f"envds.{config.daq_id}.dashboard",
+            data={"system_mode": {"requested": mode_req}},
+            extra_header={
+                "destpath": f"envds/{config.daq_id}/system/control/request",
+                "deploymentref": deployment_id
+            }
+        )
+        return to_json(ce_obj).decode("utf-8")
 
-    if trigger_id == "btn-mode-auto": event["data"] = {"system_mode": {"requested": "auto"}}
-    elif trigger_id == "btn-mode-manual": event["data"] = {"system_mode": {"requested": "manual"}}
-    elif trigger_id == "btn-apply-mode" and mode_val: event["data"] = {"system_mode": {"requested": mode_val}}
-    elif trigger_id == "btn-execute-action" and action_val: event["data"] = {"action": {"requested": action_val}}
-    else: raise PreventUpdate
+    # 2. Handle specific sampling action execution via targeted edge route
+    elif trigger_id == "btn-execute-action" and action_val:
+        ce_obj = SamplingEvent.create_action_execute_request(
+            source=f"envds.{config.daq_id}.dashboard",
+            data={"action": {"name": action_val}}, 
+            extra_header={
+                "destpath": f"envds/{config.daq_id}/sampling-modes/execute/request",
+                "deploymentref": deployment_id
+            }
+        )
+        return to_json(ce_obj).decode("utf-8")
+        
+    raise PreventUpdate
 
-    return json.dumps(event)
+    # return json.dumps(event)
 
 @callback(Output("ws-system-ops", "send"), Input("ws-c2-send-buffer", "children"))
 def send_c2_request(payload):
