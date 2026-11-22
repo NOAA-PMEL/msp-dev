@@ -943,9 +943,10 @@ def layout(deployment_id=None):
     State("c2-mode-select", "value"),
     State("c2-action-select", "value"),
     State("store-deployment-id", "data"),
+    State("store-bundle-ids", "data"),
     prevent_initial_call=True
 )
-def handle_c2_commands(auto_clicks, manual_clicks, apply_clicks, exec_clicks, mode_val, action_val, deployment_id):
+def handle_c2_commands(auto_clicks, manual_clicks, apply_clicks, exec_clicks, mode_val, action_val, deployment_id, bundle_ids):
     if not ctx.triggered: raise PreventUpdate
     trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
     
@@ -966,19 +967,47 @@ def handle_c2_commands(auto_clicks, manual_clicks, apply_clicks, exec_clicks, mo
 
     # 2. Handle specific sampling action execution via targeted edge route
     elif trigger_id == "btn-execute-action" and action_val:
+        target_dep_ref = deployment_id
+        actions = fetch_registry_data("action")
+        matching_actions = [
+            act for act in actions
+            if act.get("metadata", {}).get("name") == action_val
+        ]
+
+        for act in matching_actions:
+            ns = act.get("metadata", {}).get("sampling_namespace", "")
+            matched_bid = next(
+                (b_id for b_id in (bundle_ids or []) if b_id and (ns.endswith(f"/{b_id}") or b_id in ns)),
+                None
+            )
+            if matched_bid:
+                target_dep_ref = matched_bid
+                break
+        else:
+            for act in matching_actions:
+                ns = act.get("metadata", {}).get("sampling_namespace", "")
+                if "/" in ns:
+                    candidate = ns.split("/")[-1]
+                    if candidate and not candidate.startswith("${"):
+                        target_dep_ref = candidate
+                        break
+
+        L.info(
+            f"[DEBUG C2 ACTION] action='{action_val}' | host_deployment_id='{deployment_id}' | "
+            f"bundle_ids={bundle_ids} | resolved_deploymentref='{target_dep_ref}'"
+        )
+
         ce_obj = SamplingEvent.create_action_execute_request(
             source=f"envds.{config.daq_id}.dashboard",
             data={"action": {"name": action_val}}, 
             extra_header={
                 "destpath": f"envds/{config.daq_id}/sampling-modes/execute/request",
-                "deploymentref": deployment_id
+                "deploymentref": target_dep_ref
             }
         )
         return to_json(ce_obj).decode("utf-8")
         
     raise PreventUpdate
-
-    # return json.dumps(event)
 
 @callback(Output("ws-system-ops", "send"), Input("ws-c2-send-buffer", "children"))
 def send_c2_request(payload):
