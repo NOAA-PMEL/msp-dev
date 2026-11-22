@@ -997,7 +997,6 @@ def aggregate_health(message, refresh_clicks, current_store, bundle_ids):
     trigger = ctx.triggered_id
     
     if trigger == "btn-refresh-telemetry":
-        # Force a flush of the local health state to clear stale DOM data
         return {}
 
     if current_store is None: current_store = {}
@@ -1009,17 +1008,22 @@ def aggregate_health(message, refresh_clicks, current_store, bundle_ids):
         dep_ref = ce.get("deploymentref", "")
          
         if "control.update" in ce_type:
-            mode = ce.get("data", {}).get("mode", "auto")
+            # FIX: Safely fallback to empty dict if "data" is null in the payload
+            data_block = ce.get("data") or {}
+            mode = data_block.get("mode", "auto")
+            
             if "control" not in current_store: current_store["control"] = {}
             current_store["control"]["mode"] = mode
             return current_store
+            
         if not dep_ref or dep_ref.lower() == "unknown": 
              raise PreventUpdate
          
         if bundle_ids and dep_ref not in bundle_ids:
             raise PreventUpdate
          
-        status_data = ce.get("data", {})
+        # FIX: Safely handle null "data" for telemetry statuses
+        status_data = ce.get("data") or {}
         app_uid = status_data.get("id", {}).get("app_uid", "")
          
         if dep_ref and app_uid:
@@ -1027,8 +1031,9 @@ def aggregate_health(message, refresh_clicks, current_store, bundle_ids):
             status_data["isprimarycontroller"] = ce.get("isprimarycontroller", "false")
             current_store[dep_ref][app_uid] = status_data
             return current_store
+            
     except Exception as e:
-        L.error(f"Health Parse Error: {e}")
+        L.error(f"Health Parse Error: {e} | Payload: {message.get('data')}")
          
     raise PreventUpdate
 
