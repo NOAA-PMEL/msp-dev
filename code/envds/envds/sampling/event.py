@@ -124,6 +124,10 @@ class SamplingEvent(envdsEvent):
         return SamplingEvent.create(type=et.system_control_update(), source=source, data=data, extra_header=extra_header)
     
     @staticmethod
+    def create_action_execute_request(source: str, data: dict = {}, extra_header: dict = None):
+        return SamplingEvent.create(type=et.action_execute_request(), source=source, data=data, extra_header=extra_header)
+    
+    @staticmethod
     def create_dataset_definition_registry_request(source: str, data: dict = {}, extra_header: dict = None):
         return SamplingEvent.create(type=et.dataset_definition_registry_request(), source=source, data=data, extra_header=extra_header)
 

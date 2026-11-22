@@ -151,6 +151,11 @@ class SamplingEventType(BaseEventType):
         return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_SYSTEM), SamplingEventType.TYPE_CONTROL, BaseEventType.ACTION_UPDATE])
     
     @staticmethod
+    def action_execute_request():
+        # Yields: envds.action.execute.request
+        return ".".join([BaseEventType.get_type("action"), "execute", BaseEventType.ACTION_REQUEST])
+    
+    @staticmethod
     def dataset_definition_registry_request():
         return ".".join([BaseEventType.get_type(SamplingEventType.TYPE_DATASET_DEFINITION), BaseEventType.TYPE_REGISTRY, BaseEventType.ACTION_REQUEST])
 
