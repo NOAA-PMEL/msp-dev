@@ -127,7 +127,13 @@ class SamplingMode:
         ]
         latest_status = all(mode_status) if mode_status else False
         
-        self.logger.debug("evaluate", extra={"mode_name": self.config.get("metadata", {}).get("name"), "mode_status_array": mode_status, "latest_status": latest_status})
+        self.logger.debug("evaluate_start", extra={
+            "mode_name": self.config.get("metadata", {}).get("name"), 
+            "requirements": self.requirements,
+            "mode_status_array": mode_status, 
+            "latest_status": latest_status,
+            "is_active_flag": self.active
+        })
         
         # 2. Check for Heartbeat or Change
         now = get_datetime().timestamp()
@@ -164,6 +170,13 @@ class SamplingMode:
             await self.status_buffer.put({"status": status_update})
             
         # 5. Handle action execution. MUST be active. MUST fire if state changed OR if we just became active.
+        self.logger.debug("action_execution_gate", extra={
+            "mode_name": self.config.get("metadata", {}).get("name"),
+            "is_active": self.active,
+            "last_executed_state": self._last_executed_state,
+            "current_state": self.current_state
+        })
+        
         if self.active and self._last_executed_state != self.current_state:
             self.logger.info("Executing actions", extra={"mode_name": self.config.get("metadata", {}).get("name"), "state": self.current_state})
             await self.execute_actions(self.current_state)
@@ -171,6 +184,7 @@ class SamplingMode:
             
         # If we become inactive, reset the execution tracker so it fires fresh next time it activates
         if not self.active and self._last_executed_state is not None:
+            self.logger.debug("Resetting execution tracker due to inactive mode", extra={"mode_name": self.config.get("metadata", {}).get("name")})
             self._last_executed_state = None
 
     async def execute_actions(self, state: bool):
@@ -208,14 +222,21 @@ class SamplingAction:
         for src_name, src in self.config.get("sources", {}).items():
             src_id = f"{src['variablemap_name']}::{src['variableset_name']}"
             source_vars[src_name] = self.sources["data"].get(src_id, {}).get(src["variable"], {}).get("data")
+            
+        action_name = self.config.get("metadata", {}).get("name")
+        self.logger.debug("action_run_started", extra={"action_name": action_name, "source_vars": source_vars})
+        
         try:
             res = await self.method(**source_vars) if asyncio.iscoroutinefunction(self.method) else self.method(**source_vars)
+            self.logger.debug("action_method_returned", extra={"action_name": action_name, "result": res})
+            
             if res:
                 for t_name, t in self.config.get("targets", {}).items():
                     if t_name in res:
+                        self.logger.debug("action_pushing_target", extra={"action_name": action_name, "target_name": t_name, "target_val": res[t_name]})
                         await self.actions_target_buffer.put({t_name: {"data": res[t_name], "metadata": t}})
         except Exception as e:
-            L.error("action_execution_failed", extra={"reason": str(e)})
+            L.error("action_execution_failed", extra={"action_name": action_name, "reason": str(e)})
 
 class SamplingModesManager:
     def __init__(self):
