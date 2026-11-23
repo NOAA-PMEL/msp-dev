@@ -96,20 +96,17 @@ class SamplingMode:
         app_group = id_block.get("app_group", "")
         
         # Map app_group to the strict CamelCase kind used in your requirements JSON
-        req_kind = "SamplingCondition" if app_group == "condition" else "SamplingState" if app_group == "state" else "SamplingMode" if app_group == "mode" else app_group
+        req_kind = "SamplingCondition" if app_group == "condition" else "SamplingState" if app_group == "state" else "SamplingMode" if app_group == "mode" else "SystemMode" if app_group == "system" else app_group
         name = id_block.get("app_uid")
         
-        # DYNAMICALLY grab the actual status depending on the app_group!
-        if app_group == "condition":
-            actual_status = state_block.get("condition_met", {}).get("actual", "false")
-        elif app_group == "state":
-            actual_status = state_block.get("state_active", {}).get("actual", "false")
-        elif app_group == "mode":
-            actual_status = state_block.get("mode_active", {}).get("actual", "false")
-        else:
-            actual_status = "false"
-            
-        is_met = (str(actual_status).lower() == "true")
+        # DYNAMICALLY grab the actual status for ANY app_group
+        actual_status = "false"
+        for k, v in state_block.items():
+            if isinstance(v, dict) and "actual" in v:
+                actual_status = v["actual"]
+                break
+                
+        is_met = (str(actual_status).lower() in ["true", "active", "1", "yes"])
         
         self.logger.debug("SamplingMode update", extra={"mode_name": self.config.get("metadata", {}).get("name"), "req_kind": req_kind, "req_name": name, "is_met": is_met})
         
