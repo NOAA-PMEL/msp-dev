@@ -34,7 +34,7 @@ class SamplingModesConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     debug: bool = True
-    log_level: str = "DEBUG"
+    log_level: str = "INFO"
 
     daq_id: str | None = None
 
@@ -68,10 +68,10 @@ class SamplingMode:
         self.requirements = {}
         self.actions = {"true": [], "false": []}
         
-        # --- FIX 1: Initialize to None and track execution exclusivity ---
+        # --- FIX: Default to True so the mode evaluates autonomously based on its requirements ---
         self.current_state = None 
         self.last_status_time = 0 
-        self.active = False
+        self.active = True
         self._last_executed_state = None 
         
         self._configure_requirements()
