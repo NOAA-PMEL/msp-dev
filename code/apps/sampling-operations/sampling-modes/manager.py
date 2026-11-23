@@ -34,7 +34,7 @@ class SamplingModesConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     debug: bool = True
-    log_level: str = "INFO"
+    log_level: str = "DEBUG"
 
     daq_id: str | None = None
 
