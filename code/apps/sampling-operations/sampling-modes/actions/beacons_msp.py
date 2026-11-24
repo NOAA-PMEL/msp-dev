@@ -59,14 +59,14 @@ async def set_isokinetic_inlet_flow(**kwargs):
     Stubbed to return 50% flow for isokinetic sampling.
     """
     L.info("action_triggered", extra={"action": "set_isokinetic_inlet_flow", "target_val": 50.0})
-    return {"inlet_fan_speed_sp": 50.0}
+    return {"inlet_fan_speed_sp": 100.0}
 
 async def set_reverse_inlet_flow(**kwargs):
     """
     Stubbed to return -80% flow to clear the inlet.
     """
     L.info("action_triggered", extra={"action": "set_reverse_inlet_flow", "target_val": -80.0})
-    return {"inlet_fan_speed_sp": -80.0}
+    return {"inlet_fan_speed_sp": -100.0}
 
 async def turn_on_main_power(**kwargs):
     L.info("action_triggered", extra={"action": "turn_on_main_power", "target_val": 1})
