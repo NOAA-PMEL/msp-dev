@@ -208,6 +208,12 @@ class SamplingMode:
 class SamplingAction:
     """Executes python modules to compute physical system settings."""
     def __init__(self, config, actions_target_buffer):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        sys_config = SamplingModesConfig()
+        try:
+            self.logger.setLevel(sys_config.log_level.upper())
+        except (ValueError, AttributeError):
+            self.logger.setLevel(logging.INFO)
         self.config = config
         self.actions_target_buffer = actions_target_buffer
         self.sources = {"data": {}}
