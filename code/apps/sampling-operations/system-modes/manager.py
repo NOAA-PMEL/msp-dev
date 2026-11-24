@@ -353,8 +353,8 @@ class SystemModesManager:
                         self.logger.warning(f"REJECTED STALE CONFIG: {name} ({new_time_str} is older than active {existing_time_str})")
                         return
                     if new_time == existing_time:
-                        if existing_config == cfg:
-                            return # Config hasn't changed and timestamp is the same
+                        self.logger.debug(f"DEBUG load_mode: {composite_key} times are equal. SKIPPING reload.")
+                        return # Already active
                 # ------------------------------------------------------------
                 
                 # PREVENT TASK LEAKS: Stop the old instance if it exists
@@ -375,7 +375,7 @@ class SystemModesManager:
             })
         except Exception as e:
             self.logger.error("mode_load_failed", extra={"reason": str(e), "config_name": cfg.get("metadata", {}).get("name")})
-            
+                        
     async def setup(self):
         """Starts background task orchestration."""
         # if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)

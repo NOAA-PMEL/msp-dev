@@ -432,8 +432,8 @@ class SamplingModesManager:
                         self.logger.warning(f"REJECTED STALE CONFIG: {name} ({new_time_str} is older than active {existing_time_str})")
                         return
                     if new_time == existing_time:
-                        if existing_config == cfg:
-                            return # Config hasn't changed and timestamp is the same
+                        self.logger.debug(f"DEBUG load_mode: {composite_key} times are equal. SKIPPING reload.")
+                        return # Already active
                 # ------------------------------------------------------------
                 
                 if hasattr(existing_entry, 'stop'):
@@ -472,8 +472,8 @@ class SamplingModesManager:
                         L.warning(f"REJECTED STALE CONFIG: {name} ({new_time_str} is older than active {existing_time_str})")
                         return
                     if new_time == existing_time:
-                        if existing_config == cfg:
-                            return # Config hasn't changed
+                        self.logger.debug(f"DEBUG load_action: {composite_key} times are equal. SKIPPING reload.")
+                        return # Already active
                 # ------------------------------------------------------------
 
                 if hasattr(old_action, 'stop'):
@@ -485,7 +485,7 @@ class SamplingModesManager:
             
         except Exception as e:
             L.error("action_load_failed", extra={"res_name": cfg.get("metadata", {}).get("name"), "reason": str(e)})
-
+            
     async def setup(self):
         """Infrastructure and background task initialization."""
         if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)
