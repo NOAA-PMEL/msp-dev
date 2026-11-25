@@ -700,10 +700,10 @@ class _StreamClient(_BaseClient):
     #         msg = await self.reader.readline()
     #         return msg.decode(errors=decode_errors)
 
-    async def readline(self, decode_errors="strict"):
+    async def readline(self, decode_errors="strict", timeout=15.0):
         if self.reader:
             try:
-                msg = await self.reader.readline()
+                msg = await asyncio.wait_for(self.reader.readline(), timeout=timeout)
                 if not msg:
                     await self.disconnect()
                     return None
