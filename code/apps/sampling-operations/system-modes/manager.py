@@ -30,7 +30,6 @@ handler.setFormatter(Logfmter())
 logging.basicConfig(handlers=[handler])
 L = logging.getLogger("SystemModesManager")
 L.setLevel(logging.DEBUG)
-
 class SystemModesConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
@@ -375,7 +374,7 @@ class SystemModesManager:
             })
         except Exception as e:
             self.logger.error("mode_load_failed", extra={"reason": str(e), "config_name": cfg.get("metadata", {}).get("name")})
-                        
+
     async def setup(self):
         """Starts background task orchestration."""
         # if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)

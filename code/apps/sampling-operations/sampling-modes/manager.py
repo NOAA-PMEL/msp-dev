@@ -30,6 +30,7 @@ logging.basicConfig(handlers=[handler])
 L = logging.getLogger("SamplingModesManager")
 L.setLevel(logging.DEBUG)
 
+
 class SamplingModesConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
@@ -485,7 +486,7 @@ class SamplingModesManager:
             
         except Exception as e:
             L.error("action_load_failed", extra={"res_name": cfg.get("metadata", {}).get("name"), "reason": str(e)})
-            
+
     async def setup(self):
         """Infrastructure and background task initialization."""
         if self.status_buffer is None: self.status_buffer = asyncio.Queue(maxsize=2000)

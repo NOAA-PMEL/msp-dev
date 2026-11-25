@@ -46,7 +46,6 @@ from envds.util.util import (
 from envds.sampling.event import SamplingEvent
 from envds.sampling.types import SamplingEventType as sampet
 
-
 # import pymongo
 
 import uvicorn
