@@ -632,6 +632,8 @@ class SamplingConditionsManager:
             
         self.sampling_conditions["conditions"][composite_key]["config"] = condition
 
+        default_dep_ref = cond_ns.split("/")[-1] if "/" in cond_ns else ""
+
         # Map sources to targets
         for source_name, source in condition.get("sources", {}).items():
             vm_name = source["variablemap_name"]
@@ -644,10 +646,12 @@ class SamplingConditionsManager:
                 self.sampling_conditions["sources"][src_id] = {"targets": []}
                 
             source_variable = source["variable"]
+            source_dep_ref = source.get("deployment_ref") or default_dep_ref
             target_entry = {
                 "condition": composite_key,
                 "source_name": source_name,
                 "source_variable": source_variable,
+                "source_deployment_ref": source_dep_ref,
             }
             
             if target_entry not in self.sampling_conditions["sources"][src_id]["targets"]:
@@ -1019,11 +1023,7 @@ class SamplingConditionsManager:
         try:
             self.logger.debug("variableset_data_update", extra={"ce": ce})
             
-            # --- THE FIX 1: Isolate telemetry to the correct deployment ---
             incoming_dep_ref = ce.data.get("attributes", {}).get("deployment_ref", {}).get("data", "")
-            if incoming_dep_ref and self.config.deployment_ref and self.config.deployment_ref != "unknown":
-                if incoming_dep_ref != self.config.deployment_ref:
-                    return
 
             raw_source = ce.get("source", "UNKNOWN_SOURCE")
             
@@ -1054,6 +1054,10 @@ class SamplingConditionsManager:
             data_map = dict()
 
             for target in self.sampling_conditions["sources"][src_id]["targets"]:
+                expected_dep_ref = target.get("source_deployment_ref", "")
+                if incoming_dep_ref and expected_dep_ref and incoming_dep_ref != expected_dep_ref:
+                    continue
+
                 cond_key = target["condition"]
                 
                 if cond_key not in data_map:
