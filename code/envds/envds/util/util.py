@@ -29,13 +29,17 @@ def string_to_datetime(dt_string: str, fraction: bool=True):
     if dt_string:
         try:
             isofmt = get_datetime_format(fraction=fraction)
-            return datetime.strptime(dt_string, get_datetime_format())
+            return datetime.strptime(dt_string, isofmt).replace(tzinfo=timezone.utc)
         except ValueError:
-            return None
+            try:
+                isofmt = get_datetime_format(fraction=not fraction)
+                return datetime.strptime(dt_string, isofmt).replace(tzinfo=timezone.utc)
+            except ValueError:
+                return None
         
 def timestamp_to_string(ts: float, fraction: bool=True) -> str:
     try:
-        dt = datetime.fromtimestamp(ts)
+        dt = datetime.fromtimestamp(ts, tz=timezone.utc)
         return datetime_to_string(dt=dt, fraction=fraction)
     except TypeError:
         return None
@@ -45,7 +49,9 @@ def string_to_timestamp(dt_string: str, fraction: bool=True) -> float:
         return dt.timestamp()
     return None
 
-def get_datetime_with_delta(delta: int, dt: datetime=datetime.now(timezone.utc)):
+def get_datetime_with_delta(delta: int, dt: datetime=None):
+    if dt is None:
+        dt = get_datetime()
     if delta < 0:
         return dt - timedelta(seconds=abs(delta))
     else:
