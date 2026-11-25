@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 task_list = []
 
+
 class USCDR301(Interface):
     """docstring for USCDR301."""
 
