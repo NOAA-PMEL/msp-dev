@@ -612,9 +612,11 @@ class SamplingConditionsManager:
                 if new_time == existing_time:
                     self.logger.debug(f"DEBUG load_condition: {composite_key} times are equal. SKIPPING reload.")
                     return # Already active
+            elif existing_config == condition:
+                return
             # ------------------------------------------------------------
             
-            self.logger.debug(f"DEBUG load_condition: OVERWRITING {composite_key}. Shutting down old instance.")
+            self.logger.warning(f"OVERWRITING {composite_key}: existing_time='{existing_time_str}' ({existing_time}), new_time='{new_time_str}' ({new_time}). Shutting down old instance.")
             old_condition_instance = existing_entry.get("condition")
             if old_condition_instance:
                 old_condition_instance.shutdown()
@@ -661,7 +663,7 @@ class SamplingConditionsManager:
         self.sampling_conditions["conditions"][composite_key]["condition"] = condition_instance
         
         self.logger.debug(f"DEBUG load_condition: SUCCESS loading {composite_key}. Current mapped sources: {list(self.sampling_conditions['sources'].keys())}")
-
+        
     async def send_event(self, ce):
         """Routes registry definitions to the Datastore via Knative HTTP Broker."""
         try:
