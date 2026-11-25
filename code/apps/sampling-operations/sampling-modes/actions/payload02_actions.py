@@ -62,6 +62,20 @@ async def set_absorb_sampling(**kwargs):
     L.info("action_triggered", extra={"action": "set_absorb_sampling"})
     return {"absorb_sampling_state": "sampling"}
 
+async def advance_tap_spot(active_spot=None, **kwargs):
+    if active_spot is None:
+        L.warning("action_skipped", extra={"action": "advance_tap_spot", "reason": "active_spot is None"})
+        return {}
+
+    current_spot = int(active_spot)
+    if current_spot >= 8:
+        L.info("action_skipped", extra={"action": "advance_tap_spot", "current_spot": current_spot, "reason": "already on last channel"})
+        return {}
+
+    next_spot = current_spot + 1
+    L.info("action_triggered", extra={"action": "advance_tap_spot", "from_spot": current_spot, "to_spot": next_spot})
+    return {"tap_set_active_spot": next_spot}
+
 # import logging
 # from envds.daq.event import DAQEvent
 
